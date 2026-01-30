@@ -110,11 +110,12 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   image_path: assets/imagen/windowlogo.png
-  adaptive_icon_background: assets/imagen/transparent_1024.png
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: assets/imagen/windowlogo.png
   windows:
     generate: true
     image_path: assets/imagen/windowlogo.png
+    icon_size: 256
 
 flutter_native_splash:
   color: "#FFFFFF"

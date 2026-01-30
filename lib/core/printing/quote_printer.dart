@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -103,14 +104,18 @@ class QuotePrinter {
     }
   }
 
-  static Future<Map<String, String>> _resolveBusinessData(dynamic business) async {
+  static Future<Map<String, String>> _resolveBusinessData(
+    dynamic business,
+  ) async {
     final empresaData = await _getEmpresaDataFromConfig();
     final name = (empresaData['name'] ?? '').trim();
     final hasDetails = empresaData.entries.any(
       (entry) => entry.key != 'name' && entry.value.trim().isNotEmpty,
     );
 
-    if (business != null && (!hasDetails && (name.isEmpty || name == 'Mi Negocio' || name == 'FULLPOS'))) {
+    if (business != null &&
+        (!hasDetails &&
+            (name.isEmpty || name == 'Mi Negocio' || name == 'FULLPOS'))) {
       return _normalizeBusinessData(business);
     }
 
@@ -153,16 +158,23 @@ class QuotePrinter {
     }
   }
 
-  static Future<Uint8List> _generatePdfIsolate(Map<String, dynamic> payload) async {
+  static Future<Uint8List> _generatePdfIsolate(
+    Map<String, dynamic> payload,
+  ) async {
     return _generatePdfInternal(payload);
   }
 
-  static Future<Uint8List> _generatePdfInternal(Map<String, dynamic> payload) async {
+  static Future<Uint8List> _generatePdfInternal(
+    Map<String, dynamic> payload,
+  ) async {
     final quote = QuoteModel.fromMap(
       Map<String, dynamic>.from(payload['quote'] as Map),
     );
     final items = (payload['items'] as List)
-        .map((item) => QuoteItemModel.fromMap(Map<String, dynamic>.from(item as Map)))
+        .map(
+          (item) =>
+              QuoteItemModel.fromMap(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
     final businessData = Map<String, String>.from(payload['business'] as Map);
     final clientName = payload['clientName'] as String? ?? '';
@@ -172,18 +184,19 @@ class QuotePrinter {
 
     final fonts = await _loadPdfFonts();
     final pdf = pw.Document(
-      theme: pw.ThemeData.withFont(
-        base: fonts.base,
-        bold: fonts.bold,
-      ),
+      theme: pw.ThemeData.withFont(base: fonts.base, bold: fonts.bold),
     );
 
     final safeBusiness = businessData.map(
       (k, v) => MapEntry(k, _sanitizePdfText(v)),
     );
     final safeClientName = _sanitizePdfText(clientName);
-    final safeClientPhone = clientPhone == null ? null : _sanitizePdfText(clientPhone);
-    final safeClientRnc = clientRnc == null ? null : _sanitizePdfText(clientRnc);
+    final safeClientPhone = clientPhone == null
+        ? null
+        : _sanitizePdfText(clientPhone);
+    final safeClientRnc = clientRnc == null
+        ? null
+        : _sanitizePdfText(clientRnc);
 
     final createdDate = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
     final expirationDate = createdDate.add(Duration(days: validDays));
@@ -195,18 +208,10 @@ class QuotePrinter {
       pw.MultiPage(
         pageFormat: PdfPageFormat.letter,
         margin: const pw.EdgeInsets.fromLTRB(36, 36, 36, 40),
-        header: (context) => _buildHeader(
-          safeBusiness,
-          quote,
-          issueDate,
-          validUntil,
-        ),
-        footer: (context) => _buildFooter(
-          context,
-          safeBusiness,
-          quote,
-          currencyFormat,
-        ),
+        header: (context) =>
+            _buildHeader(safeBusiness, quote, issueDate, validUntil),
+        footer: (context) =>
+            _buildFooter(context, safeBusiness, quote, currencyFormat),
         build: (context) => [
           _buildInfoBlocks(
             safeBusiness,
@@ -246,7 +251,9 @@ class QuotePrinter {
         if (arial.existsSync() && arialBold.existsSync()) {
           return _PdfFonts(
             base: pw.Font.ttf(ByteData.view(arial.readAsBytesSync().buffer)),
-            bold: pw.Font.ttf(ByteData.view(arialBold.readAsBytesSync().buffer)),
+            bold: pw.Font.ttf(
+              ByteData.view(arialBold.readAsBytesSync().buffer),
+            ),
           );
         }
       }
@@ -254,10 +261,7 @@ class QuotePrinter {
       debugPrint('Font load failed: $e');
     }
 
-    return _PdfFonts(
-      base: pw.Font.helvetica(),
-      bold: pw.Font.helveticaBold(),
-    );
+    return _PdfFonts(base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
   }
 
   static pw.Widget _buildHeader(
@@ -269,21 +273,19 @@ class QuotePrinter {
     final displayId = quote.id != null
         ? quote.id!.toString().padLeft(5, '0')
         : '-----';
-    final phones = _joinParts(
-      [businessData['phone'] ?? '', businessData['phone2'] ?? ''],
-      separator: ' / ',
-    );
-    final address = _joinParts(
-      [businessData['address'] ?? '', businessData['city'] ?? ''],
-      separator: ', ',
-    );
+    final phones = _joinParts([
+      businessData['phone'] ?? '',
+      businessData['phone2'] ?? '',
+    ], separator: ' / ');
+    final address = _joinParts([
+      businessData['address'] ?? '',
+      businessData['city'] ?? '',
+    ], separator: ', ');
 
     return pw.Container(
       padding: const pw.EdgeInsets.only(bottom: 12),
       decoration: pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: PdfColors.grey300),
-        ),
+        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300)),
       ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -304,16 +306,10 @@ class QuotePrinter {
                 if (businessData['slogan']!.isNotEmpty)
                   pw.Text(
                     businessData['slogan']!,
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      color: PdfColors.grey700,
-                    ),
+                    style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
                   ),
                 if (address.isNotEmpty)
-                  pw.Text(
-                    address,
-                    style: const pw.TextStyle(fontSize: 9),
-                  ),
+                  pw.Text(address, style: const pw.TextStyle(fontSize: 9)),
                 if (phones.isNotEmpty)
                   pw.Text(
                     'Tel: $phones',
@@ -334,7 +330,10 @@ class QuotePrinter {
           ),
           pw.SizedBox(width: 16),
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const pw.EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
             decoration: pw.BoxDecoration(
               color: PdfColors.teal,
               borderRadius: pw.BorderRadius.circular(6),
@@ -362,11 +361,17 @@ class QuotePrinter {
                 pw.SizedBox(height: 6),
                 pw.Text(
                   'Fecha: $issueDate',
-                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.white),
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.white,
+                  ),
                 ),
                 pw.Text(
                   'Valida hasta: $validUntil',
-                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.white),
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.white,
+                  ),
                 ),
               ],
             ),
@@ -383,14 +388,14 @@ class QuotePrinter {
     String? clientRnc,
   ) {
     final companyLines = <pw.Widget>[];
-    final address = _joinParts(
-      [businessData['address'] ?? '', businessData['city'] ?? ''],
-      separator: ', ',
-    );
-    final phones = _joinParts(
-      [businessData['phone'] ?? '', businessData['phone2'] ?? ''],
-      separator: ' / ',
-    );
+    final address = _joinParts([
+      businessData['address'] ?? '',
+      businessData['city'] ?? '',
+    ], separator: ', ');
+    final phones = _joinParts([
+      businessData['phone'] ?? '',
+      businessData['phone2'] ?? '',
+    ], separator: ' / ');
 
     if (address.isNotEmpty) {
       companyLines.add(_infoLine('Direccion', address));
@@ -408,9 +413,7 @@ class QuotePrinter {
       companyLines.add(_infoLine('RNC', businessData['rnc']!));
     }
 
-    final clientLines = <pw.Widget>[
-      _infoLine('Nombre', clientName),
-    ];
+    final clientLines = <pw.Widget>[_infoLine('Nombre', clientName)];
     if (clientPhone != null && clientPhone.isNotEmpty) {
       clientLines.add(_infoLine('Telefono', clientPhone));
     }
@@ -421,13 +424,9 @@ class QuotePrinter {
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Expanded(
-          child: _buildInfoCard('Empresa', companyLines),
-        ),
+        pw.Expanded(child: _buildInfoCard('Empresa', companyLines)),
         pw.SizedBox(width: 12),
-        pw.Expanded(
-          child: _buildInfoCard('Cliente', clientLines),
-        ),
+        pw.Expanded(child: _buildInfoCard('Cliente', clientLines)),
       ],
     );
   }
@@ -537,10 +536,7 @@ class QuotePrinter {
             ),
             _tableCell(
               _formatMoney(currencyFormat, item.totalLine),
-              pw.TextStyle(
-                fontSize: 9,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
               align: pw.TextAlign.right,
             ),
           ],
@@ -585,10 +581,7 @@ class QuotePrinter {
         children: [
           pw.Text(
             'Notas',
-            style: pw.TextStyle(
-              fontSize: 10,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 4),
           pw.Text(notes, style: const pw.TextStyle(fontSize: 9)),
@@ -610,10 +603,7 @@ class QuotePrinter {
         children: [
           pw.Text(
             'Terminos',
-            style: pw.TextStyle(
-              fontSize: 10,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 6),
           pw.Text(
@@ -668,10 +658,7 @@ class QuotePrinter {
           pw.Text(
             footerText,
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(
-              fontSize: 8,
-              color: PdfColors.grey700,
-            ),
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
           ),
         ],
       ],
@@ -709,12 +696,7 @@ class QuotePrinter {
                 currencyFormat,
               ),
             pw.Divider(color: PdfColors.teal, thickness: 1),
-            _totalsRow(
-              'TOTAL',
-              quote.total,
-              currencyFormat,
-              isTotal: true,
-            ),
+            _totalsRow('TOTAL', quote.total, currencyFormat, isTotal: true),
           ],
         ),
       ),
@@ -740,10 +722,7 @@ class QuotePrinter {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(label, style: textStyle),
-          pw.Text(
-            _formatMoney(currencyFormat, amount),
-            style: textStyle,
-          ),
+          pw.Text(_formatMoney(currencyFormat, amount), style: textStyle),
         ],
       ),
     );
@@ -786,56 +765,20 @@ class QuotePrinter {
     final fileName = 'cotizacion_${fileId}_$timestamp.pdf';
 
     final navigator = Navigator.of(context, rootNavigator: true);
-
-    if (context.mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    Uint8List pdfData;
-    try {
-      pdfData = await generatePdf(
-        quote: quote,
-        items: items,
-        clientName: clientName,
-        clientPhone: clientPhone,
-        clientRnc: clientRnc,
-        business: business,
-        validDays: validDays,
-      );
-    } catch (e) {
-      if (navigator.canPop()) {
-        navigator.pop();
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo generar el PDF de la cotizacion.'),
-          ),
-        );
-      }
-      return;
-    }
-
-    if (navigator.canPop()) {
-      navigator.pop();
-    }
-
-    if (!context.mounted) {
-      return;
-    }
+    if (!context.mounted) return;
 
     await navigator.push(
       MaterialPageRoute(
         builder: (context) => _QuotePdfPreviewPage(
           title: 'Cotizacion #COT-$displayId',
-          pdfData: pdfData,
           fileName: fileName,
+          quote: quote,
+          items: items,
+          clientName: clientName,
+          clientPhone: clientPhone,
+          clientRnc: clientRnc,
+          business: business,
+          validDays: validDays,
         ),
       ),
     );
@@ -883,22 +826,210 @@ class _PdfFonts {
   final pw.Font base;
   final pw.Font bold;
 
-  const _PdfFonts({
-    required this.base,
-    required this.bold,
-  });
+  const _PdfFonts({required this.base, required this.bold});
 }
 
-class _QuotePdfPreviewPage extends StatelessWidget {
+enum _PdfFitMode { width, page }
+
+class _PdfZoomInIntent extends Intent {
+  const _PdfZoomInIntent();
+}
+
+class _PdfZoomOutIntent extends Intent {
+  const _PdfZoomOutIntent();
+}
+
+class _PdfResetIntent extends Intent {
+  const _PdfResetIntent();
+}
+
+class _PdfFitWidthIntent extends Intent {
+  const _PdfFitWidthIntent();
+}
+
+class _PdfFitPageIntent extends Intent {
+  const _PdfFitPageIntent();
+}
+
+class _QuotePdfPreviewPage extends StatefulWidget {
   final String title;
-  final Uint8List pdfData;
   final String fileName;
 
+  final QuoteModel? quote;
+  final List<QuoteItemModel>? items;
+  final String? clientName;
+  final String? clientPhone;
+  final String? clientRnc;
+  final dynamic business;
+  final int validDays;
+
   const _QuotePdfPreviewPage({
-    required this.title,
-    required this.pdfData,
-    required this.fileName,
+    this.title = '',
+    this.fileName = '',
+    this.quote,
+    this.items,
+    this.clientName,
+    this.clientPhone,
+    this.clientRnc,
+    this.business,
+    this.validDays = 15,
   });
+
+  @override
+  State<_QuotePdfPreviewPage> createState() => _QuotePdfPreviewPageState();
+}
+
+class _QuotePdfPreviewPageState extends State<_QuotePdfPreviewPage> {
+  final TransformationController _transformController =
+      TransformationController();
+
+  Uint8List? _pdfData;
+  Object? _loadError;
+  bool _loading = false;
+
+  double _zoom = 1.0;
+  _PdfFitMode _fitMode = _PdfFitMode.width;
+  int _fitRequestId = 0;
+  int _fitAppliedRequestId = 0;
+
+  static const double _minZoom = 0.25;
+  static const double _maxZoom = 4.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPdf();
+    _applyZoom(resetPan: true);
+  }
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPdf() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+      _pdfData = null;
+    });
+
+    final quote = widget.quote;
+    final items = widget.items;
+    final clientName = widget.clientName;
+    if (quote == null || items == null || clientName == null) {
+      setState(() {
+        _loadError = StateError('Missing quote data for PDF preview.');
+        _loading = false;
+      });
+      return;
+    }
+
+    try {
+      final data = await QuotePrinter.generatePdf(
+        quote: quote,
+        items: items,
+        clientName: clientName,
+        clientPhone: widget.clientPhone,
+        clientRnc: widget.clientRnc,
+        business: widget.business,
+        validDays: widget.validDays,
+      );
+      if (!mounted) return;
+      setState(() => _pdfData = data);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadError = e);
+    } finally {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  void _setZoom(double newZoom, {bool resetPan = false}) {
+    final clamped = newZoom.clamp(_minZoom, _maxZoom);
+    if (clamped == _zoom && !resetPan) return;
+    setState(() => _zoom = clamped);
+    _applyZoom(resetPan: resetPan);
+  }
+
+  void _applyZoom({required bool resetPan}) {
+    if (resetPan) {
+      _transformController.value = Matrix4.identity()..scale(_zoom);
+      return;
+    }
+
+    final current = _transformController.value;
+    final currentScale = current.getMaxScaleOnAxis();
+    final factor = currentScale == 0 ? 1.0 : (_zoom / currentScale);
+    _transformController.value = current.clone()..scale(factor);
+  }
+
+  void _fitToWidth() {
+    setState(() {
+      _fitMode = _PdfFitMode.width;
+      _fitRequestId++;
+    });
+    _setZoom(1.0, resetPan: true);
+  }
+
+  void _fitToPage() {
+    setState(() {
+      _fitMode = _PdfFitMode.page;
+      _fitRequestId++;
+    });
+  }
+
+  void _resetZoom() {
+    _fitToWidth();
+  }
+
+  void _zoomIn() => _setZoom(_zoom * 1.10);
+  void _zoomOut() => _setZoom(_zoom / 1.10);
+
+  double _computeFitPageZoom(BoxConstraints constraints) {
+    final viewportW = constraints.maxWidth;
+    final viewportH = constraints.maxHeight;
+    if (viewportW <= 0 || viewportH <= 0) return 1.0;
+
+    // Quote PDFs are generated as Letter.
+    final aspect = PdfPageFormat.letter.width / PdfPageFormat.letter.height;
+    final pageHeightAtFitWidth = viewportW / aspect;
+    if (pageHeightAtFitWidth <= 0) return 1.0;
+
+    return (viewportH / pageHeightAtFitWidth).clamp(_minZoom, 1.0);
+  }
+
+  void _maybeApplyFit(BoxConstraints constraints) {
+    if (_fitRequestId == _fitAppliedRequestId) return;
+
+    // IMPORTANT: this method is invoked from a LayoutBuilder builder.
+    // Never call setState synchronously during build.
+    final requestId = _fitRequestId;
+    final fitMode = _fitMode;
+    final maxWidth = constraints.maxWidth;
+    final maxHeight = constraints.maxHeight;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (requestId != _fitRequestId) return;
+      if (_fitAppliedRequestId == requestId) return;
+
+      _fitAppliedRequestId = requestId;
+
+      if (fitMode == _PdfFitMode.width) {
+        _setZoom(1.0, resetPan: true);
+        return;
+      }
+
+      final safeConstraints = BoxConstraints(
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+      );
+      _setZoom(_computeFitPageZoom(safeConstraints), resetPan: true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -921,7 +1052,7 @@ class _QuotePdfPreviewPage extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      title,
+                      widget.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -932,22 +1063,46 @@ class _QuotePdfPreviewPage extends StatelessWidget {
                   ),
                   IconButton(
                     icon: const Icon(Icons.print),
-                    onPressed: () async {
-                      await Printing.layoutPdf(onLayout: (_) => pdfData);
-                    },
+                    onPressed: (_pdfData == null)
+                        ? null
+                        : () async {
+                            await Printing.layoutPdf(
+                              onLayout: (_) => _pdfData!,
+                            );
+                          },
                     tooltip: 'Imprimir',
                   ),
                   IconButton(
                     icon: const Icon(Icons.share),
-                    onPressed: () {
-                      unawaited(
-                        Printing.sharePdf(
-                          bytes: pdfData,
-                          filename: fileName,
-                        ),
-                      );
-                    },
+                    onPressed: (_pdfData == null)
+                        ? null
+                        : () {
+                            final bytes = _pdfData;
+                            if (bytes == null) return;
+                            unawaited(
+                              Printing.sharePdf(
+                                bytes: bytes,
+                                filename: widget.fileName,
+                              ),
+                            );
+                          },
                     tooltip: 'Compartir',
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    icon: const Icon(Icons.fit_screen),
+                    onPressed: _fitToWidth,
+                    tooltip: 'Ajustar a ancho (Ctrl+1)',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.crop_free),
+                    onPressed: _fitToPage,
+                    tooltip: 'Ajustar a página (Ctrl+2)',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.restart_alt),
+                    onPressed: _resetZoom,
+                    tooltip: 'Reset 100% (Ctrl+0)',
                   ),
                 ],
               ),
@@ -960,12 +1115,126 @@ class _QuotePdfPreviewPage extends StatelessWidget {
                 color: Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: PdfPreview(
-                build: (format) async => pdfData,
-                canChangeOrientation: false,
-                canChangePageFormat: false,
-                allowPrinting: false,
-                allowSharing: false,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  _maybeApplyFit(constraints);
+
+                  if (_loading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (_loadError != null) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'No se pudo cargar el PDF de la cotización.',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: _loadPdf,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Reintentar'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final data = _pdfData;
+                  if (data == null) {
+                    return const Center(
+                      child: Text('No hay PDF para mostrar.'),
+                    );
+                  }
+
+                  return Shortcuts(
+                    shortcuts: {
+                      // Zoom
+                      SingleActivator(
+                        LogicalKeyboardKey.equal,
+                        control: true,
+                        shift: true,
+                      ): const _PdfZoomInIntent(),
+                      SingleActivator(LogicalKeyboardKey.equal, control: true):
+                          const _PdfZoomInIntent(),
+                      SingleActivator(LogicalKeyboardKey.add, control: true):
+                          const _PdfZoomInIntent(),
+                      SingleActivator(LogicalKeyboardKey.minus, control: true):
+                          const _PdfZoomOutIntent(),
+                      SingleActivator(
+                        LogicalKeyboardKey.numpadSubtract,
+                        control: true,
+                      ): const _PdfZoomOutIntent(),
+
+                      // Fit/reset
+                      SingleActivator(LogicalKeyboardKey.digit0, control: true):
+                          const _PdfResetIntent(),
+                      SingleActivator(LogicalKeyboardKey.digit1, control: true):
+                          const _PdfFitWidthIntent(),
+                      SingleActivator(LogicalKeyboardKey.digit2, control: true):
+                          const _PdfFitPageIntent(),
+                    },
+                    child: Actions(
+                      actions: {
+                        _PdfZoomInIntent: CallbackAction<_PdfZoomInIntent>(
+                          onInvoke: (_) {
+                            _zoomIn();
+                            return null;
+                          },
+                        ),
+                        _PdfZoomOutIntent: CallbackAction<_PdfZoomOutIntent>(
+                          onInvoke: (_) {
+                            _zoomOut();
+                            return null;
+                          },
+                        ),
+                        _PdfResetIntent: CallbackAction<_PdfResetIntent>(
+                          onInvoke: (_) {
+                            _resetZoom();
+                            return null;
+                          },
+                        ),
+                        _PdfFitWidthIntent: CallbackAction<_PdfFitWidthIntent>(
+                          onInvoke: (_) {
+                            _fitToWidth();
+                            return null;
+                          },
+                        ),
+                        _PdfFitPageIntent: CallbackAction<_PdfFitPageIntent>(
+                          onInvoke: (_) {
+                            _fitToPage();
+                            return null;
+                          },
+                        ),
+                      },
+                      child: Focus(
+                        autofocus: true,
+                        child: InteractiveViewer(
+                          transformationController: _transformController,
+                          panEnabled: _zoom > 1.01,
+                          scaleEnabled: false,
+                          minScale: _minZoom,
+                          maxScale: _maxZoom,
+                          boundaryMargin: const EdgeInsets.all(80),
+                          clipBehavior: Clip.hardEdge,
+                          child: PdfPreview(
+                            build: (_) async => data,
+                            canChangeOrientation: false,
+                            canChangePageFormat: false,
+                            allowPrinting: false,
+                            allowSharing: false,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),

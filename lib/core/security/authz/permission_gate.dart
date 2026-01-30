@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'authz_service.dart';
@@ -33,9 +35,63 @@ class PermissionGate extends StatefulWidget {
 class _PermissionGateState extends State<PermissionGate> {
   bool _authorized = false;
   bool _prompted = false;
-  bool _checking = false;
+  bool _checking = true;
   bool _promptScheduled = false;
   bool _autoPromptBlocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_checkPermissionOnly());
+  }
+
+  @override
+  void didUpdateWidget(covariant PermissionGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.permission.code != widget.permission.code ||
+        oldWidget.resourceId != widget.resourceId ||
+        oldWidget.resourceType != widget.resourceType) {
+      // Re-check on permission/context change.
+      _authorized = false;
+      _prompted = false;
+      _autoPromptBlocked = false;
+      _checking = true;
+      unawaited(_checkPermissionOnly());
+    }
+  }
+
+  Future<void> _checkPermissionOnly() async {
+    try {
+      final user = await AuthzService.currentUser();
+      if (!mounted) return;
+
+      if (user == null) {
+        setState(() {
+          _authorized = false;
+          _autoPromptBlocked = true;
+        });
+        return;
+      }
+
+      final can = AuthzService.can(user, widget.permission);
+      setState(() {
+        _authorized = can;
+        _autoPromptBlocked = !can;
+      });
+    } catch (e, st) {
+      debugPrint(
+        'PermissionGate precheck (${widget.permission.code}): $e\n$st',
+      );
+      if (!mounted) return;
+      setState(() {
+        _authorized = false;
+        _autoPromptBlocked = true;
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() => _checking = false);
+    }
+  }
 
   Future<void> _ensureAuthorized({bool userInitiated = false}) async {
     if (_checking) return;
