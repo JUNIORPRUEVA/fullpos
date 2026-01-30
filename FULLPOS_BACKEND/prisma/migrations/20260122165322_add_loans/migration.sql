@@ -1,0 +1,3 @@
+-- Intentionally left blank.
+-- This migration folder existed without a migration.sql, which breaks Prisma migrate.
+-- If your database already has this migration recorded, replace this file with the original SQL.

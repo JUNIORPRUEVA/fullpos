@@ -1,0 +1,6 @@
+# Ignore all by default; keep only backend tracked
+*
+!/.gitignore
+!/.gitattributes
+!/FULLPOS_BACKEND/
+!/FULLPOS_BACKEND/**

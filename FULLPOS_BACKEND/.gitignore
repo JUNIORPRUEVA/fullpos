@@ -1,0 +1,15 @@
+# Backend ignores
+node_modules/
+dist/
+
+# Env (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

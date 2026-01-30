@@ -1,0 +1,46 @@
+@host = http://localhost:4000
+@token = {{access_token}}
+
+### Login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "owner",
+  "password": "fullpos123"
+}
+
+### Refresh
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refresh_token}}"
+}
+
+### Perfil
+GET {{host}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Resumen de ventas
+GET {{host}}/api/reports/sales/summary?from=2025-12-01&to=2026-01-16
+Authorization: Bearer {{token}}
+
+### Ventas por d\u00eda
+GET {{host}}/api/reports/sales/by-day?from=2025-12-15&to=2026-01-16
+Authorization: Bearer {{token}}
+
+### Listado de ventas
+GET {{host}}/api/reports/sales/list?from=2025-12-15&to=2026-01-16&page=1&pageSize=10
+Authorization: Bearer {{token}}
+
+### Cierres
+GET {{host}}/api/reports/cash/closings?from=2025-12-15&to=2026-01-16
+Authorization: Bearer {{token}}
+
+### Detalle de cierre (reemplazar :id)
+GET {{host}}/api/reports/cash/closing/1
+Authorization: Bearer {{token}}
+
+### Descarga app owner (p\u00fablico)
+GET {{host}}/api/downloads/owner-app

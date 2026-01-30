@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id                 Int              @id @default(autoincrement())
+  name               String
+  rnc                String?
+  cloudCompanyId     String?          @unique
+  isActive           Boolean          @default(true)
+  ownerAppAndroidUrl String?
+  ownerAppIosUrl     String?
+  ownerAppVersion    String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  users          User[]
+  terminals      Terminal[]
+  overrideTokens OverrideToken[]
+  overrideRequests OverrideRequest[]
+  auditLogs      AuditLog[]
+  sales          Sale[]
+  cashSessions   CashSession[]
+  cashMovements  CashMovement[]
+  products       Product[]
+  expenses       Expense[]
+  quotes         Quote[]
+  cloudBackups   CloudBackup[]
+
+  config CompanyConfig?
+
+  @@unique([name])
+}
+
+model CloudBackup {
+  id          String   @id @default(uuid())
+  companyId   Int
+  company     Company  @relation(fields: [companyId], references: [id])
+  createdAt   DateTime @default(now())
+  sizeBytes   Int
+  sha256      String
+  dbVersion   Int
+  appVersion  String
+  storagePath String
+  status      String   @default("SUCCESS")
+
+  @@index([companyId, createdAt])
+}
+
+model CompanyConfig {
+  companyId     Int      @id
+  company       Company  @relation(fields: [companyId], references: [id])
+  logoUrl       String?
+  phone         String?
+  phone2        String?
+  email         String?
+  address       String?
+  city          String?
+  slogan        String?
+  website       String?
+  instagramUrl  String?
+  facebookUrl   String?
+  themeKey      String   @default("proPos")
+  primaryColor  String?
+  accentColor   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id                Int               @id @default(autoincrement())
+  companyId         Int
+  company           Company           @relation(fields: [companyId], references: [id])
+  username          String            @unique
+  email             String?           @unique
+  password          String
+  role              String            @default("owner")
+  isActive          Boolean           @default(true)
+  displayName       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  overrideRequests  OverrideRequest[] @relation("requested_by")
+  overrideApprovals OverrideRequest[] @relation("approved_by")
+  tokensUsed        OverrideToken[]   @relation("token_used_by")
+  tokensApproved    OverrideToken[]   @relation("token_approved_by")
+  auditsRequested   AuditLog[]        @relation("audit_requested_by")
+  auditsApproved    AuditLog[]        @relation("audit_approved_by")
+  refreshTokens     RefreshToken[]
+  sales             Sale[]            @relation("sale_created_by")
+  cashSessionsOpened CashSession[]    @relation("session_opened_by")
+  cashSessionsClosed CashSession[]    @relation("session_closed_by")
+  expensesCreated   Expense[]         @relation("expense_created_by")
+}
+
+model Terminal {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  company   Company  @relation(fields: [companyId], references: [id])
+  deviceId  String   @unique
+  name      String?
+  lastSeen  DateTime?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OverrideRequest {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  company        Company   @relation(fields: [companyId], references: [id])
+  actionCode     String
+  resourceType   String?
+  resourceId     String?
+  status         String    @default("pending") // pending | approved | rejected
+  requestedById  Int
+  requestedBy    User      @relation("requested_by", fields: [requestedById], references: [id])
+  approvedById   Int?
+  approvedBy     User?     @relation("approved_by", fields: [approvedById], references: [id])
+  terminalId     String?
+  tokenHash      String?
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+  meta           Json?
+
+  token          OverrideToken?
+}
+
+model OverrideToken {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  company       Company   @relation(fields: [companyId], references: [id])
+  actionCode    String
+  resourceType  String?
+  resourceId    String?
+  tokenHash     String
+  method        String
+  nonce         String
+  requestedById Int
+  approvedById  Int?
+  expiresAt     DateTime
+  usedAt        DateTime?
+  usedById      Int?
+  terminalId    String?
+  result        String?
+  meta          Json?
+  createdAt     DateTime  @default(now())
+
+  requestId     Int?     @unique
+  request       OverrideRequest? @relation(fields: [requestId], references: [id])
+
+  usedBy        User?     @relation("token_used_by", fields: [usedById], references: [id])
+  approvedBy    User?     @relation("token_approved_by", fields: [approvedById], references: [id])
+
+  @@index([companyId, actionCode, expiresAt])
+}
+
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  company        Company  @relation(fields: [companyId], references: [id])
+  actionCode     String
+  resourceType   String?
+  resourceId     String?
+  requestedById  Int?
+  approvedById   Int?
+  method         String?
+  result         String
+  terminalId     String?
+  meta           Json?
+  createdAt      DateTime @default(now())
+
+  requestedBy    User?    @relation("audit_requested_by", fields: [requestedById], references: [id])
+  approvedBy     User?    @relation("audit_approved_by", fields: [approvedById], references: [id])
+
+  @@index([companyId, actionCode, createdAt])
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([userId, expiresAt])
+}
+
+model CashSession {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  company        Company   @relation(fields: [companyId], references: [id])
+  // ID local del POS (SQLite) para poder sincronizar sin duplicar
+  localId         Int?
+  openedById     Int
+  openedBy       User      @relation("session_opened_by", fields: [openedById], references: [id])
+  closedById     Int?
+  closedBy       User?     @relation("session_closed_by", fields: [closedById], references: [id])
+  userName       String
+  openedAt       DateTime
+  closedAt       DateTime?
+  initialAmount  Decimal   @default(0) @db.Decimal(12, 2)
+  closingAmount  Decimal?  @db.Decimal(12, 2)
+  expectedCash   Decimal?  @db.Decimal(12, 2)
+  difference     Decimal?  @db.Decimal(12, 2)
+  status         String    @default("OPEN")
+  note           String?
+  paymentSummary Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  movements      CashMovement[]
+  sales          Sale[]
+
+  @@index([companyId, openedAt])
+  @@unique([companyId, localId])
+}
+
+model CashMovement {
+  id         Int       @id @default(autoincrement())
+  companyId  Int
+  company    Company   @relation(fields: [companyId], references: [id])
+  // ID local del POS (SQLite) para poder sincronizar sin duplicar
+  localId    Int?
+  sessionId  Int
+  session    CashSession @relation(fields: [sessionId], references: [id])
+  type       String
+  amount     Decimal   @db.Decimal(12, 2)
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  @@index([sessionId])
+  @@unique([companyId, localId])
+}
+
+model Quote {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  company      Company   @relation(fields: [companyId], references: [id])
+  // ID local del POS (SQLite) para upsert
+  localId      Int
+  clientNameSnapshot  String
+  clientPhoneSnapshot String?
+  clientRncSnapshot   String?
+  ticketName   String?
+  subtotal     Decimal   @default(0) @db.Decimal(12, 2)
+  itbisEnabled Boolean   @default(true)
+  itbisRate    Decimal   @default(0.18) @db.Decimal(5, 4)
+  itbisAmount  Decimal   @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal  @default(0) @db.Decimal(12, 2)
+  total        Decimal   @default(0) @db.Decimal(12, 2)
+  status       String    @default("OPEN")
+  notes        String?
+  createdAt    DateTime
+  updatedAt    DateTime
+
+  items        QuoteItem[]
+
+  @@unique([companyId, localId])
+  @@index([companyId, createdAt])
+}
+
+model QuoteItem {
+  id          Int      @id @default(autoincrement())
+  quoteId     Int
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  // ID local del POS (SQLite)
+  localId     Int?
+  productId   Int?
+  product     Product? @relation(fields: [productId], references: [id])
+  productCodeSnapshot String?
+  productNameSnapshot String
+  description String
+  qty         Decimal  @db.Decimal(12, 3)
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  price       Decimal  @db.Decimal(12, 2)
+  cost        Decimal  @default(0) @db.Decimal(12, 2)
+  discountLine Decimal @default(0) @db.Decimal(12, 2)
+  totalLine   Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+
+  @@index([quoteId])
+}
+
+model Expense {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  company     Company   @relation(fields: [companyId], references: [id])
+  createdById Int?
+  createdBy   User?     @relation("expense_created_by", fields: [createdById], references: [id])
+  amount      Decimal   @db.Decimal(12, 2)
+  category    String
+  note        String?
+  incurredAt  DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([companyId, incurredAt])
+}
+
+model Product {
+  id         Int       @id @default(autoincrement())
+  companyId  Int
+  company    Company   @relation(fields: [companyId], references: [id])
+  code       String
+  name       String
+  description String?
+  price      Decimal   @db.Decimal(12, 2)
+  cost       Decimal   @default(0) @db.Decimal(12, 2)
+  stock      Decimal   @default(0) @db.Decimal(12, 3)
+  imageUrl   String?
+  isDemo     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  saleItems  SaleItem[]
+  quoteItems QuoteItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId, isDemo])
+}
+
+model Sale {
+  id                   Int         @id @default(autoincrement())
+  companyId            Int
+  company              Company     @relation(fields: [companyId], references: [id])
+  localCode            String      @unique
+  kind                 String
+  status               String      @default("completed")
+  customerNameSnapshot String?
+  customerPhoneSnapshot String?
+  customerRncSnapshot  String?
+  itbisEnabled         Boolean     @default(true)
+  itbisRate            Decimal     @default(0.18) @db.Decimal(5, 4)
+  discountTotal        Decimal     @default(0) @db.Decimal(12, 2)
+  subtotal             Decimal     @default(0) @db.Decimal(12, 2)
+  itbisAmount          Decimal     @default(0) @db.Decimal(12, 2)
+  total                Decimal     @default(0) @db.Decimal(12, 2)
+  paymentMethod        String?
+  paidAmount           Decimal     @default(0) @db.Decimal(12, 2)
+  changeAmount         Decimal     @default(0) @db.Decimal(12, 2)
+  fiscalEnabled        Boolean     @default(false)
+  ncfFull              String?
+  ncfType              String?
+  sessionId            Int?
+  session              CashSession? @relation(fields: [sessionId], references: [id])
+  createdById          Int?
+  createdBy            User?       @relation("sale_created_by", fields: [createdById], references: [id])
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  deletedAt            DateTime?
+
+  items                SaleItem[]
+
+  @@index([companyId, createdAt])
+}
+
+model SaleItem {
+  id                     Int      @id @default(autoincrement())
+  saleId                 Int
+  sale                   Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId              Int?
+  product                Product? @relation(fields: [productId], references: [id])
+  productCodeSnapshot    String?
+  productNameSnapshot    String
+  qty                    Decimal   @db.Decimal(12, 3)
+  unitPrice              Decimal   @db.Decimal(12, 2)
+  purchasePriceSnapshot  Decimal   @default(0) @db.Decimal(12, 2)
+  discountLine           Decimal   @default(0) @db.Decimal(12, 2)
+  totalLine              Decimal   @db.Decimal(12, 2)
+  createdAt              DateTime  @default(now())
+
+  @@index([saleId])
+}

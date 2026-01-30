@@ -1,0 +1,20 @@
+# EasyPanel / Nixpacks configuration for FULLPOS_BACKEND
+# Ensures devDependencies are installed (TypeScript build) and Prisma client is generated.
+
+[phases.setup]
+# Match your EasyPanel Node version; 18 is a safe default.
+nixPkgs = ["nodejs_18", "openssl"]
+
+[phases.install]
+cmds = [
+  "npm ci",
+  "npx prisma generate"
+]
+
+[phases.build]
+cmds = [
+  "npm run build"
+]
+
+[start]
+cmd = "npm run migrate && npm run start"
