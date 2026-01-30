@@ -113,22 +113,24 @@ class AppBootstrapController extends ChangeNotifier {
       await _ref
           .read(businessSettingsProvider.notifier)
           .reload()
-          .timeout(const Duration(seconds: 6));
+          .timeout(const Duration(seconds: 20));
       _log('settings loaded');
       if (token != _runToken) return;
 
       _setMessage('Abriendo base de datos...');
-      await AppDb.database.timeout(const Duration(seconds: 10));
+      await AppDb.database.timeout(const Duration(seconds: 20));
       _log('open db ok');
       if (token != _runToken) return;
 
       _setMessage('Verificando base de datos...');
-      await DbHardening.instance.preflight().timeout(const Duration(seconds: 10));
+      await DbHardening.instance.preflight().timeout(
+        const Duration(seconds: 45),
+      );
       _log('preflight ok');
       if (token != _runToken) return;
 
       _setMessage('Verificando integridad...');
-      await DatabaseRecoveryService.run().timeout(const Duration(seconds: 10));
+      await DatabaseRecoveryService.run().timeout(const Duration(seconds: 45));
       _log('recovery ok');
       if (token != _runToken) return;
 
@@ -142,7 +144,7 @@ class AppBootstrapController extends ChangeNotifier {
       }
 
       _setMessage('Cargando sesión...');
-      await _reloadAuthSnapshot().timeout(const Duration(seconds: 6));
+      await _reloadAuthSnapshot().timeout(const Duration(seconds: 20));
       _log('session loaded');
       if (token != _runToken) return;
 

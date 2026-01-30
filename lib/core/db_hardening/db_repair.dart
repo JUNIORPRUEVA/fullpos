@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../backup/backup_paths.dart';
 import '../db/app_db.dart';
+import '../db/database_manager.dart';
 import 'db_backup.dart';
 import 'db_logger.dart';
 import 'db_validator.dart';
@@ -16,7 +17,8 @@ class DbRepair {
 
   Future<bool> tryFix(DatabaseException error, StackTrace stackTrace) async {
     final message = error.toString().toLowerCase();
-    if (message.contains('no such table') || message.contains('no such column')) {
+    if (message.contains('no such table') ||
+        message.contains('no such column')) {
       await _repairSchema(message);
       return true;
     }
@@ -38,7 +40,7 @@ class DbRepair {
     if (!await dbFile.exists()) return;
 
     await DbBackup.instance.createBackup(dbFile, reason: 'integrity_$result');
-    await AppDb.close();
+    await DatabaseManager.instance.close(reason: 'integrity_$result');
 
     await _renameCorruptedFiles(dbPath, 'integrity_$result');
     await AppDb.database;

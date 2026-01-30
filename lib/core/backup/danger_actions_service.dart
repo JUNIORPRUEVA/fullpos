@@ -6,6 +6,7 @@ import '../../features/sales/data/cash_repository.dart';
 import '../../features/sales/data/temp_cart_repository.dart';
 import '../../features/settings/data/users_repository.dart';
 import '../db/app_db.dart';
+import '../db/database_manager.dart';
 import '../db/tables.dart';
 import '../session/session_manager.dart';
 import '../utils/id_utils.dart';
@@ -116,7 +117,7 @@ class DangerActionsService {
 
     // keep message simple
     try {
-      await AppDb.close();
+      await DatabaseManager.instance.close(reason: 'danger_delete_all');
       final dbPath = await BackupPaths.databaseFilePath();
       final dbFile = File(dbPath);
       if (await dbFile.exists()) {

@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../debug/loader_watchdog.dart';
 import '../db/app_db.dart';
+import '../db/database_manager.dart';
 import 'db_logger.dart';
 import 'db_preflight.dart';
 import 'db_repair.dart';
@@ -40,10 +41,12 @@ class DbHardening {
           }
 
           if (_isClosedError(message) && attempts < 2) {
-            // Si el handle fue cerrado inesperadamente, reabrir y reintentar.
+            // Si el handle fue cerrado inesperadamente, reintentar con un handle válido.
+            // Importante: NO cerrar agresivamente aquí (puede afectar otras operaciones).
             attempts++;
-            await AppDb.close();
-            await AppDb.database;
+            await DatabaseManager.instance.reopen(
+              reason: 'db_hardening_closed',
+            );
             continue;
           }
 
@@ -76,5 +79,6 @@ class DbHardening {
   }
 
   bool _isClosedError(String message) =>
-      message.contains('database_closed') || message.contains('database is closed');
+      message.contains('database_closed') ||
+      message.contains('database is closed');
 }

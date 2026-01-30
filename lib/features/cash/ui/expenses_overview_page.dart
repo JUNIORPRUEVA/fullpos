@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/db/app_db.dart';
+import '../../../core/db/database_manager.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_repository.dart';
 
@@ -87,8 +88,9 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
       }
     } on DatabaseException catch (dbError) {
       if (!retrying && _isClosedDbError(dbError)) {
-        await AppDb.close();
-        await AppDb.database;
+        await DatabaseManager.instance.reopen(
+          reason: 'expenses_overview_closed',
+        );
         return _loadMovements(retrying: true);
       }
       if (mounted) {
@@ -109,7 +111,8 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
 
   bool _isClosedDbError(DatabaseException error) {
     final msg = error.toString().toLowerCase();
-    return msg.contains('database_closed') || msg.contains('database is closed');
+    return msg.contains('database_closed') ||
+        msg.contains('database is closed');
   }
 
   Future<void> _pickRange() async {
@@ -211,7 +214,10 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     _pill('Tipo: ${isIncome ? 'Entrada' : 'Salida'}', scheme),
                     _pill('Turno: #${movement.sessionId}', scheme),
                     _pill('Usuario: #${movement.userId}', scheme),
-                    _pill('Fecha: ${dateFmt.format(movement.createdAt)}', scheme),
+                    _pill(
+                      'Fecha: ${dateFmt.format(movement.createdAt)}',
+                      scheme,
+                    ),
                   ],
                 ),
               ],
@@ -242,7 +248,10 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   EdgeInsets _contentPadding(BoxConstraints constraints) {
     const maxWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxWidth);
-    final horizontal = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 48.0);
+    final horizontal = ((constraints.maxWidth - contentWidth) / 2).clamp(
+      12.0,
+      48.0,
+    );
     return EdgeInsets.fromLTRB(
       horizontal,
       AppSizes.paddingM,
@@ -310,10 +319,15 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     ];
 
     final maxCardWidth = 280.0;
-    final availableWidth = constraints.maxWidth -
-        ((constraints.maxWidth - math.min(constraints.maxWidth, 1280.0)) / 2) * 2 -
+    final availableWidth =
+        constraints.maxWidth -
+        ((constraints.maxWidth - math.min(constraints.maxWidth, 1280.0)) / 2) *
+            2 -
         AppSizes.paddingM * 2;
-    final cardWidth = math.min(maxCardWidth, (availableWidth - AppSizes.spaceM * 2) / 2);
+    final cardWidth = math.min(
+      maxCardWidth,
+      (availableWidth - AppSizes.spaceM * 2) / 2,
+    );
 
     return Wrap(
       spacing: AppSizes.spaceM,
@@ -337,14 +351,19 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currencyFormat = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final currencyFormat = NumberFormat.currency(
+      locale: 'es_DO',
+      symbol: 'RD\$ ',
+    );
     final dateFormat = DateFormat('dd/MM/yyyy');
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           'Gastos e ingresos',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         elevation: 0,
         backgroundColor: scheme.surface,
@@ -389,26 +408,33 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     fillColor: scheme.surfaceVariant.withOpacity(0.3),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                      borderSide: BorderSide(color: scheme.outlineVariant.withOpacity(0.6)),
+                      borderSide: BorderSide(
+                        color: scheme.outlineVariant.withOpacity(0.6),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: AppSizes.spaceS),
                 _buildFilterChips(scheme),
                 const SizedBox(height: AppSizes.spaceS),
-                _buildSummarySection(theme, currencyFormat, scheme, constraints),
+                _buildSummarySection(
+                  theme,
+                  currencyFormat,
+                  scheme,
+                  constraints,
+                ),
                 const SizedBox(height: AppSizes.spaceS),
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
                       : _error != null
-                          ? Center(
-                              child: Text(
-                                _error!,
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                            )
-                          : _buildHistoryList(theme, scheme, currencyFormat),
+                      ? Center(
+                          child: Text(
+                            _error!,
+                            style: theme.textTheme.bodyMedium,
+                          ),
+                        )
+                      : _buildHistoryList(theme, scheme, currencyFormat),
                 ),
               ],
             ),
@@ -446,7 +472,9 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
               children: [
                 Text(
                   'Historial',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const Spacer(),
                 Text(
@@ -476,7 +504,9 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
               ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
+                border: Border.all(
+                  color: scheme.outlineVariant.withOpacity(0.4),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -516,7 +546,9 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                             ),
                             const SizedBox(width: AppSizes.spaceS),
                             Text(
-                              movement.userId > 0 ? 'Usuario #${movement.userId}' : 'Usuario general',
+                              movement.userId > 0
+                                  ? 'Usuario #${movement.userId}'
+                                  : 'Usuario general',
                               style: theme.textTheme.bodySmall,
                             ),
                           ],
@@ -591,11 +623,7 @@ class _MetricCard extends StatelessWidget {
               color: metric.color.withOpacity(0.15),
               borderRadius: BorderRadius.circular(AppSizes.radiusL),
             ),
-            child: Icon(
-              metric.icon,
-              color: metric.color,
-              size: 20,
-            ),
+            child: Icon(metric.icon, color: metric.color, size: 20),
           ),
           const SizedBox(width: AppSizes.spaceS),
           Expanded(
@@ -605,16 +633,16 @@ class _MetricCard extends StatelessWidget {
                 Text(
                   metric.label,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: onPrimary.withOpacity(0.8),
-                        fontSize: 12,
-                      ),
+                    color: onPrimary.withOpacity(0.8),
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   metric.value,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),

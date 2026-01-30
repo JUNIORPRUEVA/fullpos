@@ -8,6 +8,11 @@ import 'business_settings_model.dart';
 class BusinessSettingsRepository {
   static const String _tableName = 'business_settings';
 
+  // Evita carreras durante init/migraciones.
+  // Problema observado: múltiples cargas en paralelo pueden ejecutar
+  // CREATE TABLE / ALTER TABLE simultáneamente.
+  static Future<void>? _ensureInFlight;
+
   /// Lista de todas las columnas esperadas con sus definiciones
   static const Map<String, String> _expectedColumns = {
     'id': 'INTEGER PRIMARY KEY DEFAULT 1',
@@ -69,26 +74,33 @@ class BusinessSettingsRepository {
     return callback(db);
   });
 
-  static Future<void> _ensureTable(Database db) async {
-    final tables = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='$_tableName'",
+  static Future<void> _ensureTable(Database db) {
+    final existing = _ensureInFlight;
+    if (existing != null) return existing;
+
+    final future = _ensureTableImpl(db);
+    _ensureInFlight = future.whenComplete(() {
+      if (identical(_ensureInFlight, future)) {
+        _ensureInFlight = null;
+      }
+    });
+    return _ensureInFlight!;
+  }
+
+  static Future<void> _ensureTableImpl(Database db) async {
+    final columns = _expectedColumns.entries
+        .map((e) => '${e.key} ${e.value}')
+        .join(',\n          ');
+
+    // Idempotente: evita "table business_settings already exists".
+    await db.execute('CREATE TABLE IF NOT EXISTS $_tableName ($columns)');
+
+    // Insert inicial idempotente.
+    await db.execute(
+      "INSERT OR IGNORE INTO $_tableName (id, business_name, created_at, updated_at) VALUES (1, 'FULLPOS', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
     );
 
-    if (tables.isEmpty) {
-      final columns = _expectedColumns.entries
-          .map((e) => '${e.key} ${e.value}')
-          .join(',\n          ');
-
-      await db.execute('CREATE TABLE $_tableName ($columns)');
-      await db.insert(_tableName, {
-        'id': 1,
-        'business_name': 'FULLPOS',
-        'created_at': DateTime.now().toIso8601String(),
-        'updated_at': DateTime.now().toIso8601String(),
-      });
-    } else {
-      await _migrateTableColumns(db);
-    }
+    await _migrateTableColumns(db);
   }
 
   /// Inicializar tabla de configuración del negocio

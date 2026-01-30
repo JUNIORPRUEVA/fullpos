@@ -72,7 +72,9 @@ class ProductThumbnail extends StatelessWidget {
     final normalizedImagePath = imagePath?.trim() ?? '';
     final normalizedImageUrl = imageUrl?.trim() ?? '';
     final hasLocalImage =
-        prefersImage && normalizedImagePath.isNotEmpty && File(normalizedImagePath).existsSync();
+        prefersImage &&
+        normalizedImagePath.isNotEmpty &&
+        File(normalizedImagePath).existsSync();
     final hasRemoteImage = prefersImage && normalizedImageUrl.isNotEmpty;
     final shouldShowImage = hasLocalImage || hasRemoteImage;
     final effectiveHex = (placeholderColorHex?.trim().isNotEmpty ?? false)
@@ -92,10 +94,7 @@ class ProductThumbnail extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: borderRadius,
         border: showBorder
-            ? Border.all(
-                color: Colors.grey.shade300,
-                width: 1,
-              )
+            ? Border.all(color: Colors.grey.shade300, width: 1)
             : null,
         color: shouldShowImage ? Colors.grey.shade100 : bgColor,
         boxShadow: [
@@ -142,6 +141,15 @@ class ProductThumbnail extends StatelessWidget {
     return Image.network(
       url,
       fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return _buildPlaceholder(
+          ColorUtils.colorFromHex(
+            placeholderColorHex,
+            fallback: const Color(0xFF546E7A),
+          ),
+        );
+      },
       errorBuilder: (context, error, stackTrace) => _buildPlaceholder(
         ColorUtils.colorFromHex(
           placeholderColorHex,
@@ -169,11 +177,17 @@ class ProductThumbnail extends StatelessWidget {
   }
 
   String _getInitials(String value) {
-    final parts = value.trim().split(RegExp(r'\\s+')).where((e) => e.isNotEmpty).toList();
+    final parts = value
+        .trim()
+        .split(RegExp(r'\\s+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     if (parts.length == 1) {
       final word = parts.first;
-      return word.length >= 2 ? word.substring(0, 2).toUpperCase() : word.substring(0, 1).toUpperCase();
+      return word.length >= 2
+          ? word.substring(0, 2).toUpperCase()
+          : word.substring(0, 1).toUpperCase();
     }
     return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
   }

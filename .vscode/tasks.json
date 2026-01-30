@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run FULLPOS Debug Windows",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/c",
+				"cd /d C:\\Users\\PC\\Desktop\\FULLPOS_PROYECTO\\FULLPOS && flutter run -d windows --debug"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Run FULLPOS Debug Windows 2",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"run",
+				"-d",
+				"windows",
+				"--debug"
+			],
+			"isBackground": false
+		}
+	]
+}

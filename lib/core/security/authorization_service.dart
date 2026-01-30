@@ -78,26 +78,22 @@ class AuthorizationService {
     final tokenValue = _shortCodeFromDigest(digest);
     final tokenHash = _hashToken(tokenValue);
 
-    await db.insert(
-      DbTables.overrideTokens,
-      {
-        'company_id': companyId,
-        'action_code': actionCode,
-        'resource_type': resourceType,
-        'resource_id': resourceId,
-        'token_hash': tokenHash,
-        'payload_signature': digest.toString(),
-        'method': _methodToString(OverrideMethod.offlinePin),
-        'nonce': nonce,
-        'requested_by_user_id': requestedByUserId,
-        'approved_by_user_id': adminId,
-        'terminal_id': terminalId,
-        'expires_at_ms': expiresAt.millisecondsSinceEpoch,
-        'created_at_ms': now.millisecondsSinceEpoch,
-        'result': 'issued',
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(DbTables.overrideTokens, {
+      'company_id': companyId,
+      'action_code': actionCode,
+      'resource_type': resourceType,
+      'resource_id': resourceId,
+      'token_hash': tokenHash,
+      'payload_signature': digest.toString(),
+      'method': _methodToString(OverrideMethod.offlinePin),
+      'nonce': nonce,
+      'requested_by_user_id': requestedByUserId,
+      'approved_by_user_id': adminId,
+      'terminal_id': terminalId,
+      'expires_at_ms': expiresAt.millisecondsSinceEpoch,
+      'created_at_ms': now.millisecondsSinceEpoch,
+      'result': 'issued',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     await _logAudit(
       db: db,
@@ -137,26 +133,22 @@ class AuthorizationService {
     final tokenValue = _randomToken(12);
     final tokenHash = _hashToken(tokenValue);
 
-    await db.insert(
-      DbTables.overrideTokens,
-      {
-        'company_id': companyId,
-        'action_code': actionCode,
-        'resource_type': resourceType,
-        'resource_id': resourceId,
-        'token_hash': tokenHash,
-        'payload_signature': sha256.convert(utf8.encode(nonce)).toString(),
-        'method': _methodToString(OverrideMethod.offlineBarcode),
-        'nonce': nonce,
-        'requested_by_user_id': requestedByUserId,
-        'approved_by_user_id': requestedByUserId,
-        'terminal_id': terminalId,
-        'expires_at_ms': expiresAt.millisecondsSinceEpoch,
-        'created_at_ms': now.millisecondsSinceEpoch,
-        'result': 'issued',
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(DbTables.overrideTokens, {
+      'company_id': companyId,
+      'action_code': actionCode,
+      'resource_type': resourceType,
+      'resource_id': resourceId,
+      'token_hash': tokenHash,
+      'payload_signature': sha256.convert(utf8.encode(nonce)).toString(),
+      'method': _methodToString(OverrideMethod.offlineBarcode),
+      'nonce': nonce,
+      'requested_by_user_id': requestedByUserId,
+      'approved_by_user_id': requestedByUserId,
+      'terminal_id': terminalId,
+      'expires_at_ms': expiresAt.millisecondsSinceEpoch,
+      'created_at_ms': now.millisecondsSinceEpoch,
+      'result': 'issued',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     await _logAudit(
       db: db,
@@ -234,13 +226,7 @@ class AuthorizationService {
       final dbResourceId = row['resource_id'] as String?;
 
       if (expiresAtMs != null && expiresAtMs < now) {
-        await _markResult(
-          txn,
-          row['id'] as int,
-          usedByUserId,
-          'expired',
-          now,
-        );
+        await _markResult(txn, row['id'] as int, usedByUserId, 'expired', now);
         await _logAudit(
           db: txn,
           companyId: companyId,
@@ -408,22 +394,18 @@ class AuthorizationService {
 
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.insert(
-      DbTables.overrideRequests,
-      {
-        'id': requestId,
-        'company_id': companyId,
-        'action_code': actionCode,
-        'resource_type': resourceType,
-        'resource_id': resourceId,
-        'requested_by_user_id': requestedByUserId,
-        'status': status,
-        'terminal_id': terminalId,
-        'created_at_ms': now,
-        'meta': meta != null ? jsonEncode(meta) : null,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(DbTables.overrideRequests, {
+      'id': requestId,
+      'company_id': companyId,
+      'action_code': actionCode,
+      'resource_type': resourceType,
+      'resource_id': resourceId,
+      'requested_by_user_id': requestedByUserId,
+      'status': status,
+      'terminal_id': terminalId,
+      'created_at_ms': now,
+      'meta': meta != null ? jsonEncode(meta) : null,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     await _logAudit(
       db: db,
@@ -509,11 +491,7 @@ class AuthorizationService {
   ) async {
     await db.update(
       DbTables.overrideTokens,
-      {
-        'used_at_ms': now,
-        'used_by_user_id': usedBy,
-        'result': result,
-      },
+      {'used_at_ms': now, 'used_by_user_id': usedBy, 'result': result},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -533,23 +511,19 @@ class AuthorizationService {
     Map<String, dynamic>? meta,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.insert(
-      DbTables.auditLog,
-      {
-        'company_id': companyId,
-        'action_code': actionCode,
-        'resource_type': resourceType,
-        'resource_id': resourceId,
-        'requested_by_user_id': requestedBy,
-        'approved_by_user_id': approvedBy,
-        'method': _methodToString(method),
-        'result': result,
-        'terminal_id': terminalId,
-        'meta': meta != null ? jsonEncode(meta) : null,
-        'created_at_ms': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(DbTables.auditLog, {
+      'company_id': companyId,
+      'action_code': actionCode,
+      'resource_type': resourceType,
+      'resource_id': resourceId,
+      'requested_by_user_id': requestedBy,
+      'approved_by_user_id': approvedBy,
+      'method': _methodToString(method),
+      'result': result,
+      'terminal_id': terminalId,
+      'meta': meta != null ? jsonEncode(meta) : null,
+      'created_at_ms': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static Future<Map<String, dynamic>> _postJson({
@@ -558,7 +532,20 @@ class AuthorizationService {
     String? apiKey,
     required Map<String, dynamic> payload,
   }) async {
-    final uri = Uri.parse(baseUrl).replace(path: path);
+    var normalizedBaseUrl = baseUrl.trim();
+    if (!normalizedBaseUrl.startsWith('http://') &&
+        !normalizedBaseUrl.startsWith('https://')) {
+      normalizedBaseUrl = 'https://$normalizedBaseUrl';
+    }
+
+    final base = Uri.parse(normalizedBaseUrl);
+    final basePath = base.path.endsWith('/')
+        ? base.path.substring(0, base.path.length - 1)
+        : base.path;
+    final extraPath = path.startsWith('/') ? path : '/$path';
+    // Importante: conservar cualquier prefijo de path del endpoint.
+    // Ej: https://host/prefix + /api/override/verify => https://host/prefix/api/override/verify
+    final uri = base.replace(path: '$basePath$extraPath');
     final headers = <String, String>{'Content-Type': 'application/json'};
     if (apiKey != null && apiKey.trim().isNotEmpty) {
       headers['x-override-key'] = apiKey.trim();
@@ -569,7 +556,21 @@ class AuthorizationService {
         .timeout(defaultRemoteTimeout);
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('HTTP ${response.statusCode}');
+      String? message;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['message'] != null) {
+          message = decoded['message']?.toString();
+        }
+      } catch (_) {
+        // Ignore parse errors; fallback to status code.
+      }
+
+      throw Exception(
+        message?.trim().isNotEmpty == true
+            ? message!.trim()
+            : 'HTTP ${response.statusCode}',
+      );
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -605,10 +606,16 @@ class AuthorizationService {
         message: 'Autorizacion aprobada',
         method: OverrideMethod.remote,
       );
-    } catch (_) {
+    } catch (e) {
+      String msg = 'Token remoto invalido';
+      final raw = e.toString();
+      if (raw.isNotEmpty) {
+        // Normalizar "Exception: ..." para UI.
+        msg = raw.replaceFirst('Exception: ', '').trim();
+      }
       return AuthorizationResult(
         success: false,
-        message: 'Token remoto invalido',
+        message: msg,
         method: OverrideMethod.remote,
       );
     }
@@ -628,37 +635,30 @@ class AuthorizationService {
     final now = DateTime.now().millisecondsSinceEpoch;
     final tokenHash = _hashToken(token);
 
-    await db.insert(
-      DbTables.overrideTokens,
-      {
-        'company_id': companyId,
-        'action_code': actionCode,
-        'resource_type': resourceType,
-        'resource_id': resourceId,
-        'token_hash': tokenHash,
-        'payload_signature': null,
-        'method': _methodToString(OverrideMethod.remote),
-        'nonce': _randomToken(8),
-        'requested_by_user_id': usedByUserId,
-        'approved_by_user_id': null,
-        'terminal_id': terminalId,
-        'expires_at_ms': now + defaultTtl.inMilliseconds,
-        'used_at_ms': now,
-        'used_by_user_id': usedByUserId,
-        'result': 'approved',
-        'meta': requestId != null ? jsonEncode({'request_id': requestId}) : null,
-        'created_at_ms': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(DbTables.overrideTokens, {
+      'company_id': companyId,
+      'action_code': actionCode,
+      'resource_type': resourceType,
+      'resource_id': resourceId,
+      'token_hash': tokenHash,
+      'payload_signature': null,
+      'method': _methodToString(OverrideMethod.remote),
+      'nonce': _randomToken(8),
+      'requested_by_user_id': usedByUserId,
+      'approved_by_user_id': null,
+      'terminal_id': terminalId,
+      'expires_at_ms': now + defaultTtl.inMilliseconds,
+      'used_at_ms': now,
+      'used_by_user_id': usedByUserId,
+      'result': 'approved',
+      'meta': requestId != null ? jsonEncode({'request_id': requestId}) : null,
+      'created_at_ms': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
 
     if (requestId != null) {
       await db.update(
         DbTables.overrideRequests,
-        {
-          'status': 'approved',
-          'resolved_at_ms': now,
-        },
+        {'status': 'approved', 'resolved_at_ms': now},
         where: 'id = ?',
         whereArgs: [requestId],
       );

@@ -10,6 +10,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:crypto/crypto.dart';
 
 import '../db/app_db.dart';
+import '../db/database_manager.dart';
 import '../db/db_init.dart';
 import '../errors/error_handler.dart';
 import '../errors/error_mapper.dart';
@@ -80,7 +81,8 @@ class BackupService {
     final companyId = (await SessionManager.companyId() ?? 1).toString();
     final userId = await SessionManager.userId();
     final deviceId =
-        await SessionManager.terminalId() ?? await SessionManager.ensureTerminalId();
+        await SessionManager.terminalId() ??
+        await SessionManager.ensureTerminalId();
     BackupHistoryEntry? historyEntry;
     if (recordHistory) {
       historyEntry = BackupHistoryEntry(
@@ -157,8 +159,10 @@ class BackupService {
         for (final dir in dirs) {
           final name = p.basename(dir.path);
           included.add('files/$name/');
-          await for (final entity
-              in dir.list(recursive: true, followLinks: false)) {
+          await for (final entity in dir.list(
+            recursive: true,
+            followLinks: false,
+          )) {
             if (entity is! File) continue;
             final rel = p.relative(entity.path, from: dir.path);
             final relZip = rel.replaceAll('\\', '/');
@@ -285,7 +289,8 @@ class BackupService {
       }
       return BackupResult(
         ok: false,
-        messageUser: 'No se pudo crear la copia de seguridad. Intenta de nuevo.',
+        messageUser:
+            'No se pudo crear la copia de seguridad. Intenta de nuevo.',
         messageDev: ex.messageDev,
       );
     } finally {
@@ -320,7 +325,8 @@ class BackupService {
     final companyId = (await SessionManager.companyId() ?? 1).toString();
     final userId = await SessionManager.userId();
     final deviceId =
-        await SessionManager.terminalId() ?? await SessionManager.ensureTerminalId();
+        await SessionManager.terminalId() ??
+        await SessionManager.ensureTerminalId();
     BackupHistoryEntry? historyEntry;
     if (recordHistory) {
       historyEntry = BackupHistoryEntry(
@@ -366,7 +372,10 @@ class BackupService {
       // Safety backup del DB actual.
       final baseDir = await BackupPaths.backupsBaseDir();
       final stamp = _formatStamp(DateTime.now());
-      final safetyPath = p.join(baseDir.path, 'backup_before_restore_$stamp.db');
+      final safetyPath = p.join(
+        baseDir.path,
+        'backup_before_restore_$stamp.db',
+      );
       if (await dbFile.exists()) {
         await dbFile.copy(safetyPath);
       }
@@ -400,10 +409,12 @@ class BackupService {
       await extractedDb.copy(dbPath);
 
       // Restaurar WAL/SHM si existen en el ZIP (para integridad en modo WAL).
-      final extractedWal =
-          File(p.join(extractDir.path, 'db', '${AppDb.dbFileName}-wal'));
-      final extractedShm =
-          File(p.join(extractDir.path, 'db', '${AppDb.dbFileName}-shm'));
+      final extractedWal = File(
+        p.join(extractDir.path, 'db', '${AppDb.dbFileName}-wal'),
+      );
+      final extractedShm = File(
+        p.join(extractDir.path, 'db', '${AppDb.dbFileName}-shm'),
+      );
       final destWal = File('$dbPath-wal');
       final destShm = File('$dbPath-shm');
       if (await extractedWal.exists()) {
@@ -426,7 +437,9 @@ class BackupService {
       if (await extractedFilesDir.exists()) {
         final docs = await BackupPaths.documentsDir();
         for (final entity
-            in extractedFilesDir.listSync(recursive: false).whereType<Directory>()) {
+            in extractedFilesDir
+                .listSync(recursive: false)
+                .whereType<Directory>()) {
           final name = p.basename(entity.path);
           final dest = Directory(p.join(docs.path, name));
           await _copyDir(entity, dest);
@@ -560,7 +573,9 @@ class BackupService {
 
   Future<void> _closeDbSafely() async {
     try {
-      await AppDb.close().timeout(const Duration(seconds: 2));
+      await DatabaseManager.instance
+          .close(reason: 'backup_close')
+          .timeout(const Duration(seconds: 2));
     } catch (_) {
       // Ignorar.
     }
@@ -568,7 +583,9 @@ class BackupService {
 
   Future<void> _reopenDbSafely() async {
     try {
-      await AppDb.database.timeout(const Duration(seconds: 2));
+      await DatabaseManager.instance
+          .reopen(reason: 'backup_reopen')
+          .timeout(const Duration(seconds: 2));
     } catch (_) {
       // Ignorar.
     }
@@ -670,12 +687,3 @@ Future<BackupResult> createBackupNow({
     );
   }
 }
-
-
-
-
-
-
-
-
-

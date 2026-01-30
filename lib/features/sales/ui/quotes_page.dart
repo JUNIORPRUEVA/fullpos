@@ -34,6 +34,7 @@ class _QuotesPageState extends State<QuotesPage> {
   List<QuoteDetailDto> _quotes = [];
   List<QuoteDetailDto> _filteredQuotes = [];
   bool _isLoading = false;
+  int _loadSeq = 0;
   late QuotesFilterConfig _filterConfig;
   late SearchDebouncer _searchDebouncer;
 
@@ -74,18 +75,21 @@ class _QuotesPageState extends State<QuotesPage> {
   }
 
   Future<void> _loadQuotes() async {
+    final seq = ++_loadSeq;
     _safeSetState(() => _isLoading = true);
     try {
       final quotes = await DbHardening.instance.runDbSafe<List<QuoteDetailDto>>(
         () => QuotesRepository().listQuotes(),
         stage: 'sales/quotes/load',
       );
+      if (!mounted || seq != _loadSeq) return;
       _safeSetState(() {
         _quotes = quotes;
         _isLoading = false;
         _applyFilters();
       });
     } catch (e, st) {
+      if (!mounted || seq != _loadSeq) return;
       _safeSetState(() => _isLoading = false);
       if (!mounted) return;
       await ErrorHandler.instance.handle(

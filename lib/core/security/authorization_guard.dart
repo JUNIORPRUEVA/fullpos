@@ -7,6 +7,7 @@ import 'app_actions.dart';
 import 'permission_service.dart';
 import 'security_config.dart';
 import '../../widgets/authorization_modal.dart';
+import '../errors/error_handler.dart';
 
 /// Helper central para exigir autorización adicional en acciones críticas.
 Future<bool> requireAuthorizationIfNeeded({
@@ -18,6 +19,14 @@ Future<bool> requireAuthorizationIfNeeded({
   SecurityConfig? config,
   bool isOnline = true,
 }) async {
+  // Evitar usar context de pantallas/dialogs después de awaits.
+  // Si el caller se disposea durante un await, usamos un context global estable.
+  BuildContext? uiContext() {
+    if (context.mounted) return context;
+    return ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+        ErrorHandler.navigatorKey.currentContext;
+  }
+
   final userId = await SessionManager.userId();
   final role = await SessionManager.role() ?? PermissionService.roleCashier;
   final companyId = await SessionManager.companyId() ?? 1;
@@ -26,9 +35,11 @@ Future<bool> requireAuthorizationIfNeeded({
       await SessionManager.ensureTerminalId();
 
   if (userId == null) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('No hay usuario autenticado')));
+    final ctx = uiContext();
+    final messenger = ctx != null ? ScaffoldMessenger.maybeOf(ctx) : null;
+    messenger?.showSnackBar(
+      const SnackBar(content: Text('No hay usuario autenticado')),
+    );
     return false;
   }
 
@@ -51,9 +62,11 @@ Future<bool> requireAuthorizationIfNeeded({
   );
 
   if (!decision.overrideAllowed) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Acción bloqueada: ${action.name}')));
+    final ctx = uiContext();
+    final messenger = ctx != null ? ScaffoldMessenger.maybeOf(ctx) : null;
+    messenger?.showSnackBar(
+      SnackBar(content: Text('Acción bloqueada: ${action.name}')),
+    );
     return false;
   }
   final securityConfig =
@@ -63,8 +76,11 @@ Future<bool> requireAuthorizationIfNeeded({
         terminalId: terminalId,
       );
 
+  final ctx = uiContext();
+  if (ctx == null) return false;
+
   final authorized = await AuthorizationModal.show(
-    context: context,
+    context: ctx,
     action: action,
     resourceType: resourceType,
     resourceId: resourceId,

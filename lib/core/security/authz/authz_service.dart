@@ -9,6 +9,7 @@ import '../permission_service.dart';
 import '../../security/security_config.dart';
 import '../../security/app_actions.dart';
 import '../../../widgets/authorization_modal.dart';
+import '../../errors/error_handler.dart';
 import 'authz_audit_service.dart';
 import 'authz_user.dart';
 import 'permission.dart';
@@ -159,8 +160,14 @@ class AuthzService {
 
     final actionForModal = p.action ?? _pseudoActionForPermission(p);
 
+    // No depender del ctx del caller (puede ya no estar mounted tras awaits).
+    final dialogContext =
+        ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+        ErrorHandler.navigatorKey.currentContext ??
+        ctx;
+
     final ok = await AuthorizationModal.show(
-      context: ctx,
+      context: dialogContext,
       action: actionForModal,
       resourceType: resourceType ?? 'permission',
       resourceId: resourceId ?? p.code,

@@ -11,10 +11,7 @@ import 'backup_models.dart';
 import 'backup_orchestrator.dart';
 
 class BackupLifecycle extends ConsumerStatefulWidget {
-  const BackupLifecycle({
-    super.key,
-    required this.child,
-  });
+  const BackupLifecycle({super.key, required this.child});
 
   final Widget child;
 
@@ -66,7 +63,8 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
     final enabled = ref.read(businessSettingsProvider).enableAutoBackup;
     if (!enabled) return;
 
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       unawaited(
         BackupOrchestrator.instance.triggerAutoBackupIfAllowed(
           enabled: true,
@@ -84,22 +82,22 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
     final enabled = ref.read(businessSettingsProvider).enableAutoBackup;
 
     if (enabled) {
-      try {
-        // No bloquear el cierre indefinidamente: timeout corto.
-        await BackupOrchestrator.instance
+      // No bloqueante: fire-and-forget. Si falla, solo log.
+      unawaited(
+        BackupOrchestrator.instance
             .createBackup(
               trigger: BackupTrigger.autoWindowClose,
-              maxWait: const Duration(seconds: 5),
+              maxWait: const Duration(seconds: 10),
             )
-            .timeout(const Duration(seconds: 6));
-      } catch (e) {
-        unawaited(
-          AppLogger.instance.logWarn(
-            'Auto-backup al cerrar falló/timeout: $e',
-            module: 'backup',
-          ),
-        );
-      }
+            .catchError((e, st) {
+              unawaited(
+                AppLogger.instance.logWarn(
+                  'Auto-backup al cerrar falló: $e',
+                  module: 'backup',
+                ),
+              );
+            }),
+      );
     }
 
     try {

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../core/config/backend_config.dart';
 import '../core/security/app_actions.dart';
 import '../core/security/authorization_service.dart';
 import '../core/security/scanner_input_controller.dart';
@@ -11,6 +12,7 @@ import '../core/security/security_config.dart';
 import '../core/services/app_configuration_service.dart';
 import '../core/theme/app_status_theme.dart';
 import '../core/theme/color_utils.dart';
+import '../core/errors/error_handler.dart';
 
 enum _AuthEntryMethod { code, token }
 
@@ -50,23 +52,38 @@ class AuthorizationModal extends StatefulWidget {
     required bool isOnline,
   }) async {
     if (_pending != null) return _pending!;
-    final future = showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AuthorizationModal(
-        action: action,
-        resourceType: resourceType,
-        resourceId: resourceId,
-        companyId: companyId,
-        requestedByUserId: requestedByUserId,
-        terminalId: terminalId,
-        config: config,
-        isOnline: isOnline,
-      ),
-    ).then((value) => value ?? false).catchError((e, st) {
-      debugPrint('AuthorizationModal.show error: $e\\n$st');
+
+    // Preferir un context global estable (navigator overlay) para evitar
+    // "BuildContext is no longer valid" cuando el caller se disposea.
+    final dialogContext = context.mounted
+        ? context
+        : (ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+              ErrorHandler.navigatorKey.currentContext);
+    if (dialogContext == null) {
       return false;
-    }).whenComplete(() => _pending = null);
+    }
+
+    final future =
+        showDialog<bool>(
+              context: dialogContext,
+              barrierDismissible: false,
+              builder: (_) => AuthorizationModal(
+                action: action,
+                resourceType: resourceType,
+                resourceId: resourceId,
+                companyId: companyId,
+                requestedByUserId: requestedByUserId,
+                terminalId: terminalId,
+                config: config,
+                isOnline: isOnline,
+              ),
+            )
+            .then((value) => value ?? false)
+            .catchError((e, st) {
+              debugPrint('AuthorizationModal.show error: $e\\n$st');
+              return false;
+            })
+            .whenComplete(() => _pending = null);
     _pending = future;
     return future;
   }
@@ -91,6 +108,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   final TextEditingController _pinController = TextEditingController();
   final FocusNode _tokenFocus = FocusNode();
   final FocusNode _codeFocus = FocusNode();
+  final FocusNode _scannerFocus = FocusNode();
   ScannerInputController? _scanner;
   bool _isProcessing = false;
   _AuthEntryMethod _entryMethod = _AuthEntryMethod.code;
@@ -100,6 +118,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   int? _remoteRequestId;
   String? _remoteStatus;
   String? _remoteError;
+  int _tokenValidateSeq = 0;
 
   @override
   void initState() {
@@ -110,8 +129,13 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
         suffix: widget.config.scannerSuffix,
         prefix: widget.config.scannerPrefix,
         timeout: Duration(milliseconds: widget.config.scannerTimeoutMs),
+        // Importante: al escribir manualmente, el timeout del scanner puede
+        // disparar un "scan" parcial y llamar _validateToken() con un token incompleto.
+        // Para typing/paste: solo emitir cuando llegue el sufijo (ej. ENTER).
+        emitOnTimeout: false,
         onScan: (data) {
           if (!mounted) return;
+          if (_entryMethod != _AuthEntryMethod.token) return;
           _tokenController.text = data.trim();
           _validateToken();
         },
@@ -131,24 +155,20 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
     _pinController.dispose();
     _tokenFocus.dispose();
     _codeFocus.dispose();
+    _scannerFocus.dispose();
     super.dispose();
   }
 
   String? _resolveRemoteBaseUrl() {
+    final fallback = backendBaseUrl;
     try {
       final settings = appConfigService.settings;
-      if (!settings.cloudEnabled) return null;
       final endpoint = settings.cloudEndpoint?.trim();
       if (endpoint != null && endpoint.isNotEmpty) return endpoint;
-      const fallback = String.fromEnvironment(
-        'BACKEND_BASE_URL',
-        defaultValue:
-            'https://fullpos-proyecto-producion-fullpos-bakend.gcdndd.easypanel.host',
-      );
-      return fallback;
     } catch (_) {
-      return null;
+      // Ignored: fallback will handle missing settings.
     }
+    return fallback.isNotEmpty ? fallback : null;
   }
 
   String? _resolveRemoteApiKey() {
@@ -269,8 +289,20 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
     final token = _tokenController.text.trim();
     if (token.isEmpty) return;
     if (!mounted) return;
+    final seq = ++_tokenValidateSeq;
     setState(() => _isProcessing = true);
     try {
+      final allowRemote =
+          widget.isOnline &&
+          (widget.config.remoteEnabled || widget.config.virtualTokenEnabled);
+      final baseUrl = _resolveRemoteBaseUrl();
+      if (allowRemote && (baseUrl == null || baseUrl.trim().isEmpty)) {
+        _showMessage(
+          'Token inválido localmente. Configura la URL/API Key de la nube para validar token virtual.',
+        );
+        return;
+      }
+
       final result = await AuthorizationService.validateAndConsumeToken(
         token: token,
         actionCode: widget.action.code,
@@ -279,19 +311,20 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
         companyId: widget.companyId,
         usedByUserId: widget.requestedByUserId,
         terminalId: widget.terminalId,
-        allowRemote:
-            widget.isOnline &&
-            (widget.config.remoteEnabled || widget.config.virtualTokenEnabled),
-        remoteBaseUrl: _resolveRemoteBaseUrl(),
+        allowRemote: allowRemote,
+        remoteBaseUrl: baseUrl,
         remoteApiKey: _resolveRemoteApiKey(),
         remoteRequestId: _remoteRequestId,
       );
       if (!mounted) return;
+      if (seq != _tokenValidateSeq) return;
       _handleResult(result);
     } catch (e) {
       _showMessage('Error validando token: $e');
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted && seq == _tokenValidateSeq) {
+        setState(() => _isProcessing = false);
+      }
     }
   }
 
@@ -408,12 +441,17 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
     );
 
     if (_scanner != null) {
-      content = RawKeyboardListener(
-        focusNode: _tokenFocus,
-        autofocus: false,
-        onKey: (event) {
-          if (_entryMethod != _AuthEntryMethod.token) return;
+      // Escuchar teclas del scanner sin pelear con el FocusNode del TextField.
+      // Esto evita el freeze por FocusNode usado dos veces.
+      content = Focus(
+        focusNode: _scannerFocus,
+        skipTraversal: true,
+        onKey: (node, event) {
+          if (_entryMethod != _AuthEntryMethod.token) {
+            return KeyEventResult.ignored;
+          }
           _scanner!.handleKeyEvent(event);
+          return KeyEventResult.ignored;
         },
         child: content,
       );
@@ -511,6 +549,10 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
               hint: 'Pega o escanea el token',
               icon: Icons.qr_code_scanner,
             ),
+            keyboardType: TextInputType.visiblePassword,
+            textInputAction: TextInputAction.done,
+            autocorrect: false,
+            enableSuggestions: false,
             style: const TextStyle(fontFamily: 'monospace'),
             onSubmitted: (_) => _validateToken(),
           );
