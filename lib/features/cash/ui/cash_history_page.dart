@@ -80,6 +80,31 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     );
   }
 
+  String _paymentMethodShortLabel(String? method) {
+    switch ((method ?? '').toLowerCase()) {
+      case 'cash':
+      case 'efectivo':
+        return 'EFE';
+      case 'card':
+      case 'tarjeta':
+        return 'TAR';
+      case 'transfer':
+      case 'transferencia':
+        return 'TRF';
+      case 'mixed':
+      case 'mixto':
+        return 'MIX';
+      case 'credit':
+      case 'credito':
+        return 'CRE';
+      case 'layaway':
+      case 'apartado':
+        return 'APA';
+      default:
+        return 'PAG';
+    }
+  }
+
   EdgeInsets _contentPadding(BoxConstraints constraints) {
     const maxContentWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
@@ -208,50 +233,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                         style: theme.textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
-                      SizedBox(
-                        height: 160,
-                        child: data.sales.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'Sin ventas registradas',
-                                  style: theme.textTheme.bodyMedium,
-                                ),
-                              )
-                            : ListView.builder(
-                                itemCount: data.sales.length,
-                                itemBuilder: (context, i) {
-                                  final sale = data.sales[i];
-                                  final items =
-                                      data.saleItemsBySaleId[sale.id] ??
-                                      const <SaleItemModel>[];
-                                  final firstItem = items.isNotEmpty
-                                      ? items.first.productNameSnapshot
-                                      : 'Venta';
-                                  return ListTile(
-                                    dense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(
-                                      firstItem,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(
-                                      DateFormat('HH:mm').format(
-                                        DateTime.fromMillisecondsSinceEpoch(
-                                          sale.createdAtMs,
-                                        ),
-                                      ),
-                                    ),
-                                    trailing: Text(
-                                      money.format(sale.total),
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                  );
-                                },
-                              ),
+                      _buildSalesListSection(
+                        data: data,
+                        theme: theme,
+                        scheme: scheme,
+                        timeFormat: DateFormat('HH:mm'),
+                        moneyFormat: money,
                       ),
                       const SizedBox(height: 12),
                       Text('Movimientos', style: theme.textTheme.titleMedium),
@@ -308,6 +295,121 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSalesListSection({
+    required _SessionDetailData data,
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required DateFormat timeFormat,
+    required NumberFormat moneyFormat,
+  }) {
+    if (data.sales.isEmpty) {
+      return SizedBox(
+        height: 80,
+        child: Center(
+          child: Text(
+            'Sin ventas registradas',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+
+    final listHeight = math.min(320.0, data.sales.length * 44.0 + 12);
+    return SizedBox(
+      height: listHeight,
+      child: ListView.separated(
+        physics: const ClampingScrollPhysics(),
+        padding: EdgeInsets.zero,
+        itemCount: data.sales.length,
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          color: theme.colorScheme.onSurface.withOpacity(0.08),
+        ),
+        itemBuilder: (context, index) {
+          final sale = data.sales[index];
+          final items = data.saleItemsBySaleId[sale.id] ??
+              const <SaleItemModel>[];
+          return _buildSalesItemRow(
+            sale: sale,
+            items: items,
+            timeFormat: timeFormat,
+            moneyFormat: moneyFormat,
+            theme: theme,
+            scheme: scheme,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSalesItemRow({
+    required SaleModel sale,
+    required List<SaleItemModel> items,
+    required DateFormat timeFormat,
+    required NumberFormat moneyFormat,
+    required ThemeData theme,
+    required ColorScheme scheme,
+  }) {
+    final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
+    final firstItemName = items.isNotEmpty
+        ? items.first.productNameSnapshot
+        : 'Venta';
+    final displayName = firstItemName.isNotEmpty
+        ? firstItemName
+        : (sale.customerNameSnapshot?.trim() ?? 'Venta');
+    final methodLabel = _paymentMethodShortLabel(sale.paymentMethod);
+    return SizedBox(
+      height: 40,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            timeFormat.format(when),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: scheme.surfaceVariant.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              methodLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 10,
+                height: 1.1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            moneyFormat.format(sale.total),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
