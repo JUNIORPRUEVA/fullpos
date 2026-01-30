@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../core/config/backend_config.dart';
 import '../core/security/app_actions.dart';
 import '../core/security/authorization_service.dart';
 import '../core/security/scanner_input_controller.dart';
@@ -115,12 +114,10 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   String? _lastGeneratedToken;
   DateTime? _lastGeneratedExpiry;
   bool _remoteRequesting = false;
-  bool _remoteWaiting = false;
   int? _remoteRequestId;
   String? _remoteStatus;
   String? _remoteError;
   int _tokenValidateSeq = 0;
-  int _remotePollSeq = 0;
 
   @override
   void initState() {
@@ -152,7 +149,6 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
 
   @override
   void dispose() {
-    _remotePollSeq++;
     _scanner?.dispose();
     _tokenController.dispose();
     _pinController.dispose();
@@ -163,7 +159,11 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   }
 
   String? _resolveRemoteBaseUrl() {
-    final fallback = backendBaseUrl;
+    const fallback = String.fromEnvironment(
+      'BACKEND_BASE_URL',
+      defaultValue:
+          'https://fullpos-proyecto-producion-fullpos-bakend.gcdndd.easypanel.host',
+    );
     try {
       final settings = appConfigService.settings;
       final endpoint = settings.cloudEndpoint?.trim();
@@ -221,11 +221,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
       setState(() {
         _remoteRequestId = result.requestId;
         _remoteStatus = result.status;
-        _remoteError = null;
       });
-
-      // Auto-consumo: el cajero no tiene que ingresar token.
-      await _pollRemoteApprovalAndConsume(result.requestId);
     } catch (e) {
       if (!mounted) return;
       setState(() => _remoteError = 'No se pudo crear la solicitud remota.');
@@ -234,72 +230,6 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
         setState(() => _remoteRequesting = false);
       }
     }
-  }
-
-  Future<void> _pollRemoteApprovalAndConsume(int requestId) async {
-    final baseUrl = _resolveRemoteBaseUrl();
-    if (baseUrl == null) return;
-
-    final seq = ++_remotePollSeq;
-    if (!mounted) return;
-
-    setState(() {
-      _remoteWaiting = true;
-      _remoteStatus = 'waiting';
-      _remoteError = null;
-    });
-
-    final deadline = DateTime.now().add(const Duration(seconds: 90));
-    while (mounted && seq == _remotePollSeq && DateTime.now().isBefore(deadline)) {
-      // Si el usuario pidió otra solicitud, parar.
-      if (_remoteRequestId != requestId) break;
-
-      final result = await AuthorizationService.consumeApprovedRemoteOverrideRequest(
-        baseUrl: baseUrl,
-        apiKey: _resolveRemoteApiKey(),
-        requestId: requestId,
-        actionCode: widget.action.code,
-        resourceType: widget.resourceType,
-        resourceId: widget.resourceId,
-        companyId: widget.companyId,
-        usedByUserId: widget.requestedByUserId,
-        terminalId: widget.terminalId,
-        meta: {
-          'action_name': widget.action.name,
-          'terminal_id': widget.terminalId,
-        },
-      );
-
-      if (!mounted || seq != _remotePollSeq) return;
-
-      if (result.success) {
-        _handleResult(result);
-        return;
-      }
-
-      final raw = result.message.trim().toLowerCase();
-      final looksPending =
-          raw.contains('esperando') || raw.contains('pendiente');
-      if (!looksPending) {
-        setState(() {
-          _remoteWaiting = false;
-          _remoteError = result.message;
-          _remoteStatus = _remoteStatus ?? 'pending';
-        });
-        return;
-      }
-
-      // Pendiente: seguir esperando.
-      setState(() => _remoteStatus = 'pending');
-
-      await Future.delayed(const Duration(seconds: 2));
-    }
-
-    if (!mounted || seq != _remotePollSeq) return;
-    setState(() {
-      _remoteWaiting = false;
-      _remoteStatus = _remoteStatus ?? 'pending';
-    });
   }
 
   Future<void> _authorizeWithPin() async {
@@ -359,23 +289,15 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   }
 
   Future<void> _validateToken() async {
-    final token = AuthorizationService.normalizeOverrideToken(
-      _tokenController.text,
-    );
+    final token = _tokenController.text.trim();
     if (token.isEmpty) return;
     if (!mounted) return;
-    if (_tokenController.text != token) {
-      _tokenController.value = _tokenController.value.copyWith(
-        text: token,
-        selection: TextSelection.collapsed(offset: token.length),
-        composing: TextRange.empty,
-      );
-    }
     final seq = ++_tokenValidateSeq;
     setState(() => _isProcessing = true);
     try {
       final allowRemote =
-          widget.config.remoteEnabled || widget.config.virtualTokenEnabled;
+          widget.isOnline &&
+          (widget.config.remoteEnabled || widget.config.virtualTokenEnabled);
       final baseUrl = _resolveRemoteBaseUrl();
       if (allowRemote && (baseUrl == null || baseUrl.trim().isEmpty)) {
         _showMessage(
@@ -929,30 +851,9 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
               const SizedBox(height: 6),
               Text(_remoteError!, style: TextStyle(color: status.error)),
             ],
-            if (_remoteWaiting) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Esperando aprobación del dueño... (se autoriza automáticamente)',
-                      style: TextStyle(color: scheme.onSurface.withOpacity(0.75)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
             const SizedBox(height: 8),
             ElevatedButton.icon(
-              onPressed: (_remoteRequesting || _remoteWaiting)
-                  ? null
-                  : _requestRemoteApproval,
+              onPressed: _remoteRequesting ? null : _requestRemoteApproval,
               icon: _remoteRequesting
                   ? const SizedBox(
                       width: 14,
@@ -960,9 +861,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.cloud_done),
-              label: Text(_remoteWaiting
-                  ? 'Esperando aprobación...'
-                  : 'Solicitar permiso remoto'),
+              label: const Text('Solicitar permiso remoto'),
             ),
           ],
         ),
