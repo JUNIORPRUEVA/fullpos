@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../db/app_db.dart';
 import '../db/tables.dart';
@@ -25,6 +26,196 @@ class CloudSyncService {
 
   static const int _historyDaysToSync = 90;
   static const int _chunkSize = 200;
+
+  static const String _prefsKeyUsersLastSyncPrefix =
+      'cloud_users_last_sync_at_ms_';
+
+  String _syncKeyForCompany({
+    required String rnc,
+    required String? cloudCompanyId,
+  }) {
+    final raw = (cloudCompanyId != null && cloudCompanyId.trim().isNotEmpty)
+        ? cloudCompanyId.trim()
+        : rnc.trim();
+    final safe = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    return '$_prefsKeyUsersLastSyncPrefix$safe';
+  }
+
+  Future<Set<String>> _getTableColumns(
+    DatabaseExecutor db,
+    String table,
+  ) async {
+    try {
+      final rows = await db.rawQuery('PRAGMA table_info($table)');
+      return rows
+          .map((r) => r['name'])
+          .whereType<String>()
+          .map((s) => s.toLowerCase())
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  Future<int?> _resolveLocalCompanyId({
+    required DatabaseExecutor db,
+    required String rnc,
+  }) async {
+    final normalized = rnc.trim();
+    if (normalized.isEmpty) return null;
+
+    try {
+      final cols = await _getTableColumns(db, DbTables.companies);
+      if (!cols.contains('rnc')) return null;
+
+      final rows = await db.query(
+        DbTables.companies,
+        columns: ['id'],
+        where:
+            'rnc = ?'
+            '${cols.contains('deleted_at_ms') ? ' AND deleted_at_ms IS NULL' : ''}',
+        whereArgs: [normalized],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return rows.first['id'] as int?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> syncUsersIfEnabled({bool force = false}) async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return;
+
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final key = _syncKeyForCompany(rnc: rnc, cloudCompanyId: cloudCompanyId);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final last = prefs.getInt(key);
+      if (!force &&
+          last != null &&
+          (now - last) < const Duration(minutes: 1).inMilliseconds) {
+        return;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final uri = Uri.parse(baseUrl).replace(path: '/api/auth/sync-users');
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final db = await AppDb.database;
+      final userCols = await _getTableColumns(db, DbTables.users);
+
+      final companyId = await _resolveLocalCompanyId(db: db, rnc: rnc);
+
+      final whereParts = <String>[];
+      final whereArgs = <Object?>[];
+      if (companyId != null && userCols.contains('company_id')) {
+        whereParts.add('company_id = ?');
+        whereArgs.add(companyId);
+      }
+      if (userCols.contains('deleted_at_ms')) {
+        whereParts.add('deleted_at_ms IS NULL');
+      }
+
+      final select = <String>['username'];
+      if (userCols.contains('email')) select.add('email');
+      if (userCols.contains('role')) select.add('role');
+      if (userCols.contains('is_active')) select.add('is_active');
+      if (userCols.contains('display_name')) select.add('display_name');
+      if (!userCols.contains('display_name') && userCols.contains('name')) {
+        select.add('name');
+      }
+
+      final rows = await db.query(
+        DbTables.users,
+        columns: select,
+        where: whereParts.isNotEmpty ? whereParts.join(' AND ') : null,
+        whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+      );
+
+      final users = <Map<String, dynamic>>[];
+      for (final r in rows) {
+        final username = (r['username']?.toString() ?? '').trim();
+        if (username.isEmpty) continue;
+
+        final isActive = userCols.contains('is_active')
+            ? ((r['is_active'] as int?) ?? 1) == 1
+            : true;
+        if (!isActive) continue;
+
+        final role = (r['role']?.toString() ?? 'cashier').trim();
+        final email = (r['email']?.toString() ?? '').trim();
+        final displayName =
+            (r['display_name']?.toString() ?? r['name']?.toString() ?? '')
+                .trim();
+
+        users.add({
+          'username': username,
+          if (email.isNotEmpty) 'email': email,
+          if (displayName.isNotEmpty) 'displayName': displayName,
+          if (role.isNotEmpty) 'role': role,
+          'isActive': true,
+        });
+      }
+
+      if (users.isEmpty) {
+        await prefs.setInt(key, now);
+        return;
+      }
+
+      await AppLogger.instance.logInfo(
+        'Cloud users sync start count=${users.length} baseUrl=$baseUrl',
+        module: 'cloud_sync',
+      );
+
+      final payload = {
+        if (rnc.isNotEmpty) 'companyRnc': rnc,
+        if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+          'companyCloudId': cloudCompanyId,
+        'companyName': settings.businessName,
+        'users': users,
+      };
+
+      final response = await http
+          .post(uri, headers: headers, body: jsonEncode(payload))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        String body = '';
+        try {
+          body = response.body;
+          if (body.length > 800) body = body.substring(0, 800);
+        } catch (_) {}
+        await AppLogger.instance.logWarn(
+          'Cloud users sync failed status=${response.statusCode} body=$body',
+          module: 'cloud_sync',
+        );
+        return;
+      }
+
+      await prefs.setInt(key, now);
+      await AppLogger.instance.logInfo(
+        'Cloud users sync ok count=${users.length}',
+        module: 'cloud_sync',
+      );
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud users sync error: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+    }
+  }
 
   Future<void> syncCompanyConfigIfEnabled() async {
     try {

@@ -88,6 +88,9 @@ Future<void> main() async {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future<void>(() async {
           try {
+            // Sync inmediato de usuarios (evita 'usuario no registrado en la nube').
+            await CloudSyncService.instance.syncUsersIfEnabled(force: true);
+
             await Future<void>.delayed(const Duration(seconds: 2));
             await CloudSyncService.instance.syncCompanyConfigIfEnabled();
 

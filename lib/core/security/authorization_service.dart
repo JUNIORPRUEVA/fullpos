@@ -5,8 +5,20 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
+import '../../features/settings/data/business_settings_repository.dart';
 import '../db/app_db.dart';
 import '../db/tables.dart';
+
+class RemoteHttpException implements Exception {
+  final int statusCode;
+  final String message;
+  final String? errorCode;
+
+  RemoteHttpException(this.statusCode, this.message, {this.errorCode});
+
+  @override
+  String toString() => message;
+}
 
 enum OverrideMethod { offlinePin, offlineBarcode, remote }
 
@@ -48,6 +60,150 @@ class AuthorizationService {
 
   static const Duration defaultTtl = Duration(seconds: 120);
   static const Duration defaultRemoteTimeout = Duration(seconds: 8);
+
+  // Throttle para evitar spam de sync en cada autorización.
+  static int? _lastUsersSyncAtMs;
+
+  static Future<Map<String, String>> _loadCompanyCloudHints() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      final hints = <String, String>{};
+      final cloudId = settings.cloudCompanyId?.trim();
+      final rnc = settings.rnc?.trim();
+      if (cloudId != null && cloudId.isNotEmpty)
+        hints['companyCloudId'] = cloudId;
+      if (rnc != null && rnc.isNotEmpty) hints['companyRnc'] = rnc;
+      return hints;
+    } catch (_) {
+      return <String, String>{};
+    }
+  }
+
+  static Future<Set<String>> _getUserTableColumns(DatabaseExecutor db) async {
+    try {
+      final rows = await db.rawQuery('PRAGMA table_info(${DbTables.users})');
+      return rows
+          .map((r) => r['name'])
+          .whereType<String>()
+          .map((s) => s.toLowerCase())
+          .toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static Future<Map<String, String>> _loadLocalUserIdentity({
+    required DatabaseExecutor db,
+    required int userId,
+  }) async {
+    final cols = await _getUserTableColumns(db);
+    final select = <String>['username'];
+    if (cols.contains('email')) select.add('email');
+
+    final rows = await db.query(
+      DbTables.users,
+      columns: select,
+      where: 'id = ?',
+      whereArgs: [userId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return <String, String>{};
+
+    final row = rows.first;
+    final username = (row['username']?.toString() ?? '').trim();
+    final email = (row['email']?.toString() ?? '').trim().toLowerCase();
+
+    final result = <String, String>{};
+    if (username.isNotEmpty) result['userUsername'] = username;
+    if (email.isNotEmpty) result['userEmail'] = email;
+    return result;
+  }
+
+  static Future<void> _syncUsersToCloudIfNeeded({
+    required int companyId,
+    required String baseUrl,
+    String? apiKey,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _lastUsersSyncAtMs;
+    if (last != null &&
+        now - last < const Duration(minutes: 5).inMilliseconds) {
+      return;
+    }
+    _lastUsersSyncAtMs = now;
+
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return;
+      if (baseUrl.trim().isEmpty) return;
+
+      final db = await AppDb.database;
+      final cols = await _getUserTableColumns(db);
+
+      final whereParts = <String>['company_id = ?'];
+      final whereArgs = <Object?>[companyId];
+      if (cols.contains('deleted_at_ms'))
+        whereParts.add('deleted_at_ms IS NULL');
+      if (cols.contains('is_active')) whereParts.add('is_active = 1');
+
+      final select = <String>['username', 'role'];
+      if (cols.contains('email')) select.add('email');
+      // Variantes comunes de nombre.
+      if (cols.contains('display_name')) select.add('display_name');
+      if (!cols.contains('display_name') && cols.contains('name'))
+        select.add('name');
+
+      final rows = await db.query(
+        DbTables.users,
+        columns: select,
+        where: whereParts.join(' AND '),
+        whereArgs: whereArgs,
+      );
+
+      final users = <Map<String, dynamic>>[];
+      for (final r in rows) {
+        final username = (r['username']?.toString() ?? '').trim();
+        if (username.isEmpty) continue;
+
+        final role = (r['role']?.toString() ?? 'cashier').trim();
+        final email = (r['email']?.toString() ?? '').trim();
+        final displayName =
+            (r['display_name']?.toString() ?? r['name']?.toString() ?? '')
+                .trim();
+
+        users.add({
+          'username': username,
+          if (email.isNotEmpty) 'email': email,
+          if (displayName.isNotEmpty) 'displayName': displayName,
+          if (role.isNotEmpty) 'role': role,
+          'isActive': true,
+        });
+      }
+
+      if (users.isEmpty) return;
+
+      await _postJson(
+        baseUrl: baseUrl,
+        path: '/api/auth/sync-users',
+        apiKey: apiKey ?? settings.cloudApiKey,
+        payload: {
+          'companyRnc': settings.rnc,
+          'companyCloudId': settings.cloudCompanyId,
+          'companyName': settings.businessName,
+          'users': users,
+        },
+      );
+    } catch (_) {
+      // Best-effort: no bloquear flujo principal.
+    }
+  }
+
+  static String normalizeOverrideToken(String token) {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) return '';
+    // Permitir pegar tokens con espacios/guiones y ser tolerantes a minÃºsculas.
+    return trimmed.replaceAll(RegExp(r'[\s\-]+'), '').toUpperCase();
+  }
 
   static Future<GeneratedOverrideToken> generateOfflinePinToken({
     required String pin,
@@ -186,7 +342,8 @@ class AuthorizationService {
     int? remoteRequestId,
   }) async {
     final db = await AppDb.database;
-    final tokenHash = _hashToken(token);
+    final normalizedToken = normalizeOverrideToken(token);
+    final tokenHash = _hashToken(normalizedToken);
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final localResult = await db.transaction((txn) async {
@@ -330,7 +487,7 @@ class AuthorizationService {
     final remoteResult = await _verifyRemoteToken(
       baseUrl: remoteBaseUrl,
       apiKey: remoteApiKey,
-      token: token,
+      token: normalizedToken,
       actionCode: actionCode,
       resourceType: resourceType,
       resourceId: resourceId,
@@ -345,7 +502,7 @@ class AuthorizationService {
 
     await _storeRemoteApproval(
       db: db,
-      token: token,
+      token: normalizedToken,
       actionCode: actionCode,
       resourceType: resourceType,
       resourceId: resourceId,
@@ -369,12 +526,26 @@ class AuthorizationService {
     required String terminalId,
     Map<String, dynamic>? meta,
   }) async {
+    await _syncUsersToCloudIfNeeded(
+      companyId: companyId,
+      baseUrl: baseUrl,
+      apiKey: apiKey,
+    );
+
+    final db = await AppDb.database;
+    final identity = await _loadLocalUserIdentity(
+      db: db,
+      userId: requestedByUserId,
+    );
+
+    final hints = await _loadCompanyCloudHints();
     final payload = {
       'companyId': companyId,
+      ...hints,
       'actionCode': actionCode,
       'resourceType': resourceType,
       'resourceId': resourceId,
-      'requestedById': requestedByUserId,
+      ...identity,
       'terminalId': terminalId,
       if (meta != null) 'meta': meta,
     };
@@ -392,7 +563,6 @@ class AuthorizationService {
       throw Exception('No se pudo crear la solicitud remota.');
     }
 
-    final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.insert(DbTables.overrideRequests, {
       'id': requestId,
@@ -424,8 +594,92 @@ class AuthorizationService {
     return RemoteOverrideRequest(requestId: requestId, status: status);
   }
 
+  static Future<AuthorizationResult> consumeApprovedRemoteOverrideRequest({
+    required String baseUrl,
+    String? apiKey,
+    required int requestId,
+    required String actionCode,
+    required String resourceType,
+    String? resourceId,
+    required int companyId,
+    required int usedByUserId,
+    required String terminalId,
+    Map<String, dynamic>? meta,
+  }) async {
+    try {
+      await _syncUsersToCloudIfNeeded(
+        companyId: companyId,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+      );
+
+      final db = await AppDb.database;
+      final identity = await _loadLocalUserIdentity(
+        db: db,
+        userId: usedByUserId,
+      );
+      final hints = await _loadCompanyCloudHints();
+
+      await _postJson(
+        baseUrl: baseUrl,
+        path: '/api/override/request/consume',
+        apiKey: apiKey,
+        payload: {
+          'requestId': requestId,
+          'companyId': companyId,
+          ...hints,
+          'actionCode': actionCode,
+          'resourceType': resourceType,
+          'resourceId': resourceId,
+          'usedById': usedByUserId,
+          ...identity,
+          'terminalId': terminalId,
+          if (meta != null) 'meta': meta,
+        },
+      );
+
+      await _storeRemoteApprovalConsumed(
+        db: db,
+        actionCode: actionCode,
+        resourceType: resourceType,
+        resourceId: resourceId,
+        companyId: companyId,
+        usedByUserId: usedByUserId,
+        terminalId: terminalId,
+        requestId: requestId,
+      );
+
+      return AuthorizationResult(
+        success: true,
+        message: 'Autorización aprobada',
+        method: OverrideMethod.remote,
+      );
+    } catch (e) {
+      if (e is RemoteHttpException) {
+        // 409 = aún pendiente (esperable en polling)
+        if (e.statusCode == 409) {
+          return AuthorizationResult(
+            success: false,
+            message: e.message,
+            method: OverrideMethod.remote,
+          );
+        }
+      }
+
+      String msg = 'No se pudo completar la autorización remota';
+      final raw = e.toString();
+      if (raw.isNotEmpty) msg = raw.replaceFirst('Exception: ', '').trim();
+      return AuthorizationResult(
+        success: false,
+        message: msg,
+        method: OverrideMethod.remote,
+      );
+    }
+  }
+
   static String _hashToken(String token) {
-    final bytes = utf8.encode(token);
+    final normalized = normalizeOverrideToken(token);
+    final bytes = utf8.encode(normalized);
     return sha256.convert(bytes).toString();
   }
 
@@ -557,19 +811,27 @@ class AuthorizationService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       String? message;
+      String? errorCode;
       try {
         final decoded = jsonDecode(response.body);
-        if (decoded is Map && decoded['message'] != null) {
-          message = decoded['message']?.toString();
+        if (decoded is Map) {
+          if (decoded['message'] != null) {
+            message = decoded['message']?.toString();
+          }
+          if (decoded['errorCode'] != null) {
+            errorCode = decoded['errorCode']?.toString();
+          }
         }
       } catch (_) {
         // Ignore parse errors; fallback to status code.
       }
 
-      throw Exception(
+      throw RemoteHttpException(
+        response.statusCode,
         message?.trim().isNotEmpty == true
             ? message!.trim()
             : 'HTTP ${response.statusCode}',
+        errorCode: errorCode,
       );
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
@@ -587,17 +849,31 @@ class AuthorizationService {
     required String terminalId,
   }) async {
     try {
+      await _syncUsersToCloudIfNeeded(
+        companyId: companyId,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+      );
+
+      final db = await AppDb.database;
+      final identity = await _loadLocalUserIdentity(
+        db: db,
+        userId: usedByUserId,
+      );
+
+      final hints = await _loadCompanyCloudHints();
       await _postJson(
         baseUrl: baseUrl,
         path: '/api/override/verify',
         apiKey: apiKey,
         payload: {
           'companyId': companyId,
+          ...hints,
           'token': token,
           'actionCode': actionCode,
           'resourceType': resourceType,
           'resourceId': resourceId,
-          'usedById': usedByUserId,
+          ...identity,
           'terminalId': terminalId,
         },
       );
@@ -676,6 +952,40 @@ class AuthorizationService {
       result: 'approved',
       terminalId: terminalId,
       meta: requestId != null ? {'request_id': requestId} : null,
+    );
+  }
+
+  static Future<void> _storeRemoteApprovalConsumed({
+    required DatabaseExecutor db,
+    required String actionCode,
+    required String resourceType,
+    String? resourceId,
+    required int companyId,
+    required int usedByUserId,
+    required String terminalId,
+    required int requestId,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.update(
+      DbTables.overrideRequests,
+      {'status': 'consumed', 'resolved_at_ms': now},
+      where: 'id = ?',
+      whereArgs: [requestId],
+    );
+
+    await _logAudit(
+      db: db,
+      companyId: companyId,
+      actionCode: actionCode,
+      resourceType: resourceType,
+      resourceId: resourceId,
+      requestedBy: usedByUserId,
+      approvedBy: null,
+      method: OverrideMethod.remote,
+      result: 'approved',
+      terminalId: terminalId,
+      meta: {'request_id': requestId, 'mode': 'direct'},
     );
   }
 }

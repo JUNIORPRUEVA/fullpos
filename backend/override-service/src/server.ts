@@ -46,8 +46,12 @@ const auditQuerySchema = z.object({
 
 const DEFAULT_TTL_SECONDS = 180;
 
+function normalizeOverrideToken(token: string) {
+  return token.trim().replace(/[\s-]+/g, '').toUpperCase();
+}
+
 function hashToken(token: string) {
-  return crypto.createHash('sha256').update(token).digest('hex');
+  return crypto.createHash('sha256').update(normalizeOverrideToken(token)).digest('hex');
 }
 
 function randomToken(length: number) {
