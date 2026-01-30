@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        Int       @id @default(autoincrement())
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users     User[]
+  terminals Terminal[]
+  requests  OverrideRequest[]
+  tokens    OverrideToken[]
+  audits    AuditLog[]
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  company    Company  @relation(fields: [companyId], references: [id])
+  companyId  Int
+  username   String   @unique
+  password   String
+  role       String   @default("cashier")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  requests   OverrideRequest[] @relation("requested_by")
+  approvals  OverrideRequest[] @relation("approved_by")
+  tokensUsed OverrideToken[]   @relation("token_used_by")
+  tokensApproved OverrideToken[] @relation("token_approved_by")
+  auditsRequested AuditLog[]    @relation("audit_requested_by")
+  auditsApproved  AuditLog[]    @relation("audit_approved_by")
+}
+
+model Terminal {
+  id        Int      @id @default(autoincrement())
+  company   Company  @relation(fields: [companyId], references: [id])
+  companyId Int
+  deviceId  String   @unique
+  name      String?
+  lastSeen  DateTime?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OverrideRequest {
+  id              Int       @id @default(autoincrement())
+  company         Company   @relation(fields: [companyId], references: [id])
+  companyId       Int
+  actionCode      String
+  resourceType    String?
+  resourceId      String?
+  status          String    @default("pending") // pending | approved | rejected
+  requestedBy     User      @relation("requested_by", fields: [requestedById], references: [id])
+  requestedById   Int
+  approvedBy      User?     @relation("approved_by", fields: [approvedById], references: [id])
+  approvedById    Int?
+  terminalId      String?
+  tokenHash       String?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  resolvedAt      DateTime?
+  meta            Json?
+
+  token           OverrideToken?
+}
+
+model OverrideToken {
+  id            Int       @id @default(autoincrement())
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     Int
+  actionCode    String
+  resourceType  String?
+  resourceId    String?
+  tokenHash     String
+  method        String
+  nonce         String
+  requestedById Int
+  approvedById  Int?
+  expiresAt     DateTime
+  usedAt        DateTime?
+  usedById      Int?
+  terminalId    String?
+  result        String?
+  meta          Json?
+  createdAt     DateTime  @default(now())
+
+  request       OverrideRequest? @relation(fields: [requestId], references: [id])
+  requestId     Int?
+
+  usedBy        User?     @relation("token_used_by", fields: [usedById], references: [id])
+  approvedBy    User?     @relation("token_approved_by", fields: [approvedById], references: [id])
+}
+
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  company        Company  @relation(fields: [companyId], references: [id])
+  companyId      Int
+  actionCode     String
+  resourceType   String?
+  resourceId     String?
+  requestedById  Int?
+  approvedById   Int?
+  method         String?
+  result         String
+  terminalId     String?
+  meta           Json?
+  createdAt      DateTime @default(now())
+
+  requestedBy    User?    @relation("audit_requested_by", fields: [requestedById], references: [id])
+  approvedBy     User?    @relation("audit_approved_by", fields: [approvedById], references: [id])
+}

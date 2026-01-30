@@ -1,0 +1,475 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/constants/app_sizes.dart';
+import '../../../core/errors/error_handler.dart';
+import '../../../core/theme/app_gradient_theme.dart';
+import '../../../core/window/window_service.dart';
+import '../../settings/data/user_model.dart';
+import '../../settings/providers/business_settings_provider.dart';
+import '../data/auth_repository.dart';
+
+/// Pantalla de inicio de sesión con soporte de contraseña o PIN.
+class LoginPage extends ConsumerStatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  ConsumerState<LoginPage> createState() => _LoginPageState();
+}
+
+enum _LoginMode { password, pin }
+
+class _LoginPageState extends ConsumerState<LoginPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _pinController = TextEditingController();
+
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+  _LoginMode _mode = _LoginMode.password;
+  String? _errorMessage;
+
+  bool get _usingPin => _mode == _LoginMode.pin;
+
+  void _setMode(_LoginMode next) {
+    if (_mode == next) return;
+    setState(() {
+      _mode = next;
+      _errorMessage = null;
+      if (_usingPin) {
+        _passwordController.clear();
+      } else {
+        _pinController.clear();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text;
+      final pin = _pinController.text.trim();
+
+      UserModel? user;
+      if (_usingPin) {
+        user = await AuthRepository.loginWithPin(username, pin);
+      } else {
+        user = await AuthRepository.login(username, password);
+      }
+
+      if (!mounted) return;
+
+      if (user != null) {
+        context.go('/sales');
+      } else {
+        setState(() {
+          _errorMessage = _usingPin
+              ? 'PIN o usuario incorrecto'
+              : 'Usuario o contraseña incorrectos';
+        });
+      }
+    } catch (e, st) {
+      final ex = await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _handleLogin,
+        module: 'auth/login',
+      );
+      if (mounted) setState(() => _errorMessage = ex.messageUser);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final business = ref.watch(businessSettingsProvider);
+    final businessName =
+        business.businessName.isNotEmpty ? business.businessName : 'FULLPOS';
+
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final gradientTheme = theme.extension<AppGradientTheme>();
+    final gradient =
+        gradientTheme?.backgroundGradient ??
+        LinearGradient(
+          colors: [scheme.primary, scheme.primaryContainer],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+
+    final onSurface = scheme.onSurface;
+    final mutedText = onSurface.withOpacity(0.72);
+    final cardBorder = scheme.primary.withOpacity(0.18);
+    final dividerColor = scheme.onSurface.withOpacity(0.10);
+    final inputFill = scheme.surfaceVariant.withOpacity(
+      theme.brightness == Brightness.dark ? 0.35 : 0.60,
+    );
+
+    InputDecoration decoration({
+      required String label,
+      required String hint,
+      required IconData icon,
+      Widget? suffix,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, color: scheme.primary),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: inputFill,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cardBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: scheme.background,
+      body: Container(
+        decoration: BoxDecoration(gradient: gradient),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSizes.paddingL),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Card(
+                color: scheme.surface,
+                elevation: 14,
+                shadowColor: Colors.black.withOpacity(0.24),
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  side: BorderSide(color: cardBorder),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 28,
+                  ),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 76,
+                              height: 76,
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: cardBorder),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: Image.asset(
+                                'assets/imagen/windowlogo.png',
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Center(
+                                  child: Icon(
+                                    Icons.storefront,
+                                    size: 36,
+                                    color: scheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    businessName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      color: onSurface,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Inicia sesión para continuar',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: mutedText,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceVariant.withOpacity(0.40),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: dividerColor),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Contraseña',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: _usingPin ? mutedText : onSurface,
+                                  fontWeight:
+                                      _usingPin ? FontWeight.w600 : FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Switch.adaptive(
+                                value: _usingPin,
+                                onChanged: _isLoading
+                                    ? null
+                                    : (value) {
+                                        FocusScope.of(context).unfocus();
+                                        _setMode(
+                                          value
+                                              ? _LoginMode.pin
+                                              : _LoginMode.password,
+                                        );
+                                      },
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'PIN',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: _usingPin ? onSurface : mutedText,
+                                  fontWeight:
+                                      _usingPin ? FontWeight.w800 : FontWeight.w600,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                _usingPin
+                                    ? Icons.password_rounded
+                                    : Icons.lock_outline_rounded,
+                                color: scheme.primary,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        if (_errorMessage != null) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: scheme.error.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: scheme.error.withOpacity(0.30),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  color: scheme.error,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: scheme.error,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: decoration(
+                            label: 'Usuario',
+                            hint: 'Ingresa tu usuario',
+                            icon: Icons.person_outline,
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Ingrese un usuario';
+                            }
+                            return null;
+                          },
+                          enabled: !_isLoading,
+                          textInputAction: TextInputAction.next,
+                          autofocus: true,
+                        ),
+                        const SizedBox(height: 14),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 160),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          child: _usingPin
+                              ? TextFormField(
+                                  key: const ValueKey('pinField'),
+                                  controller: _pinController,
+                                  enabled: !_isLoading,
+                                  decoration: decoration(
+                                    label: 'PIN',
+                                    hint: '4-6 dígitos',
+                                    icon: Icons.dialpad,
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  obscureText: true,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(6),
+                                  ],
+                                  validator: (_) {
+                                    final value = _pinController.text.trim();
+                                    if (value.length < 4) {
+                                      return 'PIN mínimo de 4 dígitos';
+                                    }
+                                    return null;
+                                  },
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted: (_) => _handleLogin(),
+                                )
+                              : TextFormField(
+                                  key: const ValueKey('passwordField'),
+                                  controller: _passwordController,
+                                  decoration: decoration(
+                                    label: 'Contraseña',
+                                    hint: 'Ingresa tu contraseña',
+                                    icon: Icons.lock_outline,
+                                    suffix: IconButton(
+                                      tooltip: _obscurePassword
+                                          ? 'Mostrar contraseña'
+                                          : 'Ocultar contraseña',
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        color: mutedText,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _obscurePassword = !_obscurePassword;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  obscureText: _obscurePassword,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Ingrese una contraseña';
+                                    }
+                                    return null;
+                                  },
+                                  enabled: !_isLoading,
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted: (_) => _handleLogin(),
+                                ),
+                        ),
+                        const SizedBox(height: 18),
+                        FilledButton.icon(
+                          onPressed: _isLoading ? null : _handleLogin,
+                          icon: const Icon(Icons.login_rounded),
+                          label: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                    ),
+                                  )
+                                : const Text('Iniciar sesión'),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Center(
+                          child: TextButton.icon(
+                            onPressed:
+                                _isLoading ? null : () => WindowService.close(),
+                            icon: const Icon(Icons.exit_to_app_rounded),
+                            label: const Text('Salir'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: mutedText,
+                            ),
+                          ),
+                        ),
+                        if (kDebugMode) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: scheme.primary.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: cardBorder),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline, color: scheme.primary),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Demo: admin / admin123',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: mutedText,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

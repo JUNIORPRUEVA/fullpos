@@ -1,0 +1,1543 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../../../core/printing/models/receipt_text_utils.dart';
+import '../../../core/printing/models/ticket_layout_config.dart';
+import '../../../core/printing/unified_ticket_printer.dart';
+import '../../../core/printing/models/company_info.dart'
+    show CompanyInfo, CompanyInfoRepository;
+import '../../../core/db_hardening/db_hardening.dart';
+import '../../settings/data/printer_settings_repository.dart';
+import '../../sales/data/sales_repository.dart';
+import '../../sales/data/sales_model.dart' show SaleModel, SaleItemModel;
+import '../data/cash_movement_model.dart';
+import '../data/cash_repository.dart';
+import '../data/cash_session_model.dart';
+import '../data/cash_summary_model.dart';
+
+class CashHistoryPage extends StatefulWidget {
+  const CashHistoryPage({super.key});
+
+  @override
+  State<CashHistoryPage> createState() => _CashHistoryPageState();
+}
+
+class _SessionDetailData {
+  final CashSessionModel session;
+  final CashSummaryModel summary;
+  final double closingAmount;
+  final String note;
+  final List<SaleModel> sales;
+  final Map<int, List<SaleItemModel>> saleItemsBySaleId;
+  final List<CashMovementModel> movements;
+
+  _SessionDetailData({
+    required this.session,
+    required this.summary,
+    required this.closingAmount,
+    required this.note,
+    required this.sales,
+    required this.saleItemsBySaleId,
+    required this.movements,
+  });
+}
+
+class _CashHistoryPageState extends State<CashHistoryPage> {
+  late DateTime _from;
+  late DateTime _to;
+  bool _loading = true;
+  String? _error;
+  List<CashSessionModel> _sessions = const [];
+  List<CashMovementModel> _movements = const [];
+  CashSessionModel? _selectedSession;
+  CashMovementModel? _selectedMovement;
+  int _loadSeq = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _to = now;
+    _from = now.subtract(const Duration(days: 30));
+    _load();
+  }
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
+  Widget _pill(String text, ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceVariant.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  EdgeInsets _contentPadding(BoxConstraints constraints) {
+    const maxContentWidth = 1280.0;
+    final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
+    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
+    return EdgeInsets.fromLTRB(side, 12, side, 12);
+  }
+
+  void _selectSession(CashSessionModel session, {required bool showDetails}) {
+    _safeSetState(() {
+      _selectedSession = session;
+      _selectedMovement = null;
+    });
+    if (showDetails) {
+      _showSessionDetails(session);
+    }
+  }
+
+  void _selectMovement(
+    CashMovementModel movement, {
+    required bool showDetails,
+  }) {
+    _safeSetState(() {
+      _selectedMovement = movement;
+      _selectedSession = null;
+    });
+    if (showDetails) {
+      _showMovementDetails(movement);
+    }
+  }
+
+  Future<void> _showSessionDetails(CashSessionModel session) async {
+    if (session.id == null) return;
+
+    // Cargar datos completos antes de mostrar
+    final detailFuture = _loadSessionDetail(session);
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final viewInsets = MediaQuery.of(context).viewInsets;
+        return Padding(
+          padding: EdgeInsets.only(bottom: viewInsets.bottom),
+          child: FutureBuilder<_SessionDetailData>(
+            future: detailFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const SizedBox(
+                  height: 320,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (snapshot.hasError || snapshot.data == null) {
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'No se pudieron cargar los detalles del corte.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                );
+              }
+
+              final data = snapshot.data!;
+              final theme = Theme.of(context);
+              final scheme = theme.colorScheme;
+              final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+              final money = NumberFormat.currency(
+                locale: 'es_DO',
+                symbol: 'RD\$ ',
+              );
+
+              return SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Turno #${session.id ?? '-'}',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _reprintSession(data),
+                            icon: const Icon(Icons.print),
+                            label: const Text('Reimprimir'),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          _pill('Cajero: ${session.userName}', scheme),
+                          _pill(
+                            'Apertura: ${dateTime.format(session.openedAt)}',
+                            scheme,
+                          ),
+                          if (session.closedAt != null)
+                            _pill(
+                              'Cierre: ${dateTime.format(session.closedAt!)}',
+                              scheme,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _detailGrid(theme, money, data),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Ventas del turno',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 160,
+                        child: data.sales.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Sin ventas registradas',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: data.sales.length,
+                                itemBuilder: (context, i) {
+                                  final sale = data.sales[i];
+                                  final items =
+                                      data.saleItemsBySaleId[sale.id] ??
+                                      const <SaleItemModel>[];
+                                  final firstItem = items.isNotEmpty
+                                      ? items.first.productNameSnapshot
+                                      : 'Venta';
+                                  return ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      firstItem,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                      DateFormat('HH:mm').format(
+                                        DateTime.fromMillisecondsSinceEpoch(
+                                          sale.createdAtMs,
+                                        ),
+                                      ),
+                                    ),
+                                    trailing: Text(
+                                      money.format(sale.total),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('Movimientos', style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 120,
+                        child: data.movements.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Sin movimientos',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: data.movements.length,
+                                itemBuilder: (context, i) {
+                                  final m = data.movements[i];
+                                  final isIn = m.isIn;
+                                  final color = isIn
+                                      ? scheme.primary
+                                      : scheme.error;
+                                  return ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(
+                                      isIn
+                                          ? Icons.add_circle_outline
+                                          : Icons.remove_circle_outline,
+                                      color: color,
+                                    ),
+                                    title: Text(m.reason),
+                                    subtitle: Text(
+                                      DateFormat(
+                                        'HH:mm dd/MM',
+                                      ).format(m.createdAt),
+                                    ),
+                                    trailing: Text(
+                                      '${isIn ? '+' : '-'}${money.format(m.amount)}',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: color,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showMovementDetails(CashMovementModel movement) async {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final isIn = movement.isIn;
+    final color = isIn ? scheme.primary : scheme.error;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: scheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Movimiento',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isIn
+                            ? Icons.add_circle_outline
+                            : Icons.remove_circle_outline,
+                        color: color,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          movement.reason,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${isIn ? '+' : '-'}${money.format(movement.amount)}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    _pill('Tipo: ${isIn ? 'Entrada' : 'Retiro'}', scheme),
+                    _pill('Sesión: #${movement.sessionId}', scheme),
+                    _pill(
+                      'Fecha: ${dateTime.format(movement.createdAt)}',
+                      scheme,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _detailGrid(
+    ThemeData theme,
+    NumberFormat money,
+    _SessionDetailData data,
+  ) {
+    final items = <MapEntry<String, String>>[
+      MapEntry('Apertura', money.format(data.summary.openingAmount)),
+      MapEntry('Efectivo', money.format(data.summary.salesCashTotal)),
+      MapEntry('Tarjeta', money.format(data.summary.salesCardTotal)),
+      MapEntry('Transfer', money.format(data.summary.salesTransferTotal)),
+      MapEntry('Crédito', money.format(data.summary.salesCreditTotal)),
+      MapEntry('Entradas', money.format(data.summary.cashInManual)),
+      MapEntry('Retiros', money.format(data.summary.cashOutManual)),
+      MapEntry('Esperado', money.format(data.summary.expectedCash)),
+      MapEntry('Contado', money.format(data.closingAmount)),
+      MapEntry(
+        'Diferencia',
+        money.format(data.closingAmount - data.summary.expectedCash),
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 3.0,
+      ),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final entry = items[index];
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                entry.key,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 11,
+                  height: 1.0,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  entry.value,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSessionDetailsPanel(
+    CashSessionModel? session,
+    double maxHeight,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+
+    if (session == null || session.id == null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Detalle del turno',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selecciona un turno para ver la informaciÃ³n.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: FutureBuilder<_SessionDetailData>(
+        future: _loadSessionDetail(session),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const SizedBox(
+              height: 200,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError || snapshot.data == null) {
+            return Text(
+              'No se pudieron cargar los detalles.',
+              style: theme.textTheme.bodyMedium,
+            );
+          }
+
+          final data = snapshot.data!;
+          final availableHeight = maxHeight.clamp(320.0, 680.0);
+          return SizedBox(
+            height: availableHeight,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Turno #${session.id ?? '-'}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => _reprintSession(data),
+                        icon: const Icon(Icons.print, size: 18),
+                        tooltip: 'Reimprimir',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 6,
+                    children: [
+                      _pill('Cajero: ${session.userName}', scheme),
+                      _pill(
+                        'Apertura: ${dateTime.format(session.openedAt)}',
+                        scheme,
+                      ),
+                      if (session.closedAt != null)
+                        _pill(
+                          'Cierre: ${dateTime.format(session.closedAt!)}',
+                          scheme,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _detailGrid(theme, money, data),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Ventas',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 160,
+                    child: data.sales.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Sin ventas registradas',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: data.sales.length,
+                            separatorBuilder: (_, index) =>
+                                const SizedBox(height: 4),
+                            itemBuilder: (context, i) {
+                              final sale = data.sales[i];
+                              final items =
+                                  data.saleItemsBySaleId[sale.id] ??
+                                  const <SaleItemModel>[];
+                              final firstItem = items.isNotEmpty
+                                  ? items.first.productNameSnapshot
+                                  : 'Venta';
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(
+                                  firstItem,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  DateFormat('HH:mm').format(
+                                    DateTime.fromMillisecondsSinceEpoch(
+                                      sale.createdAtMs,
+                                    ),
+                                  ),
+                                ),
+                                trailing: Text(
+                                  money.format(sale.total),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Movimientos',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 120,
+                    child: data.movements.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Sin movimientos',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: data.movements.length,
+                            separatorBuilder: (_, index) =>
+                                const SizedBox(height: 4),
+                            itemBuilder: (context, i) {
+                              final m = data.movements[i];
+                              final isIn = m.isIn;
+                              final color = isIn
+                                  ? scheme.primary
+                                  : scheme.error;
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  isIn
+                                      ? Icons.add_circle_outline
+                                      : Icons.remove_circle_outline,
+                                  color: color,
+                                  size: 18,
+                                ),
+                                title: Text(
+                                  m.reason,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  DateFormat('HH:mm dd/MM').format(m.createdAt),
+                                ),
+                                trailing: Text(
+                                  '${isIn ? '+' : '-'}${money.format(m.amount)}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: color,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMovementDetailsPanel(CashMovementModel? movement) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+
+    if (movement == null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Detalle del movimiento',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selecciona un movimiento para ver la informaciÃ³n.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final isIn = movement.isIn;
+    final color = isIn ? scheme.primary : scheme.error;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Movimiento',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isIn ? Icons.add_circle_outline : Icons.remove_circle_outline,
+                  color: color,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    movement.reason,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${isIn ? '+' : '-'}${money.format(movement.amount)}',
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            children: [
+              _pill('Tipo: ${isIn ? 'Entrada' : 'Retiro'}', scheme),
+              _pill('Sesión: #${movement.sessionId}', scheme),
+              _pill('Fecha: ${dateTime.format(movement.createdAt)}', scheme),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<_SessionDetailData> _loadSessionDetail(
+    CashSessionModel session,
+  ) async {
+    final sessionId = session.id!;
+    return DbHardening.instance.runDbSafe<_SessionDetailData>(() async {
+      final summary = await CashRepository.buildSummary(sessionId: sessionId);
+      final movements = await CashRepository.listMovements(
+        sessionId: sessionId,
+      );
+      final sales = await SalesRepository.listSalesBySession(sessionId);
+
+      final saleItemsBySaleId = <int, List<SaleItemModel>>{};
+      for (final sale in sales) {
+        final saleId = sale.id;
+        if (saleId == null) continue;
+        saleItemsBySaleId[saleId] = await SalesRepository.getItemsBySaleId(
+          saleId,
+        );
+      }
+
+      final closingAmount = session.closingAmount ?? summary.expectedCash;
+      final note = session.note ?? '';
+
+      return _SessionDetailData(
+        session: session,
+        summary: summary,
+        closingAmount: closingAmount,
+        note: note,
+        sales: sales,
+        saleItemsBySaleId: saleItemsBySaleId,
+        movements: movements,
+      );
+    }, stage: 'cash_history/session_detail');
+  }
+
+  Future<void> _reprintSession(_SessionDetailData data) async {
+    final settings = await PrinterSettingsRepository.getOrCreate();
+    final layout = TicketLayoutConfig.fromPrinterSettings(settings);
+    final company = await CompanyInfoRepository.getCurrentCompanyInfo();
+
+    final lines = _buildClosingTicketLinesForPrint(
+      layout: layout,
+      company: company,
+      session: data.session,
+      summary: data.summary,
+      closingAmount: data.closingAmount,
+      note: data.note,
+      sales: data.sales,
+      saleItemsBySaleId: data.saleItemsBySaleId,
+      movements: data.movements,
+    );
+
+    await UnifiedTicketPrinter.printCustomLines(
+      lines: lines,
+      ticketNumber: 'CASH-${data.session.id ?? ''}',
+      includeLogo: true,
+      overrideCopies: settings.copies,
+    );
+  }
+
+  List<String> _buildClosingTicketLinesForPrint({
+    required TicketLayoutConfig layout,
+    required CompanyInfo company,
+    required CashSessionModel session,
+    required CashSummaryModel summary,
+    required double closingAmount,
+    required String note,
+    required List<SaleModel> sales,
+    required Map<int, List<SaleItemModel>> saleItemsBySaleId,
+    required List<CashMovementModel> movements,
+  }) {
+    final w = layout.maxCharsPerLine;
+    final lines = <String>[];
+    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+
+    String sanitize(String text) => _sanitizeTicketText(text);
+    String fit(String text) => ReceiptText.fitText(sanitize(text), w);
+    String line() => ReceiptText.line(width: w);
+
+    String center(String text) {
+      final cleaned = sanitize(text);
+      if (cleaned.length >= w) return cleaned.substring(0, w);
+      final left = ((w - cleaned.length) / 2).floor();
+      final right = w - cleaned.length - left;
+      return ' ' * left + cleaned + ' ' * right;
+    }
+
+    String twoCols(String left, String right) {
+      final rightWidth = 14.clamp(6, w - 2);
+      final leftWidth = (w - rightWidth - 1).clamp(0, w);
+      final leftText = ReceiptText.padRight(sanitize(left), leftWidth);
+      final rightText = ReceiptText.padLeft(sanitize(right), rightWidth);
+      return ReceiptText.fitText('$leftText $rightText', w);
+    }
+
+    String money(double value) => 'RD\$ ${ReceiptText.money(value)}';
+
+    String fmtDuration(Duration d) {
+      final totalMinutes = d.inMinutes;
+      final hours = totalMinutes ~/ 60;
+      final minutes = totalMinutes % 60;
+      if (hours <= 0) return '${minutes}m';
+      return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+    }
+
+    if (company.name.trim().isNotEmpty) {
+      lines.add('<H2C>${sanitize(company.name.toUpperCase())}');
+    }
+    final headerParts = <String>[];
+    if ((company.rnc ?? '').trim().isNotEmpty) {
+      headerParts.add('RNC: ${company.rnc!.trim()}');
+    }
+    if ((company.primaryPhone ?? '').trim().isNotEmpty) {
+      headerParts.add('TEL: ${company.primaryPhone!.trim()}');
+    }
+    if (headerParts.isNotEmpty) {
+      lines.add(center(headerParts.join('  ')));
+    }
+
+    lines.add(line());
+    lines.add('<H2C>CORTE DE CAJA');
+    lines.add(line());
+    lines.add('<BL>${twoCols('Sesion', '#${session.id ?? ''}')}');
+    lines.add('<BL>${twoCols('Cajero', session.userName)}');
+    lines.add('<BL>${twoCols('Apertura', fmt.format(session.openedAt))}');
+    if (session.closedAt != null) {
+      lines.add('<BL>${twoCols('Cierre', fmt.format(session.closedAt!))}');
+    }
+    final end = session.closedAt ?? DateTime.now();
+    final duration = end.difference(session.openedAt);
+    if (duration.inMinutes >= 1) {
+      lines.add('<BL>${twoCols('Duracion', fmtDuration(duration))}');
+    }
+    lines.add(line());
+
+    lines.add('<BL>${twoCols('Saldo inicial', money(summary.openingAmount))}');
+    lines.add(
+      '<BL>${twoCols('Ventas efectivo', money(summary.salesCashTotal))}',
+    );
+    lines.add(
+      '<BL>${twoCols('Ventas tarjeta', money(summary.salesCardTotal))}',
+    );
+    lines.add(
+      '<BL>${twoCols('Ventas transferencia', money(summary.salesTransferTotal))}',
+    );
+    lines.add(
+      '<BL>${twoCols('Ventas credito', money(summary.salesCreditTotal))}',
+    );
+    if (summary.refundsCash > 0) {
+      lines.add('<BL>${twoCols('Devoluciones', money(summary.refundsCash))}');
+    }
+    if (summary.creditAbonos > 0) {
+      lines.add(
+        '<BL>${twoCols('Abonos crédito', money(summary.creditAbonos))}',
+      );
+    }
+    if (summary.layawayAbonos > 0) {
+      lines.add(
+        '<BL>${twoCols('Abonos apartado', money(summary.layawayAbonos))}',
+      );
+    }
+    final manualNoAbonos =
+        (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
+            .clamp(0.0, double.infinity);
+    lines.add('<BL>${twoCols('Entradas manuales', money(manualNoAbonos))}');
+    lines.add(
+      '<BL>${twoCols('Retiros manuales', money(summary.cashOutManual))}',
+    );
+    lines.add(line());
+    lines.add(
+      '<BL>${twoCols('Efectivo esperado', money(summary.expectedCash))}',
+    );
+    lines.add('<BL>${twoCols('Efectivo contado', money(closingAmount))}');
+    lines.add(
+      '<BL>${twoCols('Diferencia', money(closingAmount - summary.expectedCash))}',
+    );
+    lines.add(line());
+
+    if (note.trim().isNotEmpty) {
+      lines.add(fit('Nota:'));
+      final wrapped = ReceiptText.wrapText(
+        sanitize(note.trim()),
+        (w - 2).clamp(1, w),
+      );
+      for (final lineText in wrapped) {
+        lines.add(fit('  $lineText'));
+      }
+      lines.add(line());
+    }
+
+    lines.add('<H2C>MOVIMIENTOS DEL TURNO');
+    lines.add(line());
+    if (movements.isEmpty) {
+      lines.add(center('Sin movimientos'));
+    } else {
+      final timeFmt = DateFormat('HH:mm');
+      for (final m in movements) {
+        final sign = m.isIn ? '+' : '-';
+        final right = '$sign${money(m.amount)}';
+        final left = '${timeFmt.format(m.createdAt)} ${m.reason}';
+        lines.add(twoCols(left, right));
+      }
+      lines.add(line());
+      lines.add(
+        '<BL>${twoCols('Total entradas', money(summary.cashInManual))}',
+      );
+      lines.add(
+        '<BL>${twoCols('Total retiros', money(summary.cashOutManual))}',
+      );
+    }
+
+    String methodAbbr(String? method) {
+      final m = (method ?? '').trim().toLowerCase();
+      switch (m) {
+        case 'cash':
+        case 'efectivo':
+          return 'EFE';
+        case 'card':
+        case 'tarjeta':
+          return 'TAR';
+        case 'transfer':
+        case 'transferencia':
+          return 'TRF';
+        case 'credit':
+        case 'credito':
+          return 'CRE';
+        case 'mixed':
+        case 'mixto':
+          return 'MIX';
+        default:
+          if (m.isEmpty) return '---';
+          final up = sanitize(m.toUpperCase());
+          return up.substring(0, math.min(3, up.length));
+      }
+    }
+
+    String saleRow({
+      required String time,
+      required String name,
+      required String method,
+      required String total,
+    }) {
+      final timeWidth = 5;
+      final methodWidth = 3;
+      final int totalWidth = (14).clamp(10, w - 10).toInt();
+      final int nameWidth = (w - timeWidth - methodWidth - totalWidth - 3)
+          .clamp(8, w)
+          .toInt();
+
+      final t = ReceiptText.padRight(sanitize(time), timeWidth);
+      final c = ReceiptText.padRight(sanitize(name), nameWidth);
+      final m = ReceiptText.padRight(sanitize(method), methodWidth);
+      final a = ReceiptText.padLeft(sanitize(total), totalWidth);
+      return ReceiptText.fitText('$t $c $m $a', w);
+    }
+
+    lines.add('<H2C>VENTAS DEL TURNO');
+    lines.add(line());
+    if (sales.isEmpty) {
+      lines.add(center('Sin ventas registradas'));
+    } else {
+      final sorted = [...sales]
+        ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+
+      lines.add(
+        '<BL>${saleRow(time: 'HORA', name: 'PRODUCTO', method: 'MET', total: 'TOTAL')}',
+      );
+      lines.add(ReceiptText.line(char: '=', width: w));
+
+      final timeFmt = DateFormat('HH:mm');
+      for (final sale in sorted) {
+        final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
+        final items = saleItemsBySaleId[sale.id ?? -1];
+        final firstItemName = (items != null && items.isNotEmpty)
+            ? items.first.productNameSnapshot.trim()
+            : '';
+        final customerName = (sale.customerNameSnapshot ?? '').trim();
+        final displayName = firstItemName.isNotEmpty
+            ? firstItemName
+            : customerName;
+        lines.add(
+          saleRow(
+            time: timeFmt.format(when),
+            name: displayName.isNotEmpty ? displayName : 'Venta',
+            method: methodAbbr(sale.paymentMethod),
+            total: money(sale.total),
+          ),
+        );
+      }
+    }
+    lines.add(line());
+
+    lines.add('<H2C>TOTALES');
+    lines.add(line());
+    lines.add('<BL>${twoCols('Tickets', summary.totalTickets.toString())}');
+    lines.add('<BL>${twoCols('Total ventas', money(summary.totalSales))}');
+    lines.add('');
+    lines.add('<H2C>TOTAL VENTAS');
+    lines.add('<H1C>${money(summary.totalSales)}');
+    lines.add('');
+    lines.add('<H2C>EFECTIVO ESPERADO');
+    lines.add('<H1C>${money(summary.expectedCash)}');
+    lines.add('');
+    lines.add('<H2C>EFECTIVO CONTADO');
+    lines.add('<H1C>${money(closingAmount)}');
+    lines.add('');
+    lines.add('<H2C>DIFERENCIA');
+    lines.add('<H1C>${money(closingAmount - summary.expectedCash)}');
+
+    lines.add(line());
+    lines.add(fit('Firma cajero: _______________________'));
+
+    if (layout.autoCut) {
+      lines.add('');
+      lines.add('');
+      lines.add('');
+    }
+
+    return lines;
+  }
+
+  String _sanitizeTicketText(String input) {
+    final s = input
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll('ñ', 'n')
+        .replaceAll('Ñ', 'N')
+        .replaceAll('ü', 'u')
+        .replaceAll('Ü', 'U')
+        .replaceAll('ç', 'c')
+        .replaceAll('Ç', 'C');
+
+    final filtered = s.replaceAll(
+      RegExp(r'''[^A-Za-z0-9\s\-_/.:,()#%+*&@'"'>$<]+'''),
+      '',
+    );
+    return filtered.trim();
+  }
+
+  Future<void> _load() async {
+    final seq = ++_loadSeq;
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final results = await DbHardening.instance.runDbSafe<List<Object>>(
+        () async {
+          final data = await Future.wait([
+            CashRepository.listClosedSessions(from: _from, to: _to, limit: 200),
+            CashRepository.listMovementsRange(from: _from, to: _to, limit: 400),
+          ]);
+          return data;
+        },
+        stage: 'cash_history/load',
+      );
+
+      if (!mounted || seq != _loadSeq) return;
+      setState(() {
+        _sessions = results[0] as List<CashSessionModel>;
+        _movements = results[1] as List<CashMovementModel>;
+        if (_selectedSession != null &&
+            !_sessions.any((s) => s.id == _selectedSession!.id)) {
+          _selectedSession = null;
+        }
+        if (_selectedMovement != null &&
+            !_movements.any((m) => m.id == _selectedMovement!.id)) {
+          _selectedMovement = null;
+        }
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || seq != _loadSeq) return;
+      setState(() {
+        _error = 'No se pudieron cargar los cortes y movimientos.';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _pickRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      initialDateRange: DateTimeRange(start: _from, end: _to),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() {
+      _from = picked.start;
+      _to = picked.end;
+    });
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dateFormat = DateFormat('dd/MM/yyyy');
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const SizedBox.shrink(),
+        toolbarHeight: 8,
+        backgroundColor: scheme.surface,
+        elevation: 0,
+        surfaceTintColor: scheme.surface,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 1200;
+          final padding = _contentPadding(constraints);
+          final sideWidth = (constraints.maxWidth * 0.3).clamp(300.0, 380.0);
+
+          return Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _pickRange,
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          'Desde ${dateFormat.format(_from)} - Hasta ${dateFormat.format(_to)}',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Actualizar'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_loading)
+                  const Expanded(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_error != null)
+                  Expanded(
+                    child: Center(
+                      child: Text(_error!, style: theme.textTheme.bodyMedium),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: DefaultTabController(
+                      length: 2,
+                      child: Column(
+                        children: [
+                          TabBar(
+                            labelColor: scheme.primary,
+                            indicatorColor: scheme.primary,
+                            tabs: const [
+                              Tab(text: 'Turnos'),
+                              Tab(text: 'Movimientos'),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                _buildSessionsList(context, isWide, sideWidth),
+                                _buildMovementsList(context, isWide, sideWidth),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSessionsList(
+    BuildContext context,
+    bool isWide,
+    double sideWidth,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+
+    if (_sessions.isEmpty) {
+      return Center(
+        child: Text(
+          'Sin cortes en el rango seleccionado.',
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+
+    final list = ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: _sessions.length,
+      separatorBuilder: (_, index) => const SizedBox(height: 6),
+      itemBuilder: (context, index) {
+        final session = _sessions[index];
+        final diff = session.difference ?? 0.0;
+        final diffColor = diff == 0
+            ? scheme.primary
+            : (diff > 0 ? scheme.tertiary : scheme.error);
+        final isSelected = _selectedSession?.id == session.id;
+
+        return InkWell(
+          onTap: () => _selectSession(session, showDetails: !isWide),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? scheme.primary : scheme.outlineVariant,
+                width: isSelected ? 1.4 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withOpacity(0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.lock_clock,
+                    color: scheme.primary,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '#${session.id ?? '-'}',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            money.format(session.closingAmount ?? 0),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          _pill('Cajero: ${session.userName}', scheme),
+                          _pill(
+                            'Apertura: ${dateTime.format(session.openedAt)}',
+                            scheme,
+                          ),
+                          if (session.closedAt != null)
+                            _pill(
+                              'Cierre: ${dateTime.format(session.closedAt!)}',
+                              scheme,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text(
+                            'Dif: ${money.format(diff)}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: diffColor,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          if (session.expectedCash != null)
+                            Text(
+                              'Esperado: ${money.format(session.expectedCash)}',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: scheme.outline),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!isWide) return list;
+
+    return Row(
+      children: [
+        Expanded(child: list),
+        const SizedBox(width: 16),
+        SizedBox(
+          width: sideWidth,
+          child: _buildSessionDetailsPanel(
+            _selectedSession,
+            MediaQuery.of(context).size.height * 0.72,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMovementsList(
+    BuildContext context,
+    bool isWide,
+    double sideWidth,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+
+    if (_movements.isEmpty) {
+      return Center(
+        child: Text(
+          'Sin movimientos en el rango seleccionado.',
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+
+    final list = ListView.separated(
+      padding: EdgeInsets.zero,
+      itemCount: _movements.length,
+      separatorBuilder: (_, index) => const SizedBox(height: 6),
+      itemBuilder: (context, index) {
+        final movement = _movements[index];
+        final isIn = movement.isIn;
+        final color = isIn ? scheme.primary : scheme.error;
+        final isSelected = _selectedMovement?.id == movement.id;
+        return InkWell(
+          onTap: () => _selectMovement(movement, showDetails: !isWide),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? scheme.primary : scheme.outlineVariant,
+                width: isSelected ? 1.4 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isIn ? Icons.add_circle_outline : Icons.remove_circle_outline,
+                  color: color,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        movement.reason,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        dateTime.format(movement.createdAt),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '${isIn ? '+' : '-'}${money.format(movement.amount)}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!isWide) return list;
+
+    return Row(
+      children: [
+        Expanded(child: list),
+        const SizedBox(width: 16),
+        SizedBox(
+          width: sideWidth,
+          child: _buildMovementDetailsPanel(_selectedMovement),
+        ),
+      ],
+    );
+  }
+}
