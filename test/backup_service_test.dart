@@ -141,7 +141,10 @@ void main() {
     );
 
     expect(result.ok, isTrue);
-    final ok = await BackupService.instance.verifyZipIntegrity(result.path!);
+    final ok = await BackupService.instance.verifyZipIntegrity(
+      result.path!,
+      timeout: const Duration(seconds: 30),
+    );
     expect(ok, isTrue);
   });
 
@@ -160,11 +163,42 @@ void main() {
     await File(result.path!).copy(corrupted.path);
     await corrupted.writeAsBytes([1, 2, 3], mode: FileMode.writeOnly);
 
-    final ok = await BackupService.instance.verifyZipIntegrity(corrupted.path);
+    final ok = await BackupService.instance.verifyZipIntegrity(
+      corrupted.path,
+      timeout: const Duration(seconds: 30),
+    );
     expect(ok, isNot(true));
   });
+
+  test(
+    'restoreBackup rechaza checksum mismatch antes de tocar la DB',
+    () async {
+      await AppDb.resetForTests();
+      await AppDb.database;
+      await AppDb.close();
+
+      final result = await BackupService.instance.createBackup(
+        trigger: BackupTrigger.manual,
+        verifyIntegrity: false,
+      );
+      expect(result.ok, isTrue);
+      expect(result.checksumSha256, isNotNull);
+
+      final corrupted = File('${result.path}.bad');
+      await File(result.path!).copy(corrupted.path);
+      await corrupted.writeAsBytes(
+        [1, 2, 3],
+        mode: FileMode.writeOnly,
+        flush: true,
+      );
+
+      final restore = await BackupService.instance.restoreBackup(
+        zipPath: corrupted.path,
+        expectedChecksumSha256: result.checksumSha256,
+        recordHistory: false,
+      );
+      expect(restore.ok, isFalse);
+      expect(restore.messageDev, contains('checksum_mismatch'));
+    },
+  );
 }
-
-
-
-

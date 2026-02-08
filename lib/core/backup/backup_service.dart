@@ -310,6 +310,7 @@ class BackupService {
     required String zipPath,
     Duration maxWait = const Duration(seconds: 10),
     String? notes,
+    String? expectedChecksumSha256,
     bool recordHistory = true,
   }) async {
     if (_running) {
@@ -355,6 +356,28 @@ class BackupService {
           messageUser: 'El archivo seleccionado no existe.',
           messageDev: 'ZIP no existe: $zipPath',
         );
+      }
+
+      final expected = expectedChecksumSha256?.trim();
+      if (expected != null && expected.isNotEmpty) {
+        final actual = await _sha256OfFile(zipFile);
+        if (actual != expected) {
+          if (recordHistory && historyEntry != null) {
+            await BackupRepository.instance.updateHistory(
+              historyEntry.copyWith(
+                status: BackupStatus.failed,
+                errorMessage:
+                    'Checksum no coincide (esperado=$expected real=$actual)',
+              ),
+            );
+          }
+          return BackupResult(
+            ok: false,
+            messageUser:
+                'El backup seleccionado no coincide con el esperado (integridad falló).',
+            messageDev: 'checksum_mismatch expected=$expected actual=$actual',
+          );
+        }
       }
 
       unawaited(

@@ -41,4 +41,16 @@ class BackupRepository {
     await db.insert(DbTables.dangerActionsLog, entry.toMap());
   }
 
+  Future<List<DangerActionLogEntry>> listDangerActions({
+    int limit = 10,
+  }) async {
+    final db = await AppDb.database;
+    final rows = await db.query(
+      DbTables.dangerActionsLog,
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+    return rows.map(DangerActionLogEntry.fromMap).toList();
+  }
+
 }

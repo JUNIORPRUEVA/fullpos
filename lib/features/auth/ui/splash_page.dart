@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
+import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
-import '../../settings/providers/business_settings_provider.dart';
 
 /// Pantalla de splash (carga inicial)
 class SplashPage extends ConsumerWidget {
@@ -13,24 +13,13 @@ class SplashPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boot = ref.watch(appBootstrapProvider).snapshot;
-
-    final business = ref.watch(businessSettingsProvider);
-    final brandName = 'FULLPOS';
-    final businessName = business.businessName.isNotEmpty
-        ? business.businessName
-        : brandName;
-    final showBusinessTag =
-        businessName.trim().isNotEmpty && businessName != brandName;
+    final brandName = FullposBrandTheme.appName;
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: FullposBrandTheme.background,
       body: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.bgDark, AppColors.teal900],
-          ),
+          gradient: FullposBrandTheme.backgroundGradient,
         ),
         child: Center(
           child: ConstrainedBox(
@@ -57,7 +46,7 @@ class SplashPage extends ConsumerWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(28),
                       child: Image.asset(
-                        'assets/imagen/windowlogo.png',
+                        FullposBrandTheme.logoAsset,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
                             const Center(
@@ -74,7 +63,7 @@ class SplashPage extends ConsumerWidget {
                   Text(
                     brandName,
                     style: const TextStyle(
-                      color: AppColors.gold,
+                      color: AppColors.textLight,
                       fontSize: 40,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2.6,
@@ -92,19 +81,6 @@ class SplashPage extends ConsumerWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  if (showBusinessTag) ...[
-                    const SizedBox(height: AppSizes.spaceXS),
-                    Text(
-                      'para $businessName',
-                      style: TextStyle(
-                        color: AppColors.textLight.withOpacity(0.82),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
                   const SizedBox(height: AppSizes.spaceXL * 2),
                   if (boot.status == BootStatus.error) ...[
                     const Icon(

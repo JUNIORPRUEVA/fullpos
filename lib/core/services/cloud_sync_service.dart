@@ -13,6 +13,7 @@ import '../db/tables.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/products/data/products_repository.dart';
+import '../../features/products/models/product_model.dart';
 import '../../features/sales/data/sales_repository.dart';
 import '../../features/sales/data/sales_model.dart';
 import '../config/backend_config.dart';
@@ -279,15 +280,24 @@ class CloudSyncService {
       }
 
       final repo = ProductsRepository();
-      final products = await repo.getAll(
-        filters: const ProductFilters(isActive: true),
-      );
+      final allProducts = await repo.getAll(includeDeleted: true);
+      final deletedCodes = <String>{};
+      final activeProducts = <ProductModel>[];
+      for (final product in allProducts) {
+        final code = product.code.trim();
+        if (code.isEmpty) continue;
+        if (product.isDeleted) {
+          deletedCodes.add(code);
+          continue;
+        }
+        if (!product.isActive) continue;
+        activeProducts.add(product);
+      }
 
       final payloadProducts = <Map<String, dynamic>>[];
       var processed = 0;
-      for (final p in products.where((p) => !p.isDeleted)) {
+      for (final p in activeProducts) {
         processed++;
-        // Evitar congelamientos: ceder el hilo cada cierto número de iteraciones.
         if (processed % 25 == 0) {
           await Future<void>.delayed(const Duration(milliseconds: 1));
         }
@@ -368,6 +378,7 @@ class CloudSyncService {
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
         'products': payloadProducts,
+        if (deletedCodes.isNotEmpty) 'deletedProducts': deletedCodes.toList(),
       };
 
       final response = await http

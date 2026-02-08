@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 /// Maneja la sesión del usuario usando SharedPreferences
 class SessionManager {
@@ -146,6 +147,12 @@ class SessionManager {
     }
 
     _notifyChanged();
+    assert(() {
+      debugPrint(
+        '[AUTH] login saved: logged_in=true userId=$userId username=$username role=$role',
+      );
+      return true;
+    }());
   }
 
   /// Actualiza solo el nombre para mostrar del usuario actual
@@ -158,6 +165,8 @@ class SessionManager {
   /// Cierra la sesión
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    final beforeLoggedIn = prefs.getBool(_keyLoggedIn);
+    final beforeUserId = prefs.getInt(_keyUserId);
     await prefs.remove(_keyLoggedIn);
     await prefs.remove(_keyUserId);
     await prefs.remove(_keyUsername);
@@ -167,6 +176,12 @@ class SessionManager {
     await prefs.remove(_keyCompanyId);
 
     _notifyChanged();
+    assert(() {
+      debugPrint(
+        '[AUTH] logout cleared: before logged_in=$beforeLoggedIn userId=$beforeUserId -> logged_in=${prefs.getBool(_keyLoggedIn)} userId=${prefs.getInt(_keyUserId)}',
+      );
+      return true;
+    }());
   }
 
   static String _randomToken(int length) {

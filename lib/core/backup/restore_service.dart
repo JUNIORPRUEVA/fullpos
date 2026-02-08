@@ -9,14 +9,21 @@ class RestoreService {
 
   static final RestoreService instance = RestoreService._();
 
-  Future<BackupResult> restoreLocal({required String zipPath}) async {
+  Future<BackupResult> restoreLocal({
+    required String zipPath,
+    String? expectedChecksumSha256,
+  }) async {
     return BackupService.instance.restoreBackup(
       zipPath: zipPath,
       notes: 'RESTORE_LOCAL',
+      expectedChecksumSha256: expectedChecksumSha256,
     );
   }
 
-  Future<BackupResult> restoreFromCloud({required String cloudBackupId}) async {
+  Future<BackupResult> restoreFromCloud({
+    required String cloudBackupId,
+    String? expectedChecksumSha256,
+  }) async {
     final valid = await CloudBackupService.instance.validateBackup(
       cloudBackupId: cloudBackupId,
     );
@@ -45,6 +52,7 @@ class RestoreService {
       return await BackupService.instance.restoreBackup(
         zipPath: file.path,
         notes: 'RESTORE_CLOUD',
+        expectedChecksumSha256: expectedChecksumSha256,
       );
     } catch (e) {
       await AppLogger.instance.logWarn(

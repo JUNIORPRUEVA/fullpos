@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/constants/app_sizes.dart';
-import '../../../core/db/app_db.dart';
 import '../../../core/db/database_manager.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_repository.dart';

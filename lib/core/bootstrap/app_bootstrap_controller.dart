@@ -90,6 +90,7 @@ class AppBootstrapController extends ChangeNotifier {
   bool get isStarted => _runToken > 0;
 
   Future<void>? _authReloadInFlight;
+  bool _authReloadPending = false;
 
   void ensureStarted() {
     if (isStarted) return;
@@ -181,15 +182,56 @@ class AppBootstrapController extends ChangeNotifier {
 
   Future<void> _reloadAuthSnapshot() {
     final existing = _authReloadInFlight;
-    if (existing != null) return existing;
+    if (existing != null) {
+      // Si hay un reload en curso y llega otro cambio de sesión (login/logout),
+      // marcamos pendiente para re-ejecutar al terminar. Esto evita estados
+      // "stale" cuando el usuario hace login/logout rápido.
+      _authReloadPending = true;
+      return existing;
+    }
 
     final future = _reloadAuthSnapshotImpl();
     _authReloadInFlight = future.whenComplete(() {
       if (_authReloadInFlight == future) {
         _authReloadInFlight = null;
       }
+      if (_authReloadPending) {
+        _authReloadPending = false;
+        unawaited(_reloadAuthSnapshot());
+      }
     });
     return _authReloadInFlight!;
+  }
+
+  /// Fuerza una recarga de estado de autenticación (login/logout/permisos).
+  /// Útil cuando el caller necesita que el router tenga el snapshot actualizado
+  /// antes de navegar.
+  Future<void> refreshAuth() async {
+    // Ejecutar al menos un reload y, si hubo cambios durante ese reload,
+    // esperar al siguiente para "asentar" el snapshot final.
+    await _reloadAuthSnapshot();
+    // En flujos rápidos puede haber más de un cambio; evitar loops infinitos.
+    for (var i = 0; i < 2; i++) {
+      if (!_authReloadPending && _authReloadInFlight == null) break;
+      await _reloadAuthSnapshot();
+    }
+  }
+
+  /// Fuerza el estado de sesión en memoria (source-of-truth para routing).
+  /// Se usa en login/logout para evitar estados "pegados" hasta reiniciar.
+  void forceLoggedOut() {
+    _setSnapshot(
+      _snapshot.copyWith(
+        isLoggedIn: false,
+        isAdmin: false,
+        permissions: UserPermissions.none(),
+      ),
+    );
+  }
+
+  void forceLoggedIn() {
+    if (_snapshot.isLoggedIn) return;
+    _setSnapshot(_snapshot.copyWith(isLoggedIn: true));
   }
 
   Future<void> _reloadAuthSnapshotImpl() async {
@@ -205,18 +247,37 @@ class AppBootstrapController extends ChangeNotifier {
       return;
     }
 
-    final permissionsFuture = AuthRepository.getCurrentPermissions();
-    final isAdminFuture = AuthRepository.isAdmin();
-    final permissions = await permissionsFuture;
-    final isAdmin = await isAdminFuture;
+    // IMPORTANTE:
+    // Primero marcar "logueado" aunque falle cargar permisos.
+    // Si esta carga falla, el router se quedaría pensando que no hay sesión
+    // y la navegación login/logout se ve "rota" hasta reiniciar.
+    if (!_snapshot.isLoggedIn) {
+      _setSnapshot(_snapshot.copyWith(isLoggedIn: true));
+    }
 
-    _setSnapshot(
-      _snapshot.copyWith(
-        isLoggedIn: true,
-        isAdmin: isAdmin,
-        permissions: permissions,
-      ),
-    );
+    try {
+      final permissionsFuture = AuthRepository.getCurrentPermissions();
+      final isAdminFuture = AuthRepository.isAdmin();
+      final permissions = await permissionsFuture;
+      final isAdmin = await isAdminFuture;
+
+      _setSnapshot(
+        _snapshot.copyWith(
+          isLoggedIn: true,
+          isAdmin: isAdmin,
+          permissions: permissions,
+        ),
+      );
+    } catch (_) {
+      // No bloquear UI por un fallo puntual leyendo permisos.
+      _setSnapshot(
+        _snapshot.copyWith(
+          isLoggedIn: true,
+          isAdmin: false,
+          permissions: UserPermissions.none(),
+        ),
+      );
+    }
   }
 
   void _setMessage(String message) {
@@ -227,6 +288,12 @@ class AppBootstrapController extends ChangeNotifier {
   void _setSnapshot(BootSnapshot next) {
     _snapshot = next;
     notifyListeners();
+    assert(() {
+      debugPrint(
+        '[BOOT] snapshot: status=${_snapshot.status} loggedIn=${_snapshot.isLoggedIn} admin=${_snapshot.isAdmin}',
+      );
+      return true;
+    }());
   }
 
   static void _log(String message) {

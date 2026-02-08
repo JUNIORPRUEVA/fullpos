@@ -1,0 +1,34 @@
+ACUERDO DE LICENCIA DE USUARIO FINAL (EULA) - FULLPOS
+
+IMPORTANTE: LEA ESTE ACUERDO CUIDADOSAMENTE ANTES DE INSTALAR O USAR EL SOFTWARE.
+
+Este Acuerdo de Licencia de Usuario Final ("Acuerdo") es un contrato legal entre usted ("Usuario") y FULLTECH SRL ("Proveedor") para el uso del software FULLPOS ("Software").
+
+1. ACEPTACIÓN
+Al instalar, copiar o utilizar el Software, usted acepta quedar obligado por los términos de este Acuerdo. Si no está de acuerdo, no instale ni use el Software.
+
+2. LICENCIA
+El Proveedor le otorga una licencia limitada, no exclusiva e intransferible para instalar y usar el Software únicamente para sus fines internos/operativos.
+
+3. PROPIEDAD
+El Software es propiedad del Proveedor y está protegido por leyes de propiedad intelectual. Este Acuerdo no transfiere la titularidad del Software.
+
+4. RESTRICCIONES
+Usted no podrá: (a) descompilar, realizar ingeniería inversa o intentar derivar el código fuente, salvo que la ley lo permita; (b) redistribuir, vender, alquilar o sublicenciar el Software sin autorización escrita; (c) eliminar avisos de propiedad.
+
+5. ACTUALIZACIONES
+El Software puede recibir actualizaciones. El Proveedor puede modificar, suspender o descontinuar funcionalidades, según corresponda.
+
+6. SOPORTE
+El soporte puede estar sujeto a planes, horarios o acuerdos separados. Para soporte/instalación, contacte a FULLTECH SRL.
+
+7. LIMITACIÓN DE RESPONSABILIDAD
+En la máxima medida permitida por la ley, el Software se proporciona "TAL CUAL". El Proveedor no será responsable por daños indirectos, incidentales, especiales o consecuentes derivados del uso o imposibilidad de uso del Software.
+
+8. TERMINACIÓN
+Este Acuerdo se rescinde automáticamente si usted incumple sus términos. En tal caso deberá desinstalar el Software y eliminar todas sus copias.
+
+9. DISPOSICIONES GENERALES
+Si alguna cláusula se considera inválida, el resto del Acuerdo permanecerá vigente. Este Acuerdo se rige por la legislación aplicable según la jurisdicción del Proveedor, salvo disposición legal en contrario.
+
+Si necesita un contrato personalizado para su empresa, reemplace este texto por su EULA oficial.

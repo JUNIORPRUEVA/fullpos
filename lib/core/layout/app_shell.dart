@@ -66,12 +66,16 @@ class _AppShellState extends State<AppShell> {
             final sidebarWidth = _sidebarWidthFor(constraints.maxWidth);
             final sidebarScale =
                 (sidebarWidth / AppSizes.sidebarWidth).clamp(0.75, 1.0);
+            // Topbar más compacto: reduce altura base y límites para que no se vea "alto"
+            // en pantallas grandes.
             final topbarHeight =
-                (constraints.maxHeight * 0.08).clamp(54.0, 78.0);
+                (constraints.maxHeight * 0.06).clamp(46.0, 62.0);
             final topbarScale =
                 (topbarHeight / AppSizes.topbarHeight).clamp(0.85, 1.12);
             final footerHeight =
-                showFooter ? (constraints.maxHeight * 0.07).clamp(44.0, 64.0) : 0.0;
+                showFooter
+                    ? (constraints.maxHeight * 0.045).clamp(28.0, 40.0)
+                    : 0.0;
             final footerScale =
                 (footerHeight / AppSizes.footerHeight).clamp(0.8, 1.12);
 

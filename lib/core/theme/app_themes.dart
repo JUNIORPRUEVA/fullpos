@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_sizes.dart';
+import 'app_tokens.dart';
 
 /// Enum para los temas disponibles
 enum AppThemeEnum {
@@ -30,6 +31,50 @@ extension AppThemeExtension on AppThemeEnum {
 class AppThemes {
   AppThemes._();
 
+  static const AppTokens _originalTokens = AppTokens.defaultTokens;
+
+  static const AppTokens _azulTokens = AppTokens(
+    panelBackground: const Color(0xFFF5F7FB),
+    panelBorder: const Color(0xFFE0E4EB),
+    cardBackground: const Color(0xFFFFFFFF),
+    cardBorder: const Color(0xFFD1D7E1),
+    sidebarBackground: const Color(0xFF001E40),
+    sidebarBorder: const Color(0xFF0A3A67),
+    sidebarText: const Color(0xFFFFFFFF),
+    controlBarBackground: const Color(0xFF00336A),
+    controlBarBorder: const Color(0xFF0052CC),
+    controlBarText: const Color(0xFFFFFFFF),
+    buttonPrimary: const Color(0xFF0052CC),
+    buttonSecondary: const Color(0xFF003366),
+    buttonDanger: const Color(0xFFD32F2F),
+    searchFieldBackground: const Color(0xFFFFFFFF),
+    searchFieldText: const Color(0xFF111827),
+    searchFieldIcon: const Color(0xFF111827),
+    tileHover: const Color(0xFFE5EEFF),
+    outline: const Color(0xFFCDD6E4),
+  );
+
+  static const AppTokens _proPosTokens = AppTokens(
+    panelBackground: const Color(0xFF050915),
+    panelBorder: const Color(0xFF131C33),
+    cardBackground: const Color(0xFF0F1B2C),
+    cardBorder: const Color(0xFF233044),
+    sidebarBackground: const Color(0xFF050915),
+    sidebarBorder: const Color(0xFF101820),
+    sidebarText: const Color(0xFFE8EEF7),
+    controlBarBackground: const Color(0xFF0F1B2C),
+    controlBarBorder: const Color(0xFF233044),
+    controlBarText: const Color(0xFFE8EEF7),
+    buttonPrimary: const Color(0xFF1E5A88),
+    buttonSecondary: const Color(0xFF0D84FF),
+    buttonDanger: const Color(0xFFDC2626),
+    searchFieldBackground: const Color(0xFF13253A),
+    searchFieldText: const Color(0xFFE8EEF7),
+    searchFieldIcon: const Color(0xFF9FB0C8),
+    tileHover: const Color(0xFF1A2B46),
+    outline: const Color(0xFF3B4A61),
+  );
+
   // ============================================================================
   // TEMA 1: FULLPOS (Azul + Turquesa)
   // ============================================================================
@@ -38,16 +83,18 @@ class AppThemes {
         brightness: Brightness.light,
         fontFamily: 'Poppins',
 
-        // Color scheme
-        colorScheme: const ColorScheme.light(
-          primary: AppColors.teal700,
+        colorScheme: ColorScheme.light(
+          primary: AppColors.brandBlueLight,
           onPrimary: AppColors.textLight,
-          secondary: AppColors.gold,
-          onSecondary: AppColors.textDark,
+          secondary: AppColors.brandBlue,
+          onSecondary: AppColors.textLight,
+          background: AppColors.bgLight,
+          onBackground: AppColors.textLight,
           surface: AppColors.surfaceLight,
           onSurface: AppColors.textDark,
           error: AppColors.error,
           onError: AppColors.textLight,
+        ).copyWith(
           surfaceContainerHighest: AppColors.surfaceLightVariant,
         ),
 
@@ -55,7 +102,7 @@ class AppThemes {
 
         // AppBar
         appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.teal800,
+          backgroundColor: AppColors.surfaceDark,
           foregroundColor: AppColors.textLight,
           elevation: 0,
           centerTitle: false,
@@ -233,6 +280,7 @@ class AppThemes {
             fontFamily: 'Poppins',
           ),
         ),
+        extensions: const [_originalTokens],
       );
 
   // ============================================================================
@@ -452,6 +500,7 @@ class AppThemes {
             fontFamily: 'Poppins',
           ),
         ),
+        extensions: const [_azulTokens],
       );
 
   // ============================================================================
@@ -671,6 +720,7 @@ class AppThemes {
             fontFamily: 'Poppins',
           ),
         ),
+        extensions: const [_proPosTokens],
       );
 
   /// Obtener un tema por su enum

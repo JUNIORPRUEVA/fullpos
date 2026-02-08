@@ -109,22 +109,22 @@ flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
-  image_path: assets/imagen/windowlogo.png
+  image_path: assets/imagen/lonchericon.png
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: assets/imagen/windowlogo.png
+  adaptive_icon_foreground: assets/imagen/lonchericon.png
   windows:
     generate: true
-    image_path: assets/imagen/windowlogo.png
+    image_path: assets/imagen/lonchericon.png
     icon_size: 256
 
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/imagen/windowlogo.png
+  image: assets/imagen/lonchericon.png
   android: true
   ios: true
   fullscreen: true
   android_12:
-    image: assets/imagen/windowlogo.png
+    image: assets/imagen/lonchericon.png
     color: "#FFFFFF"
 
 # For information on the generic Dart part of this file, see the

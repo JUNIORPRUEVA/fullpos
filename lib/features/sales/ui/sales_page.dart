@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import '../../../core/errors/error_handler.dart';
@@ -17,12 +18,15 @@ import '../../../core/security/authz/authz_service.dart';
 import '../../../core/security/authz/permission.dart' as authz_perm;
 import '../../../core/session/session_manager.dart';
 import '../../../core/session/ui_preferences.dart';
-import '../../../core/theme/color_utils.dart';
-import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/app_gradient_theme.dart';
-import '../../../core/theme/sales_products_theme.dart';
+import '../../../core/theme/app_status_theme.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/theme/color_utils.dart';
 import '../../../core/theme/sales_page_theme.dart';
+import '../../../core/theme/sales_products_theme.dart';
 import '../../cash/providers/cash_providers.dart';
+import '../../cash/data/cash_movement_model.dart';
+import '../../cash/ui/cash_movement_dialog.dart';
 import '../../cash/ui/cash_open_dialog.dart';
 import '../../clients/data/client_model.dart';
 import '../../clients/data/clients_repository.dart';
@@ -116,6 +120,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   final FocusNode _searchFocusNode = FocusNode();
   final FocusNode _clientFocusNode = FocusNode();
   final ScrollController _ticketItemsScrollController = ScrollController();
+  Timer? _cartPersistenceTimer;
 
   int? _selectedCartItemIndex;
 
@@ -455,6 +460,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   int? get _activeSessionId =>
       ref.read(cashSessionControllerProvider).valueOrNull?.id;
 
+  Future<void> _openCashMovement(String type) async {
+    var sessionId = _activeSessionId;
+    if (sessionId == null) {
+      final opened = await CashOpenDialog.show(context);
+      if (opened == true) await _refreshCashSession();
+      sessionId = _activeSessionId;
+    }
+
+    if (!mounted) return;
+
+    if (sessionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No hay caja abierta. Abra caja para continuar.'),
+          backgroundColor: scheme.error,
+        ),
+      );
+      return;
+    }
+
+    await CashMovementDialog.show(context, type: type, sessionId: sessionId);
+    await _refreshCashSession();
+  }
+
   /// Guarda todos los carritos temporales en la base de datos
   // ignore: unused_element
   Future<void> _saveAllCartsToDatabase() async {
@@ -495,6 +524,48 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
   }
 
+  void _updateCurrentCart(VoidCallback update) {
+    setState(update);
+    _scheduleCartPersistence();
+  }
+
+  void _scheduleCartPersistence() {
+    _cartPersistenceTimer?.cancel();
+    _cartPersistenceTimer = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_persistCurrentCartToDatabase());
+    });
+  }
+
+  Future<void> _persistCurrentCartToDatabase() async {
+    _cartPersistenceTimer = null;
+    if (!mounted) return;
+    if (_currentCart.items.isEmpty) {
+      await _deleteCurrentCartFromDatabase();
+      return;
+    }
+
+    final repo = TempCartRepository();
+    final userId = await SessionManager.userId();
+    try {
+      final savedId = await repo.saveCart(
+        id: _currentCart.tempCartId,
+        name: _currentCart.name,
+        userId: userId,
+        clientId: _currentCart.selectedClient?.id,
+        discount: _currentCart.discount,
+        itbisEnabled: _currentCart.itbisEnabled,
+        itbisRate: _currentCart.itbisRate,
+        fiscalEnabled: _currentCart.fiscalEnabled,
+        discountTotalType: _currentCart.discountTotalType,
+        discountTotalValue: _currentCart.discountTotalValue,
+        items: _currentCart.items,
+      );
+      _currentCart.tempCartId = savedId;
+    } catch (e, st) {
+      debugPrint('Error guardando carrito temporal: $e $st');
+    }
+  }
+
   Future<void> _loadAvailableNcfs() async {
     try {
       final all = await NcfRepository.getAll();
@@ -531,6 +602,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           }
         }
       });
+      _scheduleCartPersistence();
     } catch (e, st) {
       debugPrint('Error loading NCF books: $e\\n$st');
     }
@@ -713,7 +785,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
 
     if (!mounted || result == null) return null;
-    setState(() {
+    _updateCurrentCart(() {
       _currentCart.selectedClient = result;
       _currentCart.name = result.nombre;
     });
@@ -740,7 +812,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
 
     if (!mounted || result == null) return;
-    setState(() => _currentCart.items.add(result));
+    _updateCurrentCart(() => _currentCart.items.add(result));
   }
 
   Future<void> _showTotalDiscountDialog() async {
@@ -776,7 +848,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (!mounted) return;
 
     if (result == 'remove') {
-      setState(() {
+      _updateCurrentCart(() {
         _currentCart.discountTotalType = null;
         _currentCart.discountTotalValue = null;
       });
@@ -810,7 +882,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       }
 
       if (!mounted) return;
-      setState(() {
+      _updateCurrentCart(() {
         _currentCart.discountTotalType = result.type == DiscountType.percent
             ? 'percent'
             : 'amount';
@@ -827,7 +899,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   void _removeClient() {
     final ticketIndex = _carts.indexOf(_currentCart);
-    setState(() {
+    _updateCurrentCart(() {
       _currentCart.selectedClient = null;
       _currentCart.name = 'Ticket ${ticketIndex + 1}';
     });
@@ -846,12 +918,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       return;
     }
 
-    setState(() => _currentCart.addProduct(product));
+    _updateCurrentCart(() => _currentCart.addProduct(product));
   }
 
   void _incrementCartItemQty(SaleItemModel item, int index) async {
     if (item.productId == null) {
-      setState(() => _currentCart.updateQuantity(index, item.qty + 1));
+      _updateCurrentCart(
+        () => _currentCart.updateQuantity(index, item.qty + 1),
+      );
       return;
     }
 
@@ -878,7 +952,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
 
     if (!mounted) return;
-    setState(() => _currentCart.updateQuantity(index, item.qty + 1));
+    _updateCurrentCart(() => _currentCart.updateQuantity(index, item.qty + 1));
   }
 
   void _showEditItemDialog(SaleItemModel item, int index) {
@@ -926,7 +1000,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               return;
             }
 
-            setState(() {
+            _updateCurrentCart(() {
               _currentCart.items[index] = item.copyWith(
                 qty: newQty,
                 discountLine: discountToApply,
@@ -1521,6 +1595,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     _clientFocusNode.dispose();
     _ticketItemsScrollController.dispose();
     _scanner?.dispose();
+    _cartPersistenceTimer?.cancel();
     super.dispose();
   }
 
@@ -1601,6 +1676,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               if (!mounted || result == null) return null;
               setState(() {
                 _clients.add(result);
+              });
+              _updateCurrentCart(() {
                 _currentCart.selectedClient = result;
               });
               return null;
@@ -1658,7 +1735,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             onInvoke: (_) {
               if (_selectedCartItemIndex != null &&
                   _selectedCartItemIndex! < _currentCart.items.length) {
-                setState(() {
+                _updateCurrentCart(() {
                   _currentCart.removeItem(_selectedCartItemIndex!);
                   _selectedCartItemIndex = null;
                 });
@@ -2085,6 +2162,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       isAlt ? productsTheme?.cardAltTextColor : productsTheme?.cardTextColor,
       scheme.onSurface,
     );
+    final readableCardText = ColorUtils.ensureReadableColor(cardText, cardBg);
     final priceColor = resolve(productsTheme?.priceColor, scheme.primary);
 
     return Container(
@@ -2222,7 +2300,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             fontSize: 9.5,
                             fontWeight: FontWeight.w800,
                             height: 1.1,
-                            color: cardText,
+                            color: readableCardText,
                             letterSpacing: 0.1,
                           ),
                           maxLines: 1,
@@ -2246,7 +2324,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                       style: TextStyle(
                                         fontSize: 5.5,
                                         fontWeight: FontWeight.w600,
-                                        color: cardText.withOpacity(0.5),
+                                        color: readableCardText.withOpacity(
+                                          0.62,
+                                        ),
                                         letterSpacing: 0.2,
                                       ),
                                     ),
@@ -2470,17 +2550,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       return c;
     }
 
+    final tokens =
+        Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
     final controlText = resolve(
       salesTheme?.controlBarTextColor,
-      scheme.onSurface,
+      tokens.controlBarText,
     );
     final controlBorder = resolve(
       salesTheme?.controlBarBorderColor,
-      scheme.onSurface.withOpacity(0.18),
+      tokens.controlBarBorder,
     );
     final controlContentBg = resolve(
       salesTheme?.controlBarContentBackgroundColor,
-      transparent,
+      tokens.searchFieldBackground,
     );
     final controlBarBg = salesTheme?.controlBarBackgroundColor;
     final hasCustomBarBg = controlBarBg != null && controlBarBg.opacity != 0;
@@ -2545,7 +2627,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       SizedBox(width: isCompact ? 10 : 12),
                       Icon(
                         Icons.search,
-                        color: controlText.withOpacity(0.7),
+                        color: tokens.searchFieldIcon.withOpacity(0.7),
                         size: iconSize,
                       ),
                       Expanded(
@@ -2555,7 +2637,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           decoration: InputDecoration(
                             hintText: 'Buscar por nombre, código...',
                             hintStyle: TextStyle(
-                              color: controlText.withOpacity(0.55),
+                              color: tokens.searchFieldIcon.withOpacity(0.55),
                               fontSize: textSize,
                             ),
                             border: InputBorder.none,
@@ -2575,7 +2657,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             await _handleBarcodeScan(q, clearSearchField: true);
                           },
                           style: TextStyle(
-                            color: controlText,
+                            color: tokens.searchFieldText,
                             fontSize: textSize,
                           ),
                         ),
@@ -2601,7 +2683,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
-  Widget _buildOperationButton({
+  Widget _buildCompactOperationButton({
     required IconData icon,
     required String label,
     required Color color,
@@ -2609,59 +2691,29 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     Color? borderColor,
     required VoidCallback onPressed,
   }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 220;
-        final btnHeight = isCompact ? 42.0 : 46.0;
-        final vPad = isCompact ? 10.0 : 12.0;
-        final hPad = isCompact ? 12.0 : 14.0;
-        final iconSize = isCompact ? 18.0 : 20.0;
-        final fontSize = isCompact ? 12.5 : 13.0;
+    final contrastColor = foregroundColor ?? ColorUtils.foregroundFor(color);
 
-        final contrastColor =
-            foregroundColor ?? ColorUtils.foregroundFor(color);
-        return ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: color,
-            foregroundColor: contrastColor,
-            padding: EdgeInsets.symmetric(vertical: vPad, horizontal: hPad),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: (borderColor == null || borderColor.opacity == 0)
-                    ? Colors.transparent
-                    : borderColor,
-                width: 1.2,
-              ),
-            ),
-            elevation: 2,
-            shadowColor: Theme.of(context).shadowColor.withOpacity(0.26),
-            minimumSize: Size.fromHeight(btnHeight),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: iconSize, color: contrastColor),
-              SizedBox(width: isCompact ? 8 : 10),
-              Flexible(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: contrastColor,
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.2,
-                    height: 1.0,
-                  ),
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20, color: contrastColor),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: contrastColor,
+          fontSize: 14.0,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.1,
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: contrastColor,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        elevation: 2,
+        shadowColor: Theme.of(context).shadowColor.withOpacity(0.20),
+        minimumSize: const Size(0, 44),
+      ),
     );
   }
 
@@ -2671,20 +2723,28 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final salesTheme = Theme.of(context).extension<SalesPageTheme>();
     final shadowColor = Theme.of(context).shadowColor;
 
+    Color ensureDarkButtonBg(Color c) {
+      final hsl = HSLColor.fromColor(c);
+      if (hsl.lightness <= 0.28) return c;
+      return hsl.withLightness(0.26).toColor();
+    }
+
     Color resolve(Color? c, Color fallback) {
       if (c == null || c.opacity == 0) return fallback;
       return c;
     }
 
-    final unifiedColor = resolve(
+    final baseButtonColor = resolve(
       salesTheme?.footerButtonsBackgroundColor,
-      scheme.primary,
+      const Color(0xFF0D2B57),
     );
+    final unifiedColor = ensureDarkButtonBg(baseButtonColor);
     final unifiedTextColor = resolve(
       salesTheme?.footerButtonsTextColor,
-      ColorUtils.foregroundFor(unifiedColor),
+      Colors.white.withOpacity(0.96),
     );
-    final unifiedBorderColor = salesTheme?.footerButtonsBorderColor;
+    final unifiedBorderColor =
+        salesTheme?.footerButtonsBorderColor ?? Colors.white.withOpacity(0.18);
     return Container(
       height: _ticketsFooterHeight,
       decoration: BoxDecoration(
@@ -2699,68 +2759,196 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: _buildOperationButton(
-                icon: Icons.account_balance,
-                label: 'Créditos',
-                color: unifiedColor,
-                foregroundColor: unifiedTextColor,
-                borderColor: unifiedBorderColor,
-                onPressed: () {
-                  AuthzService.guardedAction(
-                    context,
-                    authz_perm.Permissions.creditsView,
-                    () => context.go('/credits-list'),
-                    reason: 'Abrir creditos',
-                    resourceType: 'route',
-                    resourceId: '/credits-list',
-                  )();
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildOperationButton(
-                icon: Icons.request_quote_outlined,
-                label: 'Cotizaciones',
-                color: unifiedColor,
-                foregroundColor: unifiedTextColor,
-                borderColor: unifiedBorderColor,
-                onPressed: () {
-                  AuthzService.guardedAction(
-                    context,
-                    authz_perm.Permissions.quotesView,
-                    () => context.go('/quotes-list'),
-                    reason: 'Abrir cotizaciones',
-                    resourceType: 'route',
-                    resourceId: '/quotes-list',
-                  )();
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildOperationButton(
-                icon: Icons.assignment_return_outlined,
-                label: 'Devoluciones',
-                color: unifiedColor,
-                foregroundColor: unifiedTextColor,
-                borderColor: unifiedBorderColor,
-                onPressed: () {
-                  AuthzService.guardedAction(
-                    context,
-                    authz_perm.Permissions.returnsView,
-                    () => context.go('/returns-list'),
-                    reason: 'Abrir devoluciones',
-                    resourceType: 'route',
-                    resourceId: '/returns-list',
-                  )();
-                },
-              ),
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 520;
+            final compactColor = ensureDarkButtonBg(
+              resolve(salesTheme?.footerButtonsBackgroundColor, unifiedColor),
+            );
+            final compactText = resolve(
+              salesTheme?.footerButtonsTextColor,
+              Colors.white.withOpacity(0.96),
+            );
+
+            if (isNarrow) {
+              // Mostrar botones compactos flotando también en pantallas pequeñas
+              return Row(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildCompactOperationButton(
+                          icon: Icons.add_circle_outline,
+                          label: 'Entrada',
+                          color: compactColor,
+                          foregroundColor: compactText,
+                          borderColor: unifiedBorderColor,
+                          onPressed: () =>
+                              _openCashMovement(CashMovementType.income),
+                        ),
+                        const SizedBox(width: 10),
+                        _buildCompactOperationButton(
+                          icon: Icons.remove_circle_outline,
+                          label: 'Retiro',
+                          color: compactColor,
+                          foregroundColor: compactText,
+                          borderColor: unifiedBorderColor,
+                          onPressed: () =>
+                              _openCashMovement(CashMovementType.outcome),
+                        ),
+                        const SizedBox(width: 14),
+                        Container(
+                          width: 1,
+                          height: 28,
+                          color: unifiedBorderColor.withOpacity(0.35),
+                        ),
+                        const SizedBox(width: 14),
+                        _buildCompactOperationButton(
+                          icon: Icons.account_balance,
+                          label: 'Créditos',
+                          color: compactColor,
+                          foregroundColor: compactText,
+                          borderColor: unifiedBorderColor,
+                          onPressed: () {
+                            AuthzService.guardedAction(
+                              context,
+                              authz_perm.Permissions.creditsView,
+                              () => context.go('/credits-list'),
+                              reason: 'Abrir creditos',
+                              resourceType: 'route',
+                              resourceId: '/credits-list',
+                            )();
+                          },
+                        ),
+                        const SizedBox(width: 10),
+                        _buildCompactOperationButton(
+                          icon: Icons.request_quote_outlined,
+                          label: 'Cotizaciones',
+                          color: compactColor,
+                          foregroundColor: compactText,
+                          borderColor: unifiedBorderColor,
+                          onPressed: () {
+                            AuthzService.guardedAction(
+                              context,
+                              authz_perm.Permissions.quotesView,
+                              () => context.go('/quotes-list'),
+                              reason: 'Abrir cotizaciones',
+                              resourceType: 'route',
+                              resourceId: '/quotes-list',
+                            )();
+                          },
+                        ),
+                        const SizedBox(width: 10),
+                        _buildCompactOperationButton(
+                          icon: Icons.assignment_return_outlined,
+                          label: 'Devoluciones',
+                          color: compactColor,
+                          foregroundColor: compactText,
+                          borderColor: unifiedBorderColor,
+                          onPressed: () {
+                            AuthzService.guardedAction(
+                              context,
+                              authz_perm.Permissions.returnsView,
+                              () => context.go('/returns-list'),
+                              reason: 'Abrir devoluciones',
+                              resourceType: 'route',
+                              resourceId: '/returns-list',
+                            )();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            // En pantallas amplias usamos botones compactos, alineados a la derecha
+            return Row(
+              children: [
+                _buildCompactOperationButton(
+                  icon: Icons.add_circle_outline,
+                  label: 'Entrada',
+                  color: unifiedColor,
+                  foregroundColor: unifiedTextColor,
+                  borderColor: unifiedBorderColor,
+                  onPressed: () => _openCashMovement(CashMovementType.income),
+                ),
+                SizedBox(width: 10),
+                _buildCompactOperationButton(
+                  icon: Icons.remove_circle_outline,
+                  label: 'Retiro',
+                  color: unifiedColor,
+                  foregroundColor: unifiedTextColor,
+                  borderColor: unifiedBorderColor,
+                  onPressed: () => _openCashMovement(CashMovementType.outcome),
+                ),
+                SizedBox(width: 14),
+                Container(
+                  width: 1,
+                  height: 28,
+                  color: unifiedBorderColor.withOpacity(0.35),
+                ),
+                SizedBox(width: 14),
+                const Spacer(),
+                _buildCompactOperationButton(
+                  icon: Icons.account_balance,
+                  label: 'Créditos',
+                  color: unifiedColor,
+                  foregroundColor: unifiedTextColor,
+                  borderColor: unifiedBorderColor,
+                  onPressed: () {
+                    AuthzService.guardedAction(
+                      context,
+                      authz_perm.Permissions.creditsView,
+                      () => context.go('/credits-list'),
+                      reason: 'Abrir creditos',
+                      resourceType: 'route',
+                      resourceId: '/credits-list',
+                    )();
+                  },
+                ),
+                SizedBox(width: 10),
+                _buildCompactOperationButton(
+                  icon: Icons.request_quote_outlined,
+                  label: 'Cotizaciones',
+                  color: unifiedColor,
+                  foregroundColor: unifiedTextColor,
+                  borderColor: unifiedBorderColor,
+                  onPressed: () {
+                    AuthzService.guardedAction(
+                      context,
+                      authz_perm.Permissions.quotesView,
+                      () => context.go('/quotes-list'),
+                      reason: 'Abrir cotizaciones',
+                      resourceType: 'route',
+                      resourceId: '/quotes-list',
+                    )();
+                  },
+                ),
+                SizedBox(width: 10),
+                _buildCompactOperationButton(
+                  icon: Icons.assignment_return_outlined,
+                  label: 'Devoluciones',
+                  color: unifiedColor,
+                  foregroundColor: unifiedTextColor,
+                  borderColor: unifiedBorderColor,
+                  onPressed: () {
+                    AuthzService.guardedAction(
+                      context,
+                      authz_perm.Permissions.returnsView,
+                      () => context.go('/returns-list'),
+                      reason: 'Abrir devoluciones',
+                      resourceType: 'route',
+                      resourceId: '/returns-list',
+                    )();
+                  },
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -3172,7 +3360,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               children: [
                 _buildCompactStepperButton(Icons.remove, () {
                   if (item.qty > 1) {
-                    setState(
+                    _updateCurrentCart(
                       () => _currentCart.updateQuantity(index, item.qty - 1),
                     );
                   }
@@ -3215,7 +3403,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () => setState(() => _currentCart.removeItem(index)),
+                onTap: () =>
+                    _updateCurrentCart(() => _currentCart.removeItem(index)),
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
                   width: 36,
@@ -3304,7 +3493,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             value: _currentCart.itbisEnabled,
                             onChanged: _currentCart.fiscalEnabled
                                 ? null
-                                : (value) => setState(
+                                : (value) => _updateCurrentCart(
                                     () => _currentCart.itbisEnabled = value,
                                   ),
                             activeColor: scheme.primary,
@@ -3342,14 +3531,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             value: _currentCart.fiscalEnabled,
                             onChanged: (value) async {
                               if (!value) {
-                                setState(() {
+                                _updateCurrentCart(() {
                                   _currentCart.fiscalEnabled = false;
                                   _currentCart.selectedNcf = null;
                                 });
                                 return;
                               }
 
-                              setState(() {
+                              _updateCurrentCart(() {
                                 _currentCart.fiscalEnabled = true;
                                 _currentCart.itbisEnabled = true;
                               });
@@ -3358,7 +3547,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               if (!mounted) return;
 
                               if (_availableNcfs.isEmpty) {
-                                setState(() {
+                                _updateCurrentCart(() {
                                   _currentCart.fiscalEnabled = false;
                                   _currentCart.selectedNcf = null;
                                 });
@@ -3373,7 +3562,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 return;
                               }
 
-                              setState(
+                              _updateCurrentCart(
                                 () => _currentCart.selectedNcf ??=
                                     _availableNcfs.first,
                               );
@@ -3430,7 +3619,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                               );
                               if (!mounted || selected == null) return;
-                              setState(
+                              _updateCurrentCart(
                                 () => _currentCart.selectedNcf = selected,
                               );
                             },
@@ -3823,7 +4012,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               value: _currentCart.itbisEnabled,
                               onChanged: _currentCart.fiscalEnabled
                                   ? null
-                                  : (value) => setState(
+                                  : (value) => _updateCurrentCart(
                                       () => _currentCart.itbisEnabled = value,
                                     ),
                               activeColor: scheme.primary,
@@ -3868,7 +4057,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               value: _currentCart.fiscalEnabled,
                               onChanged: (value) async {
                                 if (!value) {
-                                  setState(() {
+                                  _updateCurrentCart(() {
                                     _currentCart.fiscalEnabled = false;
                                     _currentCart.selectedNcf = null;
                                   });
@@ -3876,7 +4065,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 }
 
                                 // Activar valor fiscal implica ITBIS activo
-                                setState(() {
+                                _updateCurrentCart(() {
                                   _currentCart.fiscalEnabled = true;
                                   _currentCart.itbisEnabled = true;
                                 });
@@ -3885,7 +4074,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 if (!mounted) return;
 
                                 if (_availableNcfs.isEmpty) {
-                                  setState(() {
+                                  _updateCurrentCart(() {
                                     _currentCart.fiscalEnabled = false;
                                     _currentCart.selectedNcf = null;
                                   });
@@ -3901,7 +4090,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 }
 
                                 // Preseleccionar el primero disponible para que quede listo
-                                setState(() {
+                                _updateCurrentCart(() {
                                   _currentCart.selectedNcf ??=
                                       _availableNcfs.first;
                                 });
@@ -3960,7 +4149,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                       ),
                                     );
                                   }).toList(),
-                                  onChanged: (ncf) => setState(
+                                  onChanged: (ncf) => _updateCurrentCart(
                                     () => _currentCart.selectedNcf = ncf,
                                   ),
                                 ),
@@ -4213,7 +4402,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 const SizedBox(width: 4),
                 InkWell(
-                  onTap: () => setState(() => _currentCart.removeItem(index)),
+                  onTap: () =>
+                      _updateCurrentCart(() => _currentCart.removeItem(index)),
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
                     padding: const EdgeInsets.all(4),

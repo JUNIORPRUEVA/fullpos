@@ -403,16 +403,13 @@ class WindowService {
   }) async {
     if (!_isInitialized) return;
 
-    // Mantener título estable para una apariencia comercial consistente.
-    await windowManager.setTitle('Los Nirkas POS');
-
-    final candidate = (logoPath ?? '').trim();
-    if (candidate.isNotEmpty && File(candidate).existsSync()) {
-      try {
-        await windowManager.setIcon(candidate);
-      } catch (_) {
-        // Ignorar si la plataforma o el formato no es compatible.
-      }
+    // CRÍTICO (marca FULLPOS): el branding de ventana NO debe depender de
+    // configuración del cliente. El icono del sistema debe venir fijo desde
+    // los recursos nativos (exe/launcher) generados por build.
+    try {
+      await windowManager.setTitle('FULLPOS');
+    } catch (_) {
+      // Ignorar.
     }
   }
 

@@ -1,21 +1,10 @@
 import 'dart:convert';
 
-enum BackupMode {
-  local,
-  cloud,
-}
+enum BackupMode { local, cloud }
 
-enum BackupStatus {
-  success,
-  failed,
-  inProgress,
-}
+enum BackupStatus { success, failed, pendingUpload, inProgress }
 
-enum BackupTrigger {
-  manual,
-  autoWindowClose,
-  autoLifecycle,
-}
+enum BackupTrigger { manual, autoWindowClose, autoLifecycle }
 
 class BackupMeta {
   const BackupMeta({
@@ -43,17 +32,17 @@ class BackupMeta {
   final bool? integrityCheckOk;
 
   Map<String, dynamic> toJson() => {
-        'createdAt': createdAtIso,
-        'trigger': trigger.name,
-        'appVersion': appVersion,
-        'platform': platform,
-        'dbFileName': dbFileName,
-        'includedPaths': includedPaths,
-        'dbVersion': dbVersion,
-        if (checksumSha256 != null) 'checksumSha256': checksumSha256,
-        if (notes != null) 'notes': notes,
-        if (integrityCheckOk != null) 'integrityCheckOk': integrityCheckOk,
-      };
+    'createdAt': createdAtIso,
+    'trigger': trigger.name,
+    'appVersion': appVersion,
+    'platform': platform,
+    'dbFileName': dbFileName,
+    'includedPaths': includedPaths,
+    'dbVersion': dbVersion,
+    if (checksumSha256 != null) 'checksumSha256': checksumSha256,
+    if (notes != null) 'notes': notes,
+    if (integrityCheckOk != null) 'integrityCheckOk': integrityCheckOk,
+  };
 
   String toPrettyJson() => const JsonEncoder.withIndent('  ').convert(toJson());
 }
@@ -117,11 +106,13 @@ class BackupHistoryEntry {
     BackupMode? mode,
     BackupStatus? status,
     String? filePath,
+    bool clearFilePath = false,
     String? cloudBackupId,
     int? sizeBytes,
     String? checksumSha256,
     String? notes,
     String? errorMessage,
+    bool clearErrorMessage = false,
   }) {
     return BackupHistoryEntry(
       id: id,
@@ -133,12 +124,14 @@ class BackupHistoryEntry {
       appVersion: appVersion,
       deviceId: deviceId,
       usuarioId: usuarioId,
-      filePath: filePath ?? this.filePath,
+      filePath: clearFilePath ? null : (filePath ?? this.filePath),
       cloudBackupId: cloudBackupId ?? this.cloudBackupId,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       checksumSha256: checksumSha256 ?? this.checksumSha256,
       notes: notes ?? this.notes,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: clearErrorMessage
+          ? null
+          : (errorMessage ?? this.errorMessage),
     );
   }
 
@@ -186,6 +179,8 @@ class BackupHistoryEntry {
         return 'SUCCESS';
       case BackupStatus.failed:
         return 'FAILED';
+      case BackupStatus.pendingUpload:
+        return 'PENDING_UPLOAD';
       case BackupStatus.inProgress:
         return 'IN_PROGRESS';
     }
@@ -197,6 +192,8 @@ class BackupHistoryEntry {
         return BackupStatus.success;
       case 'FAILED':
         return BackupStatus.failed;
+      case 'PENDING_UPLOAD':
+        return BackupStatus.pendingUpload;
       case 'IN_PROGRESS':
       default:
         return BackupStatus.inProgress;
@@ -245,4 +242,17 @@ class DangerActionLogEntry {
     'result': result,
     'error_message': errorMessage,
   };
+
+  factory DangerActionLogEntry.fromMap(Map<String, dynamic> map) {
+    return DangerActionLogEntry(
+      id: map['id'] as String,
+      empresaId: map['empresa_id'] as String,
+      usuarioId: map['usuario_id'] as int? ?? 0,
+      action: map['action'] as String? ?? 'UNKNOWN',
+      createdAtMs: map['created_at'] as int? ?? 0,
+      confirmedByPhrase: map['confirmed_by_phrase'] as String? ?? '',
+      result: map['result'] as String? ?? 'UNKNOWN',
+      errorMessage: map['error_message'] as String?,
+    );
+  }
 }

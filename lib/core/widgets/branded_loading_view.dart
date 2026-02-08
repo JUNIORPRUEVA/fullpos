@@ -63,7 +63,7 @@ class BrandedLoadingView extends ConsumerWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: Image.asset(
-                'assets/imagen/windowlogo.png',
+                'assets/imagen/lonchericon.png',
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => Center(
                   child: Icon(

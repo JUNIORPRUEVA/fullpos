@@ -109,7 +109,7 @@ class _BootstrapLoadingScreenState extends State<BootstrapLoadingScreen> {
                               fit: BoxFit.cover,
                             )
                           : Image.asset(
-                              'assets/imagen/windowlogo.png',
+                              'assets/imagen/lonchericon.png',
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) =>
                                   Center(

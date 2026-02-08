@@ -66,9 +66,7 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const _BusyDialog(
-        message: 'Guardando backup...',
-      ),
+      builder: (_) => const _BusyDialog(message: 'Guardando backup...'),
     );
 
     try {
@@ -86,7 +84,7 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
 
       if (result.ok) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup completado.')),
+          SnackBar(content: Text(result.messageUser ?? 'Backup completado.')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -118,8 +116,10 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     );
 
     try {
-      final result =
-          await RestoreService.instance.restoreLocal(zipPath: entry.filePath!);
+      final result = await RestoreService.instance.restoreLocal(
+        zipPath: entry.filePath!,
+        expectedChecksumSha256: entry.checksumSha256,
+      );
       if (rootNavigator.canPop()) {
         rootNavigator.pop();
       }
@@ -127,9 +127,11 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
       await _load();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result.ok
-              ? 'Backup restaurado. Reinicia la app.'
-              : (result.messageUser ?? 'No se pudo restaurar.')),
+          content: Text(
+            result.ok
+                ? 'Backup restaurado. Reinicia la app.'
+                : (result.messageUser ?? 'No se pudo restaurar.'),
+          ),
         ),
       );
     } finally {
@@ -159,6 +161,7 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     try {
       final result = await RestoreService.instance.restoreFromCloud(
         cloudBackupId: entry.cloudBackupId!,
+        expectedChecksumSha256: entry.checksumSha256,
       );
       if (rootNavigator.canPop()) {
         rootNavigator.pop();
@@ -167,9 +170,50 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
       await _load();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result.ok
-              ? 'Backup de nube restaurado. Reinicia la app.'
-              : (result.messageUser ?? 'No se pudo restaurar.')),
+          content: Text(
+            result.ok
+                ? 'Backup de nube restaurado. Reinicia la app.'
+                : (result.messageUser ?? 'No se pudo restaurar.'),
+          ),
+        ),
+      );
+    } finally {
+      if (rootNavigator.canPop()) {
+        rootNavigator.pop();
+      }
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _retryCloudUpload(BackupHistoryEntry entry) async {
+    if (_busy) return;
+
+    setState(() => _busy = true);
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _BusyDialog(message: 'Reintentando subida...'),
+    );
+
+    try {
+      final result = await BackupOrchestrator.instance.retryCloudUpload(
+        entry: entry,
+      );
+      if (rootNavigator.canPop()) {
+        rootNavigator.pop();
+      }
+      if (!mounted) return;
+      await _load();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.ok
+                ? 'Subida a nube completada.'
+                : (result.messageUser ?? 'No se pudo subir.'),
+          ),
         ),
       );
     } finally {
@@ -278,10 +322,8 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     required String message,
     required String phraseHint,
     required String confirmText,
-    required Future<DangerActionResult> Function(
-      String phrase,
-      String pin,
-    ) action,
+    required Future<DangerActionResult> Function(String phrase, String pin)
+    action,
   }) async {
     final result = await showDialog<ConfirmPhraseResult>(
       context: context,
@@ -310,9 +352,9 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
       }
       if (!mounted) return;
       await _load();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(outcome.messageUser)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(outcome.messageUser)));
     } finally {
       if (rootNavigator.canPop()) {
         rootNavigator.pop();
@@ -387,41 +429,40 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
                   history: _history,
                   onRestoreLocal: _busy ? (_) {} : _restoreLocal,
                   onRestoreCloud: _busy ? (_) {} : _restoreCloud,
+                  onRetryCloudUpload: _busy ? (_) {} : _retryCloudUpload,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                 ),
                 const SizedBox(height: 12),
-                  if (_isAdmin)
-                    DangerZoneActions(
-                      onResetLocal: _busy
-                          ? () {}
-                          : () => _handleDangerAction(
-                                title: 'Resetear Base de Datos',
-                                message:
-                                    'Deja la empresa en limpio. Esta accion no se puede deshacer.',
-                                phraseHint: 'Escribe: RESETEAR EMPRESA',
-                                confirmText: 'Resetear',
-                                action: (phrase, pin) =>
-                                    DangerActionsService.instance.resetLocal(
+                if (_isAdmin)
+                  DangerZoneActions(
+                    onResetLocal: _busy
+                        ? () {}
+                        : () => _handleDangerAction(
+                            title: 'Resetear Base de Datos',
+                            message:
+                                'Deja la empresa en limpio. Esta accion no se puede deshacer.',
+                            phraseHint: 'Escribe: RESETEAR EMPRESA',
+                            confirmText: 'Resetear',
+                            action: (phrase, pin) => DangerActionsService
+                                .instance
+                                .resetLocal(confirmedPhrase: phrase, pin: pin),
+                          ),
+                    onDeleteLocal: _busy
+                        ? () {}
+                        : () => _handleDangerAction(
+                            title: 'Borrar TODO',
+                            message:
+                                'Elimina la base de datos completa y todos los datos.',
+                            phraseHint: 'Escribe: BORRAR TODO FULLPOS',
+                            confirmText: 'Borrar TODO',
+                            action: (phrase, pin) =>
+                                DangerActionsService.instance.deleteAllLocal(
                                   confirmedPhrase: phrase,
                                   pin: pin,
                                 ),
-                              ),
-                      onDeleteLocal: _busy
-                          ? () {}
-                          : () => _handleDangerAction(
-                                title: 'Borrar TODO',
-                                message:
-                                    'Elimina la base de datos completa y todos los datos.',
-                                phraseHint: 'Escribe: BORRAR TODO FULLPOS',
-                                confirmText: 'Borrar TODO',
-                                action: (phrase, pin) =>
-                                    DangerActionsService.instance.deleteAllLocal(
-                                  confirmedPhrase: phrase,
-                                  pin: pin,
-                                ),
-                              ),
-                    ),
+                          ),
+                  ),
               ],
             ),
     );

@@ -11,6 +11,7 @@ class BackupHistoryList extends StatelessWidget {
     required this.history,
     required this.onRestoreLocal,
     required this.onRestoreCloud,
+    required this.onRetryCloudUpload,
     this.shrinkWrap = false,
     this.physics,
   });
@@ -18,6 +19,7 @@ class BackupHistoryList extends StatelessWidget {
   final List<BackupHistoryEntry> history;
   final ValueChanged<BackupHistoryEntry> onRestoreLocal;
   final ValueChanged<BackupHistoryEntry> onRestoreCloud;
+  final ValueChanged<BackupHistoryEntry> onRetryCloudUpload;
   final bool shrinkWrap;
   final ScrollPhysics? physics;
 
@@ -46,6 +48,12 @@ class BackupHistoryList extends StatelessWidget {
         final statusColor = _statusColor(context, entry.status);
         final hasLocal =
             entry.filePath != null && File(entry.filePath!).existsSync();
+        final canRetryCloud =
+            entry.mode == BackupMode.cloud &&
+            entry.cloudBackupId == null &&
+            hasLocal &&
+            (entry.status == BackupStatus.failed ||
+                entry.status == BackupStatus.pendingUpload);
 
         return Card(
           child: Padding(
@@ -71,7 +79,7 @@ class BackupHistoryList extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      entry.status.name.toUpperCase(),
+                      _statusLabel(entry.status),
                       style: Theme.of(
                         context,
                       ).textTheme.labelMedium?.copyWith(color: statusColor),
@@ -85,7 +93,7 @@ class BackupHistoryList extends StatelessWidget {
                 ),
                 if (sizeKb != null)
                   Text(
-                    'TamaÃ±o: ${sizeKb}KB',
+                    'Tamaño: ${sizeKb}KB',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 if (entry.notes != null)
@@ -95,9 +103,11 @@ class BackupHistoryList extends StatelessWidget {
                   ),
                 if (entry.errorMessage != null)
                   Text(
-                    'Error: ${entry.errorMessage}',
+                    _errorLabel(entry.errorMessage!),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
+                      color: _isPendingError(entry.errorMessage!)
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : Theme.of(context).colorScheme.error,
                     ),
                   ),
                 const SizedBox(height: 8),
@@ -109,6 +119,12 @@ class BackupHistoryList extends StatelessWidget {
                         onPressed: () => onRestoreCloud(entry),
                         icon: const Icon(Icons.cloud_download),
                         label: const Text('Restaurar nube'),
+                      ),
+                    if (canRetryCloud)
+                      FilledButton.icon(
+                        onPressed: () => onRetryCloudUpload(entry),
+                        icon: const Icon(Icons.cloud_upload),
+                        label: const Text('Reintentar nube'),
                       ),
                     if (hasLocal)
                       OutlinedButton.icon(
@@ -133,8 +149,38 @@ class BackupHistoryList extends StatelessWidget {
         return scheme.primary;
       case BackupStatus.failed:
         return scheme.error;
+      case BackupStatus.pendingUpload:
+        return scheme.tertiary;
       case BackupStatus.inProgress:
         return scheme.secondary;
     }
+  }
+
+  String _statusLabel(BackupStatus status) {
+    switch (status) {
+      case BackupStatus.success:
+        return 'OK';
+      case BackupStatus.failed:
+        return 'FALLÓ';
+      case BackupStatus.pendingUpload:
+        return 'PENDIENTE';
+      case BackupStatus.inProgress:
+        return 'PROCESANDO';
+    }
+  }
+
+  String _errorLabel(String error) {
+    const prefix = 'PENDING_UPLOAD:';
+    final trimmed = error.trim();
+    if (trimmed.startsWith(prefix)) {
+      final reason = trimmed.substring(prefix.length).trim();
+      return 'Pendiente: ${reason.isEmpty ? 'reintentar' : reason}';
+    }
+    return 'Error: $error';
+  }
+
+  bool _isPendingError(String error) {
+    const prefix = 'PENDING_UPLOAD:';
+    return error.trim().startsWith(prefix);
   }
 }

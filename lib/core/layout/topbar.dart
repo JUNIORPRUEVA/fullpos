@@ -11,6 +11,7 @@ import '../window/window_service.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/cash/data/cash_repository.dart';
 import '../../features/cash/ui/cash_open_dialog.dart';
+import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../../features/settings/providers/theme_provider.dart';
 
@@ -41,18 +42,86 @@ class _TopbarState extends ConsumerState<Topbar> {
 
   bool _canAccessCash = false;
   int? _openCashSessionId;
-
-  Future<void> _logout() async {
-    await SessionManager.logout();
-    if (mounted) context.go('/login');
-  }
+  bool _isCashHover = false;
 
   Future<void> _minimize() async {
     await WindowService.minimize();
   }
 
   Future<void> _closeApp() async {
-    await WindowService.close();
+    // Si la caja está abierta, advertir y ofrecer ir a caja o salir de todos modos
+    if (_openCashSessionId != null) {
+      final action = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Caja abierta'),
+          content: Text('La caja está abierta (turno #$_openCashSessionId).\nDebes cerrar el turno antes de salir. ¿Qué deseas hacer?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'close_session'),
+              child: const Text('Hacer corte'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, 'force'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('Salir de todos modos'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        ),
+      );
+
+      if (action == 'close_session') {
+        final sessionId = _openCashSessionId;
+        if (sessionId == null || !context.mounted) return;
+
+        final closed = await CashCloseDialog.show(context, sessionId: sessionId);
+        await _loadOpenCashSessionId();
+        if (!context.mounted) return;
+
+        // Si cerró (corte OK), ya puede salir.
+        if (closed == true) {
+          await WindowService.close();
+        }
+        return;
+      }
+
+      if (action == 'force') {
+        await WindowService.close();
+        return;
+      }
+
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cerrar aplicación'),
+        content: const Text('¿Estás seguro que deseas cerrar la aplicación?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: const Text('Cerrar aplicación'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await WindowService.close();
+    }
   }
 
   @override
@@ -158,63 +227,14 @@ class _TopbarState extends ConsumerState<Topbar> {
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 900;
         final s = widget.scale.clamp(0.85, 1.12);
-        final topbarHeight = (AppSizes.topbarHeight * s).clamp(52.0, 72.0);
+        final topbarHeight = (AppSizes.topbarHeight * s).clamp(46.0, 66.0);
         final padM = AppSizes.paddingM * s;
         final padL = AppSizes.paddingL * s;
         final spaceS = AppSizes.spaceS * s;
         final spaceM = AppSizes.spaceM * s;
-        final radiusM = AppSizes.radiusM * s;
+        final horizontalPad = ((isCompact ? padM : padL) * 0.75).clamp(10.0, 20.0);
 
-        Widget cashControl() {
-          final isOpen = _openCashSessionId != null;
-          final statusColor = isOpen
-              ? (status?.success ?? scheme.tertiary)
-              : (status?.error ?? scheme.error);
 
-          final tooltip = isOpen
-              ? 'Caja abierta (turno #$_openCashSessionId)\nClic para ver panel'
-              : 'Caja cerrada\nClic para abrir';
-
-          // Botón compacto (solo ícono) para una Topbar más limpia.
-          final icon = isOpen ? Icons.lock_open_outlined : Icons.lock_outline;
-          final btnSize = (40 * s).clamp(36.0, 44.0);
-          final iconSize = (20 * s).clamp(18.0, 22.0);
-          final bg = Color.alphaBlend(
-            scheme.surface.withValues(alpha: 0.72),
-            appBarBg.withValues(alpha: 0.18),
-          );
-          final border = scheme.outlineVariant.withValues(alpha: 0.35);
-
-          return Tooltip(
-            message: tooltip,
-            waitDuration: const Duration(milliseconds: 350),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _onCashPressed,
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: btnSize,
-                  height: btnSize,
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: border, width: 1),
-                    boxShadow: [
-                      BoxShadow(
-                        color: scheme.shadow.withValues(alpha: 0.16),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(icon, size: iconSize, color: statusColor),
-                ),
-              ),
-            ),
-          );
-        }
 
         Widget actionIconButton({
           required IconData icon,
@@ -222,17 +242,22 @@ class _TopbarState extends ConsumerState<Topbar> {
           required VoidCallback onTap,
           Color? customFg,
           Color? customBg,
+          Color? borderColor,
+          double borderWidth = 0.0,
         }) {
-          final btnSize = (40 * s).clamp(36.0, 44.0);
-          final iconSize = (20 * s).clamp(18.0, 22.0);
+          final btnSize = (36 * s).clamp(32.0, 40.0);
+          final iconSize = (18 * s).clamp(16.0, 20.0);
           final bg =
               customBg ??
               Color.alphaBlend(
                 scheme.surface.withValues(alpha: 0.72),
                 appBarBg.withValues(alpha: 0.18),
               );
-          final border = scheme.outlineVariant.withValues(alpha: 0.35);
+          final border = borderColor ?? scheme.outlineVariant.withValues(alpha: 0.25);
           final fg = customFg ?? ColorUtils.ensureReadableColor(appBarFg, bg);
+
+          final shadowAlpha = borderWidth > 0 ? 0.12 : 0.06;
+          final blur = borderWidth > 0 ? 10.0 : 6.0;
 
           return Tooltip(
             message: tooltip,
@@ -249,11 +274,11 @@ class _TopbarState extends ConsumerState<Topbar> {
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: border, width: 1),
+                    border: borderWidth > 0 ? Border.all(color: border, width: borderWidth) : null,
                     boxShadow: [
                       BoxShadow(
-                        color: scheme.shadow.withValues(alpha: 0.16),
-                        blurRadius: 10,
+                        color: scheme.shadow.withValues(alpha: shadowAlpha),
+                        blurRadius: blur,
                         offset: const Offset(0, 4),
                       ),
                     ],
@@ -265,69 +290,19 @@ class _TopbarState extends ConsumerState<Topbar> {
           );
         }
 
-        Widget rightInfoCluster() {
-          final userLabel = (_displayName ?? _username ?? 'Usuario').trim();
 
-          final clusterBg = Color.alphaBlend(
-            scheme.surface.withValues(alpha: 0.70),
-            appBarBg.withValues(alpha: 0.20),
-          );
-          final clusterBorder = scheme.outlineVariant.withValues(alpha: 0.45);
-          final clusterFg = ColorUtils.ensureReadableColor(appBarFg, clusterBg);
-          final clusterRadius = (radiusM * 1.05).clamp(10.0, 16.0);
-          final vPad = (AppSizes.paddingXS * s).clamp(4.0, 7.0);
-          final hPad = (padM * 0.75).clamp(10.0, 16.0);
-
-          final nameMaxWidth = (isCompact ? 140.0 : 260.0) * s;
-          final nameStyle = TextStyle(
-            color: clusterFg,
-            fontSize: (13.5 * s).clamp(12.0, 15.0),
-            fontWeight: FontWeight.w800,
-            fontFamily: settings.fontFamily,
-            height: 1.05,
-          );
-
-          return Container(
-            padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
-            decoration: BoxDecoration(
-              color: clusterBg,
-              borderRadius: BorderRadius.circular(clusterRadius),
-              border: Border.all(color: clusterBorder, width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withValues(alpha: 0.14),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: nameMaxWidth),
-                  child: Text(
-                    userLabel.isNotEmpty ? userLabel : 'Usuario',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: nameStyle,
-                  ),
-                ),
-                SizedBox(width: spaceS),
-                actionIconButton(
-                  icon: Icons.person_outline,
-                  tooltip: 'Perfil',
-                  onTap: () => context.go('/account'),
-                ),
-              ],
-            ),
-          );
-        }
 
         Widget windowControls() {
           if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
             return const SizedBox.shrink();
           }
+
+          final winBtnBg = Color.alphaBlend(
+            scheme.surface.withValues(alpha: 0.12),
+            appBarBg.withValues(alpha: 0.06),
+          );
+          // Borde ligeramente más oscuro para un look más profesional
+          final winBtnBorder = appBarFg.withValues(alpha: 0.28);
 
           return Row(
             children: [
@@ -336,23 +311,19 @@ class _TopbarState extends ConsumerState<Topbar> {
                 tooltip: 'Minimizar',
                 onTap: _minimize,
                 customFg: appBarFg,
-                customBg: Colors.transparent,
+                customBg: winBtnBg,
+                borderColor: winBtnBorder,
+                borderWidth: 1.2,
               ),
-              SizedBox(width: spaceS),
-              actionIconButton(
-                icon: Icons.logout,
-                tooltip: 'Cerrar sesión',
-                onTap: _logout,
-                customFg: scheme.error,
-                customBg: Colors.transparent,
-              ),
-              SizedBox(width: spaceS),
+              SizedBox(width: spaceS * 0.6),
               actionIconButton(
                 icon: Icons.close,
                 tooltip: 'Cerrar aplicación',
                 onTap: _closeApp,
                 customFg: scheme.error,
-                customBg: Colors.transparent,
+                customBg: winBtnBg,
+                borderColor: winBtnBorder,
+                borderWidth: 1.2,
               ),
             ],
           );
@@ -384,7 +355,7 @@ class _TopbarState extends ConsumerState<Topbar> {
               ),
             ],
           ),
-          padding: EdgeInsets.symmetric(horizontal: isCompact ? padM : padL),
+          padding: EdgeInsets.symmetric(horizontal: horizontalPad),
           child: Row(
             children: [
               if (widget.showMenuButton) ...[
@@ -413,32 +384,184 @@ class _TopbarState extends ConsumerState<Topbar> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: appBarFg,
-                    fontSize: ((isCompact ? 18 : 20) * s).clamp(16.0, 22.0),
+                    fontSize: ((isCompact ? 16 : 18) * s).clamp(14.0, 20.0),
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.35,
-                    height: 1.05,
+                    height: 1.0,
                     // Evita que una fuente configurada "rara" se vea fea en el título.
                     // En Windows, Segoe UI suele verse muy profesional.
                     fontFamilyFallback: const ['Segoe UI', 'Roboto', 'Arial'],
                   ),
                 ),
               ),
-              if (_canAccessCash) ...[
-                SizedBox(width: spaceS),
-                cashControl(),
-                SizedBox(width: spaceM),
-                Container(
-                  width: 1,
-                  height: (topbarHeight * 0.60).clamp(28.0, 44.0),
-                  decoration: BoxDecoration(
-                    color: appBarFg.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(999),
+              SizedBox(width: spaceS * 0.6),
+
+              // Icono de estado de caja (caja de dinero realista) — colocado antes del perfil
+              Builder(builder: (context) {
+                final isOpen = _openCashSessionId != null;
+                final statusColor = isOpen
+                    ? (status?.success ?? scheme.tertiary)
+                    : (status?.error ?? scheme.error);
+                final tooltipBase = isOpen
+                    ? 'Caja abierta (turno #$_openCashSessionId)\nClic para ver panel'
+                    : 'Caja cerrada\nClic para abrir';
+                final tooltip = _canAccessCash
+                    ? tooltipBase
+                    : '$tooltipBase\nSi no tienes permiso, te pedirá autorización (PIN).';
+
+                final boxBg = Color.alphaBlend(
+                  scheme.surface.withValues(alpha: 0.72),
+                  appBarBg.withValues(alpha: 0.10),
+                );
+                final boxBorder = isOpen
+                    ? statusColor.withValues(alpha: 0.22)
+                    : appBarFg.withValues(alpha: 0.18);
+                final hoverBg = Color.alphaBlend(
+                  scheme.surface.withValues(alpha: 0.82),
+                  appBarBg.withValues(alpha: 0.18),
+                );
+                final hoverBorder = scheme.outlineVariant.withValues(alpha: 0.55);
+
+                return Tooltip(
+                  message: tooltip,
+                  waitDuration: const Duration(milliseconds: 350),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    onEnter: (_) => setState(() => _isCashHover = true),
+                    onExit: (_) => setState(() => _isCashHover = false),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        onTap: _onCashPressed,
+                        borderRadius: BorderRadius.circular(10),
+                         child: AnimatedContainer(
+                           duration: const Duration(milliseconds: 140),
+                           padding: EdgeInsets.symmetric(
+                             horizontal: 6.0 * s,
+                             vertical: 4.0 * s,
+                           ),
+                           decoration: BoxDecoration(
+                             color: _isCashHover ? hoverBg : boxBg,
+                             borderRadius: BorderRadius.circular(9),
+                             border: Border.all(
+                               color: _isCashHover ? hoverBorder : boxBorder,
+                               width: 1.0,
+                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: scheme.shadow.withValues(
+                                  alpha: _isCashHover ? 0.12 : 0.06,
+                                ),
+                                blurRadius: _isCashHover ? 12 : 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                             Icon(
+                               isOpen
+                                   ? Icons.account_balance_wallet
+                                   : Icons.inventory_2_rounded,
+                               size: (18 * s).clamp(16.0, 22.0),
+                               color: appBarFg.withValues(
+                                 alpha: _isCashHover ? 1.0 : 0.92,
+                               ),
+                             ),
+                             if (isOpen)
+                               Positioned(
+                                 top: -5 * s,
+                                 right: -5 * s,
+                                 child: Container(
+                                   padding: EdgeInsets.all(3.0 * s),
+                                   decoration: BoxDecoration(
+                                     color: statusColor,
+                                     shape: BoxShape.circle,
+                                     boxShadow: [
+                                        BoxShadow(
+                                          color: statusColor.withValues(
+                                            alpha: 0.18,
+                                          ),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                   child: Icon(
+                                     Icons.attach_money,
+                                     size: (10 * s).clamp(9.0, 12.0),
+                                     color: scheme.onPrimary,
+                                   ),
+                                 ),
+                               )
+                             else
+                               Positioned(
+                                 top: -5 * s,
+                                 right: -5 * s,
+                                 child: Container(
+                                   padding: EdgeInsets.all(3.0 * s),
+                                   decoration: BoxDecoration(
+                                     color: appBarFg.withValues(alpha: 0.10),
+                                     shape: BoxShape.circle,
+                                   ),
+                                   child: Icon(
+                                     Icons.lock_outline,
+                                     size: (10 * s).clamp(9.0, 12.0),
+                                     color: appBarFg.withValues(alpha: 0.70),
+                                   ),
+                                 ),
+                               ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+
+              SizedBox(width: spaceS / 1.5),
+              // Línea vertical elegante separando icono de caja y perfil/nombre
+              Container(
+                width: 1,
+                height: (topbarHeight * 0.52).clamp(20.0, 34.0),
+                decoration: BoxDecoration(
+                  color: scheme.outlineVariant.withValues(alpha: 0.28),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+
+              SizedBox(width: spaceM),
+              // Perfil compacto
+              actionIconButton(
+                icon: Icons.person_outline,
+                tooltip: 'Perfil',
+                onTap: () => context.go('/account'),
+                customBg: Colors.transparent,
+                borderWidth: 0.0,
+              ),
+
+              SizedBox(width: spaceS),
+              // Nombre del usuario (compacto, sin fondo grande)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: (isCompact ? 140.0 : 240.0) * s),
+                child: Text(
+                  (_displayName ?? _username ?? 'Usuario').trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: appBarFg,
+                    fontSize: (14.0 * s).clamp(12.0, 15.0),
+                    fontWeight: FontWeight.w700,
+                    fontFamily: settings.fontFamily,
                   ),
                 ),
-                SizedBox(width: spaceM),
-              ],
-              rightInfoCluster(),
-              SizedBox(width: spaceS),
+              ),
+              SizedBox(width: spaceM),
+              SizedBox(width: spaceS * 1.2),
+              // Window controls at the corner
               windowControls(),
             ],
           ),

@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../settings/providers/business_settings_provider.dart';
+import '../../settings/ui/training/training_page.dart';
 import '../data/owner_app_links.dart';
 import 'authorizations_page.dart';
 import 'scanner_settings_page.dart';
@@ -118,6 +119,15 @@ class ToolsPage extends ConsumerWidget {
           );
 
     final tools = <_ToolItem>[
+      _ToolItem(
+        icon: Icons.menu_book,
+        title: 'Manual y entrenamiento',
+        subtitle: 'Guías completas, estreno y respaldo',
+        color: scheme.secondary,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const TrainingPage()),
+        ),
+      ),
       _ToolItem(
         icon: Icons.verified_user_outlined,
         title: 'Autorizaciones',
@@ -255,7 +265,6 @@ class ToolsPage extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
                     Expanded(
                       child: GridView.count(
                         crossAxisCount: crossAxisCount,

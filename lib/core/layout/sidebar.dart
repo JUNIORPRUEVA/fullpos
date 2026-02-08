@@ -1,14 +1,19 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../constants/app_sizes.dart';
+import '../bootstrap/app_bootstrap_controller.dart';
+import '../errors/error_handler.dart';
 import '../session/ui_preferences.dart';
+import '../session/session_manager.dart';
 import '../theme/color_utils.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
 import '../../features/settings/providers/theme_provider.dart';
+import '../../features/products/utils/catalog_pdf_launcher.dart';
 
 /// Sidebar del layout principal con navegacion (colapsable).
 ///
@@ -120,21 +125,22 @@ class _SidebarState extends ConsumerState<Sidebar> {
           final effectiveCollapsed = _isCollapsed || constraints.maxWidth < 160;
 
           Widget logoImage({required double size}) {
-            if (logoFile == null || !logoFile.existsSync()) {
-              return Icon(
-                Icons.storefront,
-                size: size,
-                color: sidebarTextColor.withOpacity(0.92),
-              );
-            }
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.file(
+            if (logoFile != null && logoFile.existsSync()) {
+              return Image.file(
                 logoFile,
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
-              ),
+                filterQuality: FilterQuality.high,
+              );
+            }
+
+            return Image.asset(
+              'assets/imagen/lonchericon.png',
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.high,
             );
           }
 
@@ -144,44 +150,120 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       : 'FULLPOS')
                   .toUpperCase();
 
-          final header = SizedBox(
-            height: topbarHeight,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: padM),
-              child: Row(
-                children: [
-                  logoImage(size: (40 * s).clamp(32.0, 44.0)),
-                  if (!effectiveCollapsed) ...[
-                    SizedBox(width: padS),
-                    Expanded(
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: sidebarTextColor,
-                          fontWeight: FontWeight.w900,
-                          fontSize: (14.5 * s).clamp(12.0, 15.5),
-                          letterSpacing: 0.4,
+          final header = LayoutBuilder(
+            builder: (context, headerConstraints) {
+              final availableWidth = headerConstraints.maxWidth;
+              final horizontalPad = effectiveCollapsed
+                  ? (padS * 0.6).clamp(4.0, 10.0)
+                  : padM;
+              final contentWidth = math.max(
+                0.0,
+                availableWidth - (horizontalPad * 2),
+              );
+
+              final desiredLogoSize = effectiveCollapsed
+                  ? (48 * s).clamp(36.0, 52.0)
+                  : (40 * s).clamp(32.0, 44.0);
+
+              // In collapsed mode: show ONLY the logo (no chevron button).
+              // Tap the logo to expand the menu.
+              final desiredBtnSize = (40 * s).clamp(32.0, 44.0);
+              final btnSize = effectiveCollapsed
+                  ? 0.0
+                  : math.min(desiredBtnSize, contentWidth);
+              final gap = (!effectiveCollapsed && contentWidth > 0) ? padS : 0.0;
+
+              final maxLogoSize = contentWidth - btnSize - gap;
+              final showLogo = maxLogoSize >= 24.0;
+              final logoSize = showLogo ? math.min(desiredLogoSize, maxLogoSize) : 0.0;
+
+              return SizedBox(
+                height: topbarHeight,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPad),
+                  child: Row(
+                    mainAxisAlignment:
+                        effectiveCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+                    children: [
+                      if (showLogo)
+                        Tooltip(
+                          message: effectiveCollapsed ? 'Expandir menú' : 'Menú',
+                          waitDuration: const Duration(milliseconds: 350),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: effectiveCollapsed ? _toggleSidebar : null,
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.all(2),
+                                child: SizedBox(
+                                  width: logoSize,
+                                  height: logoSize,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: logoImage(size: logoSize),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
-                  IconButton(
-                    tooltip: effectiveCollapsed
-                        ? 'Expandir menu'
-                        : 'Colapsar menu',
-                    onPressed: _toggleSidebar,
-                    icon: Icon(
-                      effectiveCollapsed
-                          ? Icons.chevron_right
-                          : Icons.chevron_left,
-                      color: sidebarTextColor.withOpacity(0.95),
-                    ),
+                      if (!effectiveCollapsed) ...[
+                        SizedBox(width: padS),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: sidebarTextColor,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: (14.5 * s).clamp(12.0, 15.5),
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Sistema POS',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: sidebarTextColor.withOpacity(0.78),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: (11.0 * s).clamp(9.5, 12.5),
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (!effectiveCollapsed) ...[
+                        const SizedBox(width: 6),
+                        IconButton(
+                          tooltip: 'Colapsar menú',
+                          onPressed: _toggleSidebar,
+                          padding: EdgeInsets.zero,
+                          constraints: BoxConstraints.tightFor(
+                            width: btnSize,
+                            height: btnSize,
+                          ),
+                          iconSize: (22 * s).clamp(18.0, 24.0),
+                          icon: Icon(
+                            Icons.chevron_left,
+                            color: sidebarTextColor.withOpacity(0.95),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           );
 
           Widget sectionLabel(String text) {
@@ -266,19 +348,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     ),
                     sectionLabel('Caja'),
                     PremiumNavItem(
-                      icon: Icons.point_of_sale_outlined,
-                      title: 'Caja',
-                      route: '/cash',
-                      onTap: () => _go(context, '/cash'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.history,
-                      title: 'Historial de caja',
+                      icon: Icons.receipt_long_outlined,
+                      title: 'Corte',
                       route: '/cash/history',
                       onTap: () => _go(context, '/cash/history'),
                       isCollapsed: effectiveCollapsed,
@@ -304,6 +375,17 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       title: 'Productos',
                       route: '/products',
                       onTap: () => _go(context, '/products'),
+                      isCollapsed: effectiveCollapsed,
+                      textColor: sidebarTextColor,
+                      activeColor: activeColor,
+                      hoverColor: hoverColor,
+                      scale: s,
+                    ),
+                    PremiumNavItem(
+                      icon: Icons.picture_as_pdf,
+                      title: 'Producto PDF',
+                      route: null,
+                      onTap: () => CatalogPdfLauncher.openFromSidebar(context),
                       isCollapsed: effectiveCollapsed,
                       textColor: sidebarTextColor,
                       activeColor: activeColor,
@@ -412,53 +494,75 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       hoverColor: hoverColor,
                       scale: s,
                     ),
-                    PremiumNavItem(
-                      icon: Icons.print_outlined,
-                      title: 'Impresoras',
-                      route: '/settings/printer',
-                      onTap: () => _go(context, '/settings/printer'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.list_alt_outlined,
-                      title: 'Logs',
-                      route: '/settings/logs',
-                      onTap: () => _go(context, '/settings/logs'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.backup_outlined,
-                      title: 'Backup',
-                      route: '/settings/backup',
-                      onTap: () => _go(context, '/settings/backup'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    sectionLabel('Cuenta'),
-                    PremiumNavItem(
-                      icon: Icons.person_outline,
-                      title: 'Cuenta',
-                      route: '/account',
-                      onTap: () => _go(context, '/account'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
+
                     SizedBox(height: (AppSizes.spaceXL * 2) * s),
                   ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Fixed logout button at end of sidebar
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: padM, vertical: (12 * s).clamp(10.0, 16.0)),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular((12 * s).clamp(8.0, 14.0)),
+                    color: Color.alphaBlend(scheme.error.withOpacity(0.06), sidebarBg.withOpacity(0.02)),
+                  ),
+                  child: PremiumNavItem(
+                    icon: Icons.logout,
+                    title: 'Cerrar sesión',
+                    route: null,
+                    onTap: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Cerrar sesión'),
+                          content: const Text('¿Deseas cerrar sesión del sistema?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+                            ElevatedButton.icon(
+                              onPressed: () => Navigator.pop(context, true),
+                              icon: const Icon(Icons.logout),
+                              label: const Text('Cerrar sesión'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: scheme.error,
+                                foregroundColor: scheme.onError,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true) {
+                        try {
+                          ref.read(appBootstrapProvider).forceLoggedOut();
+                          await SessionManager.logout();
+                          await ref.read(appBootstrapProvider).refreshAuth();
+                          // Navegar usando el contexto root para evitar quedarse
+                          // atrapado dentro del ShellRoute.
+                          if (!context.mounted) return;
+                          final rootCtx =
+                              ErrorHandler.navigatorKey.currentContext ?? context;
+                          GoRouter.of(rootCtx).refresh();
+                          GoRouter.of(rootCtx).go('/login');
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('No se pudo cerrar sesión: $e'),
+                                backgroundColor: scheme.error,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    isCollapsed: effectiveCollapsed,
+                    textColor: sidebarTextColor,
+                    activeColor: scheme.error,
+                    hoverColor: hoverColor,
+                    scale: s,
+                  ),
                 ),
               ),
             ],
@@ -533,11 +637,14 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     const duration = Duration(milliseconds: 180);
     final pillRadius = BorderRadius.circular((16 * s).clamp(12.0, 16.0));
 
-    final activeOnColor = ColorUtils.readableTextColor(widget.activeColor);
-    final fgColor = isActive
-        ? activeOnColor.withOpacity(0.96)
-        : widget.textColor;
-    final iconColor = isActive ? widget.activeColor : widget.textColor;
+    final idleBg = widget.textColor.withOpacity(0.04);
+    final hoverBgA = widget.hoverColor.withOpacity(0.14);
+    final hoverBgB = widget.hoverColor.withOpacity(0.06);
+    final activeBgA = widget.activeColor.withOpacity(0.22);
+    final activeBgB = widget.activeColor.withOpacity(0.10);
+
+    final fgColor = isActive ? widget.textColor.withOpacity(0.98) : widget.textColor;
+    final iconColor = isActive ? widget.activeColor.withOpacity(0.95) : widget.textColor;
 
     final item = Padding(
       padding: EdgeInsets.symmetric(
@@ -571,8 +678,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                 gradient: isActive
                     ? LinearGradient(
                         colors: [
-                          widget.activeColor.withValues(alpha: 0.95),
-                          widget.activeColor.withValues(alpha: 0.70),
+                          activeBgA,
+                          activeBgB,
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -580,8 +687,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                     : (_isHover
                           ? LinearGradient(
                               colors: [
-                                widget.hoverColor.withOpacity(0.22),
-                                widget.hoverColor.withOpacity(0.08),
+                                hoverBgA,
+                                hoverBgB,
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
@@ -589,18 +696,18 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           : null),
                 color: isActive || _isHover
                     ? null
-                    : widget.textColor.withOpacity(0.04),
+                    : idleBg,
                 borderRadius: pillRadius,
                 border: Border.all(
                   color: isActive
-                      ? widget.textColor.withOpacity(0.45)
+                      ? widget.activeColor.withOpacity(0.35)
                       : widget.textColor.withOpacity(0.08),
                   width: 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: shadowColor.withOpacity(isActive ? 0.35 : 0.20),
-                    blurRadius: isActive ? 14 : 10,
+                    color: shadowColor.withOpacity(isActive ? 0.22 : 0.16),
+                    blurRadius: isActive ? 12 : 9,
                     offset: const Offset(0, 6),
                   ),
                 ],
@@ -642,7 +749,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                         Icon(
                           Icons.chevron_right,
                           size: (16 * s).clamp(14.0, 16.0),
-                          color: fgColor.withOpacity(0.70),
+                          color: fgColor.withOpacity(0.55),
                         ),
                       ],
                     ),

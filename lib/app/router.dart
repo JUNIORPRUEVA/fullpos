@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/bootstrap/app_bootstrap_controller.dart';
+import '../core/brand/fullpos_brand_theme.dart';
 import '../core/errors/error_handler.dart';
 import '../core/layout/app_shell.dart';
 import '../core/security/authz/permission_gate.dart';
@@ -31,27 +33,54 @@ import '../features/settings/ui/backup_settings_page.dart';
 import '../features/settings/ui/settings_page.dart';
 import '../features/tools/ui/ncf_page.dart';
 import '../features/tools/ui/tools_page.dart';
+import '../features/license/ui/license_page.dart';
+import '../features/license/services/license_storage.dart';
+import '../features/license/services/license_api.dart';
+import '../features/license/data/license_models.dart';
+import '../features/license/license_config.dart';
+import '../core/session/session_manager.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final bootStatus = ref.watch(
+    appBootstrapProvider.select((b) => b.snapshot.status),
+  );
+  final isLoggedIn = ref.watch(
+    appBootstrapProvider.select((b) => b.snapshot.isLoggedIn),
+  );
   final bootstrap = ref.read(appBootstrapProvider);
 
   return GoRouter(
     navigatorKey: ErrorHandler.navigatorKey,
     // Nota: La pantalla de arranque se maneja fuera del router (AppEntry).
     // Mantener una ruta inicial estable evita “rebotes” visuales.
-    initialLocation: '/sales',
+    initialLocation: isLoggedIn ? '/sales' : '/login',
     refreshListenable: bootstrap,
-    redirect: (context, state) {
+    redirect: (context, state) async {
       final path = state.uri.path;
       final isOnLogin = path == '/login';
+      final isOnPublicLicense = path == '/license';
 
-      final boot = bootstrap.snapshot;
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
-      if (boot.status != BootStatus.ready) return null;
+      if (bootStatus != BootStatus.ready) return null;
 
-      final isLoggedIn = boot.isLoggedIn;
+      // Gate de licencia: si no hay licencia activa, mostrar pantalla de licencia/prueba.
+      final hasLicense = await _hasActiveLicense();
+      assert(() {
+        debugPrint('[LICENSE] gate: hasLicense=$hasLicense path=$path');
+        return true;
+      }());
+      if (!hasLicense) {
+        return isOnPublicLicense ? null : '/license';
+      }
+
+      assert(() {
+        debugPrint(
+          '[ROUTER] redirect check: path=$path loggedIn=$isLoggedIn status=$bootStatus',
+        );
+        return true;
+      }());
       if (!isLoggedIn) {
-        return isOnLogin ? null : '/login';
+        return (isOnLogin || isOnPublicLicense) ? null : '/login';
       }
 
       // Mantener UI idéntica: no redirigir por permisos.
@@ -60,7 +89,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) =>
+            const FullposBrandScope(child: LoginPage()),
+      ),
+      GoRoute(
+        path: '/license',
+        builder: (context, state) =>
+            const FullposBrandScope(child: LicensePage()),
+      ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
         routes: [
@@ -101,6 +139,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/tools',
             builder: (context, state) => const ToolsPage(),
+          ),
+          GoRoute(
+            path: '/settings/license',
+            builder: (context, state) =>
+                const FullposBrandScope(child: LicensePage()),
           ),
           GoRoute(path: '/ncf', builder: (context, state) => const NcfPage()),
           GoRoute(
@@ -233,3 +276,53 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+Future<bool> _hasActiveLicense() async {
+  final storage = LicenseStorage();
+  final cached = await storage.getLastInfo();
+  if (cached != null && cached.isActive && !cached.isExpired) {
+    final last = cached.lastCheckedAt;
+    if (last != null) {
+      final age = DateTime.now().difference(last);
+      if (age.inHours < kLicenseGateRefreshHours) return true;
+    } else {
+      // Sin timestamp: aceptar por ahora.
+      return true;
+    }
+  }
+
+  final licenseKey = await storage.getLicenseKey();
+  if (licenseKey == null || licenseKey.trim().isEmpty) return false;
+
+  final deviceId =
+      (await storage.getDeviceId()) ?? await SessionManager.ensureTerminalId();
+  await storage.setDeviceId(deviceId);
+
+  try {
+    final map = await LicenseApi().check(
+      baseUrl: kLicenseBackendBaseUrl,
+      licenseKey: licenseKey.trim(),
+      deviceId: deviceId,
+      projectCode: kFullposProjectCode,
+    );
+
+    final info = LicenseInfo(
+      backendBaseUrl: kLicenseBackendBaseUrl,
+      licenseKey: licenseKey.trim(),
+      deviceId: deviceId,
+      projectCode: kFullposProjectCode,
+      ok: map['ok'] == true,
+      code: map['code']?.toString(),
+      tipo: map['tipo']?.toString(),
+      estado: map['estado']?.toString(),
+      fechaInicio: DateTime.tryParse((map['fecha_inicio'] ?? '').toString()),
+      fechaFin: DateTime.tryParse((map['fecha_fin'] ?? '').toString()),
+      lastCheckedAt: DateTime.now(),
+    );
+    await storage.setLastInfo(info);
+
+    return info.isActive && !info.isExpired;
+  } catch (_) {
+    return false;
+  }
+}

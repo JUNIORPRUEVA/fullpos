@@ -6,6 +6,7 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../data/printer_settings_model.dart';
 import '../data/printer_settings_repository.dart';
 import 'backup_database_page.dart';
+import 'database_settings_page.dart';
 import 'users_page.dart';
 import 'theme_settings_page.dart' as theme_page;
 import 'business_settings_page.dart';
@@ -54,6 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
       scheme.error,
       scheme.outline,
       scheme.inversePrimary,
+      scheme.surfaceVariant,
     ];
 
     return LayoutBuilder(
@@ -164,6 +166,15 @@ class _SettingsPageState extends State<SettingsPage> {
                       childAspectRatio: 2.55,
                       children: [
                         _buildSettingsCard(
+                          icon: Icons.vpn_key,
+                          title: 'Licencia',
+                          subtitle: 'Activación',
+                          description:
+                              'Activar y verificar licencia del sistema.',
+                          color: cardColors[0],
+                          onTap: () => context.go('/settings/license'),
+                        ),
+                        _buildSettingsCard(
                           icon: Icons.print,
                           title: 'Impresora',
                           subtitle: 'Tickets',
@@ -212,6 +223,15 @@ class _SettingsPageState extends State<SettingsPage> {
                           description: 'Respaldos y restauración del sistema.',
                           color: cardColors[5],
                           onTap: () => _openBackupPage(),
+                        ),
+                        _buildSettingsCard(
+                          icon: Icons.storage_outlined,
+                          title: 'Database',
+                          subtitle: 'Mantenimiento',
+                          description:
+                              'Ver estado, errores y opciones de limpieza local.',
+                          color: cardColors[9],
+                          onTap: () => _openDatabaseSettingsPage(),
                         ),
                         _buildSettingsCard(
                           icon: Icons.palette,
@@ -298,6 +318,13 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const BackupDatabasePage()),
+    );
+  }
+
+  void _openDatabaseSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DatabaseSettingsPage()),
     );
   }
 
@@ -647,7 +674,9 @@ class _PrinterDialogContentState extends State<_PrinterDialogContent> {
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('No se pudo cargar la configuraci\u00f3n de impresoras'),
+          content: const Text(
+            'No se pudo cargar la configuraci\u00f3n de impresoras',
+          ),
         ),
       );
     }

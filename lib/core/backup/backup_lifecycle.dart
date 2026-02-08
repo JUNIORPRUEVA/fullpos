@@ -96,6 +96,12 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
                   module: 'backup',
                 ),
               );
+
+              return BackupResult(
+                ok: false,
+                messageUser: 'Auto-backup falló',
+                messageDev: e.toString(),
+              );
             }),
       );
     }

@@ -21,6 +21,8 @@ class BackupStatusCard extends StatelessWidget {
     String destination;
     if (status.canUseCloudBackup) {
       destination = keepLocalCopy ? 'Nube + Local' : 'Nube';
+    } else if (status.isCloudEnabled) {
+      destination = 'Local (pendiente de subir)';
     } else {
       destination = 'Local';
     }
@@ -55,18 +57,19 @@ class BackupStatusCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 status.reason!,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
             const SizedBox(height: 12),
             SwitchListTile(
               value: keepLocalCopy,
-              onChanged: status.canUseCloudBackup ? onKeepLocalCopyChanged : null,
+              onChanged: status.canUseCloudBackup
+                  ? onKeepLocalCopyChanged
+                  : null,
               title: const Text('Mantener copia local adicional'),
-              subtitle: const Text('Opcional cuando la nube estÃ¡ activa'),
+              subtitle: const Text('Opcional cuando la nube está activa'),
               contentPadding: EdgeInsets.zero,
             ),
           ],
@@ -94,17 +97,14 @@ class _StatusRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
           ),
           Text(
             value,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: color, fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

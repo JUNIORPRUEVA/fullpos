@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,11 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_sizes.dart';
+import '../../../core/brand/fullpos_brand_theme.dart';
+import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
-import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/window/window_service.dart';
 import '../../settings/data/user_model.dart';
-import '../../settings/providers/business_settings_provider.dart';
 import '../data/auth_repository.dart';
 
 /// Pantalla de inicio de sesión con soporte de contraseña o PIN.
@@ -79,7 +81,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (!mounted) return;
 
       if (user != null) {
-        context.go('/sales');
+        // Source-of-truth en memoria: evita estado pegado hasta reiniciar.
+        ref.read(appBootstrapProvider).forceLoggedIn();
+        unawaited(ref.read(appBootstrapProvider).refreshAuth());
+        if (!mounted) return;
+
+        final rootCtx = ErrorHandler.navigatorKey.currentContext ?? context;
+        GoRouter.of(rootCtx).refresh();
+        GoRouter.of(rootCtx).go('/sales');
       } else {
         setState(() {
           _errorMessage = _usingPin
@@ -103,20 +112,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final business = ref.watch(businessSettingsProvider);
-    final businessName =
-        business.businessName.isNotEmpty ? business.businessName : 'FULLPOS';
+    final brandName = FullposBrandTheme.appName;
 
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final gradientTheme = theme.extension<AppGradientTheme>();
-    final gradient =
-        gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.primary, scheme.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
+    final gradient = FullposBrandTheme.backgroundGradient;
 
     final onSurface = scheme.onSurface;
     final mutedText = onSurface.withOpacity(0.72);
@@ -195,16 +195,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               ),
                               clipBehavior: Clip.antiAlias,
                               child: Image.asset(
-                                'assets/imagen/windowlogo.png',
+                                FullposBrandTheme.logoAsset,
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) =>
                                     Center(
-                                  child: Icon(
-                                    Icons.storefront,
-                                    size: 36,
-                                    color: scheme.primary,
-                                  ),
-                                ),
+                                      child: Icon(
+                                        Icons.storefront,
+                                        size: 36,
+                                        color: scheme.primary,
+                                      ),
+                                    ),
                               ),
                             ),
                             const SizedBox(width: 14),
@@ -213,7 +213,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    businessName,
+                                    brandName,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.titleLarge?.copyWith(
@@ -251,8 +251,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 'Contraseña',
                                 style: theme.textTheme.labelLarge?.copyWith(
                                   color: _usingPin ? mutedText : onSurface,
-                                  fontWeight:
-                                      _usingPin ? FontWeight.w600 : FontWeight.w800,
+                                  fontWeight: _usingPin
+                                      ? FontWeight.w600
+                                      : FontWeight.w800,
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -274,8 +275,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 'PIN',
                                 style: theme.textTheme.labelLarge?.copyWith(
                                   color: _usingPin ? onSurface : mutedText,
-                                  fontWeight:
-                                      _usingPin ? FontWeight.w800 : FontWeight.w600,
+                                  fontWeight: _usingPin
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
                                 ),
                               ),
                               const Spacer(),
@@ -425,14 +427,42 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                         const SizedBox(height: 10),
                         Center(
-                          child: TextButton.icon(
-                            onPressed:
-                                _isLoading ? null : () => WindowService.close(),
-                            icon: const Icon(Icons.exit_to_app_rounded),
-                            label: const Text('Salir'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: mutedText,
-                            ),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              TextButton.icon(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => context.go('/license'),
+                                icon: const Icon(Icons.vpn_key),
+                                label: const Text('Licencia / Demo'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: mutedText,
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => WindowService.minimize(),
+                                icon: const Icon(Icons.minimize_rounded),
+                                label: const Text('Minimizar'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: mutedText,
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => WindowService.close(),
+                                icon: const Icon(Icons.exit_to_app_rounded),
+                                label: const Text('Salir'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: mutedText,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         if (kDebugMode) ...[

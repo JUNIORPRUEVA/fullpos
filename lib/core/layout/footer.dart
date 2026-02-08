@@ -56,16 +56,17 @@ class _FooterState extends ConsumerState<Footer> {
     final footerBg = themeSettings.footerColor;
     final year = DateTime.now().year;
     final s = widget.scale.clamp(0.65, 1.12);
-    final h = (AppSizes.footerHeight * s).clamp(32.0, 44.0);
-    final font = (12 * s).clamp(11.0, 13.0);
-    final pad = AppSizes.paddingL * s;
+    final h = (AppSizes.footerHeight * s).clamp(26.0, 40.0);
+    final font = (11 * s).clamp(10.0, 12.5);
+    final infoFont = (10.5 * s).clamp(9.0, 12.0);
+    final pad = (AppSizes.paddingM * s).clamp(10.0, 18.0);
     final timestamp = DateTimeFormatter.formatFullDateTime(_currentTime);
 
     return Container(
       height: h,
       decoration: BoxDecoration(
         color: footerBg,
-        border: Border(top: BorderSide(color: borderColor, width: 2)),
+        border: Border(top: BorderSide(color: borderColor, width: 1.5)),
         boxShadow: [
           BoxShadow(
             color: shadowColor.withOpacity(0.25),
@@ -89,23 +90,23 @@ class _FooterState extends ConsumerState<Footer> {
               style: TextStyle(color: footerTextColor, fontSize: font),
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
+          Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 timestamp,
                 style: TextStyle(
-                  color: footerTextColor.withOpacity(0.8),
-                  fontSize: (10 * s).clamp(9.0, 11.0),
+                  color: footerTextColor.withOpacity(0.85),
+                  fontSize: infoFont,
                 ),
               ),
+              SizedBox(width: (10 * s).clamp(8.0, 12.0)),
               Text(
                 'v1.0.0 Local',
                 style: TextStyle(
                   color: activeColor,
-                  fontSize: font,
-                  fontWeight: FontWeight.w600,
+                  fontSize: infoFont,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],

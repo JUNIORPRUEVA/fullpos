@@ -88,8 +88,7 @@ class _PermissionGateState extends State<PermissionGate> {
         _autoPromptBlocked = true;
       });
     } finally {
-      if (!mounted) return;
-      setState(() => _checking = false);
+      if (mounted) setState(() => _checking = false);
     }
   }
 
@@ -163,61 +162,50 @@ class _PermissionGateState extends State<PermissionGate> {
               child: const ModalBarrier(dismissible: false),
             ),
           ),
-          if (_checking)
-            const Positioned.fill(
-              child: Center(
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: CircularProgressIndicator(strokeWidth: 3),
-                ),
-              ),
-            ),
-          if (!_checking)
-            Positioned(
-              bottom: 24,
-              left: 24,
-              right: 24,
-              child: Center(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.surfaceVariant.withOpacity(0.9),
-                      foregroundColor: Theme.of(context).colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+          Positioned(
+            bottom: 24,
+            left: 24,
+            right: 24,
+            child: Center(
+              child: SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceVariant.withOpacity(0.9),
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 16,
                     ),
-                    onPressed: () => _ensureAuthorized(userInitiated: true),
-                    child: const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Acción prohibida',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                          textAlign: TextAlign.center,
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Autorizar',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
+                  ),
+                  onPressed: () => _ensureAuthorized(userInitiated: true),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Acción prohibida',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'Autorizar',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
+          ),
         ],
       ],
     );

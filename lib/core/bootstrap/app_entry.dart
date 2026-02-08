@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/ui/splash_page.dart';
+import '../brand/fullpos_brand_theme.dart';
 import 'app_bootstrap_controller.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
@@ -24,7 +25,9 @@ class AppEntry extends ConsumerWidget {
     final delay = ref.watch(_minSplashDelayProvider);
 
     final showSplash = boot.status != BootStatus.ready || delay.isLoading;
-    final body = showSplash ? const SplashPage() : child;
+    final body = showSplash
+        ? const FullposBrandScope(child: SplashPage())
+        : child;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
@@ -32,10 +35,7 @@ class AppEntry extends ConsumerWidget {
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) =>
           FadeTransition(opacity: animation, child: child),
-      child: KeyedSubtree(
-        key: ValueKey<bool>(showSplash),
-        child: body,
-      ),
+      child: KeyedSubtree(key: ValueKey<bool>(showSplash), child: body),
     );
   }
 }
