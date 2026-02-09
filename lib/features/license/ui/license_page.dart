@@ -180,6 +180,14 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           context,
         ).showSnackBar(SnackBar(content: Text(err)));
       }
+
+      // Si ya se consumió la DEMO en este equipo/cliente, llevar al flujo de compra.
+      if (next.errorCode == 'DEMO_ALREADY_USED' &&
+          _section != _LicenseSection.buy) {
+        setState(() {
+          _section = _LicenseSection.buy;
+        });
+      }
       // Keep text fields in sync when info changes.
       final i = next.info;
       if (i != null) {

@@ -11,21 +11,33 @@ import 'license_storage.dart';
 class LicenseState {
   final bool loading;
   final String? error;
+  final String? errorCode;
   final LicenseInfo? info;
 
   const LicenseState({
     required this.loading,
     required this.error,
+    required this.errorCode,
     required this.info,
   });
 
-  factory LicenseState.initial() =>
-      const LicenseState(loading: false, error: null, info: null);
+  factory LicenseState.initial() => const LicenseState(
+    loading: false,
+    error: null,
+    errorCode: null,
+    info: null,
+  );
 
-  LicenseState copyWith({bool? loading, String? error, LicenseInfo? info}) {
+  LicenseState copyWith({
+    bool? loading,
+    String? error,
+    String? errorCode,
+    LicenseInfo? info,
+  }) {
     return LicenseState(
       loading: loading ?? this.loading,
       error: error,
+      errorCode: errorCode,
       info: info ?? this.info,
     );
   }
@@ -52,7 +64,7 @@ class LicenseController extends StateNotifier<LicenseState> {
     : super(LicenseState.initial());
 
   Future<void> load() async {
-    state = state.copyWith(loading: true, error: null);
+    state = state.copyWith(loading: true, error: null, errorCode: null);
     try {
       final licenseKey = await storage.getLicenseKey();
       final deviceId = await _ensureDeviceId();
@@ -92,7 +104,11 @@ class LicenseController extends StateNotifier<LicenseState> {
 
       state = state.copyWith(loading: false, info: merged);
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: e.toString(),
+        errorCode: null,
+      );
     }
   }
 
@@ -112,11 +128,14 @@ class LicenseController extends StateNotifier<LicenseState> {
     final licenseKey = await storage.getLicenseKey();
     final deviceId = await _ensureDeviceId();
     if (licenseKey == null || licenseKey.isEmpty) {
-      state = state.copyWith(error: 'Ingresa la clave de licencia');
+      state = state.copyWith(
+        error: 'Ingresa la clave de licencia',
+        errorCode: null,
+      );
       return;
     }
 
-    state = state.copyWith(loading: true, error: null);
+    state = state.copyWith(loading: true, error: null, errorCode: null);
     try {
       final map = await api.activate(
         baseUrl: kLicenseBackendBaseUrl,
@@ -144,9 +163,17 @@ class LicenseController extends StateNotifier<LicenseState> {
       await storage.setLastInfo(info);
       state = state.copyWith(loading: false, info: info);
     } on LicenseApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.message);
+      state = state.copyWith(
+        loading: false,
+        error: e.message,
+        errorCode: e.code,
+      );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: e.toString(),
+        errorCode: null,
+      );
     }
   }
 
@@ -154,11 +181,14 @@ class LicenseController extends StateNotifier<LicenseState> {
     final licenseKey = await storage.getLicenseKey();
     final deviceId = await _ensureDeviceId();
     if (licenseKey == null || licenseKey.isEmpty) {
-      state = state.copyWith(error: 'Ingresa la clave de licencia');
+      state = state.copyWith(
+        error: 'Ingresa la clave de licencia',
+        errorCode: null,
+      );
       return;
     }
 
-    state = state.copyWith(loading: true, error: null);
+    state = state.copyWith(loading: true, error: null, errorCode: null);
     try {
       final map = await api.check(
         baseUrl: kLicenseBackendBaseUrl,
@@ -184,9 +214,17 @@ class LicenseController extends StateNotifier<LicenseState> {
       await storage.setLastInfo(info);
       state = state.copyWith(loading: false, info: info);
     } on LicenseApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.message);
+      state = state.copyWith(
+        loading: false,
+        error: e.message,
+        errorCode: e.code,
+      );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: e.toString(),
+        errorCode: null,
+      );
     }
   }
 
@@ -198,7 +236,7 @@ class LicenseController extends StateNotifier<LicenseState> {
   }) async {
     final deviceId = await _ensureDeviceId();
 
-    state = state.copyWith(loading: true, error: null);
+    state = state.copyWith(loading: true, error: null, errorCode: null);
     try {
       final map = await api.startDemo(
         baseUrl: kLicenseBackendBaseUrl,
@@ -218,15 +256,23 @@ class LicenseController extends StateNotifier<LicenseState> {
       // Después de crear demo, activamos para registrar este dispositivo.
       await activate();
     } on LicenseApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.message);
+      state = state.copyWith(
+        loading: false,
+        error: e.message,
+        errorCode: e.code,
+      );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: e.toString(),
+        errorCode: null,
+      );
     }
   }
 
   Future<void> applyOfflineLicenseFile(Map<String, dynamic> licenseFile) async {
     final deviceId = await _ensureDeviceId();
-    state = state.copyWith(loading: true, error: null);
+    state = state.copyWith(loading: true, error: null, errorCode: null);
     try {
       final map = await api.verifyOfflineFile(
         baseUrl: kLicenseBackendBaseUrl,
@@ -273,9 +319,17 @@ class LicenseController extends StateNotifier<LicenseState> {
       // Activar contra backend para registrar el dispositivo y obtener fechas.
       await activate();
     } on LicenseApiException catch (e) {
-      state = state.copyWith(loading: false, error: e.message);
+      state = state.copyWith(
+        loading: false,
+        error: e.message,
+        errorCode: e.code,
+      );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: e.toString(),
+        errorCode: null,
+      );
     }
   }
 
