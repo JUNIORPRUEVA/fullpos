@@ -235,15 +235,18 @@ class _SalesListPageState extends State<SalesListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      // Deja ver el fondo global (AppFrame) para el degradado claro.
+      backgroundColor: Colors.transparent,
       body: Column(
         children: [
           // Header con título y estadísticas
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: scheme.surface,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -620,12 +623,16 @@ class _SalesListPageState extends State<SalesListPage> {
   }
 
   Widget _buildSaleCard(SaleModel sale) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = scheme.onSurface;
+    final muted = onSurface.withOpacity(0.68);
+
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final isCancelled = sale.status == 'cancelled';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 2,
+      elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: InkWell(
         onTap: () => _showSaleDetails(sale),
@@ -635,7 +642,7 @@ class _SalesListPageState extends State<SalesListPage> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             border: isCancelled
-                ? Border.all(color: Colors.red.shade200, width: 2)
+                ? Border.all(color: scheme.error.withOpacity(0.35), width: 2)
                 : null,
           ),
           child: Row(
@@ -646,13 +653,13 @@ class _SalesListPageState extends State<SalesListPage> {
                 height: 48,
                 decoration: BoxDecoration(
                   color: isCancelled
-                      ? Colors.red.shade100
-                      : Colors.teal.shade100,
+                      ? scheme.error.withOpacity(0.10)
+                      : scheme.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   isCancelled ? Icons.cancel : Icons.receipt,
-                  color: isCancelled ? Colors.red : Colors.teal,
+                  color: isCancelled ? scheme.error : scheme.primary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -669,6 +676,7 @@ class _SalesListPageState extends State<SalesListPage> {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
+                            color: onSurface,
                             decoration: isCancelled
                                 ? TextDecoration.lineThrough
                                 : null,
@@ -701,7 +709,7 @@ class _SalesListPageState extends State<SalesListPage> {
                     Text(
                       sale.customerNameSnapshot ?? 'Cliente general',
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: muted,
                         fontSize: 12,
                       ),
                     ),
@@ -747,7 +755,7 @@ class _SalesListPageState extends State<SalesListPage> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
-                      color: isCancelled ? Colors.grey : Colors.teal.shade700,
+                      color: isCancelled ? muted : onSurface,
                       decoration: isCancelled
                           ? TextDecoration.lineThrough
                           : null,
@@ -755,12 +763,12 @@ class _SalesListPageState extends State<SalesListPage> {
                   ),
                   Text(
                     DateFormat('dd/MM/yy HH:mm').format(date),
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                    style: TextStyle(color: muted, fontSize: 11),
                   ),
                 ],
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              Icon(Icons.chevron_right, color: muted),
             ],
           ),
         ),

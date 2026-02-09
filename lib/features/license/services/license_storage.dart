@@ -9,6 +9,7 @@ class LicenseStorage {
   static const _kLicenseKey = 'license.licenseKey';
   static const _kDeviceId = 'license.deviceId';
   static const _kLastInfo = 'license.lastInfo';
+  static const _kSigningPubKeyB64 = 'license_signing_pubkey_b64_v1';
 
   Future<String?> getBackendBaseUrl() async {
     final sp = await SharedPreferences.getInstance();
@@ -72,6 +73,19 @@ class LicenseStorage {
     await sp.remove(_kLicenseKey);
     await sp.remove(_kDeviceId);
     await sp.remove(_kLastInfo);
+  }
+
+  Future<String?> getOfflineSigningPublicKeyB64() async {
+    final sp = await SharedPreferences.getInstance();
+    final v = sp.getString(_kSigningPubKeyB64);
+    if (v == null) return null;
+    final trimmed = v.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  Future<void> setOfflineSigningPublicKeyB64(String value) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kSigningPubKeyB64, value.trim());
   }
 
   /// Determina si hay una licencia activa según lo último guardado localmente.

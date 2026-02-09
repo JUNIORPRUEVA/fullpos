@@ -538,7 +538,7 @@ class _PurchaseOrderCreateManualPageState
     final currency = NumberFormat('#,##0.00', 'en_US');
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(
           _isEdit ? 'Editar Orden (Manual)' : 'Crear Orden (Manual)',

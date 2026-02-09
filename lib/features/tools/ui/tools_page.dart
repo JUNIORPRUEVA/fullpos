@@ -64,7 +64,9 @@ class ToolsPage extends ConsumerWidget {
 
   static Future<void> _openUrl(BuildContext context, String url) async {
     final ok = await launchUrlString(url, mode: LaunchMode.externalApplication);
+    // Solo mostrar el snackbar si el usuario intentó abrir el enlace y falló, no por navegación o regreso de otra pantalla.
     if (!ok && context.mounted) {
+      // Aquí sí es correcto mostrar el mensaje porque es una acción explícita del usuario.
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo abrir el enlace')),
       );

@@ -55,9 +55,14 @@ class _BootstrapLoadingScreenState extends State<BootstrapLoadingScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final gradientTheme = theme.extension<AppGradientTheme>();
+    // Fallback azul degradado de la marca
     final fallbackGradient = LinearGradient(
-      colors: [scheme.surface, scheme.primaryContainer],
-      stops: const [0.0, 1.0],
+      colors: [
+        const Color(0xFF1565C0), // Azul Marca inicio
+        const Color(0xFF1976D2), // Azul Marca medio
+        const Color(0xFF2196F3), // Azul Marca final
+      ],
+      stops: const [0.0, 0.5, 1.0],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );

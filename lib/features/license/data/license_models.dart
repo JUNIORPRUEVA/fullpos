@@ -11,6 +11,7 @@ class LicenseInfo {
   final String? code;
   final String? tipo;
   final String? estado;
+  final String? motivo;
   final DateTime? fechaInicio;
   final DateTime? fechaFin;
   final int? maxDispositivos;
@@ -26,6 +27,7 @@ class LicenseInfo {
     this.code,
     this.tipo,
     this.estado,
+    this.motivo,
     this.fechaInicio,
     this.fechaFin,
     this.maxDispositivos,
@@ -38,6 +40,11 @@ class LicenseInfo {
     final st = (estado ?? '').toUpperCase();
     if (st.isEmpty) return ok;
     return st == 'ACTIVA';
+  }
+
+  bool get isBlocked {
+    final st = (estado ?? '').toUpperCase();
+    return st == 'BLOQUEADA';
   }
 
   bool get isExpired {
@@ -56,6 +63,7 @@ class LicenseInfo {
       'code': code,
       'tipo': tipo,
       'estado': estado,
+      'motivo': motivo,
       'fechaInicio': fechaInicio?.toIso8601String(),
       'fechaFin': fechaFin?.toIso8601String(),
       'maxDispositivos': maxDispositivos,
@@ -87,6 +95,7 @@ class LicenseInfo {
       code: map['code']?.toString(),
       tipo: map['tipo']?.toString(),
       estado: map['estado']?.toString(),
+      motivo: map['motivo']?.toString(),
       fechaInicio: parseDt(map['fechaInicio']),
       fechaFin: parseDt(map['fechaFin']),
       maxDispositivos: parseInt(map['maxDispositivos']),

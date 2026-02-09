@@ -206,7 +206,7 @@ class _PurchaseOrderCreateAutoPageState
     final currency = NumberFormat('#,##0.00', 'en_US');
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Crear Orden (Stock mínimo)',

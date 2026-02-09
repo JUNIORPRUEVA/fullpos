@@ -14,13 +14,27 @@ double stableMaxCrossAxisExtent({
   required double spacing,
   double minExtent = 140,
 }) {
-  if (availableWidth <= 0) return desiredMaxExtent;
+  // En algunos layouts (por ejemplo dentro de widgets no acotados),
+  // `availableWidth` puede venir como Infinity/NaN y `ceil()` revienta.
+  if (!availableWidth.isFinite || availableWidth <= 0) {
+    if (desiredMaxExtent.isFinite && desiredMaxExtent > 0) {
+      return desiredMaxExtent;
+    }
+    return minExtent;
+  }
 
-  final columns = ((availableWidth + spacing) / (desiredMaxExtent + spacing))
+  if (!desiredMaxExtent.isFinite || desiredMaxExtent <= 0) {
+    return minExtent;
+  }
+
+  final safeSpacing = (!spacing.isFinite || spacing < 0) ? 0.0 : spacing;
+
+    final columns =
+      ((availableWidth + safeSpacing) / (desiredMaxExtent + safeSpacing))
       .ceil()
       .clamp(1, 1000);
 
-  final computed = (availableWidth + spacing) / columns - spacing;
+    final computed = (availableWidth + safeSpacing) / columns - safeSpacing;
   final safe = computed.clamp(minExtent, desiredMaxExtent);
 
   // Evitar casos borde donde el floor cambie por redondeo.

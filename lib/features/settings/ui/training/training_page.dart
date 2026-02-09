@@ -78,7 +78,7 @@ class _TrainingPageState extends State<TrainingPage> {
         : const <TrainingSearchResult>[];
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Entrenamiento')),
       body: Padding(
         padding: const EdgeInsets.all(AppSizes.paddingL),
@@ -301,7 +301,7 @@ class TrainingDocPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(doc.title)),
       body: Padding(
         padding: const EdgeInsets.all(AppSizes.paddingL),

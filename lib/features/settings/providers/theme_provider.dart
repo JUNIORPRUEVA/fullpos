@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/theme_settings_model.dart';
 import '../data/theme_settings_repository.dart';
 import '../../../core/constants/app_sizes.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_gradient_theme.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
 import '../../../core/theme/sales_page_theme.dart';
@@ -18,8 +20,68 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
 
   /// Cargar configuraciÃ³n guardada
   Future<void> _loadSettings() async {
-    final settings = await _repository.loadThemeSettings();
-    state = settings;
+    final loaded = await _repository.loadThemeSettings();
+    final normalized = _normalizeLoadedSettings(loaded);
+    state = normalized;
+    if (normalized != loaded) {
+      await _repository.saveThemeSettings(normalized);
+    }
+  }
+
+  ThemeSettings _normalizeLoadedSettings(ThemeSettings settings) {
+    bool isVeryLight(Color c) =>
+        c.opacity != 0 && c.computeLuminance() > 0.82;
+
+    var s = settings;
+
+    // Requisito: color primario siempre negro.
+    // Esto garantiza que `scheme.primary` sea negro en toda la app.
+    final enforcedPrimary = ThemeSettings.defaultSettings.primaryColor;
+    if (s.primaryColor != enforcedPrimary) {
+      s = s.copyWith(primaryColor: enforcedPrimary);
+    }
+
+    // Evita “flash” blanco en modo oscuro: algunos perfiles legacy guardan
+    // gradientes completamente blancos aunque isDarkMode=true.
+    if (s.isDarkMode &&
+        isVeryLight(s.backgroundGradientStart) &&
+        isVeryLight(s.backgroundGradientMid) &&
+        isVeryLight(s.backgroundGradientEnd)) {
+      s = s.copyWith(
+        backgroundGradientStart: ThemeSettings.defaultSettings.backgroundGradientStart,
+        backgroundGradientMid: ThemeSettings.defaultSettings.backgroundGradientMid,
+        backgroundGradientEnd: ThemeSettings.defaultSettings.backgroundGradientEnd,
+      );
+    }
+
+    // En modo claro: si el fondo quedó prácticamente blanco plano,
+    // lo convertimos a un degradado sutil (gris/blanco/azul muy suave).
+    if (!s.isDarkMode &&
+        s.backgroundGradientStart.opacity != 0 &&
+        s.backgroundGradientMid.opacity != 0 &&
+        s.backgroundGradientEnd.opacity != 0 &&
+        s.backgroundGradientStart.computeLuminance() > 0.92 &&
+        s.backgroundGradientMid.computeLuminance() > 0.92 &&
+        s.backgroundGradientEnd.computeLuminance() > 0.92) {
+      s = s.copyWith(
+        backgroundGradientStart: AppColors.surfaceLightVariant,
+        backgroundGradientMid: AppColors.goldSoft,
+        backgroundGradientEnd: AppColors.surfaceLight,
+      );
+    }
+
+    // Asegura contraste mínimo del texto de la barra de control de ventas
+    // contra el fondo del campo (ayuda a evitar combinaciones ilegibles).
+    final fixedControlText = _ensureReadableColor(
+      s.salesControlBarTextColor,
+      s.salesControlBarContentBackgroundColor,
+      minRatio: 3.0,
+    );
+    if (fixedControlText != s.salesControlBarTextColor) {
+      s = s.copyWith(salesControlBarTextColor: fixedControlText);
+    }
+
+    return s;
   }
 
   /// Actualizar color primario
@@ -531,7 +593,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
   final onAccent = _getContrastColor(settings.accentColor);
   final onError = _getContrastColor(settings.errorColor);
   final onButton = _getContrastColor(settings.buttonColor);
-  const scaffoldBg = Colors.transparent;
+  final scaffoldBg = settings.backgroundColor;
   final surfaceColor = settings.surfaceColor.opacity == 0
       ? Colors.white
       : settings.surfaceColor;
@@ -564,6 +626,41 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         surfaceContainerHighest: surfaceColor.withAlpha(230),
       );
 
+  final searchBg = settings.salesControlBarContentBackgroundColor.opacity == 0
+      ? scheme.surface
+      : settings.salesControlBarContentBackgroundColor;
+  final tokenSearchText = _ensureReadableColor(
+    settings.textColor,
+    searchBg,
+    minRatio: 4.5,
+  );
+  final tokenSearchIcon = _ensureReadableColor(
+    settings.textColor.withOpacity(0.9),
+    searchBg,
+    minRatio: 3.0,
+  );
+
+  final tokens = AppTokens(
+    panelBackground: settings.backgroundColor,
+    panelBorder: scheme.onSurface.withAlpha(28),
+    cardBackground: settings.cardColor,
+    cardBorder: scheme.onSurface.withAlpha(28),
+    sidebarBackground: settings.sidebarColor,
+    sidebarBorder: scheme.onSurface.withAlpha(28),
+    sidebarText: settings.sidebarTextColor,
+    controlBarBackground: settings.salesControlBarBackgroundColor,
+    controlBarBorder: settings.salesControlBarBorderColor,
+    controlBarText: settings.salesControlBarTextColor,
+    buttonPrimary: settings.primaryColor,
+    buttonSecondary: settings.accentColor,
+    buttonDanger: settings.errorColor,
+    searchFieldBackground: searchBg,
+    searchFieldText: tokenSearchText,
+    searchFieldIcon: tokenSearchIcon,
+    tileHover: settings.hoverColor,
+    outline: scheme.outlineVariant,
+  );
+
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
@@ -574,7 +671,8 @@ ThemeData _buildThemeData(ThemeSettings settings) {
 
     // AppBar
     appBarTheme: AppBarTheme(
-      backgroundColor: Colors.transparent,
+      backgroundColor: settings.appBarColor,
+      surfaceTintColor: Colors.transparent,
       foregroundColor: appBarTextColor,
       elevation: 0,
       centerTitle: false,
@@ -753,6 +851,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
       ),
     ),
     extensions: [
+      tokens,
       AppGradientTheme(
         start: settings.backgroundGradientStart,
         mid: settings.backgroundGradientMid,

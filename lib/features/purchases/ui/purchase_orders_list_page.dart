@@ -595,7 +595,7 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
     }
 
     return Scaffold(
-      backgroundColor: scheme.surface,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
         child: LayoutBuilder(
@@ -608,16 +608,7 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
                 .toDouble();
 
             return Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    scheme.surface.withOpacity(0.98),
-                    scheme.surfaceVariant.withOpacity(0.94),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
+              color: Colors.transparent,
               child: Column(
                 children: [
                   buildHeader(horizontalPadding),

@@ -169,11 +169,16 @@ class _AppFrameState extends State<AppFrame> with WidgetsBindingObserver {
     );
     final backgroundGradient =
         gradientTheme?.backgroundGradient ?? fallbackGradient;
+
+    final framedChild = Theme(
+      data: theme.copyWith(scaffoldBackgroundColor: Colors.transparent),
+      child: repaintable,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(gradient: backgroundGradient),
       child: Stack(
         children: [
-          Positioned.fill(child: repaintable),
+          Positioned.fill(child: framedChild),
           if (_showRecoveryBanner)
             const _RecoveryBanner(message: 'Reiniciando vista...'),
           if (_safeMode)

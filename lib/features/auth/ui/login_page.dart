@@ -435,16 +435,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               TextButton.icon(
                                 onPressed: _isLoading
                                     ? null
-                                    : () => context.go('/license'),
-                                icon: const Icon(Icons.vpn_key),
-                                label: const Text('Licencia / Demo'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: mutedText,
-                                ),
-                              ),
-                              TextButton.icon(
-                                onPressed: _isLoading
-                                    ? null
                                     : () => WindowService.minimize(),
                                 icon: const Icon(Icons.minimize_rounded),
                                 label: const Text('Minimizar'),

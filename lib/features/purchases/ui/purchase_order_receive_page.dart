@@ -121,7 +121,7 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     final detail = _detail;
 
     return Scaffold(
-      backgroundColor: AppColors.bgLight,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text(
           'Recibir Orden',

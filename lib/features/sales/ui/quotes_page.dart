@@ -37,6 +37,7 @@ class _QuotesPageState extends State<QuotesPage> {
   int _loadSeq = 0;
   late QuotesFilterConfig _filterConfig;
   late SearchDebouncer _searchDebouncer;
+  QuoteDetailDto? _selectedQuote;
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
@@ -429,16 +430,10 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
-  Future<void> _showQuoteDetails(QuoteDetailDto quoteDetail) async {
-    final changed = await showDialog<bool>(
-      context: context,
-      builder: (context) => _QuoteDetailsDialog(quoteDetail: quoteDetail),
-    );
-
-    // Si algo cambió en el diálogo, recargar la lista
-    if (changed == true && mounted) {
-      await _loadQuotes();
-    }
+  void _showQuoteDetails(QuoteDetailDto quoteDetail) {
+    setState(() {
+      _selectedQuote = quoteDetail;
+    });
   }
 
   Future<void> _convertToSale(QuoteDetailDto quoteDetail) async {
@@ -524,64 +519,83 @@ class _QuotesPageState extends State<QuotesPage> {
       ),
     );
 
-    if (confirm == true) {
-      try {
-        final quote = quoteDetail.quote;
-
-        // Generar código de venta
-        final localCode = await SalesRepository.generateNextLocalCode('sale');
-
-        // Convertir items de cotización a mapas para createSale
-        final saleItems = quoteDetail.items
-            .map(
-              (item) => <String, dynamic>{
-                'product_id': item.productId,
-                'code': item.productCode ?? 'N/A',
-                'description': item.description,
-                'qty': item.qty,
-                'price': item.price,
-                'cost': item.cost,
-                'discount': item.discountLine,
-              },
-            )
-            .toList();
-
-        // Crear la venta (atómica). Si el stock quedaría en negativo, pedir confirmación.
-        int saleId;
-        try {
-          saleId = await SalesRepository.createSale(
-            localCode: localCode,
-            kind: 'sale',
-            items: saleItems,
-            itbisEnabled: quote.itbisEnabled,
-            itbisRate: quote.itbisRate,
-            discountTotal: quote.discountTotal,
-            paymentMethod: 'cash', // Por defecto efectivo
-            customerId: quote.clientId,
-            customerName: quoteDetail.clientName,
-            customerPhone: quoteDetail.clientPhone,
-            customerRnc: quoteDetail.clientRnc,
-            paidAmount: quote.total,
-            changeAmount: 0,
-          );
-        } on AppException catch (e, st) {
-          if (e.code != 'stock_negative') {
-            await ErrorHandler.instance.handle(
-              e,
-              stackTrace: st,
-              context: context,
-              module: 'quotes',
-            );
-            return;
-          }
-
-          final proceed = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Stock insuficiente'),
-              content: Text(e.messageUser),
-              actions: [
-                TextButton(
+    @override
+    Widget build(BuildContext context) {
+      final scheme = _scheme;
+      final scale = UiScale.of(context).scale;
+      final listPadding = EdgeInsets.symmetric(
+        horizontal: 12 * scale,
+        vertical: 10 * scale,
+      );
+      final itemSpacing = 10 * scale;
+      final showPanel = MediaQuery.of(context).size.width > 900;
+      final showSummary = showPanel;
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Cotizaciones'),
+          actions: [
+            if (showSummary)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox(
+                  width: 220,
+                  child: _buildSummaryPanel(
+                    totalQuotes: _filteredQuotes.length,
+                    open: _filteredQuotes.where((q) => q.quote.status == 'OPEN').length,
+                    converted: _filteredQuotes.where((q) => q.quote.status == 'CONVERTED').length,
+                    cancelled: _filteredQuotes.where((q) => q.quote.status == 'CANCELLED').length,
+                    passedToTicket: _filteredQuotes.where((q) => q.quote.status == 'PASSED_TO_TICKET').length,
+                    totalAmount: _filteredQuotes.fold<double>(0, (sum, q) => sum + q.quote.total),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        body: Row(
+          children: [
+            // Listado de cotizaciones tipo catálogo
+            Container(
+              width: showPanel ? 420 * scale : double.infinity,
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                border: Border(
+                  right: BorderSide(color: scheme.outlineVariant.withOpacity(0.12)),
+                ),
+              ),
+              child: Column(
+                children: [
+                  QuotesFilterBar(
+                    initialConfig: _filterConfig,
+                    onFilterChanged: _onFilterChanged,
+                  ),
+                  Expanded(
+                    child: _buildQuotesList(
+                      listPadding: listPadding,
+                      itemSpacing: itemSpacing,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Panel de detalle fijo
+            if (showPanel)
+              Expanded(
+                child: _selectedQuote != null
+                    ? _QuoteDetailsPanel(
+                        quoteDetail: _selectedQuote!,
+                        onClose: () => setState(() => _selectedQuote = null),
+                      )
+                    : Center(
+                        child: Text(
+                          'Selecciona una cotización para ver detalles',
+                          style: TextStyle(color: scheme.onSurface.withOpacity(0.5)),
+                        ),
+                      ),
+              ),
+          ],
+        ),
+      );
+    }
                   onPressed: () => Navigator.pop(context, false),
                   child: const Text('CANCELAR'),
                 ),
@@ -1271,80 +1285,62 @@ class _QuoteDetailsDialogState extends State<_QuoteDetailsDialog> {
         }
       }
 
-      // Duplicar la cotización
-      await DbHardening.instance.runDbSafe(
-        () => QuotesRepository().duplicateQuote(widget.quoteDetail.quote.id!),
-        stage: 'sales/quotes/duplicate_dialog',
-      );
 
-      if (!mounted) return;
+      // Panel fijo para mostrar detalles de cotización
+      class _QuoteDetailsPanel extends StatelessWidget {
+        final QuoteDetailDto quoteDetail;
+        final VoidCallback onClose;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Cotización duplicada exitosamente'),
-          backgroundColor: _status.success,
-        ),
-      );
+        const _QuoteDetailsPanel({required this.quoteDetail, required this.onClose});
 
-      // Cerrar el diálogo indicando que hubo un cambio
-      _closeDialog(true);
-    } catch (e, st) {
-      if (!mounted) return;
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
-        context: context,
-        onRetry: _duplicateQuoteFromDialog,
-        module: 'sales/quotes/dialog_duplicate',
-      );
-    } finally {
-      _safeSetState(() => _isLoading = false);
-    }
-  }
-
-  /// Eliminar cotización desde el diálogo
-  Future<void> _deleteQuoteFromDialog() async {
-    // Advertencia especial si la cotización fue convertida
-    final isConverted = widget.quoteDetail.quote.status == 'CONVERTED';
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar Cotización'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '¿Está seguro que desea eliminar la cotización #${widget.quoteDetail.quote.id}?\n'
-              'Esta acción no se puede deshacer.',
-            ),
-            if (isConverted) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _status.error.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _status.error),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error, color: _status.error),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Esta cotización ya fue convertida a venta. Solo se eliminará el registro.',
-                        style: TextStyle(fontSize: 12, color: _status.error),
+        @override
+        Widget build(BuildContext context) {
+          // Puedes reutilizar el contenido del antiguo _QuoteDetailsDialog aquí
+          // y agregar un botón de cerrar en la esquina superior derecha.
+          final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
+          return Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Detalle de Cotización',
+                                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.close, color: scheme.onSurface),
+                                onPressed: onClose,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // Aquí puedes mostrar los detalles de la cotización
+                          Text('Cliente: ${quoteDetail.clientName}'),
+                          Text('Teléfono: ${quoteDetail.clientPhone ?? "-"}'),
+                          Text('RNC: ${quoteDetail.clientRnc ?? "-"}'),
+                          // ...otros detalles y lista de items...
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ] else ...[
-              const SizedBox(height: 8),
             ],
-          ],
-        ),
+          );
+        }
+      }
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

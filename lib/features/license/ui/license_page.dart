@@ -22,6 +22,9 @@ class LicensePage extends ConsumerStatefulWidget {
 }
 
 class _LicensePageState extends ConsumerState<LicensePage> {
+  static const String _supportPhoneDisplay = '8295319442';
+  static const String _supportPhoneWhatsapp = '18295319442';
+
   final _demoNombreNegocioCtrl = TextEditingController();
   final _demoRolNegocioCtrl = TextEditingController();
   final _demoContactoNombreCtrl = TextEditingController();
@@ -65,6 +68,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         withData: true,
       ),
     );
+    if (!mounted) return;
     if (result == null || result.files.isEmpty) return;
 
     final file = result.files.single;
@@ -76,6 +80,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     } else if (file.path != null && file.path!.trim().isNotEmpty) {
       raw = await File(file.path!).readAsString();
     } else {
+      if (!mounted) return;
       setState(() {
         _licenseFileStatus = 'No se pudo leer el archivo seleccionado';
       });
@@ -86,12 +91,14 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     try {
       decoded = jsonDecode(raw);
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _licenseFileStatus = 'El archivo no es un JSON válido';
       });
       return;
     }
     if (decoded is! Map) {
+      if (!mounted) return;
       setState(() {
         _licenseFileStatus = 'Formato inválido: se esperaba un objeto JSON';
       });
@@ -104,6 +111,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
 
     await controller.applyOfflineLicenseFile(decoded.cast<String, dynamic>());
 
+    if (!mounted) return;
+
     final st = ref.read(licenseControllerProvider);
     final info = st.info;
     setState(() {
@@ -115,11 +124,53 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         _licenseFileStatus = 'Archivo verificado. Verifica el estado.';
       }
     });
+
+    if (!mounted) return;
+    if (st.error == null &&
+        info?.isActive == true &&
+        info?.isExpired == false) {
+      // Entrar al sistema: llevar al login automáticamente.
+      context.go('/login');
+    }
   }
 
   Future<void> _openWhatsapp() async {
-    const phone = '18295319442';
-    final url = 'https://wa.me/$phone';
+    final st = ref.read(licenseControllerProvider);
+    final info = st.info;
+
+    final deviceId = (info?.deviceId ?? '').trim();
+    final licenseKey = (info?.licenseKey ?? '').trim();
+    final projectCode = (info?.projectCode ?? kFullposProjectCode).trim();
+    final estado = (info?.estado ?? '').trim();
+    final code = (info?.code ?? st.errorCode ?? '').trim();
+    final motivo = (info?.motivo ?? '').trim();
+
+    final negocio = _demoNombreNegocioCtrl.text.trim();
+    final tipoNegocio = _demoRolNegocioCtrl.text.trim();
+    final contacto = _demoContactoNombreCtrl.text.trim();
+    final telefono = _demoContactoTelefonoCtrl.text.trim();
+
+    final lines = <String>[
+      'Hola soporte, necesito ayuda con FULLPOS.',
+      '',
+      'Device ID: ${deviceId.isNotEmpty ? deviceId : '-'}',
+      'Proyecto: ${projectCode.isNotEmpty ? projectCode : '-'}',
+      'Licencia: ${licenseKey.isNotEmpty ? licenseKey : '-'}',
+      if (estado.isNotEmpty) 'Estado: $estado',
+      if (code.isNotEmpty) 'Código: $code',
+      if (motivo.isNotEmpty) 'Motivo: $motivo',
+      if (negocio.isNotEmpty) 'Negocio: $negocio',
+      if (tipoNegocio.isNotEmpty) 'Tipo negocio: $tipoNegocio',
+      if (contacto.isNotEmpty) 'Contacto: $contacto',
+      if (telefono.isNotEmpty) 'Teléfono: $telefono',
+    ];
+
+    final message = lines.join('\n');
+
+    final uri = Uri.parse(
+      'https://wa.me/$_supportPhoneWhatsapp',
+    ).replace(queryParameters: {'text': message});
+    final url = uri.toString();
 
     await WindowService.runWithExternalApplication(() async {
       // Requisito: minimizar primero, luego abrir WhatsApp.
@@ -388,7 +439,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                               const SizedBox(width: 10),
                               _sectionButton(
                                 value: _LicenseSection.file,
-                                label: 'Archivo',
+                                label: 'Activar',
                                 icon: Icons.upload_file,
                               ),
                               const SizedBox(width: 10),
@@ -576,7 +627,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         ),
         const SizedBox(height: 12),
         Text(
-          'WhatsApp: 8295319442',
+          'WhatsApp: $_supportPhoneDisplay',
           style: Theme.of(
             context,
           ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),

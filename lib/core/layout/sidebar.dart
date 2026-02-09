@@ -75,12 +75,23 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final scheme = theme.colorScheme;
 
     final sidebarBg = themeSettings.sidebarColor;
-    final sidebarTextColor = ColorUtils.ensureReadableColor(
+    var sidebarTextColor = ColorUtils.ensureReadableColor(
       themeSettings.sidebarTextColor,
       sidebarBg,
     );
+
+    // En sidebar claro, evita que el texto se vea "negro puro":
+    // lo bajamos a gris manteniendo contraste.
+    final isSidebarVeryLight = sidebarBg.computeLuminance() > 0.78;
+    final isTextVeryDark = sidebarTextColor.computeLuminance() < 0.12;
+    if (isSidebarVeryLight && isTextVeryDark) {
+      sidebarTextColor = sidebarTextColor.withOpacity(0.76);
+    }
     final activeColor = themeSettings.sidebarActiveColor;
     final hoverColor = themeSettings.hoverColor;
+
+    final lightPillStyle = !themeSettings.isDarkMode;
+    final navItemTextColor = sidebarTextColor;
 
     final borderColor = scheme.outlineVariant.withOpacity(0.35);
     final shadowColor = theme.shadowColor;
@@ -150,6 +161,17 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       : 'FULLPOS')
                   .toUpperCase();
 
+          final titleTextGradient = const LinearGradient(
+            colors: [
+              Colors.white,
+              Colors.white,
+              Colors.black54,
+            ],
+            stops: [0.0, 0.72, 1.0],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          );
+
           final header = LayoutBuilder(
             builder: (context, headerConstraints) {
               final availableWidth = headerConstraints.maxWidth;
@@ -215,15 +237,21 @@ class _SidebarState extends ConsumerState<Sidebar> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: sidebarTextColor,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: (14.5 * s).clamp(12.0, 15.5),
-                                  letterSpacing: 0.4,
+                              ShaderMask(
+                                shaderCallback: (bounds) {
+                                  return titleTextGradient.createShader(bounds);
+                                },
+                                blendMode: BlendMode.srcIn,
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: (14.5 * s).clamp(12.0, 15.5),
+                                    letterSpacing: 0.4,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -274,7 +302,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 text.toUpperCase(),
                 style: TextStyle(
                   color: sidebarTextColor.withOpacity(0.65),
-                  fontSize: (11.0 * s).clamp(10.0, 12.0),
+                  // Solo el nombre de cada sección (ej: Ventas, Inventario).
+                  fontSize: (9.5 * s).clamp(8.5, 11.0),
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.9,
                 ),
@@ -284,6 +313,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
           return Column(
             children: [
+              SizedBox(height: (3 * s).clamp(2.0, 6.0)),
               header,
               Divider(color: sidebarTextColor.withOpacity(0.12), height: 1),
               Expanded(
@@ -297,9 +327,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/sales',
                       onTap: () => _go(context, '/sales'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     PremiumNavItem(
@@ -308,9 +339,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/sales-list',
                       onTap: () => _go(context, '/sales-list'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     PremiumNavItem(
@@ -319,31 +351,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/quotes-list',
                       onTap: () => _go(context, '/quotes-list'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.assignment_return_outlined,
-                      title: 'Devoluciones',
-                      route: '/returns-list',
-                      onTap: () => _go(context, '/returns-list'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.account_balance,
-                      title: 'Creditos',
-                      route: '/credits-list',
-                      onTap: () => _go(context, '/credits-list'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     sectionLabel('Caja'),
@@ -353,9 +364,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/cash/history',
                       onTap: () => _go(context, '/cash/history'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     PremiumNavItem(
@@ -364,9 +376,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/cash/expenses',
                       onTap: () => _go(context, '/cash/expenses'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     sectionLabel('Inventario'),
@@ -376,9 +389,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/products',
                       onTap: () => _go(context, '/products'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     PremiumNavItem(
@@ -387,20 +401,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: null,
                       onTap: () => CatalogPdfLauncher.openFromSidebar(context),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.timeline,
-                      title: 'Historial de stock',
-                      route: '/products/history',
-                      onTap: () => _go(context, '/products/history'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     PremiumNavItem(
@@ -409,55 +413,51 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/clients',
                       onTap: () => _go(context, '/clients'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     sectionLabel('Compras'),
                     PremiumNavItem(
                       icon: Icons.shopping_cart_outlined,
-                      title: 'Ordenes de compra',
+                      title: 'Compras',
                       route: '/purchases',
                       onTap: () => _go(context, '/purchases'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
-                    PremiumNavItem(
-                      icon: Icons.add_shopping_cart,
-                      title: 'Nueva orden',
-                      route: '/purchases/new',
-                      onTap: () => _go(context, '/purchases/new'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    PremiumNavItem(
-                      icon: Icons.auto_awesome,
-                      title: 'Orden automatica',
-                      route: '/purchases/auto',
-                      onTap: () => _go(context, '/purchases/auto'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    sectionLabel('Reportes y herramientas'),
+                    SizedBox(height: (AppSizes.spaceXL * 2) * s),
+                  ],
+                ),
+              ),
+              // Accesos fijos inferiores (profesional, alineado, con separador)
+              Divider(color: scheme.outlineVariant.withOpacity(0.35), height: 1),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  padS,
+                  (6 * s).clamp(4.0, 10.0),
+                  padS,
+                  (2 * s).clamp(2.0, 6.0),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     PremiumNavItem(
                       icon: Icons.bar_chart,
-                      title: 'Reportes',
+                      title: 'Reporte',
                       route: '/reports',
                       onTap: () => _go(context, '/reports'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
                     PremiumNavItem(
@@ -466,40 +466,29 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       route: '/tools',
                       onTap: () => _go(context, '/tools'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
-                    PremiumNavItem(
-                      icon: Icons.confirmation_number_outlined,
-                      title: 'NCF',
-                      route: '/ncf',
-                      onTap: () => _go(context, '/ncf'),
-                      isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
-                      activeColor: activeColor,
-                      hoverColor: hoverColor,
-                      scale: s,
-                    ),
-                    sectionLabel('Configuracion'),
                     PremiumNavItem(
                       icon: Icons.settings_outlined,
-                      title: 'Configuracion',
+                      title: 'Configuración',
                       route: '/settings',
                       onTap: () => _go(context, '/settings'),
                       isCollapsed: effectiveCollapsed,
-                      textColor: sidebarTextColor,
+                      textColor: navItemTextColor,
                       activeColor: activeColor,
                       hoverColor: hoverColor,
+                      lightPillStyle: lightPillStyle,
                       scale: s,
                     ),
-
-                    SizedBox(height: (AppSizes.spaceXL * 2) * s),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              SizedBox(height: (6 * s).clamp(4.0, 10.0)),
+              Divider(color: scheme.outlineVariant.withOpacity(0.35), height: 1),
               // Fixed logout button at end of sidebar
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: padM, vertical: (12 * s).clamp(10.0, 16.0)),
@@ -561,6 +550,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     textColor: sidebarTextColor,
                     activeColor: scheme.error,
                     hoverColor: hoverColor,
+                    lightPillStyle: false,
                     scale: s,
                   ),
                 ),
@@ -583,6 +573,7 @@ class PremiumNavItem extends StatefulWidget {
   final Color textColor;
   final Color activeColor;
   final Color hoverColor;
+  final bool lightPillStyle;
   final double scale;
 
   const PremiumNavItem({
@@ -595,6 +586,7 @@ class PremiumNavItem extends StatefulWidget {
     required this.textColor,
     required this.activeColor,
     required this.hoverColor,
+    this.lightPillStyle = false,
     this.scale = 1.0,
   });
 
@@ -637,14 +629,32 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     const duration = Duration(milliseconds: 180);
     final pillRadius = BorderRadius.circular((16 * s).clamp(12.0, 16.0));
 
-    final idleBg = widget.textColor.withOpacity(0.04);
-    final hoverBgA = widget.hoverColor.withOpacity(0.14);
-    final hoverBgB = widget.hoverColor.withOpacity(0.06);
-    final activeBgA = widget.activeColor.withOpacity(0.22);
-    final activeBgB = widget.activeColor.withOpacity(0.10);
+    // Estilo: en tema Azul Marca (light), los botones del menú deben verse
+    // blancos con un degradado sutil a negro (y texto/iconos oscuros).
+    // En tema negro, se mantiene el estilo premium actual.
+    final prefersDarkFg = widget.lightPillStyle;
 
-    final fgColor = isActive ? widget.textColor.withOpacity(0.98) : widget.textColor;
-    final iconColor = isActive ? widget.activeColor.withOpacity(0.95) : widget.textColor;
+    final idleBg = prefersDarkFg
+      ? Colors.transparent
+      : widget.textColor.withOpacity(0.04);
+    final hoverBgA = prefersDarkFg
+      ? Colors.white.withOpacity(0.96)
+      : widget.hoverColor.withOpacity(0.14);
+    final hoverBgB = prefersDarkFg
+      ? Colors.black.withOpacity(0.08)
+      : widget.hoverColor.withOpacity(0.06);
+    final activeBgA = prefersDarkFg
+      ? Colors.white.withOpacity(0.98)
+      : widget.activeColor.withOpacity(0.22);
+    final activeBgB = prefersDarkFg
+      ? Colors.black.withOpacity(0.10)
+      : widget.activeColor.withOpacity(0.10);
+
+    final baseFg = prefersDarkFg ? Colors.black87 : widget.textColor;
+    final fgColor = isActive ? baseFg.withOpacity(0.98) : baseFg;
+    final iconColor = isActive
+      ? (prefersDarkFg ? widget.activeColor.withOpacity(0.98) : widget.activeColor.withOpacity(0.95))
+      : baseFg;
 
     final item = Padding(
       padding: EdgeInsets.symmetric(
@@ -700,8 +710,10 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                 borderRadius: pillRadius,
                 border: Border.all(
                   color: isActive
-                      ? widget.activeColor.withOpacity(0.35)
-                      : widget.textColor.withOpacity(0.08),
+                      ? widget.activeColor.withOpacity(prefersDarkFg ? 0.70 : 0.35)
+                      : (prefersDarkFg
+                            ? Colors.black.withOpacity(0.08)
+                            : widget.textColor.withOpacity(0.08)),
                   width: 1.2,
                 ),
                 boxShadow: [

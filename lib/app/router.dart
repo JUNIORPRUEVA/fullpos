@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/foundation.dart';
@@ -34,11 +36,14 @@ import '../features/settings/ui/settings_page.dart';
 import '../features/tools/ui/ncf_page.dart';
 import '../features/tools/ui/tools_page.dart';
 import '../features/license/ui/license_page.dart';
+import '../features/license/ui/license_blocked_page.dart';
 import '../features/license/services/license_storage.dart';
 import '../features/license/services/license_api.dart';
 import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
+
+Future<_LicenseGateDecision>? _licenseGateInFlight;
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final bootStatus = ref.watch(
@@ -49,28 +54,53 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
   final bootstrap = ref.read(appBootstrapProvider);
 
+  // Heartbeat para re-evaluar redirects (ej: vencimiento o revocación) sin reiniciar.
+  // El valor se controla en license_config.dart.
+  final heartbeat = _RouterHeartbeat(kLicenseGateHeartbeatInterval);
+  final refresh = _MergedListenable([bootstrap, heartbeat]);
+  ref.onDispose(() {
+    refresh.dispose();
+    heartbeat.dispose();
+  });
+
   return GoRouter(
     navigatorKey: ErrorHandler.navigatorKey,
     // Nota: La pantalla de arranque se maneja fuera del router (AppEntry).
     // Mantener una ruta inicial estable evita “rebotes” visuales.
     initialLocation: isLoggedIn ? '/sales' : '/login',
-    refreshListenable: bootstrap,
+    refreshListenable: refresh,
     redirect: (context, state) async {
       final path = state.uri.path;
       final isOnLogin = path == '/login';
       final isOnPublicLicense = path == '/license';
+      final isOnSettingsLicense = path == '/settings/license';
+      final isOnBlocked = path == '/license-blocked';
 
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
       if (bootStatus != BootStatus.ready) return null;
 
-      // Gate de licencia: si no hay licencia activa, mostrar pantalla de licencia/prueba.
-      final hasLicense = await _hasActiveLicense();
+      // Gate de licencia: distinguir ACTIVA vs BLOQUEADA vs no válida.
+      final gate = await _getLicenseGateDecision();
       assert(() {
-        debugPrint('[LICENSE] gate: hasLicense=$hasLicense path=$path');
+        debugPrint(
+          '[LICENSE] gate: active=${gate.isActive} blocked=${gate.isBlocked} code=${gate.code} path=$path',
+        );
         return true;
       }());
-      if (!hasLicense) {
+
+      // Si está BLOQUEADA: no permitir hacer nada, solo mostrar pantalla de bloqueo.
+      if (gate.isBlocked) {
+        return isOnBlocked ? null : '/license-blocked';
+      }
+
+      // Sin licencia válida (revocada/eliminada/vencida/etc): mostrar pantalla normal.
+      if (!gate.isActive) {
         return isOnPublicLicense ? null : '/license';
+      }
+
+      // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
+      if (isOnPublicLicense || isOnSettingsLicense || isOnBlocked) {
+        return isLoggedIn ? '/sales' : '/login';
       }
 
       assert(() {
@@ -98,6 +128,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/license',
         builder: (context, state) =>
             const FullposBrandScope(child: LicensePage()),
+      ),
+      GoRoute(
+        path: '/license-blocked',
+        builder: (context, state) =>
+            const FullposBrandScope(child: LicenseBlockedPage()),
       ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
@@ -277,26 +312,213 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
-Future<bool> _hasActiveLicense() async {
-  final storage = LicenseStorage();
-  final cached = await storage.getLastInfo();
-  if (cached != null && cached.isActive && !cached.isExpired) {
-    final last = cached.lastCheckedAt;
-    if (last != null) {
-      final age = DateTime.now().difference(last);
-      if (age.inHours < kLicenseGateRefreshHours) return true;
-    } else {
-      // Sin timestamp: aceptar por ahora.
-      return true;
+class _RouterHeartbeat extends ChangeNotifier {
+  late final Timer _timer;
+
+  _RouterHeartbeat(Duration interval) {
+    _timer = Timer.periodic(interval, (_) => notifyListeners());
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+}
+
+class _MergedListenable extends ChangeNotifier {
+  final List<Listenable> _listenables;
+
+  _MergedListenable(this._listenables) {
+    for (final l in _listenables) {
+      l.addListener(notifyListeners);
     }
   }
 
-  final licenseKey = await storage.getLicenseKey();
-  if (licenseKey == null || licenseKey.trim().isEmpty) return false;
+  @override
+  void dispose() {
+    for (final l in _listenables) {
+      l.removeListener(notifyListeners);
+    }
+    super.dispose();
+  }
+}
+
+class _LicenseGateDecision {
+  final bool isActive;
+  final bool isBlocked;
+  final String? code;
+
+  const _LicenseGateDecision({
+    required this.isActive,
+    required this.isBlocked,
+    required this.code,
+  });
+}
+
+Future<_LicenseGateDecision> _getLicenseGateDecision() async {
+  // Evita disparar múltiples requests en paralelo cuando el router refresca
+  // frecuentemente. Todas las llamadas concurrentes comparten el mismo Future.
+  final inFlight = _licenseGateInFlight;
+  if (inFlight != null) return inFlight;
+
+  final future = _getLicenseGateDecisionImpl();
+  _licenseGateInFlight = future;
+  future.whenComplete(() {
+    if (identical(_licenseGateInFlight, future)) {
+      _licenseGateInFlight = null;
+    }
+  });
+  return future;
+}
+
+Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
+  // En widget tests no debe haber dependencia de red/licencias.
+  if (const bool.fromEnvironment('FLUTTER_TEST')) {
+    return const _LicenseGateDecision(
+      isActive: true,
+      isBlocked: false,
+      code: 'TEST',
+    );
+  }
+
+  final storage = LicenseStorage();
+  final cached = await storage.getLastInfo();
 
   final deviceId =
       (await storage.getDeviceId()) ?? await SessionManager.ensureTerminalId();
   await storage.setDeviceId(deviceId);
+
+  Future<_LicenseGateDecision?> tryAutoActivate() async {
+    try {
+      final map = await LicenseApi().autoActivateByDevice(
+        baseUrl: kLicenseBackendBaseUrl,
+        deviceId: deviceId,
+        projectCode: kFullposProjectCode,
+      );
+
+      final ok = map['ok'] == true;
+      final code = map['code']?.toString();
+      final estado = map['estado']?.toString();
+      final motivo = (map['motivo'] ?? map['notas'] ?? map['motivo_bloqueo'])
+          ?.toString();
+
+      // Si devuelve una nueva licencia, persistirla para que el POS ya quede actualizado.
+      final resolvedKey = (map['license_key'] ?? '').toString().trim();
+      if (resolvedKey.isNotEmpty) {
+        await storage.setLicenseKey(resolvedKey);
+      }
+
+      if (!ok) {
+        final isBlocked =
+            (estado ?? '').toUpperCase() == 'BLOQUEADA' ||
+            (code ?? '').toUpperCase() == 'BLOCKED';
+
+        if (isBlocked) {
+          final info = LicenseInfo(
+            backendBaseUrl: kLicenseBackendBaseUrl,
+            licenseKey: resolvedKey.isNotEmpty
+                ? resolvedKey
+                : (await storage.getLicenseKey()) ?? '',
+            deviceId: deviceId,
+            projectCode: kFullposProjectCode,
+            ok: false,
+            code: code,
+            estado: 'BLOQUEADA',
+            motivo: motivo,
+            lastCheckedAt: DateTime.now(),
+          );
+          await storage.setLastInfo(info);
+          return _LicenseGateDecision(
+            isActive: false,
+            isBlocked: true,
+            code: code,
+          );
+        }
+
+        // No hay licencia activa para este device/cliente.
+        return null;
+      }
+
+      final info = LicenseInfo(
+        backendBaseUrl: kLicenseBackendBaseUrl,
+        licenseKey: resolvedKey.isNotEmpty
+            ? resolvedKey
+            : (await storage.getLicenseKey()) ?? '',
+        deviceId: deviceId,
+        projectCode: kFullposProjectCode,
+        ok: true,
+        code: code,
+        tipo: map['tipo']?.toString(),
+        estado: estado ?? 'ACTIVA',
+        motivo: motivo,
+        fechaInicio: DateTime.tryParse((map['fecha_inicio'] ?? '').toString()),
+        fechaFin: DateTime.tryParse((map['fecha_fin'] ?? '').toString()),
+        maxDispositivos: int.tryParse(
+          (map['max_dispositivos'] ?? '').toString(),
+        ),
+        usados: int.tryParse((map['usados'] ?? '').toString()),
+        lastCheckedAt: DateTime.now(),
+      );
+      await storage.setLastInfo(info);
+
+      if (info.isActive && !info.isExpired) {
+        return const _LicenseGateDecision(
+          isActive: true,
+          isBlocked: false,
+          code: 'OK',
+        );
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool isFresh(DateTime? lastCheckedAt) {
+    if (lastCheckedAt == null) return false;
+    final age = DateTime.now().difference(lastCheckedAt);
+    return age < kLicenseGateFreshWindow;
+  }
+
+  if (cached != null) {
+    if (cached.isExpired) {
+      final auto = await tryAutoActivate();
+      if (auto != null) return auto;
+
+      return const _LicenseGateDecision(
+        isActive: false,
+        isBlocked: false,
+        code: 'EXPIRED',
+      );
+    }
+    if (cached.isActive && isFresh(cached.lastCheckedAt)) {
+      return const _LicenseGateDecision(
+        isActive: true,
+        isBlocked: false,
+        code: 'OK',
+      );
+    }
+    if (cached.isBlocked && isFresh(cached.lastCheckedAt)) {
+      return _LicenseGateDecision(
+        isActive: false,
+        isBlocked: true,
+        code: cached.code,
+      );
+    }
+  }
+
+  final licenseKey = await storage.getLicenseKey();
+  if (licenseKey == null || licenseKey.trim().isEmpty) {
+    final auto = await tryAutoActivate();
+    if (auto != null) return auto;
+    return const _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: 'NO_KEY',
+    );
+  }
 
   try {
     final map = await LicenseApi().check(
@@ -305,6 +527,8 @@ Future<bool> _hasActiveLicense() async {
       deviceId: deviceId,
       projectCode: kFullposProjectCode,
     );
+
+    final checkCode = (map['code'] ?? '').toString().trim().toUpperCase();
 
     final info = LicenseInfo(
       backendBaseUrl: kLicenseBackendBaseUrl,
@@ -315,14 +539,118 @@ Future<bool> _hasActiveLicense() async {
       code: map['code']?.toString(),
       tipo: map['tipo']?.toString(),
       estado: map['estado']?.toString(),
+      motivo: (map['motivo'] ?? map['notas'] ?? map['motivo_bloqueo'])
+          ?.toString(),
       fechaInicio: DateTime.tryParse((map['fecha_inicio'] ?? '').toString()),
       fechaFin: DateTime.tryParse((map['fecha_fin'] ?? '').toString()),
       lastCheckedAt: DateTime.now(),
     );
     await storage.setLastInfo(info);
 
-    return info.isActive && !info.isExpired;
+    // Licencia ONLINE: si la licencia existe pero este dispositivo aún no está activado,
+    // check() típicamente devuelve NOT_FOUND. En ese caso intentamos activar automáticamente
+    // para crear la activación y permitir entrar sin pasos extra.
+    if (checkCode == 'NOT_FOUND') {
+      try {
+        final activated = await LicenseApi().activate(
+          baseUrl: kLicenseBackendBaseUrl,
+          licenseKey: licenseKey.trim(),
+          deviceId: deviceId,
+          projectCode: kFullposProjectCode,
+        );
+
+        final actInfo = LicenseInfo(
+          backendBaseUrl: kLicenseBackendBaseUrl,
+          licenseKey: licenseKey.trim(),
+          deviceId: deviceId,
+          projectCode: kFullposProjectCode,
+          ok: activated['ok'] == true,
+          code: activated['code']?.toString(),
+          tipo: activated['tipo']?.toString(),
+          estado: activated['estado']?.toString(),
+          motivo:
+              (activated['motivo'] ??
+                      activated['notas'] ??
+                      activated['motivo_bloqueo'])
+                  ?.toString(),
+          fechaInicio: DateTime.tryParse(
+            (activated['fecha_inicio'] ?? '').toString(),
+          ),
+          fechaFin: DateTime.tryParse(
+            (activated['fecha_fin'] ?? '').toString(),
+          ),
+          maxDispositivos: int.tryParse(
+            (activated['max_dispositivos'] ?? '').toString(),
+          ),
+          usados: int.tryParse((activated['usados'] ?? '').toString()),
+          lastCheckedAt: DateTime.now(),
+        );
+        await storage.setLastInfo(actInfo);
+
+        if (actInfo.isActive && !actInfo.isExpired) {
+          return const _LicenseGateDecision(
+            isActive: true,
+            isBlocked: false,
+            code: 'OK',
+          );
+        }
+      } catch (_) {
+        // Si no se puede activar automáticamente, se conserva el resultado del check.
+      }
+
+      // Si la clave actual ya no aplica (ej: DEMO terminó y se creó FULL nueva),
+      // intentar resolver automáticamente por device_id.
+      final auto = await tryAutoActivate();
+      if (auto != null) return auto;
+    }
+
+    // DEMO vencida / licencia vieja: intentar auto-resolver FULL por device_id.
+    if (checkCode == 'EXPIRED') {
+      final auto = await tryAutoActivate();
+      if (auto != null) return auto;
+    }
+
+    if (info.isBlocked) {
+      return _LicenseGateDecision(
+        isActive: false,
+        isBlocked: true,
+        code: info.code,
+      );
+    }
+    if (info.isActive && !info.isExpired) {
+      return const _LicenseGateDecision(
+        isActive: true,
+        isBlocked: false,
+        code: 'OK',
+      );
+    }
+    return _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: info.code,
+    );
   } catch (_) {
-    return false;
+    // Falla de red: conservar el último estado local si es utilizable.
+    if (cached != null) {
+      if (cached.isBlocked) {
+        return _LicenseGateDecision(
+          isActive: false,
+          isBlocked: true,
+          code: cached.code,
+        );
+      }
+      if (cached.isActive && !cached.isExpired) {
+        return const _LicenseGateDecision(
+          isActive: true,
+          isBlocked: false,
+          code: 'OK',
+        );
+      }
+    }
+    return const _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: 'UNKNOWN',
+    );
   }
 }

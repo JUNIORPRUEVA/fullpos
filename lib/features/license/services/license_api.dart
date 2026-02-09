@@ -88,16 +88,79 @@ class LicenseApi {
     required String licenseKey,
     required String deviceId,
     required String projectCode,
-  }) {
-    return _postJson(
-      baseUrl: baseUrl,
-      path: '/api/licenses/check',
-      body: {
+  }) async {
+    final res = await _client
+        .post(
+      _uri(baseUrl, '/api/licenses/check'),
+      headers: {
+        'content-type': 'application/json',
+        'accept': 'application/json',
+      },
+      body: jsonEncode({
         'license_key': licenseKey,
         'device_id': deviceId,
         'project_code': projectCode,
+      }),
+    )
+        .timeout(const Duration(seconds: 8));
+
+    Map<String, dynamic>? map;
+    try {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic>) map = decoded;
+    } catch (_) {
+      // ignore
+    }
+
+    if (map == null) {
+      throw LicenseApiException(
+        message: 'Respuesta inválida del servidor',
+        statusCode: res.statusCode,
+      );
+    }
+
+    // Importante: check() DEBE devolver estados ok=false (BLOQUEADA/VENCIDA/NOT_FOUND)
+    // para que el POS pueda redirigir a /license o /license-blocked.
+    return map;
+  }
+
+  Future<Map<String, dynamic>> autoActivateByDevice({
+    required String baseUrl,
+    required String deviceId,
+    required String projectCode,
+  }) async {
+    final res = await _client
+        .post(
+      _uri(baseUrl, '/api/licenses/auto-activate'),
+      headers: {
+        'content-type': 'application/json',
+        'accept': 'application/json',
       },
-    );
+      body: jsonEncode({
+        'device_id': deviceId,
+        'project_code': projectCode,
+      }),
+    )
+        .timeout(const Duration(seconds: 8));
+
+    Map<String, dynamic>? map;
+    try {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic>) map = decoded;
+    } catch (_) {
+      // ignore
+    }
+
+    if (map == null) {
+      throw LicenseApiException(
+        message: 'Respuesta inválida del servidor',
+        statusCode: res.statusCode,
+      );
+    }
+
+    // Importante: puede devolver ok=false (NO_ACTIVE_LICENSE / NO_HISTORY / BLOCKED)
+    // y eso se usa para decidir el gate del router.
+    return map;
   }
 
   Future<Map<String, dynamic>> startDemo({
@@ -134,5 +197,44 @@ class LicenseApi {
           '$path?device_id=${Uri.encodeQueryComponent(deviceIdCheck.trim())}';
     }
     return _postJson(baseUrl: baseUrl, path: path, body: licenseFile);
+  }
+
+  Future<Map<String, dynamic>> getPublicSigningKey({
+    required String baseUrl,
+  }) async {
+    final res = await _client
+        .get(
+      _uri(baseUrl, '/api/licenses/public-signing-key'),
+      headers: {
+        'accept': 'application/json',
+      },
+    )
+        .timeout(const Duration(seconds: 8));
+
+    Map<String, dynamic>? map;
+    try {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic>) map = decoded;
+    } catch (_) {
+      // ignore
+    }
+
+    if (map == null) {
+      throw LicenseApiException(
+        message: 'Respuesta inválida del servidor',
+        statusCode: res.statusCode,
+      );
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final msg = (map['message'] ?? map['error'] ?? res.body).toString();
+      throw LicenseApiException(
+        message: msg,
+        statusCode: res.statusCode,
+        code: map['code']?.toString(),
+      );
+    }
+
+    return map;
   }
 }

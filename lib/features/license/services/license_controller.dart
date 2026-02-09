@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -70,6 +74,10 @@ class LicenseController extends StateNotifier<LicenseState> {
       final deviceId = await _ensureDeviceId();
       final last = await storage.getLastInfo();
 
+      // Intentar refrescar clave pública de firma (no bloqueante).
+      // Si no hay internet, se ignora.
+      unawaited(_refreshOfflineSigningPublicKey());
+
       LicenseInfo? merged = last;
       if (merged != null) {
         merged = LicenseInfo(
@@ -83,6 +91,7 @@ class LicenseController extends StateNotifier<LicenseState> {
           code: merged.code,
           tipo: merged.tipo,
           estado: merged.estado,
+          motivo: merged.motivo,
           fechaInicio: merged.fechaInicio,
           fechaFin: merged.fechaFin,
           maxDispositivos: merged.maxDispositivos,
@@ -110,6 +119,37 @@ class LicenseController extends StateNotifier<LicenseState> {
         errorCode: null,
       );
     }
+  }
+
+  Future<void> _refreshOfflineSigningPublicKey() async {
+    try {
+      final map = await api.getPublicSigningKey(
+        baseUrl: kLicenseBackendBaseUrl,
+      );
+      if (map['ok'] != true) return;
+
+      final jwk = map['jwk'];
+      if (jwk is! Map) return;
+      final x = (jwk['x'] ?? '').toString().trim();
+      if (x.isEmpty) return;
+
+      // jwk.x viene en base64url. Lo normalizamos a base64 clásico.
+      final raw = _base64UrlDecode(x);
+      if (raw.length != 32) return;
+      final normalizedB64 = base64Encode(raw);
+
+      await storage.setOfflineSigningPublicKeyB64(normalizedB64);
+    } catch (_) {
+      // Ignorar: offline-first.
+    }
+  }
+
+  List<int> _base64UrlDecode(String input) {
+    var s = input.replaceAll('-', '+').replaceAll('_', '/');
+    while (s.length % 4 != 0) {
+      s += '=';
+    }
+    return base64Decode(s);
   }
 
   Future<String> _ensureDeviceId() async {
@@ -206,18 +246,32 @@ class LicenseController extends StateNotifier<LicenseState> {
         code: map['code']?.toString(),
         tipo: map['tipo']?.toString(),
         estado: map['estado']?.toString(),
+        motivo: (map['motivo'] ?? map['notas'] ?? map['motivo_bloqueo'])
+            ?.toString(),
         fechaInicio: DateTime.tryParse((map['fecha_inicio'] ?? '').toString()),
         fechaFin: DateTime.tryParse((map['fecha_fin'] ?? '').toString()),
         lastCheckedAt: DateTime.now(),
       );
 
       await storage.setLastInfo(info);
-      state = state.copyWith(loading: false, info: info);
-    } on LicenseApiException catch (e) {
+
+      if (info.ok) {
+        state = state.copyWith(loading: false, info: info);
+        return;
+      }
+
+      final code = (info.code ?? '').toUpperCase();
+      final msg = switch (code) {
+        'BLOCKED' => 'La cuenta está bloqueada',
+        'EXPIRED' => 'La licencia está vencida',
+        'NOT_FOUND' => 'Licencia no encontrada o activación revocada',
+        _ => 'Licencia no válida',
+      };
       state = state.copyWith(
         loading: false,
-        error: e.message,
-        errorCode: e.code,
+        info: info,
+        error: msg,
+        errorCode: info.code,
       );
     } catch (e) {
       state = state.copyWith(
@@ -274,37 +328,72 @@ class LicenseController extends StateNotifier<LicenseState> {
     final deviceId = await _ensureDeviceId();
     state = state.copyWith(loading: true, error: null, errorCode: null);
     try {
-      final map = await api.verifyOfflineFile(
-        baseUrl: kLicenseBackendBaseUrl,
-        licenseFile: licenseFile,
-        deviceIdCheck: deviceId,
+      // Verificación OFFLINE 100% local: no requiere internet.
+      final payload = (licenseFile['payload'] is Map)
+          ? (licenseFile['payload'] as Map).cast<String, dynamic>()
+          : <String, dynamic>{};
+      final signatureB64 = (licenseFile['signature'] ?? '').toString().trim();
+      final alg = (licenseFile['alg'] ?? '').toString().trim();
+
+      if (payload.isEmpty || signatureB64.isEmpty) {
+        throw const LicenseApiException(
+          message: 'Archivo de licencia inválido',
+        );
+      }
+      if (alg.isNotEmpty && alg.toUpperCase() != 'ED25519') {
+        throw const LicenseApiException(
+          message: 'Archivo de licencia inválido (algoritmo no soportado)',
+        );
+      }
+
+      // Firma: Ed25519 sobre JSON.stringify(payload) (mismo formato que backend).
+      final payloadJson = jsonEncode(payload);
+      final signatureBytes = base64Decode(signatureB64);
+      final storedKeyB64 = await storage.getOfflineSigningPublicKeyB64();
+      final pubKeyBytes = base64Decode(
+        (storedKeyB64 ?? kOfflineLicenseSigningPublicKeyB64).trim(),
+      );
+      if (pubKeyBytes.length != 32) {
+        throw const LicenseApiException(
+          message:
+              'Verificación offline no configurada (clave pública inválida)',
+        );
+      }
+
+      final algorithm = Ed25519();
+      final publicKey = SimplePublicKey(pubKeyBytes, type: KeyPairType.ed25519);
+
+      final isValid = await algorithm.verify(
+        utf8.encode(payloadJson),
+        signature: Signature(signatureBytes, publicKey: publicKey),
       );
 
-      final signatureOk = map['signature_ok'] == true;
-      final expired = map['expired'] == true;
-      final deviceMatch = map['device_match'];
-      if (!signatureOk) {
+      if (!isValid) {
         throw const LicenseApiException(
           message: 'Archivo de licencia inválido (firma no válida)',
         );
       }
-      if (expired) {
-        throw const LicenseApiException(message: 'La licencia está vencida');
-      }
-      if (deviceMatch == false) {
-        throw const LicenseApiException(
-          message: 'Este archivo no corresponde a este dispositivo',
-        );
-      }
 
-      final payload = (map['payload'] is Map)
-          ? (map['payload'] as Map).cast<String, dynamic>()
-          : <String, dynamic>{};
+      // Validaciones de negocio (proyecto / dispositivo / vencimiento)
       final projectCode = (payload['project_code'] ?? '').toString().trim();
       if (projectCode.isNotEmpty && projectCode != kFullposProjectCode) {
         throw LicenseApiException(
           message: 'Archivo de licencia no corresponde a $kFullposProjectCode',
         );
+      }
+
+      final payloadDeviceId = (payload['device_id'] ?? '').toString().trim();
+      if (payloadDeviceId.isNotEmpty && payloadDeviceId != deviceId) {
+        throw const LicenseApiException(
+          message: 'Este archivo no corresponde a este dispositivo',
+        );
+      }
+
+      final fechaFin = DateTime.tryParse(
+        (payload['fecha_fin'] ?? '').toString(),
+      );
+      if (fechaFin != null && fechaFin.isBefore(DateTime.now())) {
+        throw const LicenseApiException(message: 'La licencia está vencida');
       }
 
       final licenseKey = (payload['license_key'] ?? '').toString().trim();
@@ -316,8 +405,28 @@ class LicenseController extends StateNotifier<LicenseState> {
 
       await storage.setLicenseKey(licenseKey);
 
-      // Activar contra backend para registrar el dispositivo y obtener fechas.
-      await activate();
+      // Guardar estado local como ACTIVA. Si no hay internet, el router usará
+      // este cache para permitir acceso.
+      final info = LicenseInfo(
+        backendBaseUrl: kLicenseBackendBaseUrl,
+        licenseKey: licenseKey,
+        deviceId: deviceId,
+        projectCode: kFullposProjectCode,
+        ok: true,
+        code: 'OK',
+        tipo: (payload['tipo'] ?? '').toString().trim(),
+        estado: 'ACTIVA',
+        motivo: null,
+        fechaInicio: DateTime.tryParse(
+          (payload['fecha_inicio'] ?? '').toString(),
+        ),
+        fechaFin: fechaFin,
+        maxDispositivos: _asInt(payload['max_dispositivos']),
+        usados: null,
+        lastCheckedAt: DateTime.now(),
+      );
+      await storage.setLastInfo(info);
+      state = state.copyWith(loading: false, info: info);
     } on LicenseApiException catch (e) {
       state = state.copyWith(
         loading: false,

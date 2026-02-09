@@ -12,7 +12,6 @@ class ThemeSelector extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(themeProvider);
     final scheme = Theme.of(context).colorScheme;
     final themeNotifier = ref.read(themeProvider.notifier);
 
@@ -28,45 +27,19 @@ class ThemeSelector extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Elige uno de los 2 temas o personaliza todo',
+            'Elige uno de los 2 temas principales',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 24),
 
-          // Modo oscuro
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppSizes.radiusM),
-              border: Border.all(color: scheme.outlineVariant.withAlpha(80)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.dark_mode_outlined, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Modo oscuro',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                Switch(
-                  value: settings.isDarkMode,
-                  onChanged: (_) => themeNotifier.toggleDarkMode(),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Opcion 1: Azul royal + oro (por defecto)
+          // Opción 1: Azul Marca (por defecto)
           _buildPresetOption(
             context,
             scheme: scheme,
             presetKey: 'default',
-            title: 'Dominicano Dark',
-            description: 'Azul oscuro con acentos dorado/verde/rojo',
+            title: 'Azul Marca (Default)',
+            description:
+                'Fondo blanco, tarjetas azules, AppBar/Sidebar/Footer azul',
             settings: PresetThemes.getPreset('default'),
             isSelected: _isSamePalette(
               ref.watch(themeProvider),
@@ -76,19 +49,19 @@ class ThemeSelector extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
 
-          // Opcion 2: Claro ejecutivo
+          // Opción 2: Negro
           _buildPresetOption(
             context,
             scheme: scheme,
-            presetKey: 'sand',
-            title: 'Marfil Ejecutivo',
-            description: 'Claro premium con contraste profesional',
-            settings: PresetThemes.getPreset('sand'),
+            presetKey: 'black',
+            title: 'Negro (Oscuro)',
+            description: 'Oscuro profesional con acentos azules',
+            settings: PresetThemes.getPreset('black'),
             isSelected: _isSamePalette(
               ref.watch(themeProvider),
-              PresetThemes.getPreset('sand'),
+              PresetThemes.getPreset('black'),
             ),
-            onTap: () => themeNotifier.applyPreset('sand'),
+            onTap: () => themeNotifier.applyPreset('black'),
           ),
 
           const SizedBox(height: 24),
