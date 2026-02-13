@@ -269,8 +269,7 @@ class _QuotesPageState extends State<QuotesPage> {
           child: CompactQuoteRow(
             quoteDetail: quoteDetail,
             isSelected: isSelected,
-            onTap: () =>
-                _selectQuote(quoteDetail, showDetails: !isWide),
+            onTap: () => _selectQuote(quoteDetail, showDetails: !isWide),
             onSell: () => _convertToSale(quoteDetail),
             onWhatsApp: () => _shareWhatsApp(quoteDetail),
             onPdf: () => _viewPDF(quoteDetail),
@@ -353,8 +352,10 @@ class _QuotesPageState extends State<QuotesPage> {
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
@@ -372,8 +373,10 @@ class _QuotesPageState extends State<QuotesPage> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: chipColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(999),
@@ -482,8 +485,8 @@ class _QuotesPageState extends State<QuotesPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: (quote.status == 'CONVERTED' ||
-                        quote.status == 'CANCELLED')
+                onPressed:
+                    (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
                     ? null
                     : () => _convertToSale(quoteDetail),
                 icon: const Icon(Icons.point_of_sale, size: 18),
@@ -494,8 +497,8 @@ class _QuotesPageState extends State<QuotesPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: (quote.status == 'CONVERTED' ||
-                        quote.status == 'CANCELLED')
+                onPressed:
+                    (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
                     ? null
                     : () => _convertToTicket(quoteDetail),
                 icon: const Icon(Icons.receipt_long, size: 18),
@@ -551,9 +554,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 onPressed: () => _deleteQuote(quoteDetail),
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Eliminar'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: status.error,
-                ),
+                style: OutlinedButton.styleFrom(foregroundColor: status.error),
               ),
             ),
           ],
@@ -594,170 +595,6 @@ class _QuotesPageState extends State<QuotesPage> {
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryPanel({
-    required int totalQuotes,
-    required int open,
-    required int converted,
-    required int cancelled,
-    required int passedToTicket,
-    required double totalAmount,
-  }) {
-    final scheme = _scheme;
-    final status = _status;
-    Widget buildChip(String label, int value, Color color) {
-      final background = color.withOpacity(0.12);
-      final foreground = ColorUtils.ensureReadableColor(color, background);
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: TextStyle(fontWeight: FontWeight.w600, color: foreground),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                value.toString(),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: foreground,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final success = status.success;
-    final successAlt = Color.lerp(success, scheme.primary, 0.2) ?? success;
-    final successText = ColorUtils.readableTextColor(success);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Resumen',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: scheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Visión rápida del desempeño de cotizaciones',
-            style: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [success, successAlt],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: success.withOpacity(0.28),
-                  blurRadius: 16,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Monto total',
-                  style: TextStyle(
-                    color: successText.withOpacity(0.85),
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  NumberFormat.currency(
-                    locale: 'es_DO',
-                    symbol: '\$',
-                    decimalDigits: 2,
-                  ).format(totalAmount),
-                  style: TextStyle(
-                    color: successText,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          buildChip('Cotizaciones', totalQuotes, scheme.secondary),
-          const SizedBox(height: 10),
-          buildChip('Abiertas', open, scheme.primary),
-          const SizedBox(height: 10),
-          buildChip('Vendidas', converted, status.success),
-          const SizedBox(height: 10),
-          buildChip('Pasadas a ticket', passedToTicket, scheme.tertiary),
-          const SizedBox(height: 10),
-          buildChip('Canceladas', cancelled, status.error),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.lightbulb_outline, color: status.warning),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Usa los filtros superiores para segmentar tus cotizaciones y comparar el rendimiento.',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: scheme.onSurface.withOpacity(0.7),
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

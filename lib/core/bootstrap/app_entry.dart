@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/ui/splash_page.dart';
 import '../brand/fullpos_brand_theme.dart';
 import 'app_bootstrap_controller.dart';
-import '../window/window_service.dart';
+import '../window/window_startup_controller.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
   if (Platform.isWindows) {
@@ -32,23 +33,19 @@ class AppEntry extends ConsumerStatefulWidget {
 }
 
 class _AppEntryState extends ConsumerState<AppEntry> {
-  bool _windowShown = false;
+  @override
+  void initState() {
+    super.initState();
 
-  void _maybeShowWindowOnce({required bool showSplash}) {
-    if (_windowShown) return;
-    if (showSplash) return;
-
-    _windowShown = true;
-    assert(() {
-      // ignore: avoid_print
-      print('[WINDOW] bootstrap ready');
-      return true;
-    }());
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Mostrar SOLO cuando el UI final ya está en pantalla.
-      WindowService.showOnce();
-    });
+    // Mostrar ventana SOLO cuando el bootstrap esté READY (no por primer frame).
+    ref.listen<BootStatus>(
+      appBootstrapProvider.select((b) => b.snapshot.status),
+      (prev, next) {
+        if (next == BootStatus.ready && prev != BootStatus.ready) {
+          unawaited(WindowStartupController.instance.showWhenReady());
+        }
+      },
+    );
   }
 
   @override
@@ -57,8 +54,8 @@ class _AppEntryState extends ConsumerState<AppEntry> {
     final delay = ref.watch(_minSplashDelayProvider);
 
     final showSplash =
-        boot.status != BootStatus.ready || (!Platform.isWindows && delay.isLoading);
-    _maybeShowWindowOnce(showSplash: showSplash);
+        boot.status != BootStatus.ready ||
+        (!Platform.isWindows && delay.isLoading);
 
     final body = showSplash
         ? const FullposBrandScope(child: SplashPage())

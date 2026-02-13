@@ -11,7 +11,7 @@ import 'core/errors/error_handler.dart';
 import 'core/logging/app_logger.dart';
 import 'core/services/cloud_sync_service.dart';
 import 'core/theme/theme_audit.dart';
-import 'core/window/window_service.dart';
+import 'core/window/window_startup_controller.dart';
 import 'package:window_manager/window_manager.dart';
 import 'debug/db_audit.dart';
 import 'features/settings/data/business_settings_model.dart';
@@ -76,13 +76,10 @@ Future<void> main() async {
         await runDbAudit();
       }
 
-      // Desktop window init (fullscreen/kiosk + titlebar hidden en Windows).
-      // No bloquea el arranque si falla.
+      // Desktop window startup (Windows): ocultar y fijar tamaño ANTES de runApp.
       try {
-        // Asegurar init de window_manager ANTES de configurar opciones.
         await windowManager.ensureInitialized();
-        await WindowService.init();
-        WindowService.scheduleInitialLayoutFix();
+        await WindowStartupController.instance.applyHiddenStartup();
       } catch (_) {
         // Ignorar: la app debe poder arrancar igual.
       }

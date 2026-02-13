@@ -138,7 +138,6 @@ class AppBootstrapController extends ChangeNotifier {
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         _setMessage('Preparando ventana...');
         await WindowService.init();
-        WindowService.scheduleInitialLayoutFix();
         _log('window ok');
         if (token != _runToken) return;
       }

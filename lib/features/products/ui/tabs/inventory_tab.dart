@@ -354,8 +354,8 @@ class _InventoryTabState extends State<InventoryTab> {
                   movement.isInput
                       ? Icons.call_made
                       : movement.isOutput
-                          ? Icons.call_received
-                          : Icons.tune,
+                      ? Icons.call_received
+                      : Icons.tune,
                   size: 16,
                   color: color,
                 ),
@@ -592,8 +592,7 @@ class _InventoryTabState extends State<InventoryTab> {
         const kpiTargetWidth = 240.0;
         const kpiSpacing = 8.0;
         final computedColumns =
-          ((mainWidth + kpiSpacing) / (kpiTargetWidth + kpiSpacing))
-                .floor();
+            ((mainWidth + kpiSpacing) / (kpiTargetWidth + kpiSpacing)).floor();
         final kpiCrossAxisCount = computedColumns < 2
             ? 2
             : (computedColumns > 6 ? 6 : computedColumns);
@@ -872,6 +871,7 @@ class _InventoryTabState extends State<InventoryTab> {
                     ],
                   ),
                 ),
+        );
 
         if (!showDockPanel) return mainContent;
 
@@ -893,6 +893,27 @@ class _InventoryTabState extends State<InventoryTab> {
     );
   }
 
+  Widget _buildBadge(String label, Color color) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
   Widget _buildDockedProductDetailsPanel({
     required bool showPurchasePrice,
     required bool showProfit,
@@ -901,7 +922,10 @@ class _InventoryTabState extends State<InventoryTab> {
     final scheme = theme.colorScheme;
     final mutedText = scheme.onSurface.withOpacity(0.65);
     final product = _selectedProduct;
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    final currencyFormat = NumberFormat.currency(
+      symbol: '\$',
+      decimalDigits: 2,
+    );
     final numberFormat = NumberFormat.decimalPattern();
 
     return Container(
@@ -956,148 +980,151 @@ class _InventoryTabState extends State<InventoryTab> {
                     ),
                   )
                 : (product == null
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.touch_app_outlined,
-                              size: 44,
-                              color: scheme.onSurface.withOpacity(0.35),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Seleccione un producto',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.touch_app_outlined,
+                                size: 44,
+                                color: scheme.onSurface.withOpacity(0.35),
                               ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Toque un movimiento del historial o un producto de alertas para ver sus detalles aquí.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: mutedText,
+                              const SizedBox(height: 10),
+                              Text(
+                                'Seleccione un producto',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: scheme.primary,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    product.code,
-                                    style: TextStyle(
-                                      color: scheme.onPrimary,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12,
-                                      fontFamily: 'monospace',
+                              const SizedBox(height: 6),
+                              Text(
+                                'Toque un movimiento del historial o un producto de alertas para ver sus detalles aquí.',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: mutedText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: scheme.primary,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      product.code,
+                                      style: TextStyle(
+                                        color: scheme.onPrimary,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                        fontFamily: 'monospace',
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    product.name,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      product.name,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: [
-                                if (product.isDeleted)
-                                  _buildBadge('ELIMINADO', scheme.error),
-                                if (!product.isActive && !product.isDeleted)
-                                  _buildBadge('INACTIVO', scheme.outline),
-                                if (product.isOutOfStock && product.isActive)
-                                  _buildBadge('AGOTADO', scheme.error),
-                                if (product.hasLowStock && product.isActive)
-                                  _buildBadge('STOCK BAJO', scheme.tertiary),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 150,
-                              width: double.infinity,
-                              child: ProductThumbnail.fromProduct(
-                                product,
-                                width: double.infinity,
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  if (product.isDeleted)
+                                    _buildBadge('ELIMINADO', scheme.error),
+                                  if (!product.isActive && !product.isDeleted)
+                                    _buildBadge('INACTIVO', scheme.outline),
+                                  if (product.isOutOfStock && product.isActive)
+                                    _buildBadge('AGOTADO', scheme.error),
+                                  if (product.hasLowStock && product.isActive)
+                                    _buildBadge('STOCK BAJO', scheme.tertiary),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
                                 height: 150,
-                                borderRadius: BorderRadius.circular(12),
+                                width: double.infinity,
+                                child: ProductThumbnail.fromProduct(
+                                  product,
+                                  width: double.infinity,
+                                  height: 150,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            _buildDockInfoRow(
-                              icon: Icons.inventory_2_outlined,
-                              label: 'Stock',
-                              value: numberFormat.format(product.stock),
-                              valueColor: product.isOutOfStock
-                                  ? scheme.error
-                                  : (product.hasLowStock
+                              const SizedBox(height: 12),
+                              _buildDockInfoRow(
+                                icon: Icons.inventory_2_outlined,
+                                label: 'Stock',
+                                value: numberFormat.format(product.stock),
+                                valueColor: product.isOutOfStock
+                                    ? scheme.error
+                                    : (product.hasLowStock
+                                          ? scheme.tertiary
+                                          : scheme.onSurface),
+                              ),
+                              _buildDockInfoRow(
+                                icon: Icons.warning_amber,
+                                label: 'Stock mínimo',
+                                value: numberFormat.format(product.stockMin),
+                                valueColor: scheme.tertiary,
+                              ),
+                              _buildDockInfoRow(
+                                icon: Icons.sell,
+                                label: 'Precio venta',
+                                value: currencyFormat.format(product.salePrice),
+                                valueColor: scheme.tertiary,
+                              ),
+                              if (showPurchasePrice)
+                                _buildDockInfoRow(
+                                  icon: Icons.shopping_cart_outlined,
+                                  label: 'Precio compra',
+                                  value: currencyFormat.format(
+                                    product.purchasePrice,
+                                  ),
+                                  valueColor: scheme.primary,
+                                ),
+                              if (showProfit)
+                                _buildDockInfoRow(
+                                  icon: Icons.trending_up,
+                                  label: 'Ganancia unitaria',
+                                  value: currencyFormat.format(product.profit),
+                                  valueColor: product.profit > 0
                                       ? scheme.tertiary
-                                      : scheme.onSurface),
-                            ),
-                            _buildDockInfoRow(
-                              icon: Icons.warning_amber,
-                              label: 'Stock mínimo',
-                              value: numberFormat.format(product.stockMin),
-                              valueColor: scheme.tertiary,
-                            ),
-                            _buildDockInfoRow(
-                              icon: Icons.sell,
-                              label: 'Precio venta',
-                              value: currencyFormat.format(product.salePrice),
-                              valueColor: scheme.tertiary,
-                            ),
-                            if (showPurchasePrice)
-                              _buildDockInfoRow(
-                                icon: Icons.shopping_cart_outlined,
-                                label: 'Precio compra',
-                                value: currencyFormat.format(product.purchasePrice),
-                                valueColor: scheme.primary,
+                                      : scheme.error,
+                                ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _showProductDetails(product),
+                                  icon: const Icon(Icons.open_in_new),
+                                  label: const Text('Abrir diálogo completo'),
+                                ),
                               ),
-                            if (showProfit)
-                              _buildDockInfoRow(
-                                icon: Icons.trending_up,
-                                label: 'Ganancia unitaria',
-                                value: currencyFormat.format(product.profit),
-                                valueColor: product.profit > 0
-                                    ? scheme.tertiary
-                                    : scheme.error,
-                              ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: () => _showProductDetails(product),
-                                icon: const Icon(Icons.open_in_new),
-                                label: const Text('Abrir diálogo completo'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
+                            ],
+                          ),
+                        )),
           ),
         ],
       ),

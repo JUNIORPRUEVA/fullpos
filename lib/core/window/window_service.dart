@@ -8,8 +8,6 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../constants/app_colors.dart';
-
 /// Servicio para controlar la ventana en aplicaciones Desktop
 class WindowService {
   static bool _isInitialized = false;
@@ -145,116 +143,22 @@ class WindowService {
       await windowManager.ensureInitialized();
       _installEnforcer();
 
-      // En Windows, ocultar/mostrar puede verse como "minimizado" y causar flash.
-      // Con el runner pintando el fondo de marca, preferimos mantener la ventana
-      // visible y solo corregir estado (restore/maximize) de forma suave.
-      if (Platform.isWindows) {
-        try {
-          final isMin = await windowManager.isMinimized();
-          if (isMin) await windowManager.restore();
-        } catch (_) {
-          // Ignorar.
-        }
+      // Nota: el control de arranque (hide/size/show) se centraliza en
+      // WindowStartupController. Aquí solo cargamos estado y dejamos habilitados
+      // los helpers (fullscreen toggle, enforcer, etc.).
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
+        fullScreenListenable.value = _isFullScreen;
+      } catch (_) {
+        _isFullScreen = false;
+        fullScreenListenable.value = false;
       }
 
-      // Cargar configuración guardada ANTES de mostrar la ventana, para que
-      // arranque ya maximizada/fullscreen (evita que se vea minimizada al abrir).
-      final prefs = await SharedPreferences.getInstance();
-      // En un POS, por defecto debe abrir en pantalla completa/maximizado.
-      // En Windows usamos "fullscreen estable" (titlebar oculta + maximizado).
-      final savedFullscreen = Platform.isWindows
-          ? true
-          : (prefs.getBool('pos_fullscreen') ?? false);
-      if (Platform.isWindows) {
-        // Modo POS: siempre arrancar en pantalla completa/maximizado.
-        await prefs.setBool('pos_fullscreen', true);
-      }
-
-      // Configuración inicial de la ventana
-      const windowOptions = WindowOptions(
-        size: Size(1280, 720),
-        minimumSize: Size(1100, 650),
-        center: true,
-        // Debe coincidir con el Splash (evita flash blanco al arrancar).
-        backgroundColor: AppColors.bgDark,
-        skipTaskbar: false,
-        titleBarStyle: TitleBarStyle.normal,
-        title: 'FULLPOS',
-      );
-
-      await windowManager.waitUntilReadyToShow(windowOptions, () async {
-        // Clave: NO mostrar mientras carga bootstrap. Ocultar antes de cualquier show.
-        // Esto evita el "mini -> grande" y el parpadeo en Windows.
-        try {
-          await windowManager.hide();
-          if (kDebugMode) {
-            debugPrint('[WINDOW] hidden, applying options');
-          }
-        } catch (_) {
-          // Ignorar: seguiremos aplicando opciones.
-        }
-
-        try {
-          // Importante: aplicar estado (fullscreen/maximizado) ANTES de show().
-          _isFullScreen = savedFullscreen;
-          fullScreenListenable.value = savedFullscreen;
-
-          if (Platform.isWindows) {
-            // En Windows evitamos el fullscreen del sistema (a veces deja negro).
-            if (savedFullscreen) {
-              await _applyWindowsPosKioskMode(preferCurrentDisplay: false);
-            } else {
-              await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-              await windowManager.setResizable(false);
-              await windowManager.maximize();
-            }
-          } else {
-            await windowManager.setFullScreen(savedFullscreen);
-            if (savedFullscreen) {
-              await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-              await windowManager.setResizable(false);
-            } else {
-              await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-              await windowManager.setResizable(true);
-              await windowManager.maximize();
-            }
-          }
-        } catch (_) {
-          // Si algo falla aquí y la ventana fue ocultada, garantizamos un fallback visible.
-          try {
-            await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-          } catch (_) {}
-          try {
-            await windowManager.setResizable(true);
-          } catch (_) {}
-          try {
-            await windowManager.maximize();
-          } catch (_) {}
-          try {
-            await windowManager.show();
-          } catch (_) {}
-        }
-
-        // No hacer show/focus aquí: se evita flash. El post-frame aplica nudge.
-      });
-
-      // Marcar inicializado después de configurar la ventana.
       _isInitialized = true;
     } catch (_) {
       // Si init falla por cualquier razón, no dejamos la app "colgada" invisible.
       _isInitialized = false;
-      try {
-        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-      } catch (_) {}
-      try {
-        await windowManager.setResizable(true);
-      } catch (_) {}
-      try {
-        await windowManager.maximize();
-      } catch (_) {}
-      try {
-        await windowManager.show();
-      } catch (_) {}
     }
   }
 
