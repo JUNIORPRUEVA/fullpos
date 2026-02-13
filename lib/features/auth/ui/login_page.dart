@@ -13,6 +13,7 @@ import '../../../core/errors/error_handler.dart';
 import '../../../core/window/window_service.dart';
 import '../../settings/data/user_model.dart';
 import '../data/auth_repository.dart';
+import '../services/first_run_auth_flags.dart';
 
 /// Pantalla de inicio de sesión con soporte de contraseña o PIN.
 class LoginPage extends ConsumerStatefulWidget {
@@ -30,12 +31,47 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _passwordController = TextEditingController();
   final _pinController = TextEditingController();
 
+  bool _firstRunPrefillChecked = false;
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   _LoginMode _mode = _LoginMode.password;
   String? _errorMessage;
 
   bool get _usingPin => _mode == _LoginMode.pin;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_maybePrefillFirstRunCredentials());
+  }
+
+  Future<void> _maybePrefillFirstRunCredentials() async {
+    if (_firstRunPrefillChecked) return;
+    _firstRunPrefillChecked = true;
+
+    try {
+      final firstRunCompleted = await FirstRunAuthFlags.isFirstRunCompleted();
+      if (firstRunCompleted) return;
+
+      // Only prefill if user hasn't typed yet.
+      if (_usernameController.text.isNotEmpty ||
+          _passwordController.text.isNotEmpty ||
+          _pinController.text.isNotEmpty) {
+        return;
+      }
+
+      FirstRunAuthFlags.log('first_run=true prefilling_login');
+      if (!mounted) return;
+      setState(() {
+        _usernameController.text = 'admin';
+        // Credencial inicial real del sistema (ver seed/migraciones y UI demo).
+        _passwordController.text = 'admin123';
+      });
+    } catch (_) {
+      // Never block login on diagnostics.
+    }
+  }
 
   void _setMode(_LoginMode next) {
     if (_mode == next) return;
@@ -85,6 +121,33 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ref.read(appBootstrapProvider).forceLoggedIn();
         unawaited(ref.read(appBootstrapProvider).refreshAuth());
         if (!mounted) return;
+
+        // Primer acceso: si se usaron credenciales iniciales, forzar cambio.
+        if (!_usingPin) {
+          final normalized = username.trim().toLowerCase();
+          final firstRunCompleted =
+              await FirstRunAuthFlags.isFirstRunCompleted();
+          final usingInitialCreds =
+              normalized == 'admin' && password == 'admin123';
+          if (!firstRunCompleted) {
+            if (usingInitialCreds) {
+              await FirstRunAuthFlags.setMustChangePassword(true);
+              final rootCtx =
+                  ErrorHandler.navigatorKey.currentContext ?? context;
+              GoRouter.of(rootCtx).refresh();
+              GoRouter.of(rootCtx).go('/force-change-password');
+              return;
+            }
+
+            // Si el equipo ya tenía la app instalada (o el admin cambió su clave),
+            // no queremos seguir precargando credenciales erróneas.
+            await FirstRunAuthFlags.setMustChangePassword(false);
+            await FirstRunAuthFlags.setFirstRunCompleted(true);
+            FirstRunAuthFlags.log(
+              'first_run: login ok with non-initial credentials; marking completed',
+            );
+          }
+        }
 
         final rootCtx = ErrorHandler.navigatorKey.currentContext ?? context;
         GoRouter.of(rootCtx).refresh();

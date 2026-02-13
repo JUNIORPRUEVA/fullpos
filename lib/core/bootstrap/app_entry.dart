@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/ui/splash_page.dart';
 import '../brand/fullpos_brand_theme.dart';
 import 'app_bootstrap_controller.dart';
+import '../window/window_service.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
   // Mantener el splash visible un mínimo para un arranque "POS" profesional.
@@ -14,20 +15,46 @@ final _minSplashDelayProvider = FutureProvider<void>((ref) async {
 ///
 /// - Mantiene un Splash/Error estable mientras se ejecuta el bootstrap.
 /// - Evita “rebotes” de navegación durante init (no hay push/pop/replaces).
-class AppEntry extends ConsumerWidget {
+class AppEntry extends ConsumerStatefulWidget {
   const AppEntry({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppEntry> createState() => _AppEntryState();
+}
+
+class _AppEntryState extends ConsumerState<AppEntry> {
+  bool _windowShown = false;
+
+  void _maybeShowWindowOnce({required bool showSplash}) {
+    if (_windowShown) return;
+    if (showSplash) return;
+
+    _windowShown = true;
+    assert(() {
+      // ignore: avoid_print
+      print('[WINDOW] bootstrap ready');
+      return true;
+    }());
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Mostrar SOLO cuando el UI final ya está en pantalla.
+      WindowService.showOnce();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final delay = ref.watch(_minSplashDelayProvider);
 
     final showSplash = boot.status != BootStatus.ready || delay.isLoading;
+    _maybeShowWindowOnce(showSplash: showSplash);
+
     final body = showSplash
         ? const FullposBrandScope(child: SplashPage())
-        : child;
+        : widget.child;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),

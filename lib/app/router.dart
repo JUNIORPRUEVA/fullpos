@@ -12,6 +12,8 @@ import '../core/security/authz/permission_gate.dart';
 import '../core/security/authz/permission.dart';
 import '../features/account/ui/account_page.dart';
 import '../features/auth/ui/login_page.dart';
+import '../features/auth/ui/force_change_password_page.dart';
+import '../features/auth/services/first_run_auth_flags.dart';
 import '../features/cash/ui/cash_box_page.dart';
 import '../features/cash/ui/cash_history_page.dart';
 import '../features/cash/ui/expenses_overview_page.dart';
@@ -72,6 +74,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       final path = state.uri.path;
       final isOnLogin = path == '/login';
+      final isOnForceChangePassword = path == '/force-change-password';
       final isOnPublicLicense = path == '/license';
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
@@ -110,7 +113,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return true;
       }());
       if (!isLoggedIn) {
+        if (isOnForceChangePassword) return '/login';
         return (isOnLogin || isOnPublicLicense) ? null : '/login';
+      }
+
+      // Cambio de contraseña obligatorio: debe ganar sobre cualquier ruta privada.
+      // Importante: NO debe saltarse el gate de licencia (ya evaluado arriba).
+      final mustChangePassword = await FirstRunAuthFlags.mustChangePassword();
+      if (mustChangePassword) {
+        if (!isOnForceChangePassword) {
+          FirstRunAuthFlags.log(
+            'mustChangePassword=true redirecting path=$path',
+          );
+          return '/force-change-password';
+        }
+        return null;
+      } else {
+        if (isOnForceChangePassword) return '/sales';
       }
 
       // Mantener UI idéntica: no redirigir por permisos.
@@ -123,6 +142,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/login',
         builder: (context, state) =>
             const FullposBrandScope(child: LoginPage()),
+      ),
+      GoRoute(
+        path: '/force-change-password',
+        builder: (context, state) =>
+            const FullposBrandScope(child: ForceChangePasswordPage()),
       ),
       GoRoute(
         path: '/license',

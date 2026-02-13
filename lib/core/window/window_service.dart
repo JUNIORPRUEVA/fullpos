@@ -13,6 +13,7 @@ import '../constants/app_colors.dart';
 /// Servicio para controlar la ventana en aplicaciones Desktop
 class WindowService {
   static bool _isInitialized = false;
+  static bool _shownOnce = false;
   static bool _isFullScreen = false;
   static bool _postFrameRefreshScheduled = false;
   static bool _enforcerInstalled = false;
@@ -137,17 +138,20 @@ class WindowService {
   static Future<void> init() async {
     if (_isInitialized) return;
 
-    bool hidWindow = false;
     try {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] init start');
+      }
       await windowManager.ensureInitialized();
       _installEnforcer();
 
-      // Evitar que la ventana se vea "negra" antes del primer frame de Flutter.
-      // La mostramos después del primer frame (ver scheduleShowAfterFirstFrame).
+      // En Windows, ocultar/mostrar puede verse como "minimizado" y causar flash.
+      // Con el runner pintando el fondo de marca, preferimos mantener la ventana
+      // visible y solo corregir estado (restore/maximize) de forma suave.
       if (Platform.isWindows) {
         try {
-          await windowManager.hide();
-          hidWindow = true;
+          final isMin = await windowManager.isMinimized();
+          if (isMin) await windowManager.restore();
         } catch (_) {
           // Ignorar.
         }
@@ -168,17 +172,28 @@ class WindowService {
 
       // Configuración inicial de la ventana
       const windowOptions = WindowOptions(
-        size: Size(1366, 768),
-        minimumSize: Size(1200, 700),
+        size: Size(1280, 720),
+        minimumSize: Size(1100, 650),
         center: true,
         // Debe coincidir con el Splash (evita flash blanco al arrancar).
         backgroundColor: AppColors.bgDark,
         skipTaskbar: false,
         titleBarStyle: TitleBarStyle.normal,
-        title: 'Los Nirkas POS',
+        title: 'FULLPOS',
       );
 
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        // Clave: NO mostrar mientras carga bootstrap. Ocultar antes de cualquier show.
+        // Esto evita el "mini -> grande" y el parpadeo en Windows.
+        try {
+          await windowManager.hide();
+          if (kDebugMode) {
+            debugPrint('[WINDOW] hidden, applying options');
+          }
+        } catch (_) {
+          // Ignorar: seguiremos aplicando opciones.
+        }
+
         try {
           // Importante: aplicar estado (fullscreen/maximizado) ANTES de show().
           _isFullScreen = savedFullscreen;
@@ -220,7 +235,7 @@ class WindowService {
           } catch (_) {}
         }
 
-        // No hacer show/focus aquí: puede parpadear/verse negro antes del Splash.
+        // No hacer show/focus aquí: se evita flash. El post-frame aplica nudge.
       });
 
       // Marcar inicializado después de configurar la ventana.
@@ -237,11 +252,9 @@ class WindowService {
       try {
         await windowManager.maximize();
       } catch (_) {}
-      if (hidWindow) {
-        try {
-          await windowManager.show();
-        } catch (_) {}
-      }
+      try {
+        await windowManager.show();
+      } catch (_) {}
     }
   }
 
@@ -262,6 +275,41 @@ class WindowService {
 
   static bool _showAfterFirstFrameScheduled = false;
 
+  /// Mostrar la ventana SOLO una vez (Windows: después del bootstrap).
+  static Future<void> showOnce({bool focus = true}) async {
+    if (!_isInitialized) return;
+    if (_shownOnce) return;
+    _shownOnce = true;
+
+    if (kDebugMode) {
+      debugPrint('[WINDOW] show once');
+    }
+
+    try {
+      if (Platform.isWindows) {
+        try {
+          final isMin = await windowManager.isMinimized();
+          if (isMin) await windowManager.restore();
+        } catch (_) {}
+      }
+
+      await windowManager.show();
+
+      // Asegurar modo/tamaño final ya visible (sin toggle manual).
+      if (Platform.isWindows) {
+        await _ensureWindowsPosModeAfterShow();
+      } else {
+        await ensureMaximized(force: true);
+      }
+
+      if (focus) {
+        await windowManager.focus();
+      }
+    } catch (_) {
+      // Ignorar.
+    }
+  }
+
   /// Mostrar/enfocar la ventana una vez Flutter haya pintado el primer frame.
   static void scheduleShowAfterFirstFrame() {
     if (_showAfterFirstFrameScheduled) return;
@@ -270,26 +318,7 @@ class WindowService {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!_isInitialized) return;
       try {
-        // Si Windows decide abrir la app minimizada (por estado previo),
-        // forzamos restore antes de aplicar maximize/pos-mode.
-        if (Platform.isWindows) {
-          try {
-            final isMin = await windowManager.isMinimized();
-            if (isMin) await windowManager.restore();
-          } catch (_) {
-            // Ignorar.
-          }
-        }
-        await windowManager.show();
-        // En Windows, a veces el maximize aplicado antes de show() no termina
-        // en un tamaño real de pantalla completa hasta que el usuario hace un
-        // toggle (p.ej. Ctrl+Shift+F). Reaplicamos el modo POS ya visible.
-        if (Platform.isWindows) {
-          await _ensureWindowsPosModeAfterShow();
-        } else {
-          await ensureMaximized(force: true);
-        }
-        await windowManager.focus();
+        await showOnce();
       } catch (_) {
         // Ignorar.
       }

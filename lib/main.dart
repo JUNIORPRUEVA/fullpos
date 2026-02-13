@@ -12,6 +12,7 @@ import 'core/logging/app_logger.dart';
 import 'core/services/cloud_sync_service.dart';
 import 'core/theme/theme_audit.dart';
 import 'core/window/window_service.dart';
+import 'package:window_manager/window_manager.dart';
 import 'debug/db_audit.dart';
 import 'features/settings/data/business_settings_model.dart';
 import 'features/settings/data/business_settings_repository.dart';
@@ -78,6 +79,8 @@ Future<void> main() async {
       // Desktop window init (fullscreen/kiosk + titlebar hidden en Windows).
       // No bloquea el arranque si falla.
       try {
+        // Asegurar init de window_manager ANTES de configurar opciones.
+        await windowManager.ensureInitialized();
         await WindowService.init();
         WindowService.scheduleInitialLayoutFix();
       } catch (_) {
@@ -132,12 +135,7 @@ Future<void> main() async {
         ),
       );
 
-      // Mostrar la ventana después del primer frame (evita pantalla negra en Windows).
-      try {
-        WindowService.scheduleShowAfterFirstFrame();
-      } catch (_) {
-        // Ignorar.
-      }
+      // La ventana se muestra una sola vez desde AppEntry cuando bootstrap está listo.
     },
     (error, stack) {
       debugPrint('UNCAUGHT_ZONE_ERROR: $error');

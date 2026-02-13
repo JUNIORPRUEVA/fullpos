@@ -45,6 +45,33 @@ class AuthRepository {
     await SessionManager.logout();
   }
 
+  /// Cambia la contraseña del usuario actual validando la contraseña vigente.
+  ///
+  /// - No loggea contraseñas.
+  /// - Usa el hashing existente (`UsersRepository.hashPassword`).
+  static Future<void> changeCurrentUserPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final userId = await SessionManager.userId();
+    final username = await SessionManager.username();
+    final companyId = await SessionManager.companyId();
+    if (userId == null || username == null || username.isEmpty) {
+      throw StateError('No hay sesión activa');
+    }
+
+    final verified = await UsersRepository.verifyCredentials(
+      username,
+      currentPassword,
+      companyId: companyId,
+    );
+    if (verified == null) {
+      throw ArgumentError('Contraseña actual incorrecta');
+    }
+
+    await UsersRepository.changePassword(userId, newPassword);
+  }
+
   /// Verifica si hay un usuario logueado
   static Future<bool> isLoggedIn() async {
     return await SessionManager.isLoggedIn();
