@@ -12,6 +12,7 @@ import '../../../settings/data/user_model.dart';
 import '../dialogs/product_details_dialog.dart';
 import '../widgets/kpi_card.dart';
 import '../widgets/compact_product_card.dart';
+import '../widgets/product_thumbnail.dart';
 
 /// Tab de Inventario con KPIs y alertas
 class InventoryTab extends StatefulWidget {
@@ -41,6 +42,9 @@ class _InventoryTabState extends State<InventoryTab> {
   List<StockMovementDetail> _recentMovements = [];
   List<Map<String, dynamic>> _inventoryByCategory = [];
   List<Map<String, dynamic>> _inventoryBySupplier = [];
+
+  ProductModel? _selectedProduct;
+  bool _isSelectingProduct = false;
 
   @override
   void initState() {
@@ -154,7 +158,13 @@ class _InventoryTabState extends State<InventoryTab> {
                     product: product,
                     onTap: () {
                       Navigator.pop(context);
-                      _showProductDetails(product);
+                      final canDock =
+                          MediaQuery.sizeOf(this.context).width >= 1150;
+                      if (canDock) {
+                        setState(() => _selectedProduct = product);
+                      } else {
+                        _showProductDetails(product);
+                      }
                     },
                     onAddStockTap: canAdjustStock
                         ? () async {
@@ -230,7 +240,13 @@ class _InventoryTabState extends State<InventoryTab> {
                     product: product,
                     onTap: () {
                       Navigator.pop(context);
-                      _showProductDetails(product);
+                      final canDock =
+                          MediaQuery.sizeOf(this.context).width >= 1150;
+                      if (canDock) {
+                        setState(() => _selectedProduct = product);
+                      } else {
+                        _showProductDetails(product);
+                      }
                     },
                     onAddStockTap: canAdjustStock
                         ? () async {
@@ -271,6 +287,7 @@ class _InventoryTabState extends State<InventoryTab> {
     StockMovementDetail detail,
     NumberFormat numberFormat,
     DateFormat dateFormat,
+    bool dockDetails,
   ) {
     final scheme = Theme.of(context).colorScheme;
     final mutedText = scheme.onSurface.withOpacity(0.7);
@@ -296,115 +313,158 @@ class _InventoryTabState extends State<InventoryTab> {
     final codeLabel = detail.productCode?.trim();
     final noteLabel = movement.note?.trim();
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: scheme.surface,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              movement.isInput
-                  ? Icons.call_made
-                  : movement.isOutput
-                  ? Icons.call_received
-                  : Icons.tune,
-              size: 16,
-              color: color,
-            ),
+        onTap: () async {
+          final id = detail.movement.productId;
+          if (dockDetails) {
+            await _selectProductById(id);
+            return;
+          }
+
+          final product = await _productsRepo.getById(id);
+          if (!mounted) return;
+          if (product == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No se pudo cargar el producto.')),
+            );
+            return;
+          }
+          _showProductDetails(product);
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: scheme.outlineVariant),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    detail.productLabel,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  shape: BoxShape.circle,
                 ),
-                if (codeLabel != null && codeLabel.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    'COD $codeLabel',
-                    style: TextStyle(
-                      color: mutedText,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                const SizedBox(width: 6),
-                Text(
-                  movement.type.label,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 9,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Icon(
+                  movement.isInput
+                      ? Icons.call_made
+                      : movement.isOutput
+                          ? Icons.call_received
+                          : Icons.tune,
+                  size: 16,
+                  color: color,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$dateLabel • ${detail.userLabel}',
-                    style: TextStyle(color: mutedText, fontSize: 9),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (noteLabel != null && noteLabel.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: noteLabel,
-                    child: Icon(
-                      Icons.note_alt_outlined,
-                      size: 14,
-                      color: mutedText,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            qtyLabel,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: color,
-              fontSize: 12,
-            ),
-          ),
-          if (movement.isAdjust)
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Icon(
-                Icons.analytics_outlined,
-                size: 14,
-                color: isPositive ? scheme.primary : scheme.error,
               ),
-            ),
-        ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        detail.productLabel,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (codeLabel != null && codeLabel.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        'COD $codeLabel',
+                        style: TextStyle(
+                          color: mutedText,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(width: 6),
+                    Text(
+                      movement.type.label,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 9,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$dateLabel • ${detail.userLabel}',
+                        style: TextStyle(color: mutedText, fontSize: 9),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (noteLabel != null && noteLabel.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Tooltip(
+                        message: noteLabel,
+                        child: Icon(
+                          Icons.note_alt_outlined,
+                          size: 14,
+                          color: mutedText,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                qtyLabel,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  fontSize: 12,
+                ),
+              ),
+              if (movement.isAdjust)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.analytics_outlined,
+                    size: 14,
+                    color: isPositive ? scheme.primary : scheme.error,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  Future<void> _selectProductById(int productId) async {
+    if (_isSelectingProduct) return;
+    if (!mounted) return;
+
+    setState(() => _isSelectingProduct = true);
+    try {
+      final product = await _productsRepo.getById(productId);
+      if (!mounted) return;
+      if (product == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo cargar el producto.')),
+        );
+        return;
+      }
+      setState(() => _selectedProduct = product);
+    } finally {
+      if (mounted) setState(() => _isSelectingProduct = false);
+    }
   }
 
   void _showProductDetails(ProductModel product) {
@@ -438,7 +498,7 @@ class _InventoryTabState extends State<InventoryTab> {
 
     final kpis = <Widget>[
       KpiCard(
-        title: 'InversiÃ³n Total',
+        title: 'Inversión Total',
         value: showPurchasePrice
             ? currencyFormat.format(_totalInventoryValue)
             : 'Oculto',
@@ -514,21 +574,30 @@ class _InventoryTabState extends State<InventoryTab> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final padding = _contentPadding(constraints);
-        final isWide = constraints.maxWidth >= 1100;
+        const sidePanelWidth = 420.0;
+        const sideGap = 12.0;
+
+        final canDockDetails = constraints.maxWidth >= 1150;
+        final showDockPanel = canDockDetails;
+        final mainWidth = showDockPanel
+            ? (constraints.maxWidth - sidePanelWidth - sideGap)
+            : constraints.maxWidth;
+        final mainConstraints = BoxConstraints(maxWidth: mainWidth);
+
+        final padding = _contentPadding(mainConstraints);
+        final isWide = mainWidth >= 1100;
 
         // Tarjetas KPI: mantenerlas estrechas y elegantes en pantallas anchas.
         // A mayor ancho disponible, aumentamos columnas para evitar KPIs gigantes.
         const kpiTargetWidth = 240.0;
         const kpiSpacing = 8.0;
         final computedColumns =
-            ((constraints.maxWidth + kpiSpacing) /
-                    (kpiTargetWidth + kpiSpacing))
+          ((mainWidth + kpiSpacing) / (kpiTargetWidth + kpiSpacing))
                 .floor();
         final kpiCrossAxisCount = computedColumns < 2
             ? 2
             : (computedColumns > 6 ? 6 : computedColumns);
-        return RefreshIndicator(
+        final mainContent = RefreshIndicator(
           onRefresh: _loadInventoryData,
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -573,7 +642,7 @@ class _InventoryTabState extends State<InventoryTab> {
                       Row(
                         children: [
                           Text(
-                            'Inventario por categorÃ­a',
+                            'Inventario por categoría',
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -594,7 +663,7 @@ class _InventoryTabState extends State<InventoryTab> {
                               children: [
                                 Expanded(
                                   child: _buildBreakdownPanel(
-                                    title: 'CategorÃ­as',
+                                    title: 'Categorías',
                                     items: _inventoryByCategory,
                                     money: currencyFormat,
                                     accent: scheme.primary,
@@ -614,7 +683,7 @@ class _InventoryTabState extends State<InventoryTab> {
                           : Column(
                               children: [
                                 _buildBreakdownPanel(
-                                  title: 'CategorÃ­as',
+                                  title: 'Categorías',
                                   items: _inventoryByCategory,
                                   money: currencyFormat,
                                   accent: scheme.primary,
@@ -795,6 +864,7 @@ class _InventoryTabState extends State<InventoryTab> {
                                   m,
                                   unitsFormat,
                                   dateFormat,
+                                  showDockPanel,
                                 ),
                               )
                               .toList(),
@@ -802,8 +872,271 @@ class _InventoryTabState extends State<InventoryTab> {
                     ],
                   ),
                 ),
+
+        if (!showDockPanel) return mainContent;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: mainContent),
+            const SizedBox(width: sideGap),
+            SizedBox(
+              width: sidePanelWidth,
+              child: _buildDockedProductDetailsPanel(
+                showPurchasePrice: showPurchasePrice,
+                showProfit: showProfit,
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildDockedProductDetailsPanel({
+    required bool showPurchasePrice,
+    required bool showProfit,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final mutedText = scheme.onSurface.withOpacity(0.65);
+    final product = _selectedProduct;
+    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    final numberFormat = NumberFormat.decimalPattern();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline, size: 18, color: mutedText),
+              const SizedBox(width: 8),
+              Text(
+                'Detalle del producto',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              if (_selectedProduct != null)
+                IconButton(
+                  tooltip: 'Limpiar selección',
+                  onPressed: () => setState(() => _selectedProduct = null),
+                  icon: Icon(Icons.close, size: 18, color: mutedText),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _isSelectingProduct
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Cargando producto...',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: mutedText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : (product == null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.touch_app_outlined,
+                              size: 44,
+                              color: scheme.onSurface.withOpacity(0.35),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Seleccione un producto',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Toque un movimiento del historial o un producto de alertas para ver sus detalles aquí.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: mutedText,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.primary,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    product.code,
+                                    style: TextStyle(
+                                      color: scheme.onPrimary,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    product.name,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                if (product.isDeleted)
+                                  _buildBadge('ELIMINADO', scheme.error),
+                                if (!product.isActive && !product.isDeleted)
+                                  _buildBadge('INACTIVO', scheme.outline),
+                                if (product.isOutOfStock && product.isActive)
+                                  _buildBadge('AGOTADO', scheme.error),
+                                if (product.hasLowStock && product.isActive)
+                                  _buildBadge('STOCK BAJO', scheme.tertiary),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 150,
+                              width: double.infinity,
+                              child: ProductThumbnail.fromProduct(
+                                product,
+                                width: double.infinity,
+                                height: 150,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildDockInfoRow(
+                              icon: Icons.inventory_2_outlined,
+                              label: 'Stock',
+                              value: numberFormat.format(product.stock),
+                              valueColor: product.isOutOfStock
+                                  ? scheme.error
+                                  : (product.hasLowStock
+                                      ? scheme.tertiary
+                                      : scheme.onSurface),
+                            ),
+                            _buildDockInfoRow(
+                              icon: Icons.warning_amber,
+                              label: 'Stock mínimo',
+                              value: numberFormat.format(product.stockMin),
+                              valueColor: scheme.tertiary,
+                            ),
+                            _buildDockInfoRow(
+                              icon: Icons.sell,
+                              label: 'Precio venta',
+                              value: currencyFormat.format(product.salePrice),
+                              valueColor: scheme.tertiary,
+                            ),
+                            if (showPurchasePrice)
+                              _buildDockInfoRow(
+                                icon: Icons.shopping_cart_outlined,
+                                label: 'Precio compra',
+                                value: currencyFormat.format(product.purchasePrice),
+                                valueColor: scheme.primary,
+                              ),
+                            if (showProfit)
+                              _buildDockInfoRow(
+                                icon: Icons.trending_up,
+                                label: 'Ganancia unitaria',
+                                value: currencyFormat.format(product.profit),
+                                valueColor: product.profit > 0
+                                    ? scheme.tertiary
+                                    : scheme.error,
+                              ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showProductDetails(product),
+                                icon: const Icon(Icons.open_in_new),
+                                label: const Text('Abrir diálogo completo'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDockInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final mutedText = scheme.onSurface.withOpacity(0.65);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: mutedText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: mutedText,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: valueColor ?? scheme.onSurface,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

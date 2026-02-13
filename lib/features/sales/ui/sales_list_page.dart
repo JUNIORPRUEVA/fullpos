@@ -22,6 +22,9 @@ class _SalesListPageState extends State<SalesListPage> {
   List<SaleModel> _filteredSales = [];
   bool _loading = true;
 
+  int? _selectedSaleId;
+  SaleModel? _selectedSale;
+
   // Filtros
   String _searchQuery = '';
   DateTime? _startDate;
@@ -122,6 +125,25 @@ class _SalesListPageState extends State<SalesListPage> {
     _filteredSales = filtered;
     _totalVentas = filtered.fold(0.0, (sum, sale) => sum + sale.total);
     _cantidadVentas = filtered.length;
+
+    if (_filteredSales.isEmpty) {
+      _selectedSaleId = null;
+      _selectedSale = null;
+      return;
+    }
+
+    if (_selectedSaleId != null) {
+      final matches = _filteredSales
+          .where((s) => s.id == _selectedSaleId)
+          .toList();
+      if (matches.isNotEmpty) {
+        _selectedSale = matches.first;
+        return;
+      }
+    }
+
+    _selectedSale = _filteredSales.first;
+    _selectedSaleId = _selectedSale?.id;
   }
 
   void _onSearchChanged(String value) {
@@ -180,6 +202,17 @@ class _SalesListPageState extends State<SalesListPage> {
         onCancel: null,
       ),
     );
+  }
+
+  void _selectSale(SaleModel sale, {required bool showDetails}) {
+    _safeSetState(() {
+      _selectedSale = sale;
+      _selectedSaleId = sale.id;
+    });
+
+    if (showDetails) {
+      _showSaleDetails(sale);
+    }
   }
 
   Future<void> _reprintTicket(SaleModel sale, List<SaleItemModel> items) async {
@@ -562,12 +595,44 @@ class _SalesListPageState extends State<SalesListPage> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredSales.length,
-                    itemBuilder: (context, index) {
-                      final sale = _filteredSales[index];
-                      return _buildSaleCard(sale);
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isWide = constraints.maxWidth >= 1200;
+                      final detailWidth = (constraints.maxWidth * 0.25).clamp(
+                        320.0,
+                        460.0,
+                      );
+
+                      final list = ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _filteredSales.length,
+                        itemBuilder: (context, index) {
+                          final sale = _filteredSales[index];
+                          final isSelected =
+                              sale.id != null && sale.id == _selectedSaleId;
+                          return _buildSaleCard(
+                            sale,
+                            isSelected: isSelected,
+                            isWide: isWide,
+                          );
+                        },
+                      );
+
+                      if (!isWide) return list;
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: list),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: detailWidth,
+                            child: SizedBox.expand(
+                              child: _buildSaleDetailsPanel(_selectedSale),
+                            ),
+                          ),
+                        ],
+                      );
                     },
                   ),
           ),
@@ -622,156 +687,267 @@ class _SalesListPageState extends State<SalesListPage> {
     );
   }
 
-  Widget _buildSaleCard(SaleModel sale) {
+  Widget _buildSaleCard(
+    SaleModel sale, {
+    required bool isSelected,
+    required bool isWide,
+  }) {
+    return _buildSaleRow(sale, isSelected: isSelected, isWide: isWide);
+  }
+
+  Widget _buildSaleRow(
+    SaleModel sale, {
+    bool isSelected = false,
+    bool isWide = false,
+  }) {
     final scheme = Theme.of(context).colorScheme;
-    final onSurface = scheme.onSurface;
-    final muted = onSurface.withOpacity(0.68);
+    final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
+    final isCancelled = sale.status == 'cancelled';
+
+    final rowColor = isSelected
+        ? scheme.primary.withOpacity(0.06)
+        : Colors.white;
+    final statusLabel = isCancelled ? 'ANULADA' : 'OK';
+    final statusColor = isCancelled ? scheme.error : Colors.green;
+
+    return Material(
+      color: rowColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _selectSale(sale, showDetails: !isWide),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 1.4),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(
+                  sale.localCode,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                    decoration: isCancelled ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 5,
+                child: Text(
+                  sale.customerNameSnapshot ?? 'Cliente general',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black.withOpacity(0.85),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  _getPaymentMethodLabel(sale.paymentMethod),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black.withOpacity(0.8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  DateFormat('dd/MM/yy HH:mm').format(date),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black.withOpacity(0.7),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  '\$${sale.total.toStringAsFixed(2)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: isCancelled
+                        ? Colors.black.withOpacity(0.55)
+                        : Colors.black,
+                    decoration: isCancelled ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: statusColor.withOpacity(0.35)),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                    letterSpacing: 0.2,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, color: Colors.black.withOpacity(0.5)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSaleDetailsPanel(SaleModel? sale) {
+    final scheme = Theme.of(context).colorScheme;
+
+    if (sale == null) {
+      return Card(
+        margin: EdgeInsets.zero,
+        elevation: 2,
+        color: scheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Detalle de venta',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Seleccione una venta para ver el detalle.',
+                style: TextStyle(color: scheme.onSurface.withOpacity(0.7)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final isCancelled = sale.status == 'cancelled';
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: InkWell(
-        onTap: () => _showSaleDetails(sale),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: isCancelled
-                ? Border.all(color: scheme.error.withOpacity(0.35), width: 2)
-                : null,
-          ),
-          child: Row(
+      margin: EdgeInsets.zero,
+      elevation: 2,
+      color: scheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icono de estado
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: isCancelled
-                      ? scheme.error.withOpacity(0.10)
-                      : scheme.primary.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isCancelled ? Icons.cancel : Icons.receipt,
-                  color: isCancelled ? scheme.error : scheme.primary,
+              Text(
+                'Detalle de venta',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
                 ),
               ),
-              const SizedBox(width: 12),
-
-              // Info principal
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          sale.localCode,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: onSurface,
-                            decoration: isCancelled
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
-                        ),
-                        if (isCancelled) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'ANULADA',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      sale.customerNameSnapshot ?? 'Cliente general',
-                      style: TextStyle(
-                        color: muted,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 12),
+              _detailRow('Factura', sale.localCode),
+              _detailRow(
+                'Cliente',
+                sale.customerNameSnapshot ?? 'Cliente general',
               ),
-
-              // Método de pago
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getPaymentColor(sale.paymentMethod).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
+              if (sale.customerPhoneSnapshot != null &&
+                  sale.customerPhoneSnapshot!.trim().isNotEmpty)
+                _detailRow('Teléfono', sale.customerPhoneSnapshot!),
+              _detailRow('Fecha', DateFormat('dd/MM/yyyy HH:mm').format(date)),
+              _detailRow('Método', _getPaymentMethodLabel(sale.paymentMethod)),
+              _detailRow('Estado', isCancelled ? 'Anulada' : 'Completada'),
+              const SizedBox(height: 10),
+              _detailRow('Subtotal', '\$${sale.subtotal.toStringAsFixed(2)}'),
+              if (sale.discountTotal > 0)
+                _detailRow(
+                  'Descuento',
+                  '-\$${sale.discountTotal.toStringAsFixed(2)}',
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _getPaymentIcon(sale.paymentMethod),
-                      size: 14,
-                      color: _getPaymentColor(sale.paymentMethod),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _getPaymentMethodLabel(sale.paymentMethod),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _getPaymentColor(sale.paymentMethod),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // Total y fecha
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '\$${sale.total.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isCancelled ? muted : onSurface,
-                      decoration: isCancelled
-                          ? TextDecoration.lineThrough
-                          : null,
-                    ),
+              if (sale.itbisEnabled == 1)
+                _detailRow('ITBIS', '\$${sale.itbisAmount.toStringAsFixed(2)}'),
+              _detailRow('Total', '\$${sale.total.toStringAsFixed(2)}'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showSaleDetails(sale),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Abrir detalle'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  Text(
-                    DateFormat('dd/MM/yy HH:mm').format(date),
-                    style: TextStyle(color: muted, fontSize: 11),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right, color: muted),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -792,42 +968,6 @@ class _SalesListPageState extends State<SalesListPage> {
         return 'APARTADO';
       default:
         return 'PAGO';
-    }
-  }
-
-  IconData _getPaymentIcon(String? method) {
-    switch (method) {
-      case 'cash':
-        return Icons.money;
-      case 'card':
-        return Icons.credit_card;
-      case 'transfer':
-        return Icons.account_balance;
-      case 'mixed':
-        return Icons.payments;
-      case 'credit':
-        return Icons.request_quote;
-      case 'layaway':
-        return Icons.bookmark;
-      default:
-        return Icons.payment;
-    }
-  }
-
-  Color _getPaymentColor(String? method) {
-    switch (method) {
-      case 'cash':
-        return Colors.green;
-      case 'card':
-        return Colors.blue;
-      case 'transfer':
-        return Colors.purple;
-      case 'mixed':
-        return Colors.orange;
-      case 'credit':
-        return Colors.red;
-      default:
-        return Colors.grey;
     }
   }
 }

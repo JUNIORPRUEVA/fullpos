@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 
 import '../../data/quote_model.dart';
 import '../../../../core/theme/app_status_theme.dart';
-import '../../../../core/theme/color_utils.dart';
 
 /// Tarjeta compacta y elevada para listar cotizaciones
 class CompactQuoteRow extends StatelessWidget {
@@ -37,7 +36,8 @@ class CompactQuoteRow extends StatelessWidget {
     final quote = quoteDetail.quote;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final statusTheme = theme.extension<AppStatusTheme>() ??
+    final statusTheme =
+        theme.extension<AppStatusTheme>() ??
         AppStatusTheme(
           success: scheme.primary,
           warning: scheme.tertiary,
@@ -45,15 +45,17 @@ class CompactQuoteRow extends StatelessWidget {
           info: scheme.secondary,
         );
 
-    final dateLabel = DateFormat('dd/MM/yy HH:mm').format(
-      DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs),
-    );
+    final dateLabel = DateFormat(
+      'dd/MM/yy HH:mm',
+    ).format(DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs));
     final idLabel = quote.id == null
         ? 'COT-—'
         : 'COT-${quote.id!.toString().padLeft(5, '0')}';
     final statusColor = _statusColor(quote.status, scheme, statusTheme);
 
-    final bgColor = isSelected ? scheme.primary.withOpacity(0.06) : Colors.white;
+    final bgColor = isSelected
+        ? scheme.primary.withOpacity(0.06)
+        : Colors.white;
 
     return Material(
       color: bgColor,
@@ -128,8 +130,10 @@ class CompactQuoteRow extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -176,7 +180,8 @@ class CompactQuoteRow extends StatelessWidget {
   Widget _buildStatusChip(BuildContext context, String status) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final statusTheme = theme.extension<AppStatusTheme>() ??
+    final statusTheme =
+        theme.extension<AppStatusTheme>() ??
         AppStatusTheme(
           success: scheme.primary,
           warning: scheme.tertiary,

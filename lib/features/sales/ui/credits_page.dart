@@ -201,43 +201,49 @@ class _CreditsPageState extends State<CreditsPage>
             final chipColor = totalPending > 0 ? status.error : status.success;
 
             return Material(
-              color: _scheme.surface,
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
               child: InkWell(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 onTap: () {},
-                child: Padding(
+                child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white, width: 1.4),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.person, color: _scheme.primary, size: 20),
-                      const SizedBox(width: 10),
                       Expanded(
-                        flex: 4,
+                        flex: 5,
                         child: Text(
                           clientName.toString(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: _scheme.onSurface,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
                           ),
                         ),
                       ),
+                      const SizedBox(width: 10),
                       Expanded(
-                        flex: 3,
+                        flex: 2,
                         child: Text(
-                          '$totalCredits créditos',
+                          totalCredits.toString(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
                           style: TextStyle(
-                            color: _scheme.onSurface.withOpacity(0.7),
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black.withOpacity(0.8),
                           ),
                         ),
                       ),
+                      const SizedBox(width: 10),
                       Expanded(
                         flex: 3,
                         child: Text(
@@ -245,13 +251,30 @@ class _CreditsPageState extends State<CreditsPage>
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: _scheme.onSurface,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          _formatCurrency(totalPending),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                            decoration: totalPending > 0
+                                ? TextDecoration.none
+                                : TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -260,12 +283,17 @@ class _CreditsPageState extends State<CreditsPage>
                         decoration: BoxDecoration(
                           color: chipColor.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: chipColor.withOpacity(0.35),
+                          ),
                         ),
                         child: Text(
-                          _formatCurrency(totalPending),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: chipColor,
+                          totalPending > 0 ? 'PEND.' : 'OK',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                            letterSpacing: 0.2,
+                            fontSize: 11,
                           ),
                         ),
                       ),
@@ -288,8 +316,8 @@ class _CreditsPageState extends State<CreditsPage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final padding = _pagePadding(constraints);
-        final isWide = constraints.maxWidth >= 980;
-        final detailWidth = (constraints.maxWidth * 0.34).clamp(320.0, 420.0);
+        final isWide = constraints.maxWidth >= 1200;
+        final detailWidth = (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
 
         final list = ListView.separated(
           padding: padding,
@@ -310,7 +338,10 @@ class _CreditsPageState extends State<CreditsPage>
             children: [
               Expanded(child: list),
               const SizedBox(width: 12),
-              SizedBox(width: detailWidth, child: detail),
+              SizedBox(
+                width: detailWidth,
+                child: SizedBox.expand(child: detail),
+              ),
             ],
           );
         }
@@ -342,8 +373,8 @@ class _CreditsPageState extends State<CreditsPage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final padding = _pagePadding(constraints);
-        final isWide = constraints.maxWidth >= 980;
-        final detailWidth = (constraints.maxWidth * 0.34).clamp(320.0, 420.0);
+        final isWide = constraints.maxWidth >= 1200;
+        final detailWidth = (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
 
         final list = ListView.separated(
           padding: padding,
@@ -364,7 +395,10 @@ class _CreditsPageState extends State<CreditsPage>
             children: [
               Expanded(child: list),
               const SizedBox(width: 12),
-              SizedBox(width: detailWidth, child: detail),
+              SizedBox(
+                width: detailWidth,
+                child: SizedBox.expand(child: detail),
+              ),
             ],
           );
         }
@@ -397,47 +431,54 @@ class _CreditsPageState extends State<CreditsPage>
     final statusLabel = sale['layaway_status'] ?? sale['status'] ?? 'APARTADO';
     final chipColor = statusLabel == 'PAID' ? _status.success : _status.warning;
     final rowColor = isSelected
-        ? _scheme.primary.withOpacity(0.08)
-        : _scheme.surface;
+        ? _scheme.primary.withOpacity(0.06)
+        : Colors.white;
 
     return Material(
       color: rowColor,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
           setState(() {
             _selectedLayawayId = sale['id'] as int?;
             _selectedLayaway = sale;
           });
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 1.4),
+          ),
           child: Row(
             children: [
-              Icon(Icons.bookmark, color: _scheme.primary, size: 20),
-              const SizedBox(width: 10),
               Expanded(
-                flex: 3,
+                flex: 2,
                 child: Text(
                   localCode.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: _scheme.onSurface,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
                   ),
                 ),
               ),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 4,
+                flex: 5,
                 child: Text(
                   clientName.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: _scheme.onSurface.withOpacity(0.7)),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black.withOpacity(0.85),
+                  ),
                 ),
               ),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 3,
                 child: Text(
@@ -445,13 +486,27 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: _scheme.onSurface,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
                   ),
                 ),
               ),
               const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  _formatCurrency(pending),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -460,12 +515,15 @@ class _CreditsPageState extends State<CreditsPage>
                 decoration: BoxDecoration(
                   color: chipColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: chipColor.withOpacity(0.35)),
                 ),
                 child: Text(
-                  _formatCurrency(pending),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: chipColor,
+                  statusLabel.toString(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                    letterSpacing: 0.2,
+                    fontSize: 11,
                   ),
                 ),
               ),
@@ -521,50 +579,52 @@ class _CreditsPageState extends State<CreditsPage>
       color: _scheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Detalle de apartado',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: _scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _detailRow('Factura', localCode.toString()),
-            _detailRow('Cliente', clientName.toString()),
-            if (phone.toString().isNotEmpty)
-              _detailRow('Telefono', phone.toString()),
-            _detailRow('Total', _formatCurrency(total)),
-            _detailRow('Pagado', _formatCurrency(paid)),
-            _detailRow('Pendiente', _formatCurrency(pending)),
-            _detailRow('Estado', isPaid ? 'Saldado' : 'Pendiente'),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: saleId == null || isPaid
-                    ? null
-                    : () => _showLayawayPaymentDialog(
-                        saleId,
-                        localCode.toString(),
-                        clientName.toString(),
-                        total,
-                        pending,
-                        sale['customer_id'] as int?,
-                      ),
-                icon: const Icon(Icons.payments_outlined, size: 18),
-                label: const Text('Registrar abono'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _scheme.primary,
-                  foregroundColor: _scheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Detalle de apartado',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: _scheme.onSurface,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              _detailRow('Factura', localCode.toString()),
+              _detailRow('Cliente', clientName.toString()),
+              if (phone.toString().isNotEmpty)
+                _detailRow('Telefono', phone.toString()),
+              _detailRow('Total', _formatCurrency(total)),
+              _detailRow('Pagado', _formatCurrency(paid)),
+              _detailRow('Pendiente', _formatCurrency(pending)),
+              _detailRow('Estado', isPaid ? 'Saldado' : 'Pendiente'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: saleId == null || isPaid
+                      ? null
+                      : () => _showLayawayPaymentDialog(
+                          saleId,
+                          localCode.toString(),
+                          clientName.toString(),
+                          total,
+                          pending,
+                          sale['customer_id'] as int?,
+                        ),
+                  icon: const Icon(Icons.payments_outlined, size: 18),
+                  label: const Text('Registrar abono'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _scheme.primary,
+                    foregroundColor: _scheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -582,56 +642,67 @@ class _CreditsPageState extends State<CreditsPage>
     final statusLabel = sale['credit_status'] ?? sale['status'] ?? 'CREDIT';
     final chipColor = statusLabel == 'PAID' ? _status.success : _status.warning;
     final rowColor = isSelected
-        ? _scheme.primary.withOpacity(0.08)
-        : _scheme.surface;
+        ? _scheme.primary.withOpacity(0.06)
+        : Colors.white;
 
     return Material(
       color: rowColor,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
           setState(() {
             _selectedCreditId = sale['id'] as int?;
             _selectedCredit = sale;
           });
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 1.4),
+          ),
           child: Row(
             children: [
-              Icon(Icons.receipt_long, color: _scheme.primary, size: 20),
-              const SizedBox(width: 10),
               Expanded(
-                flex: 3,
+                flex: 2,
                 child: Text(
                   localCode.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: _scheme.onSurface,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
                   ),
                 ),
               ),
+              const SizedBox(width: 10),
               Expanded(
-                flex: 4,
+                flex: 5,
                 child: Text(
                   clientName.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: _scheme.onSurface.withOpacity(0.7)),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black.withOpacity(0.85),
+                  ),
                 ),
               ),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 3,
                 child: Text(
                   _formatDate(dueDateMs),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: _scheme.onSurface.withOpacity(0.7)),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black.withOpacity(0.75),
+                  ),
                 ),
               ),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 3,
                 child: Text(
@@ -639,13 +710,27 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: _scheme.onSurface,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
                   ),
                 ),
               ),
               const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  _formatCurrency(pending),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -654,12 +739,15 @@ class _CreditsPageState extends State<CreditsPage>
                 decoration: BoxDecoration(
                   color: chipColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: chipColor.withOpacity(0.35)),
                 ),
                 child: Text(
-                  _formatCurrency(pending),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: chipColor,
+                  statusLabel.toString(),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                    letterSpacing: 0.2,
+                    fontSize: 11,
                   ),
                 ),
               ),
@@ -723,59 +811,62 @@ class _CreditsPageState extends State<CreditsPage>
       color: _scheme.surface,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Detalle de crédito',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: _scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _detailRow('Factura', localCode.toString()),
-            _detailRow('Cliente', clientName.toString()),
-            if (phone.toString().isNotEmpty)
-              _detailRow('Telefono', phone.toString()),
-            _detailRow('Total venta', _formatCurrency(baseTotal)),
-            _detailRow('Interes', '${interestRate.toStringAsFixed(2)}%'),
-            _detailRow('Total credito', _formatCurrency(totalDue)),
-            _detailRow('Pagado', _formatCurrency(paid)),
-            _detailRow('Pendiente', _formatCurrency(pending)),
-            if (termDays != null && termDays > 0)
-              _detailRow('Plazo (dias)', termDays.toString()),
-            if (installments != null && installments > 0)
-              _detailRow('Cuotas', installments.toString()),
-            if (installmentAmount != null)
-              _detailRow('Valor cuota', _formatCurrency(installmentAmount)),
-            if (dueDateMs != null) _detailRow('Vence', _formatDate(dueDateMs)),
-            if (note.trim().isNotEmpty) _detailRow('Nota', note),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: saleId == null
-                    ? null
-                    : () => _showPaymentDialog(
-                        saleId,
-                        localCode.toString(),
-                        clientName.toString(),
-                        totalDue,
-                        pending,
-                        sale['customer_id'] as int?,
-                      ),
-                icon: const Icon(Icons.payments_outlined, size: 18),
-                label: const Text('Registrar abono'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _scheme.primary,
-                  foregroundColor: _scheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Detalle de crédito',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: _scheme.onSurface,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              _detailRow('Factura', localCode.toString()),
+              _detailRow('Cliente', clientName.toString()),
+              if (phone.toString().isNotEmpty)
+                _detailRow('Telefono', phone.toString()),
+              _detailRow('Total venta', _formatCurrency(baseTotal)),
+              _detailRow('Interes', '${interestRate.toStringAsFixed(2)}%'),
+              _detailRow('Total credito', _formatCurrency(totalDue)),
+              _detailRow('Pagado', _formatCurrency(paid)),
+              _detailRow('Pendiente', _formatCurrency(pending)),
+              if (termDays != null && termDays > 0)
+                _detailRow('Plazo (dias)', termDays.toString()),
+              if (installments != null && installments > 0)
+                _detailRow('Cuotas', installments.toString()),
+              if (installmentAmount != null)
+                _detailRow('Valor cuota', _formatCurrency(installmentAmount)),
+              if (dueDateMs != null)
+                _detailRow('Vence', _formatDate(dueDateMs)),
+              if (note.trim().isNotEmpty) _detailRow('Nota', note),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: saleId == null
+                      ? null
+                      : () => _showPaymentDialog(
+                          saleId,
+                          localCode.toString(),
+                          clientName.toString(),
+                          totalDue,
+                          pending,
+                          sale['customer_id'] as int?,
+                        ),
+                  icon: const Icon(Icons.payments_outlined, size: 18),
+                  label: const Text('Registrar abono'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _scheme.primary,
+                    foregroundColor: _scheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
