@@ -33,6 +33,14 @@ class AuthzService {
   static const Duration _overrideTtl = Duration(seconds: 3);
   static final Map<String, DateTime> _overrideCache = <String, DateTime>{};
 
+  // Small cache to avoid re-hitting the DB for permissions repeatedly during
+  // rapid route transitions (e.g. smoke tests / fast navigation).
+  static const Duration _currentUserCacheTtl = Duration(milliseconds: 500);
+  static int? _cachedUserId;
+  static User? _cachedCurrentUser;
+  static DateTime? _cachedCurrentUserAt;
+  static Future<User?>? _currentUserInFlight;
+
   static String _overrideKey({
     required int userId,
     required Permission permission,
@@ -60,35 +68,71 @@ class AuthzService {
   /// - permisos de acciones (AppActions) desde DB (PermissionService.effectivePermissions)
   static Future<User?> currentUser() async {
     final userId = await SessionManager.userId();
-    if (userId == null) return null;
-    final role = await SessionManager.role() ?? PermissionService.roleCashier;
-    final companyId = await SessionManager.companyId() ?? 1;
-    final terminalId =
-        await SessionManager.terminalId() ??
-        await SessionManager.ensureTerminalId();
+    if (userId == null) {
+      _cachedUserId = null;
+      _cachedCurrentUser = null;
+      _cachedCurrentUserAt = null;
+      _currentUserInFlight = null;
+      return null;
+    }
 
-    final isAdmin = await SessionManager.isAdmin();
+    final cachedAt = _cachedCurrentUserAt;
+    final cachedUser = _cachedCurrentUser;
+    if (_cachedUserId == userId && cachedAt != null && cachedUser != null) {
+      final age = DateTime.now().difference(cachedAt);
+      if (age <= _currentUserCacheTtl) {
+        return cachedUser;
+      }
+    }
 
-    // Importante: NO confiar solo en cache de sesión para permisos.
-    // Si un admin cambia permisos mientras el usuario está logueado,
-    // este fetch desde DB permite que los toggles tengan efecto inmediato.
-    final modulePermissions = isAdmin
-        ? UserPermissions.admin()
-        : await UsersRepository.getPermissions(userId);
-    final actionPermissions = await PermissionService.effectivePermissions(
-      companyId: companyId,
-      userId: userId,
-      role: role,
-    );
+    final inFlight = _currentUserInFlight;
+    if (inFlight != null) return inFlight;
 
-    return AuthzUser(
-      userId: userId,
-      companyId: companyId,
-      role: role,
-      terminalId: terminalId,
-      modulePermissions: modulePermissions,
-      actionPermissions: actionPermissions,
-    );
+    final future = () async {
+      final role = await SessionManager.role() ?? PermissionService.roleCashier;
+      final companyId = await SessionManager.companyId() ?? 1;
+      final terminalId =
+          await SessionManager.terminalId() ??
+          await SessionManager.ensureTerminalId();
+
+      final isAdmin = await SessionManager.isAdmin();
+
+      // Importante: NO confiar solo en cache de sesión para permisos.
+      // Si un admin cambia permisos mientras el usuario está logueado,
+      // este fetch desde DB permite que los toggles tengan efecto inmediato.
+      final modulePermissions = isAdmin
+          ? UserPermissions.admin()
+          : await UsersRepository.getPermissions(userId);
+      final actionPermissions = await PermissionService.effectivePermissions(
+        companyId: companyId,
+        userId: userId,
+        role: role,
+      );
+
+      return AuthzUser(
+        userId: userId,
+        companyId: companyId,
+        role: role,
+        terminalId: terminalId,
+        modulePermissions: modulePermissions,
+        actionPermissions: actionPermissions,
+      );
+    }();
+
+    _currentUserInFlight = future;
+    try {
+      final user = await future;
+      if (user != null) {
+        _cachedUserId = userId;
+        _cachedCurrentUser = user;
+        _cachedCurrentUserAt = DateTime.now();
+      }
+      return user;
+    } finally {
+      if (identical(_currentUserInFlight, future)) {
+        _currentUserInFlight = null;
+      }
+    }
   }
 
   /// API obligatoria: chequeo sin cambiar UI.

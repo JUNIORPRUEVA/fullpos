@@ -79,7 +79,7 @@ void DebugLogWin32(const wchar_t* event, UINT message) {
 #endif
 }
 
-void ForceRepaint(HWND hwnd) {
+void FullposForceRepaint(HWND hwnd) {
   if (!hwnd) return;
   RedrawWindow(hwnd, nullptr, nullptr,
                RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
@@ -299,8 +299,8 @@ Win32Window::MessageHandler(HWND hwnd,
 
     case WM_SHOWWINDOW:
       DebugLogWin32(L"main:WM_SHOWWINDOW", message);
-      ForceRepaint(hwnd);
-      if (child_content_ != nullptr) ForceRepaint(child_content_);
+      FullposForceRepaint(hwnd);
+      if (child_content_ != nullptr) FullposForceRepaint(child_content_);
       return 0;
 
     case WM_DPICHANGED: {
@@ -312,8 +312,8 @@ Win32Window::MessageHandler(HWND hwnd,
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
-      ForceRepaint(hwnd);
-      if (child_content_ != nullptr) ForceRepaint(child_content_);
+      FullposForceRepaint(hwnd);
+      if (child_content_ != nullptr) FullposForceRepaint(child_content_);
       return 0;
     }
     case WM_SIZE: {
@@ -323,9 +323,9 @@ Win32Window::MessageHandler(HWND hwnd,
         // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
-        ForceRepaint(child_content_);
+        FullposForceRepaint(child_content_);
       }
-      ForceRepaint(hwnd);
+      FullposForceRepaint(hwnd);
       return 0;
     }
 
@@ -333,9 +333,9 @@ Win32Window::MessageHandler(HWND hwnd,
       DebugLogWin32(L"main:WM_ACTIVATE", message);
       if (child_content_ != nullptr) {
         SetFocus(child_content_);
-        ForceRepaint(child_content_);
+        FullposForceRepaint(child_content_);
       }
-      ForceRepaint(hwnd);
+      FullposForceRepaint(hwnd);
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
@@ -384,8 +384,8 @@ void Win32Window::SetChildContent(HWND content) {
     DebugLogWin32(L"child:SetWindowSubclass_failed", GetLastError());
   }
 
-  ForceRepaint(window_handle_);
-  ForceRepaint(child_content_);
+  FullposForceRepaint(window_handle_);
+  FullposForceRepaint(child_content_);
 
   SetFocus(child_content_);
 }

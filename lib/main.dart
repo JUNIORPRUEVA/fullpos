@@ -86,33 +86,9 @@ Future<void> main() async {
       }
 
       // FULLPOS DB HARDENING: sincronizar configuracion en la nube sin bloquear UI.
-      // Importante: estas tareas pueden ser pesadas (leer DB, armar payloads grandes, subir imágenes).
-      // Para evitar “cámara lenta”/jank, se difieren y se escalonan después del primer frame.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future<void>(() async {
-          try {
-            // Sync inmediato de usuarios (evita 'usuario no registrado en la nube').
-            await CloudSyncService.instance.syncUsersIfEnabled(force: true);
-
-            await Future<void>.delayed(const Duration(seconds: 2));
-            await CloudSyncService.instance.syncCompanyConfigIfEnabled();
-
-            await Future<void>.delayed(const Duration(seconds: 4));
-            await CloudSyncService.instance.syncProductsIfEnabled();
-
-            await Future<void>.delayed(const Duration(seconds: 6));
-            await CloudSyncService.instance.syncCashIfEnabled();
-
-            await Future<void>.delayed(const Duration(seconds: 8));
-            await CloudSyncService.instance.syncSalesIfEnabled();
-
-            await Future<void>.delayed(const Duration(seconds: 10));
-            await CloudSyncService.instance.syncQuotesIfEnabled();
-          } catch (_) {
-            // Nunca bloquear UI por sync.
-          }
-        });
-      });
+      // Importante: NO iniciar sincronizaciones pesadas aquí.
+      // Se agenda después de que la app esté READY (ver AppEntry) para evitar
+      // lag al tocar botones durante los primeros segundos.
 
       final businessRepo = BusinessSettingsRepository();
       final initialSettings = BusinessSettings.defaultSettings;

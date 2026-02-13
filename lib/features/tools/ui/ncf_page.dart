@@ -21,11 +21,22 @@ class _NcfPageState extends State<NcfPage> {
   String _filter = 'all'; // all, active, inactive
   int _loadSeq = 0;
 
+  static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+
+  Widget _loadingIndicator() {
+    if (_isFlutterTest) {
+      return const CircularProgressIndicator(value: 0.2);
+    }
+    return const CircularProgressIndicator();
+  }
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 50), () {
+    Future.delayed(const Duration(milliseconds: 250), () {
       if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return;
       _loadBooks();
     });
   }
@@ -342,7 +353,7 @@ class _NcfPageState extends State<NcfPage> {
                   ),
                   Expanded(
                     child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
+                        ? Center(child: _loadingIndicator())
                         : _books.isEmpty
                         ? Center(
                             child: Column(

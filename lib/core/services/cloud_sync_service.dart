@@ -28,8 +28,58 @@ class CloudSyncService {
   static const int _historyDaysToSync = 90;
   static const int _chunkSize = 200;
 
+  static const Duration _startupSyncDelay = Duration(seconds: 20);
+  static bool _startupSyncScheduled = false;
+
   static const String _prefsKeyUsersLastSyncPrefix =
       'cloud_users_last_sync_at_ms_';
+
+  Future<void> _yieldUi() async {
+    // Permite que el event loop procese input/frames y evita “freezes”.
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  Future<void> _yieldEvery(int index, int every) async {
+    if (every <= 0) return;
+    if (index % every == 0) {
+      await _yieldUi();
+    }
+  }
+
+  /// Agenda una sincronización de arranque cuando la UI ya está operativa.
+  ///
+  /// Objetivo: mantener la app reactiva (botones instantáneos) y aun así
+  /// sincronizar en background.
+  void scheduleDeferredStartupSync({Duration? delay}) {
+    if (_startupSyncScheduled) return;
+    _startupSyncScheduled = true;
+
+    // No bloquear: se ejecuta luego, en background.
+    Future<void>.delayed(delay ?? _startupSyncDelay, () async {
+      try {
+        // Usuarios primero (rápido y útil).
+        await syncUsersIfEnabled(force: true);
+
+        // El resto se escalona y se "time-slice" con yields.
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await syncCompanyConfigIfEnabled();
+
+        await Future<void>.delayed(const Duration(seconds: 4));
+        await syncProductsIfEnabled();
+
+        await Future<void>.delayed(const Duration(seconds: 6));
+        await syncCashIfEnabled();
+
+        await Future<void>.delayed(const Duration(seconds: 8));
+        await syncSalesIfEnabled();
+
+        await Future<void>.delayed(const Duration(seconds: 10));
+        await syncQuotesIfEnabled();
+      } catch (_) {
+        // Nunca bloquear UI por sync.
+      }
+    });
+  }
 
   String _syncKeyForCompany({
     required String rnc,
@@ -146,7 +196,10 @@ class CloudSyncService {
       );
 
       final users = <Map<String, dynamic>>[];
+      var idx = 0;
       for (final r in rows) {
+        idx++;
+        await _yieldEvery(idx, 120);
         final username = (r['username']?.toString() ?? '').trim();
         if (username.isEmpty) continue;
 
@@ -298,9 +351,7 @@ class CloudSyncService {
       var processed = 0;
       for (final p in activeProducts) {
         processed++;
-        if (processed % 25 == 0) {
-          await Future<void>.delayed(const Duration(milliseconds: 1));
-        }
+        await _yieldEvery(processed, 25);
         String? imageUrl = _normalizeUrl(p.imageUrl);
 
         String? localImageFilePath;
@@ -438,9 +489,39 @@ class CloudSyncService {
         dateFrom: from,
         dateTo: now,
       );
-      final payloadSales = <Map<String, dynamic>>[];
+      final chunkSales = <Map<String, dynamic>>[];
+      var processed = 0;
+
+      Future<void> flushChunk() async {
+        if (chunkSales.isEmpty) return;
+        final payload = {
+          if (rnc.isNotEmpty) 'companyRnc': rnc,
+          if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+            'companyCloudId': cloudCompanyId,
+          'sales': List<Map<String, dynamic>>.from(chunkSales),
+        };
+
+        // Yield antes del encode/post para mantener la UI fluida.
+        await _yieldUi();
+        final response = await http
+            .post(uri, headers: headers, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 20));
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          await AppLogger.instance.logWarn(
+            'Cloud sales sync failed status=${response.statusCode}',
+            module: 'cloud_sync',
+          );
+          throw StateError('cloud_sales_sync_failed');
+        }
+
+        chunkSales.clear();
+        await _yieldUi();
+      }
 
       for (final s in localSales) {
+        processed++;
+        await _yieldEvery(processed, 8);
         if (s.id == null) continue;
         if (s.deletedAtMs != null) continue;
 
@@ -459,7 +540,7 @@ class CloudSyncService {
         final status = (sale.status).toString();
         if (!allowedStatuses.contains(status)) continue;
 
-        payloadSales.add({
+        chunkSales.add({
           'localCode': sale.localCode,
           'kind': sale.kind,
           'status': status,
@@ -506,35 +587,13 @@ class CloudSyncService {
               )
               .toList(),
         });
-      }
 
-      for (var i = 0; i < payloadSales.length; i += _chunkSize) {
-        final chunk = payloadSales.sublist(
-          i,
-          (i + _chunkSize) > payloadSales.length
-              ? payloadSales.length
-              : (i + _chunkSize),
-        );
-
-        final payload = {
-          if (rnc.isNotEmpty) 'companyRnc': rnc,
-          if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
-            'companyCloudId': cloudCompanyId,
-          'sales': chunk,
-        };
-
-        final response = await http
-            .post(uri, headers: headers, body: jsonEncode(payload))
-            .timeout(const Duration(seconds: 20));
-
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          await AppLogger.instance.logWarn(
-            'Cloud sales sync failed status=${response.statusCode}',
-            module: 'cloud_sync',
-          );
-          return;
+        if (chunkSales.length >= _chunkSize) {
+          await flushChunk();
         }
       }
+
+      await flushChunk();
 
       await AppLogger.instance.logInfo(
         'Cloud sales sync ok',
@@ -578,11 +637,14 @@ class CloudSyncService {
         orderBy: 'closed_at_ms DESC',
         limit: 3000,
       );
-      final sessions = sessionsRows.map((row) {
+      final sessions = <Map<String, dynamic>>[];
+      for (var i = 0; i < sessionsRows.length; i++) {
+        await _yieldEvery(i, 180);
+        final row = sessionsRows[i];
         final localId = row['id'] as int;
         final openedAtMs = row['opened_at_ms'] as int;
         final closedAtMs = row['closed_at_ms'] as int?;
-        return {
+        sessions.add({
           'localId': localId,
           'openedByUserName': (row['user_name'] as String?) ?? 'admin',
           'openedAt': DateTime.fromMillisecondsSinceEpoch(
@@ -599,8 +661,8 @@ class CloudSyncService {
           'difference': (row['difference'] as num?)?.toDouble(),
           'status': (row['status'] as String?) ?? 'CLOSED',
           'note': row['note'] as String?,
-        };
-      }).toList();
+        });
+      }
 
       final movementsRows = await db.query(
         DbTables.cashMovements,
@@ -609,11 +671,14 @@ class CloudSyncService {
         orderBy: 'created_at_ms DESC',
         limit: 8000,
       );
-      final movements = movementsRows.map((row) {
+      final movements = <Map<String, dynamic>>[];
+      for (var i = 0; i < movementsRows.length; i++) {
+        await _yieldEvery(i, 220);
+        final row = movementsRows[i];
         final localId = row['id'] as int;
         final sessionLocalId = row['session_id'] as int;
         final createdAtMs = row['created_at_ms'] as int;
-        return {
+        movements.add({
           'localId': localId,
           'sessionLocalId': sessionLocalId,
           'type': (row['type'] as String?) ?? 'IN',
@@ -622,8 +687,8 @@ class CloudSyncService {
           'createdAt': DateTime.fromMillisecondsSinceEpoch(
             createdAtMs,
           ).toUtc().toIso8601String(),
-        };
-      }).toList();
+        });
+      }
 
       final payload = {
         if (rnc.isNotEmpty) 'companyRnc': rnc,
@@ -691,8 +756,36 @@ class CloudSyncService {
         [fromMs],
       );
 
-      final quotesPayload = <Map<String, dynamic>>[];
+      final quotesChunk = <Map<String, dynamic>>[];
+      var processed = 0;
+
+      Future<void> flushQuotesChunk() async {
+        if (quotesChunk.isEmpty) return;
+        final payload = {
+          if (rnc.isNotEmpty) 'companyRnc': rnc,
+          if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+            'companyCloudId': cloudCompanyId,
+          'quotes': List<Map<String, dynamic>>.from(quotesChunk),
+        };
+
+        await _yieldUi();
+        final response = await http
+            .post(uri, headers: headers, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 20));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          await AppLogger.instance.logWarn(
+            'Cloud quotes sync failed status=${response.statusCode}',
+            module: 'cloud_sync',
+          );
+          throw StateError('cloud_quotes_sync_failed');
+        }
+        quotesChunk.clear();
+        await _yieldUi();
+      }
+
       for (final row in quoteRows) {
+        processed++;
+        await _yieldEvery(processed, 6);
         final localId = row['id'] as int;
         final createdAtMs = row['created_at_ms'] as int;
         final updatedAtMs = row['updated_at_ms'] as int;
@@ -704,7 +797,7 @@ class CloudSyncService {
           orderBy: 'id ASC',
         );
 
-        quotesPayload.add({
+        quotesChunk.add({
           'localId': localId,
           'clientNameSnapshot': (row['client_name'] as String?) ?? 'Cliente',
           'clientPhoneSnapshot': row['client_phone'] as String?,
@@ -741,34 +834,13 @@ class CloudSyncService {
             };
           }).toList(),
         });
-      }
 
-      for (var i = 0; i < quotesPayload.length; i += _chunkSize) {
-        final chunk = quotesPayload.sublist(
-          i,
-          (i + _chunkSize) > quotesPayload.length
-              ? quotesPayload.length
-              : (i + _chunkSize),
-        );
-
-        final payload = {
-          if (rnc.isNotEmpty) 'companyRnc': rnc,
-          if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
-            'companyCloudId': cloudCompanyId,
-          'quotes': chunk,
-        };
-
-        final response = await http
-            .post(uri, headers: headers, body: jsonEncode(payload))
-            .timeout(const Duration(seconds: 20));
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          await AppLogger.instance.logWarn(
-            'Cloud quotes sync failed status=${response.statusCode}',
-            module: 'cloud_sync',
-          );
-          return;
+        if (quotesChunk.length >= _chunkSize) {
+          await flushQuotesChunk();
         }
       }
+
+      await flushQuotesChunk();
 
       await AppLogger.instance.logInfo(
         'Cloud quotes sync ok',

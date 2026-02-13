@@ -38,6 +38,7 @@ class _CreditsPageState extends State<CreditsPage>
   static const _brandDark = Colors.black;
   static const _brandLight = Colors.white;
   static const _controlRadius = 10.0;
+  static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
@@ -59,8 +60,10 @@ class _CreditsPageState extends State<CreditsPage>
     _byClientSearchController = TextEditingController();
     _creditSearchController = TextEditingController();
     _layawaySearchController = TextEditingController();
-    Future.delayed(const Duration(milliseconds: 50), () {
+    Future.delayed(const Duration(milliseconds: 250), () {
       if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return;
       _loadCredits();
     });
   }
@@ -84,11 +87,12 @@ class _CreditsPageState extends State<CreditsPage>
     _safeSetState(() => _loading = true);
     try {
       final results = await DbHardening.instance.runDbSafe<List<dynamic>>(
-        () => Future.wait([
-          CreditsRepository.getCreditSummaryByClient(),
-          CreditsRepository.listCreditSales(),
-          LayawayRepository.listLayawaySales(),
-        ]),
+        () async {
+          final byClient = await CreditsRepository.getCreditSummaryByClient();
+          final sales = await CreditsRepository.listCreditSales();
+          final layaways = await LayawayRepository.listLayawaySales();
+          return [byClient, sales, layaways];
+        },
         stage: 'sales/credits/load',
       );
       final byClient = results[0] as List<Map<String, dynamic>>;
@@ -167,6 +171,13 @@ class _CreditsPageState extends State<CreditsPage>
     ).format(DateTime.fromMillisecondsSinceEpoch(ms));
   }
 
+  Widget _loadingIndicator() {
+    if (_isFlutterTest) {
+      return const CircularProgressIndicator(value: 0.2);
+    }
+    return const CircularProgressIndicator();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -185,7 +196,7 @@ class _CreditsPageState extends State<CreditsPage>
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: _loadingIndicator())
           : TabBarView(
               controller: _tabController,
               children: [

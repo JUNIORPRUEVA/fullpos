@@ -8,6 +8,7 @@ import '../../features/auth/ui/splash_page.dart';
 import '../brand/fullpos_brand_theme.dart';
 import 'app_bootstrap_controller.dart';
 import '../window/window_startup_controller.dart';
+import '../services/cloud_sync_service.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
   if (Platform.isWindows) {
@@ -42,6 +43,9 @@ class _AppEntryState extends ConsumerState<AppEntry> {
       (prev, next) {
         if (next == BootStatus.ready && prev != BootStatus.ready) {
           unawaited(WindowStartupController.instance.showWhenReady());
+
+          // Agenda sync en background cuando la UI ya está lista.
+          CloudSyncService.instance.scheduleDeferredStartupSync();
         }
       },
     );

@@ -59,6 +59,15 @@ class _ReturnsListPageState extends State<ReturnsListPage>
       );
   Color readableOn(Color bg) => ColorUtils.readableTextColor(bg);
 
+  static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+
+  Widget _loadingIndicator() {
+    if (_isFlutterTest) {
+      return const CircularProgressIndicator(value: 0.2);
+    }
+    return const CircularProgressIndicator();
+  }
+
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
@@ -68,8 +77,10 @@ class _ReturnsListPageState extends State<ReturnsListPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    Future.delayed(const Duration(milliseconds: 50), () {
+    Future.delayed(const Duration(milliseconds: 250), () {
       if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return;
       _loadData();
     });
   }
@@ -271,7 +282,7 @@ class _ReturnsListPageState extends State<ReturnsListPage>
           _buildHeader(),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(child: _loadingIndicator())
                 : TabBarView(
                     controller: _tabController,
                     children: [_buildSalesTab(), _buildHistoryTab()],

@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/bootstrap/app_entry.dart';
+import '../core/bootstrap/app_bootstrap_controller.dart';
 import '../core/bootstrap/bootstrap_loading_screen.dart';
 import '../core/backup/backup_lifecycle.dart';
 import '../core/brand/fullpos_brand_theme.dart';
@@ -62,6 +63,10 @@ class FullPosApp extends ConsumerWidget {
           builder: (context, child) {
             Widget? effectiveChild = child;
 
+            final bootStatus = ref.watch(
+              appBootstrapProvider.select((b) => b.snapshot.status),
+            );
+
             // En algunos estados transitorios (redirects async / router warmup),
             // go_router puede entregar un placeholder (ej: SizedBox.shrink()).
             // Eso se ve como una pantalla "vacía" con el color de marca.
@@ -72,7 +77,10 @@ class FullPosApp extends ConsumerWidget {
               effectiveChild = null;
             }
 
-            final safeChild = effectiveChild ?? const BootstrapLoadingScreen();
+            final safeChild = _StableRouterChild(
+              bootReady: bootStatus == BootStatus.ready,
+              child: effectiveChild,
+            );
 
             final layered = Stack(
               fit: StackFit.expand,
@@ -81,15 +89,42 @@ class FullPosApp extends ConsumerWidget {
                 safeChild,
               ],
             );
-            final content = AppEntry(
-              child: AppLoadingOverlay(
-                child: layered,
-              ),
-            );
+            final content = AppEntry(child: AppLoadingOverlay(child: layered));
             return AppFrame(child: content);
           },
         ),
       ),
     );
+  }
+}
+
+class _StableRouterChild extends StatefulWidget {
+  const _StableRouterChild({required this.bootReady, required this.child});
+
+  final bool bootReady;
+  final Widget? child;
+
+  @override
+  State<_StableRouterChild> createState() => _StableRouterChildState();
+}
+
+class _StableRouterChildState extends State<_StableRouterChild> {
+  Widget? _lastNonNullChild;
+
+  @override
+  void didUpdateWidget(covariant _StableRouterChild oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.child != null) {
+      _lastNonNullChild = widget.child;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.bootReady) {
+      return widget.child ?? const BootstrapLoadingScreen();
+    }
+
+    return widget.child ?? _lastNonNullChild ?? const BootstrapLoadingScreen();
   }
 }
