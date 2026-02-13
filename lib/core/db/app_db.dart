@@ -1597,13 +1597,17 @@ class AppDb {
     }
 
     if (oldVersion < 27) {
-      await db.execute('''
-        ALTER TABLE ${DbTables.products}
-        ADD COLUMN reserved_stock REAL NOT NULL DEFAULT 0.0
-      ''');
+      // Idempotente: si la app se cierra a mitad de migración, reserved_stock
+      // puede existir aunque user_version siga siendo < 27.
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'reserved_stock',
+        'REAL NOT NULL DEFAULT 0.0',
+      );
 
       await db.execute('''
-        CREATE TABLE ${DbTables.layawayPayments} (
+        CREATE TABLE IF NOT EXISTS ${DbTables.layawayPayments} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           sale_id INTEGER NOT NULL,
           client_id INTEGER,
@@ -1618,18 +1622,24 @@ class AppDb {
         )
       ''');
 
-      await db.execute('''
-        CREATE INDEX idx_layaway_payments_sale
-        ON ${DbTables.layawayPayments}(sale_id)
-      ''');
-      await db.execute('''
-        CREATE INDEX idx_layaway_payments_client
-        ON ${DbTables.layawayPayments}(client_id)
-      ''');
-      await db.execute('''
-        CREATE INDEX idx_layaway_payments_created
-        ON ${DbTables.layawayPayments}(created_at_ms)
-      ''');
+      await _createIndexIfMissing(
+        db,
+        'idx_layaway_payments_sale',
+        DbTables.layawayPayments,
+        'sale_id',
+      );
+      await _createIndexIfMissing(
+        db,
+        'idx_layaway_payments_client',
+        DbTables.layawayPayments,
+        'client_id',
+      );
+      await _createIndexIfMissing(
+        db,
+        'idx_layaway_payments_created',
+        DbTables.layawayPayments,
+        'created_at_ms',
+      );
     }
 
     if (oldVersion < 28) {
@@ -4447,8 +4457,12 @@ class AppDb {
   ) async {
     if (!await _tableExists(db, table)) return false;
     final columns = await _getTableColumns(db, table);
+    final existing = columns
+        .map((c) => c.trim().toLowerCase())
+        .where((c) => c.isNotEmpty)
+        .toSet();
     final key = column.trim().toLowerCase();
-    if (columns.contains(key)) return false;
+    if (existing.contains(key)) return false;
     try {
       await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
       return true;
