@@ -44,9 +44,7 @@ class _ProductsPageState extends State<ProductsPage>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(42),
           child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black,
-            ),
+            decoration: BoxDecoration(color: Colors.black),
             child: TabBar(
               controller: _tabController,
               indicatorColor: scheme.primary,
@@ -102,11 +100,7 @@ class _ProductsPageState extends State<ProductsPage>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          CatalogTab(),
-          InventoryTab(),
-          CategoriesTab(),
-        ],
+        children: [CatalogTab(), InventoryTab(), CategoriesTab()],
       ),
     );
   }

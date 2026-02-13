@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,11 @@ import 'app_bootstrap_controller.dart';
 import '../window/window_service.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
+  if (Platform.isWindows) {
+    // En Windows, la ventana se mantiene oculta durante el bootstrap.
+    // No necesitamos un delay artificial para un arranque “pro”.
+    return;
+  }
   // Mantener el splash visible un mínimo para un arranque "POS" profesional.
   await Future<void>.delayed(const Duration(seconds: 5));
 });
@@ -49,7 +56,8 @@ class _AppEntryState extends ConsumerState<AppEntry> {
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final delay = ref.watch(_minSplashDelayProvider);
 
-    final showSplash = boot.status != BootStatus.ready || delay.isLoading;
+    final showSplash =
+        boot.status != BootStatus.ready || (!Platform.isWindows && delay.isLoading);
     _maybeShowWindowOnce(showSplash: showSplash);
 
     final body = showSplash

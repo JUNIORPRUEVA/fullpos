@@ -263,8 +263,7 @@ class _InventoryTabState extends State<InventoryTab> {
   EdgeInsets _contentPadding(BoxConstraints constraints) {
     const maxContentWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-    final side =
-        ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
+    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
     return EdgeInsets.fromLTRB(side, 16, side, 16);
   }
 
@@ -366,10 +365,7 @@ class _InventoryTabState extends State<InventoryTab> {
                 Expanded(
                   child: Text(
                     '$dateLabel • ${detail.userLabel}',
-                    style: TextStyle(
-                      color: mutedText,
-                      fontSize: 9,
-                    ),
+                    style: TextStyle(color: mutedText, fontSize: 9),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -439,11 +435,6 @@ class _InventoryTabState extends State<InventoryTab> {
     final showPurchasePrice = _isAdmin || _permissions.canViewPurchasePrice;
     final showProfit = _isAdmin || _permissions.canViewProfit;
     final stockSummary = _stockSummary;
-    final crossAxisCount = MediaQuery.of(context).size.width >= 1100
-        ? 4
-        : MediaQuery.of(context).size.width >= 820
-        ? 3
-        : 2;
 
     final kpis = <Widget>[
       KpiCard(
@@ -525,6 +516,18 @@ class _InventoryTabState extends State<InventoryTab> {
       builder: (context, constraints) {
         final padding = _contentPadding(constraints);
         final isWide = constraints.maxWidth >= 1100;
+
+        // Tarjetas KPI: mantenerlas estrechas y elegantes en pantallas anchas.
+        // A mayor ancho disponible, aumentamos columnas para evitar KPIs gigantes.
+        const kpiTargetWidth = 240.0;
+        const kpiSpacing = 8.0;
+        final computedColumns =
+            ((constraints.maxWidth + kpiSpacing) /
+                    (kpiTargetWidth + kpiSpacing))
+                .floor();
+        final kpiCrossAxisCount = computedColumns < 2
+            ? 2
+            : (computedColumns > 6 ? 6 : computedColumns);
         return RefreshIndicator(
           onRefresh: _loadInventoryData,
           child: _isLoading
@@ -554,15 +557,16 @@ class _InventoryTabState extends State<InventoryTab> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                  GridView.count(
-                    crossAxisCount: crossAxisCount,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 1.7,
-                    children: kpis,
-                  ),
+                      GridView.count(
+                        crossAxisCount: kpiCrossAxisCount,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: kpiSpacing,
+                        mainAxisSpacing: kpiSpacing,
+                        // Más compacto (alto menor) para un look más profesional.
+                        childAspectRatio: 2.5,
+                        children: kpis,
+                      ),
                       const SizedBox(height: 20),
 
                       // Desglose por categoria y suplidor

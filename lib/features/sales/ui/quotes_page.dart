@@ -38,6 +38,9 @@ class _QuotesPageState extends State<QuotesPage> {
   late QuotesFilterConfig _filterConfig;
   late SearchDebouncer _searchDebouncer;
 
+  QuoteDetailDto? _selectedQuote;
+  int? _selectedQuoteId;
+
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
   AppStatusTheme get _status =>
@@ -105,7 +108,37 @@ class _QuotesPageState extends State<QuotesPage> {
   void _applyFilters() {
     _safeSetState(() {
       _filteredQuotes = QuotesFilterUtil.applyFilters(_quotes, _filterConfig);
+
+      if (_filteredQuotes.isEmpty) {
+        _selectedQuote = null;
+        _selectedQuoteId = null;
+        return;
+      }
+
+      final currentId = _selectedQuoteId;
+      if (currentId == null) {
+        _selectedQuote = _filteredQuotes.first;
+        _selectedQuoteId = _selectedQuote!.quote.id;
+        return;
+      }
+
+      final match = _filteredQuotes.firstWhere(
+        (q) => q.quote.id == currentId,
+        orElse: () => _filteredQuotes.first,
+      );
+      _selectedQuote = match;
+      _selectedQuoteId = match.quote.id;
     });
+  }
+
+  void _selectQuote(QuoteDetailDto quoteDetail, {required bool showDetails}) {
+    _safeSetState(() {
+      _selectedQuote = quoteDetail;
+      _selectedQuoteId = quoteDetail.quote.id;
+    });
+    if (showDetails) {
+      _showQuoteDetails(quoteDetail);
+    }
   }
 
   void _onFilterChanged(QuotesFilterConfig newConfig) {
@@ -118,21 +151,6 @@ class _QuotesPageState extends State<QuotesPage> {
   @override
   Widget build(BuildContext context) {
     final scheme = _scheme;
-    final totalQuotes = _filteredQuotes.length;
-    final converted = _filteredQuotes
-        .where((q) => q.quote.status == 'CONVERTED')
-        .length;
-    final cancelled = _filteredQuotes
-        .where((q) => q.quote.status == 'CANCELLED')
-        .length;
-    final passedToTicket = _filteredQuotes
-        .where((q) => q.quote.status == 'TICKET')
-        .length;
-    final open = totalQuotes - converted - cancelled - passedToTicket;
-    final totalAmount = _filteredQuotes.fold<double>(
-      0,
-      (sum, item) => sum + item.quote.total,
-    );
 
     return Scaffold(
       appBar: AppBar(
@@ -148,7 +166,9 @@ class _QuotesPageState extends State<QuotesPage> {
               (constraints.maxWidth * 0.018).clamp(12.0, 28.0) * scale;
           final verticalPadding = 10.0 * scale;
           final itemSpacing = 8.0 * scale;
-          final showSummary = constraints.maxWidth > 1100;
+          final isWide = constraints.maxWidth >= 1200;
+          final detailWidth =
+              (constraints.maxWidth * 0.25).clamp(320.0, 460.0) * scale;
           final listPadding = EdgeInsets.fromLTRB(
             horizontalPadding,
             verticalPadding,
@@ -163,7 +183,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 onFilterChanged: _onFilterChanged,
               ),
               Expanded(
-                child: showSummary
+                child: isWide
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -171,25 +191,20 @@ class _QuotesPageState extends State<QuotesPage> {
                             child: _buildQuotesList(
                               listPadding: listPadding,
                               itemSpacing: itemSpacing,
+                              isWide: true,
                             ),
                           ),
                           SizedBox(width: 12 * scale),
                           SizedBox(
-                            width: 280 * scale,
-                            child: _buildSummaryPanel(
-                              totalQuotes: totalQuotes,
-                              open: open,
-                              converted: converted,
-                              cancelled: cancelled,
-                              passedToTicket: passedToTicket,
-                              totalAmount: totalAmount,
-                            ),
+                            width: detailWidth,
+                            child: _buildQuoteDetailsPanel(_selectedQuote),
                           ),
                         ],
                       )
                     : _buildQuotesList(
                         listPadding: listPadding,
                         itemSpacing: itemSpacing,
+                        isWide: false,
                       ),
               ),
             ],
@@ -202,6 +217,7 @@ class _QuotesPageState extends State<QuotesPage> {
   Widget _buildQuotesList({
     required EdgeInsets listPadding,
     required double itemSpacing,
+    required bool isWide,
   }) {
     final scheme = _scheme;
     if (_isLoading) {
@@ -247,11 +263,14 @@ class _QuotesPageState extends State<QuotesPage> {
       itemCount: _filteredQuotes.length,
       itemBuilder: (context, index) {
         final quoteDetail = _filteredQuotes[index];
+        final isSelected = quoteDetail.quote.id == _selectedQuoteId;
         return Padding(
           padding: EdgeInsets.only(bottom: itemSpacing),
           child: CompactQuoteRow(
             quoteDetail: quoteDetail,
-            onTap: () => _showQuoteDetails(quoteDetail),
+            isSelected: isSelected,
+            onTap: () =>
+                _selectQuote(quoteDetail, showDetails: !isWide),
             onSell: () => _convertToSale(quoteDetail),
             onWhatsApp: () => _shareWhatsApp(quoteDetail),
             onPdf: () => _viewPDF(quoteDetail),
@@ -262,6 +281,322 @@ class _QuotesPageState extends State<QuotesPage> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildQuoteDetailsPanel(QuoteDetailDto? quoteDetail) {
+    final theme = _theme;
+    final scheme = _scheme;
+    final status = _status;
+
+    if (quoteDetail == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Detalle de cotización',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selecciona una cotización para ver sus detalles.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final quote = quoteDetail.quote;
+    final quoteId = quote.id;
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
+    final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
+
+    Color statusColor(String value) {
+      switch (value) {
+        case 'CONVERTED':
+          return status.success;
+        case 'CANCELLED':
+          return status.error;
+        case 'TICKET':
+        case 'PASSED_TO_TICKET':
+          return status.warning;
+        default:
+          return scheme.primary;
+      }
+    }
+
+    final chipColor = statusColor(quote.status);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: scheme.outlineVariant),
+                  ),
+                  child: Text(
+                    quoteId == null
+                        ? 'COT-—'
+                        : 'COT-${quoteId.toString().padLeft(5, '0')}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: chipColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: chipColor.withOpacity(0.35)),
+                  ),
+                  child: Text(
+                    quote.status,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Abrir detalle',
+                  onPressed: () => _showQuoteDetails(quoteDetail),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              quoteDetail.clientName,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              createdLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _buildDetailMetric(
+              label: 'Total',
+              value: NumberFormat.currency(
+                locale: 'es_DO',
+                symbol: 'RD\$',
+                decimalDigits: 2,
+              ).format(quote.total),
+              color: scheme.primary,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Subtotal',
+                    value: NumberFormat.currency(
+                      locale: 'es_DO',
+                      symbol: 'RD\$',
+                      decimalDigits: 2,
+                    ).format(quote.subtotal),
+                    color: scheme.secondary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Descuento',
+                    value: NumberFormat.currency(
+                      locale: 'es_DO',
+                      symbol: 'RD\$',
+                      decimalDigits: 2,
+                    ).format(quote.discountTotal),
+                    color: scheme.tertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildDetailMetric(
+              label: 'ITBIS',
+              value: quote.itbisEnabled
+                  ? NumberFormat.currency(
+                      locale: 'es_DO',
+                      symbol: 'RD\$',
+                      decimalDigits: 2,
+                    ).format(quote.itbisAmount)
+                  : 'No',
+              color: quote.itbisEnabled ? scheme.outline : scheme.outline,
+            ),
+            if ((quote.notes ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Notas',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                quote.notes!.trim(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.75),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (quote.status == 'CONVERTED' ||
+                        quote.status == 'CANCELLED')
+                    ? null
+                    : () => _convertToSale(quoteDetail),
+                icon: const Icon(Icons.point_of_sale, size: 18),
+                label: const Text('Convertir a venta'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (quote.status == 'CONVERTED' ||
+                        quote.status == 'CANCELLED')
+                    ? null
+                    : () => _convertToTicket(quoteDetail),
+                icon: const Icon(Icons.receipt_long, size: 18),
+                label: const Text('Pasar a ticket'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: scheme.tertiary,
+                  foregroundColor: scheme.onTertiary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _shareWhatsApp(quoteDetail),
+                icon: const Icon(Icons.chat, size: 18),
+                label: const Text('Enviar por WhatsApp'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _viewPDF(quoteDetail),
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
+                    label: const Text('PDF'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _downloadPDF(quoteDetail),
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Descargar'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _duplicateQuote(quoteDetail),
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text('Duplicar'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _deleteQuote(quoteDetail),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('Eliminar'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: status.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailMetric({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    final theme = _theme;
+    final scheme = _scheme;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 

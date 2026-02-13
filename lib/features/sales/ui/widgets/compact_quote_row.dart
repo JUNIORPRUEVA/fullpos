@@ -8,6 +8,7 @@ import '../../../../core/theme/color_utils.dart';
 /// Tarjeta compacta y elevada para listar cotizaciones
 class CompactQuoteRow extends StatelessWidget {
   final QuoteDetailDto quoteDetail;
+  final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onSell;
   final VoidCallback onWhatsApp;
@@ -20,6 +21,7 @@ class CompactQuoteRow extends StatelessWidget {
   const CompactQuoteRow({
     super.key,
     required this.quoteDetail,
+    this.isSelected = false,
     required this.onTap,
     required this.onSell,
     required this.onWhatsApp,
@@ -43,220 +45,132 @@ class CompactQuoteRow extends StatelessWidget {
           info: scheme.secondary,
         );
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final scale = (constraints.maxWidth / 980).clamp(0.88, 1.05);
-        final createdDate = DateFormat('dd/MM/yy HH:mm').format(
-          DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs),
-        );
-        final cardBackground = scheme.surfaceContainerHighest;
-        final cardForeground =
-            ColorUtils.ensureReadableColor(scheme.onSurface, cardBackground);
-        final idBackground = scheme.primaryContainer.withOpacity(
-          ColorUtils.isLight(scheme.primaryContainer) ? 0.7 : 0.4,
-        );
-        final idForeground = ColorUtils.ensureReadableColor(
-          scheme.onPrimaryContainer,
-          idBackground,
-        );
-        final totalColor = ColorUtils.ensureReadableColor(
-          scheme.primary,
-          cardBackground,
-        );
-
-        return Material(
-          color: cardBackground,
-          elevation: 1.5,
-          shadowColor: scheme.shadow.withOpacity(0.24),
-          borderRadius: BorderRadius.circular(10 * scale),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10 * scale),
-            onTap: onTap,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: 12 * scale,
-                vertical: 8 * scale,
-              ),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10 * scale),
-                border: Border.all(color: scheme.outlineVariant, width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8 * scale,
-                          vertical: 4 * scale,
-                        ),
-                        decoration: BoxDecoration(
-                          color: idBackground,
-                          borderRadius: BorderRadius.circular(8 * scale),
-                        ),
-                        child: Text(
-                          'COT-${quote.id!.toString().padLeft(5, '0')}',
-                          style: TextStyle(
-                            fontSize: 11 * scale,
-                            fontWeight: FontWeight.w700,
-                            color: idForeground,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8 * scale),
-                      _buildStatusChip(context, quote.status),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.schedule,
-                            size: 13 * scale,
-                            color: cardForeground.withOpacity(0.6),
-                          ),
-                          SizedBox(width: 4 * scale),
-                          Text(
-                            createdDate,
-                            style: TextStyle(
-                              fontSize: 10 * scale,
-                              color: cardForeground.withOpacity(0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 6 * scale),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              quoteDetail.clientName,
-                              style: TextStyle(
-                                fontSize: 13 * scale,
-                                fontWeight: FontWeight.w700,
-                                color: cardForeground,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if ((quoteDetail.clientPhone ?? '')
-                                .trim()
-                                .isNotEmpty)
-                              Text(
-                                quoteDetail.clientPhone!,
-                                style: TextStyle(
-                                  fontSize: 11 * scale,
-                                  color: cardForeground.withOpacity(0.7),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: 10 * scale),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Total',
-                            style: TextStyle(
-                              fontSize: 10 * scale,
-                              color: cardForeground.withOpacity(0.6),
-                            ),
-                          ),
-                          Text(
-                            '\$${quote.total.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontSize: 15 * scale,
-                              fontWeight: FontWeight.bold,
-                              color: totalColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 6 * scale),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        if (quote.status != 'CONVERTED' &&
-                            quote.status != 'CANCELLED' &&
-                            quote.status != 'PASSED_TO_TICKET')
-                          _buildIconButton(
-                            icon: Icons.point_of_sale,
-                            tooltip: 'Vender',
-                            color: statusTheme.success,
-                            scale: scale,
-                            onPressed: onSell,
-                          ),
-                        if (quote.status != 'CONVERTED' &&
-                            quote.status != 'CANCELLED' &&
-                            quote.status != 'PASSED_TO_TICKET' &&
-                            onConvertToTicket != null)
-                          _buildIconButton(
-                            icon: Icons.receipt_long,
-                            tooltip: 'Pasar a ticket',
-                            color: statusTheme.warning,
-                            scale: scale,
-                            onPressed: onConvertToTicket!,
-                          ),
-                        _buildIconButton(
-                          icon: Icons.chat,
-                          tooltip: 'WhatsApp',
-                          color: statusTheme.success,
-                          scale: scale,
-                          onPressed: onWhatsApp,
-                        ),
-                        _buildIconButton(
-                          icon: Icons.picture_as_pdf,
-                          tooltip: 'PDF',
-                          color: statusTheme.error,
-                          scale: scale,
-                          onPressed: onPdf,
-                        ),
-                        if (onDownload != null)
-                          _buildIconButton(
-                            icon: Icons.download,
-                            tooltip: 'Descargar',
-                            color: scheme.tertiary,
-                            scale: scale,
-                            onPressed: onDownload!,
-                          ),
-                        if (quote.status != 'CONVERTED' &&
-                            quote.status != 'CANCELLED')
-                          _buildIconButton(
-                            icon: Icons.copy,
-                            tooltip: 'Duplicar',
-                            color: scheme.secondary,
-                            scale: scale,
-                            onPressed: onDuplicate,
-                          ),
-                        _buildIconButton(
-                          icon: Icons.delete_outline,
-                          tooltip: 'Eliminar',
-                          color: statusTheme.error,
-                          scale: scale,
-                          onPressed: onDelete,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    final dateLabel = DateFormat('dd/MM/yy HH:mm').format(
+      DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs),
     );
+    final idLabel = quote.id == null
+        ? 'COT-—'
+        : 'COT-${quote.id!.toString().padLeft(5, '0')}';
+    final statusColor = _statusColor(quote.status, scheme, statusTheme);
+
+    final bgColor = isSelected ? scheme.primary.withOpacity(0.06) : Colors.white;
+
+    return Material(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 1.4),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(
+                  idLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 5,
+                child: Text(
+                  quoteDetail.clientName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  dateLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.black.withOpacity(0.75),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  NumberFormat.currency(
+                    locale: 'es_DO',
+                    symbol: 'RD\$',
+                    decimalDigits: 2,
+                  ).format(quote.total),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: statusColor.withOpacity(0.35)),
+                ),
+                child: Text(
+                  quote.status,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: Colors.black.withOpacity(0.45)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _statusColor(
+    String status,
+    ColorScheme scheme,
+    AppStatusTheme statusTheme,
+  ) {
+    switch (status) {
+      case 'CONVERTED':
+        return statusTheme.success;
+      case 'CANCELLED':
+        return statusTheme.error;
+      case 'TICKET':
+      case 'PASSED_TO_TICKET':
+        return statusTheme.warning;
+      case 'SENT':
+        return statusTheme.info;
+      default:
+        return scheme.primary;
+    }
   }
 
   Widget _buildStatusChip(BuildContext context, String status) {

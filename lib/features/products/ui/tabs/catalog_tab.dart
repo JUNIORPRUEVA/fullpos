@@ -574,6 +574,9 @@ class _CatalogTabState extends State<CatalogTab> {
       );
     }
 
+    final canViewPurchasePrice = _isAdmin || _permissions.canViewPurchasePrice;
+    final canViewProfit = _isAdmin || _permissions.canViewProfit;
+
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
@@ -581,115 +584,263 @@ class _CatalogTabState extends State<CatalogTab> {
         border: Border.all(color: scheme.outlineVariant),
       ),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 240,
-            width: double.infinity,
-            child: ProductThumbnail.fromProduct(
-              product,
-              width: double.infinity,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
               height: 240,
-              borderRadius: BorderRadius.circular(14),
-              showBorder: false,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text(
-                'Seleccionado',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.65),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => _showProductDetails(product),
-                icon: const Icon(Icons.open_in_new, size: 18),
-                tooltip: 'Ver detalle',
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            product.name,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Código: ${product.code}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurface.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildDetailMetric(
-                  label: 'Precio venta',
-                  value: '\$${product.salePrice.toStringAsFixed(2)}',
-                  color: scheme.primary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildDetailMetric(
-                  label: 'Stock',
-                  value: product.stock.toStringAsFixed(0),
-                  color: product.isOutOfStock
-                      ? scheme.error
-                      : (product.hasLowStock
-                            ? scheme.tertiary
-                            : scheme.primary),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (product.categoryId != null || product.supplierId != null)
-            Text(
-              [
-                if (product.categoryId != null)
-                  _getCategoryName(product.categoryId) ?? '',
-                if (product.supplierId != null)
-                  _getSupplierName(product.supplierId) ?? '',
-              ].where((e) => e.isNotEmpty).join(' • '),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface.withOpacity(0.65),
+              width: double.infinity,
+              child: ProductThumbnail.fromProduct(
+                product,
+                width: double.infinity,
+                height: 240,
+                borderRadius: BorderRadius.circular(14),
+                showBorder: false,
               ),
             ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: (_isAdmin || _permissions.canEditProducts)
-                      ? () => _showProductForm(product)
-                      : null,
-                  icon: const Icon(Icons.edit, size: 18),
-                  label: const Text('Editar'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _requestAdjustStock(product),
-                  icon: const Icon(Icons.add_circle_outline, size: 18),
-                  label: const Text('Stock'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                    foregroundColor: scheme.onPrimary,
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: scheme.outlineVariant),
+                  ),
+                  child: Text(
+                    product.code,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => _showProductDetails(product),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  tooltip: 'Ver detalle',
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              product.name,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (product.isDeleted)
+                  _buildStatusBadge('ELIMINADO', scheme.error),
+                if (!product.isActive && !product.isDeleted)
+                  _buildStatusBadge('INACTIVO', scheme.outline),
+                if (product.isOutOfStock && product.isActive)
+                  _buildStatusBadge('AGOTADO', scheme.error),
+                if (product.hasLowStock && product.isActive)
+                  _buildStatusBadge('STOCK BAJO', scheme.tertiary),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (product.categoryId != null || product.supplierId != null) ...[
+              if (product.categoryId != null)
+                _buildInfoLine(
+                  icon: Icons.category_outlined,
+                  label: 'Categoría',
+                  value: _getCategoryName(product.categoryId) ?? '-',
+                ),
+              if (product.supplierId != null)
+                _buildInfoLine(
+                  icon: Icons.business_outlined,
+                  label: 'Suplidor',
+                  value: _getSupplierName(product.supplierId) ?? '-',
+                ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Precio venta',
+                    value: '\$${product.salePrice.toStringAsFixed(2)}',
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Stock',
+                    value: product.stock.toStringAsFixed(0),
+                    color: product.isOutOfStock
+                        ? scheme.error
+                        : (product.hasLowStock
+                              ? scheme.tertiary
+                              : scheme.primary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Disponible',
+                    value: product.availableStock.toStringAsFixed(0),
+                    color: scheme.secondary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Apartado',
+                    value: product.reservedStock.toStringAsFixed(0),
+                    color: scheme.outline,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDetailMetric(
+                    label: 'Stock mínimo',
+                    value: product.stockMin.toStringAsFixed(0),
+                    color: scheme.tertiary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: canViewPurchasePrice
+                      ? _buildDetailMetric(
+                          label: 'Precio compra',
+                          value:
+                              '\$${product.purchasePrice.toStringAsFixed(2)}',
+                          color: scheme.secondary,
+                        )
+                      : _buildDetailMetric(
+                          label: 'Actualizado',
+                          value:
+                              '${product.updatedAt.day.toString().padLeft(2, '0')}/${product.updatedAt.month.toString().padLeft(2, '0')}/${product.updatedAt.year}',
+                          color: scheme.outline,
+                        ),
+                ),
+              ],
+            ),
+            if (canViewProfit) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDetailMetric(
+                      label: 'Ganancia',
+                      value: '\$${product.profit.toStringAsFixed(2)}',
+                      color: product.profit >= 0
+                          ? scheme.tertiary
+                          : scheme.error,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildDetailMetric(
+                      label: 'Margen',
+                      value: '${product.profitPercentage.toStringAsFixed(1)}%',
+                      color: product.profit >= 0
+                          ? scheme.tertiary
+                          : scheme.error,
+                    ),
+                  ),
+                ],
               ),
             ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: (_isAdmin || _permissions.canEditProducts)
+                        ? () => _showProductForm(product)
+                        : null,
+                    icon: const Icon(Icons.edit, size: 18),
+                    label: const Text('Editar'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _requestAdjustStock(product),
+                    icon: const Icon(Icons.add_circle_outline, size: 18),
+                    label: const Text('Stock'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: scheme.primary,
+                      foregroundColor: scheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String text, Color color) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoLine({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: scheme.onSurface.withOpacity(0.7)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$label: $value',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.75),
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

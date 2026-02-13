@@ -139,7 +139,6 @@ class AppBootstrapController extends ChangeNotifier {
         _setMessage('Preparando ventana...');
         await WindowService.init();
         WindowService.scheduleInitialLayoutFix();
-        WindowService.scheduleShowAfterFirstFrame();
         _log('window ok');
         if (token != _runToken) return;
       }
