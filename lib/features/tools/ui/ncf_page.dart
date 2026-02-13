@@ -24,7 +24,10 @@ class _NcfPageState extends State<NcfPage> {
   @override
   void initState() {
     super.initState();
-    _loadBooks();
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (!mounted) return;
+      _loadBooks();
+    });
   }
 
   void _safeSetState(VoidCallback fn) {

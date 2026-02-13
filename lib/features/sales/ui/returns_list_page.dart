@@ -68,7 +68,10 @@ class _ReturnsListPageState extends State<ReturnsListPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadData();
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (!mounted) return;
+      _loadData();
+    });
   }
 
   @override
@@ -108,35 +111,33 @@ class _ReturnsListPageState extends State<ReturnsListPage>
     try {
       final (dateFrom, dateTo) = _getDateRange();
 
-      final result = await DbHardening.instance.runDbSafe<
-        (
-          List<SaleModel>,
-          List<Map<String, dynamic>>,
-          List<CategoryPerformanceData>,
-        )
-      >(
-        () async {
-          final sales = await SalesRepository.listCompletedSales(
-            query: _searchQuery.isNotEmpty ? _searchQuery : null,
-            dateFrom: dateFrom,
-            dateTo: dateTo,
-          );
-          final returns = await ReturnsRepository.listReturns(
-            dateFrom: dateFrom,
-            dateTo: dateTo,
-          );
-          final now = DateTime.now();
-          final startMs = dateFrom?.millisecondsSinceEpoch ?? 0;
-          final endMs = (dateTo ?? now).millisecondsSinceEpoch;
-          final categoryPerformance =
-              await ReportsRepository.getCategoryPerformance(
-                startMs: startMs,
-                endMs: endMs,
-              );
-          return (sales, returns, categoryPerformance);
-        },
-        stage: 'sales/returns_list/load',
-      );
+      final result = await DbHardening.instance
+          .runDbSafe<
+            (
+              List<SaleModel>,
+              List<Map<String, dynamic>>,
+              List<CategoryPerformanceData>,
+            )
+          >(() async {
+            final sales = await SalesRepository.listCompletedSales(
+              query: _searchQuery.isNotEmpty ? _searchQuery : null,
+              dateFrom: dateFrom,
+              dateTo: dateTo,
+            );
+            final returns = await ReturnsRepository.listReturns(
+              dateFrom: dateFrom,
+              dateTo: dateTo,
+            );
+            final now = DateTime.now();
+            final startMs = dateFrom?.millisecondsSinceEpoch ?? 0;
+            final endMs = (dateTo ?? now).millisecondsSinceEpoch;
+            final categoryPerformance =
+                await ReportsRepository.getCategoryPerformance(
+                  startMs: startMs,
+                  endMs: endMs,
+                );
+            return (sales, returns, categoryPerformance);
+          }, stage: 'sales/returns_list/load');
       final (sales, returns, categoryPerformance) = result;
 
       if (!mounted || seq != _loadSeq) return;
@@ -192,7 +193,8 @@ class _ReturnsListPageState extends State<ReturnsListPage>
 
   void _handleBack() {
     final router = GoRouter.of(context);
-    final canPopRouter = router.routerDelegate.currentConfiguration.matches.length > 1;
+    final canPopRouter =
+        router.routerDelegate.currentConfiguration.matches.length > 1;
     if (canPopRouter) {
       context.pop();
       return;
@@ -584,10 +586,7 @@ class _ReturnsListPageState extends State<ReturnsListPage>
         final accent = hasPartialRefund ? status.warning : status.success;
         final badgeBg = accent.withOpacity(0.16);
         final badgeBorder = accent.withOpacity(0.45);
-        final badgeText = ColorUtils.ensureReadableColor(
-          accent,
-          badgeBg,
-        );
+        final badgeText = ColorUtils.ensureReadableColor(accent, badgeBg);
         return Card(
           margin: EdgeInsets.only(bottom: padV * 0.6),
           elevation: 1.5,
@@ -796,9 +795,7 @@ class _ReturnsListPageState extends State<ReturnsListPage>
       return ListView(
         padding: EdgeInsets.fromLTRB(padH, padV, padH, padV),
         children: [
-          _buildCategorySummaryCard(
-            title: 'Historial por categoria',
-          ),
+          _buildCategorySummaryCard(title: 'Historial por categoria'),
           const SizedBox(height: 24),
           Center(
             child: Column(
@@ -832,9 +829,7 @@ class _ReturnsListPageState extends State<ReturnsListPage>
         if (index == 0) {
           return Padding(
             padding: EdgeInsets.only(bottom: padV),
-            child: _buildCategorySummaryCard(
-              title: 'Historial por categoria',
-            ),
+            child: _buildCategorySummaryCard(title: 'Historial por categoria'),
           );
         }
 
@@ -1111,10 +1106,7 @@ class _ReturnsListPageState extends State<ReturnsListPage>
           if (_categoryPerformance.isEmpty)
             Text(
               'No hay movimientos por categoria en este periodo.',
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
             )
           else ...[
             Row(
@@ -1185,9 +1177,7 @@ class _ReturnsListPageState extends State<ReturnsListPage>
                         children: [
                           Text(
                             item.category,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -1233,7 +1223,6 @@ class _ReturnsListPageState extends State<ReturnsListPage>
       ),
     );
   }
-
 }
 
 enum _RefundDialogResult { refunded, cancelled }
@@ -1579,7 +1568,6 @@ class _SaleTicketDialog extends StatelessWidget {
         ),
       ),
     );
-
   }
 
   Widget _buildTotalRow(

@@ -26,11 +26,18 @@ class _CreditsPageState extends State<CreditsPage>
   List<Map<String, dynamic>> _creditsByClient = [];
   List<Map<String, dynamic>> _creditSales = [];
   List<Map<String, dynamic>> _layawaySales = [];
-  Map<String, dynamic>? _selectedCredit;
+  String? _selectedClientName;
   int? _selectedCreditId;
-  Map<String, dynamic>? _selectedLayaway;
   int? _selectedLayawayId;
   int _loadSeq = 0;
+
+  late final TextEditingController _byClientSearchController;
+  late final TextEditingController _creditSearchController;
+  late final TextEditingController _layawaySearchController;
+
+  static const _brandDark = Colors.black;
+  static const _brandLight = Colors.white;
+  static const _controlRadius = 10.0;
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
@@ -49,12 +56,21 @@ class _CreditsPageState extends State<CreditsPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadCredits();
+    _byClientSearchController = TextEditingController();
+    _creditSearchController = TextEditingController();
+    _layawaySearchController = TextEditingController();
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (!mounted) return;
+      _loadCredits();
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _byClientSearchController.dispose();
+    _creditSearchController.dispose();
+    _layawaySearchController.dispose();
     super.dispose();
   }
 
@@ -84,6 +100,19 @@ class _CreditsPageState extends State<CreditsPage>
         _creditsByClient = byClient;
         _creditSales = sales;
         _layawaySales = layaways;
+
+        if (_creditsByClient.isNotEmpty) {
+          final match = _selectedClientName != null
+              ? _creditsByClient.firstWhere(
+                  (c) => (c['nombre'] ?? '').toString() == _selectedClientName,
+                  orElse: () => _creditsByClient.first,
+                )
+              : _creditsByClient.first;
+          _selectedClientName = (match['nombre'] ?? '').toString();
+        } else {
+          _selectedClientName = null;
+        }
+
         if (_creditSales.isNotEmpty) {
           final match = _selectedCreditId != null
               ? _creditSales.firstWhere(
@@ -92,10 +121,8 @@ class _CreditsPageState extends State<CreditsPage>
                 )
               : _creditSales.first;
           _selectedCreditId = match['id'] as int?;
-          _selectedCredit = match;
         } else {
           _selectedCreditId = null;
-          _selectedCredit = null;
         }
         if (_layawaySales.isNotEmpty) {
           final match = _selectedLayawayId != null
@@ -105,10 +132,8 @@ class _CreditsPageState extends State<CreditsPage>
                 )
               : _layawaySales.first;
           _selectedLayawayId = match['id'] as int?;
-          _selectedLayaway = match;
         } else {
           _selectedLayawayId = null;
-          _selectedLayaway = null;
         }
       });
     } catch (e, st) {
@@ -146,7 +171,9 @@ class _CreditsPageState extends State<CreditsPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gestión de Créditos'),
+        toolbarHeight: 0,
+        titleSpacing: 0,
+        automaticallyImplyLeading: false,
         elevation: 0,
         bottom: TabBar(
           controller: _tabController,
@@ -177,134 +204,482 @@ class _CreditsPageState extends State<CreditsPage>
     );
   }
 
+  Map<String, dynamic>? _findSelectedByStringKey(
+    List<Map<String, dynamic>> items,
+    String? selected,
+    String key,
+  ) {
+    if (selected == null) return null;
+    for (final item in items) {
+      if ((item[key] ?? '').toString() == selected) return item;
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _findSelectedById(
+    List<Map<String, dynamic>> items,
+    int? selectedId,
+  ) {
+    if (selectedId == null) return null;
+    for (final item in items) {
+      if (item['id'] == selectedId) return item;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _filterByQuery(
+    List<Map<String, dynamic>> items,
+    String query,
+    List<String> keys,
+  ) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return items;
+    return items.where((item) {
+      for (final k in keys) {
+        final v = (item[k] ?? '').toString().toLowerCase();
+        if (v.contains(q)) return true;
+      }
+      return false;
+    }).toList();
+  }
+
+  Widget _buildSectionHeader({
+    required TextEditingController controller,
+    required String hint,
+    required Widget summary,
+  }) {
+    final scheme = _scheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final padding = _pagePadding(constraints);
+        final isNarrow = constraints.maxWidth < 980;
+        final baseBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_controlRadius),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        );
+        final searchField = TextField(
+          controller: controller,
+          style: const TextStyle(color: _brandLight),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: _brandLight.withOpacity(0.70)),
+            filled: true,
+            fillColor: _brandDark,
+            prefixIcon: Icon(
+              Icons.search,
+              color: _brandLight.withOpacity(0.85),
+            ),
+            suffixIcon: controller.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    color: _brandLight.withOpacity(0.90),
+                    onPressed: () {
+                      _safeSetState(() {
+                        controller.clear();
+                      });
+                    },
+                  )
+                : null,
+            border: baseBorder,
+            enabledBorder: baseBorder,
+            focusedBorder: baseBorder.copyWith(
+              borderSide: BorderSide(color: scheme.primary),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+          onChanged: (_) {
+            _safeSetState(() {});
+          },
+        );
+
+        return Container(
+          color: scheme.surfaceContainerHighest,
+          padding: EdgeInsets.fromLTRB(
+            padding.left,
+            (padding.top * 0.8).clamp(8.0, 14.0),
+            padding.right,
+            (padding.top * 0.8).clamp(8.0, 14.0),
+          ),
+          child: isNarrow
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [searchField, const SizedBox(height: 8), summary],
+                )
+              : Row(
+                  children: [
+                    Expanded(flex: 4, child: searchField),
+                    const SizedBox(width: 10),
+                    summary,
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSummaryChip({
+    required IconData icon,
+    required String left,
+    required String right,
+  }) {
+    final scheme = _scheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _brandDark,
+        borderRadius: BorderRadius.circular(_controlRadius),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: _brandLight.withOpacity(0.85)),
+          const SizedBox(width: 8),
+          Text(
+            left,
+            style: _theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: _brandLight,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            right,
+            style: _theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: _brandLight,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildByClientTab() {
     if (_creditsByClient.isEmpty) {
       return const Center(child: Text('No hay créditos'));
     }
 
+    final scheme = _scheme;
     final status = _status;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = _pagePadding(constraints);
-        return ListView.separated(
-          padding: padding,
-          itemCount: _creditsByClient.length,
-          separatorBuilder: (_, index) => const SizedBox(height: 6),
-          itemBuilder: (context, index) {
-            final item = _creditsByClient[index];
-            final clientName = item['nombre'] ?? 'S/N';
-            final totalPending =
-                (item['total_pending'] as num?)?.toDouble() ?? 0.0;
-            final totalAmount =
-                (item['total_amount'] as num?)?.toDouble() ?? 0.0;
-            final totalCredits = item['total_credits'] as int? ?? 0;
-            final chipColor = totalPending > 0 ? status.error : status.success;
+    final filtered = _filterByQuery(
+      _creditsByClient,
+      _byClientSearchController.text,
+      const ['nombre'],
+    );
+    final selected = _findSelectedByStringKey(
+      filtered,
+      _selectedClientName,
+      'nombre',
+    );
+    final sumPending = filtered.fold<double>(
+      0,
+      (sum, c) => sum + ((c['total_pending'] as num?)?.toDouble() ?? 0.0),
+    );
 
-            return Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {},
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
+    return Column(
+      children: [
+        _buildSectionHeader(
+          controller: _byClientSearchController,
+          hint: 'Buscar cliente...',
+          summary: _buildSummaryChip(
+            icon: Icons.people_alt_outlined,
+            left: 'Clientes: ${filtered.length}',
+            right: 'Pend.: ${_formatCurrency(sumPending)}',
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final padding = _pagePadding(constraints);
+              final isWide = constraints.maxWidth >= 1200;
+              final detailWidth = (constraints.maxWidth * 0.25).clamp(
+                300.0,
+                460.0,
+              );
+
+              final list = ListView.separated(
+                padding: padding,
+                itemCount: filtered.length,
+                separatorBuilder: (_, index) => const SizedBox(height: 6),
+                itemBuilder: (context, index) {
+                  final item = filtered[index];
+                  final clientName = (item['nombre'] ?? 'S/N').toString();
+                  final totalPending =
+                      (item['total_pending'] as num?)?.toDouble() ?? 0.0;
+                  final totalAmount =
+                      (item['total_amount'] as num?)?.toDouble() ?? 0.0;
+                  final totalCredits = item['total_credits'] as int? ?? 0;
+                  final chipColor = totalPending > 0
+                      ? status.error
+                      : status.success;
+                  final isSelected =
+                      _selectedClientName != null &&
+                      clientName == _selectedClientName;
+
+                  final rowColor = isSelected
+                      ? scheme.primary.withOpacity(0.06)
+                      : scheme.surface;
+
+                  return Material(
+                    color: rowColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white, width: 1.4),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: Text(
-                          clientName.toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          totalCredits.toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black.withOpacity(0.8),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          _formatCurrency(totalAmount),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          _formatCurrency(totalPending),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                            decoration: totalPending > 0
-                                ? TextDecoration.none
-                                : TextDecoration.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        _safeSetState(() {
+                          _selectedClientName = clientName;
+                        });
+                      },
+                      child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
+                          horizontal: 12,
+                          vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: chipColor.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: chipColor.withOpacity(0.35),
-                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: scheme.outlineVariant),
                         ),
-                        child: Text(
-                          totalPending > 0 ? 'PEND.' : 'OK',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                            letterSpacing: 0.2,
-                            fontSize: 11,
-                          ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: Text(
+                                clientName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                totalCredits.toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: _theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: scheme.onSurface.withOpacity(0.8),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                _formatCurrency(totalAmount),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: _theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                _formatCurrency(totalPending),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: _theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: chipColor.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: chipColor.withOpacity(0.35),
+                                ),
+                              ),
+                              child: Text(
+                                totalPending > 0 ? 'PEND.' : 'OK',
+                                style: _theme.textTheme.labelSmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: scheme.onSurface,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            PopupMenuButton<String>(
+                              tooltip: 'Acciones',
+                              icon: Icon(
+                                Icons.more_vert,
+                                size: 18,
+                                color: scheme.onSurface.withOpacity(0.7),
+                              ),
+                              onSelected: (v) {
+                                if (v == 'view') {
+                                  _safeSetState(() {
+                                    _selectedClientName = clientName;
+                                  });
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                  value: 'view',
+                                  child: Text('Ver resumen'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
+                  );
+                },
+              );
+
+              final detail = _buildClientSummaryDetailPanel(selected);
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: list),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: detailWidth,
+                      child: SizedBox.expand(child: detail),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      padding.left,
+                      padding.top,
+                      padding.right,
+                      0,
+                    ),
+                    child: detail,
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(child: list),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClientSummaryDetailPanel(Map<String, dynamic>? summary) {
+    final scheme = _scheme;
+    if (summary == null) {
+      return Card(
+        margin: EdgeInsets.zero,
+        color: scheme.surface,
+        elevation: 1,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.person_outline,
+                size: 40,
+                color: scheme.onSurface.withOpacity(0.4),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Selecciona un cliente para ver el resumen',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final status = _status;
+    final clientName = (summary['nombre'] ?? 'S/N').toString();
+    final totalPending = (summary['total_pending'] as num?)?.toDouble() ?? 0.0;
+    final totalAmount = (summary['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final totalCredits = summary['total_credits'] as int? ?? 0;
+    final chipColor = totalPending > 0 ? status.error : status.success;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 2,
+      color: scheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Resumen del cliente',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                clientName,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _detailRow('Créditos', totalCredits.toString()),
+              _detailRow('Total', _formatCurrency(totalAmount)),
+              _detailRow('Pendiente', _formatCurrency(totalPending)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: chipColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: chipColor.withOpacity(0.35)),
+                ),
+                child: Text(
+                  totalPending > 0 ? 'TIENE SALDO PENDIENTE' : 'AL DÍA',
+                  style: _theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: scheme.onSurface,
+                    letterSpacing: 0.2,
                   ),
                 ),
               ),
-            );
-          },
-        );
-      },
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -313,55 +688,84 @@ class _CreditsPageState extends State<CreditsPage>
       return const Center(child: Text('No hay ventas a crédito'));
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = _pagePadding(constraints);
-        final isWide = constraints.maxWidth >= 1200;
-        final detailWidth = (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
+    final filtered = _filterByQuery(
+      _creditSales,
+      _creditSearchController.text,
+      const ['local_code', 'customer_name_snapshot', 'customer_phone_snapshot'],
+    );
+    final selected = _findSelectedById(filtered, _selectedCreditId);
+    final pendingTotal = filtered.fold<double>(
+      0,
+      (sum, s) => sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
+    );
 
-        final list = ListView.separated(
-          padding: padding,
-          itemCount: _creditSales.length,
-          separatorBuilder: (_, index) => const SizedBox(height: 6),
-          itemBuilder: (context, index) {
-            final sale = _creditSales[index];
-            final isSelected = sale['id'] == _selectedCreditId;
-            return _buildCreditRow(sale, isSelected);
-          },
-        );
+    return Column(
+      children: [
+        _buildSectionHeader(
+          controller: _creditSearchController,
+          hint: 'Buscar por cliente, teléfono o factura...',
+          summary: _buildSummaryChip(
+            icon: Icons.receipt_long,
+            left: 'Ventas: ${filtered.length}',
+            right: 'Pend.: ${_formatCurrency(pendingTotal)}',
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final padding = _pagePadding(constraints);
+              final isWide = constraints.maxWidth >= 1200;
+              final detailWidth = (constraints.maxWidth * 0.25).clamp(
+                300.0,
+                460.0,
+              );
 
-        final detail = _buildCreditDetailPanel(_selectedCredit);
+              final list = ListView.separated(
+                padding: padding,
+                itemCount: filtered.length,
+                separatorBuilder: (_, index) => const SizedBox(height: 6),
+                itemBuilder: (context, index) {
+                  final sale = filtered[index];
+                  final isSelected = sale['id'] == _selectedCreditId;
+                  return _buildCreditRow(sale, isSelected);
+                },
+              );
 
-        if (isWide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: list),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: detailWidth,
-                child: SizedBox.expand(child: detail),
-              ),
-            ],
-          );
-        }
+              final detail = _buildCreditDetailPanel(selected);
 
-        return Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                padding.left,
-                padding.top,
-                padding.right,
-                0,
-              ),
-              child: detail,
-            ),
-            const SizedBox(height: 12),
-            Expanded(child: list),
-          ],
-        );
-      },
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: list),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: detailWidth,
+                      child: SizedBox.expand(child: detail),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      padding.left,
+                      padding.top,
+                      padding.right,
+                      0,
+                    ),
+                    child: detail,
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(child: list),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -370,55 +774,84 @@ class _CreditsPageState extends State<CreditsPage>
       return const Center(child: Text('No hay apartados'));
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = _pagePadding(constraints);
-        final isWide = constraints.maxWidth >= 1200;
-        final detailWidth = (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
+    final filtered = _filterByQuery(
+      _layawaySales,
+      _layawaySearchController.text,
+      const ['local_code', 'customer_name_snapshot', 'customer_phone_snapshot'],
+    );
+    final selected = _findSelectedById(filtered, _selectedLayawayId);
+    final pendingTotal = filtered.fold<double>(
+      0,
+      (sum, s) => sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
+    );
 
-        final list = ListView.separated(
-          padding: padding,
-          itemCount: _layawaySales.length,
-          separatorBuilder: (_, index) => const SizedBox(height: 6),
-          itemBuilder: (context, index) {
-            final sale = _layawaySales[index];
-            final isSelected = sale['id'] == _selectedLayawayId;
-            return _buildLayawayRow(sale, isSelected);
-          },
-        );
+    return Column(
+      children: [
+        _buildSectionHeader(
+          controller: _layawaySearchController,
+          hint: 'Buscar por cliente, teléfono o factura...',
+          summary: _buildSummaryChip(
+            icon: Icons.bookmark,
+            left: 'Apartados: ${filtered.length}',
+            right: 'Pend.: ${_formatCurrency(pendingTotal)}',
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final padding = _pagePadding(constraints);
+              final isWide = constraints.maxWidth >= 1200;
+              final detailWidth = (constraints.maxWidth * 0.25).clamp(
+                300.0,
+                460.0,
+              );
 
-        final detail = _buildLayawayDetailPanel(_selectedLayaway);
+              final list = ListView.separated(
+                padding: padding,
+                itemCount: filtered.length,
+                separatorBuilder: (_, index) => const SizedBox(height: 6),
+                itemBuilder: (context, index) {
+                  final sale = filtered[index];
+                  final isSelected = sale['id'] == _selectedLayawayId;
+                  return _buildLayawayRow(sale, isSelected);
+                },
+              );
 
-        if (isWide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: list),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: detailWidth,
-                child: SizedBox.expand(child: detail),
-              ),
-            ],
-          );
-        }
+              final detail = _buildLayawayDetailPanel(selected);
 
-        return Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                padding.left,
-                padding.top,
-                padding.right,
-                0,
-              ),
-              child: detail,
-            ),
-            const SizedBox(height: 12),
-            Expanded(child: list),
-          ],
-        );
-      },
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: list),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: detailWidth,
+                      child: SizedBox.expand(child: detail),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      padding.left,
+                      padding.top,
+                      padding.right,
+                      0,
+                    ),
+                    child: detail,
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(child: list),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -432,7 +865,7 @@ class _CreditsPageState extends State<CreditsPage>
     final chipColor = statusLabel == 'PAID' ? _status.success : _status.warning;
     final rowColor = isSelected
         ? _scheme.primary.withOpacity(0.06)
-        : Colors.white;
+        : _scheme.surface;
 
     return Material(
       color: rowColor,
@@ -442,14 +875,13 @@ class _CreditsPageState extends State<CreditsPage>
         onTap: () {
           setState(() {
             _selectedLayawayId = sale['id'] as int?;
-            _selectedLayaway = sale;
           });
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white, width: 1.4),
+            border: Border.all(color: _scheme.outlineVariant),
           ),
           child: Row(
             children: [
@@ -459,9 +891,9 @@ class _CreditsPageState extends State<CreditsPage>
                   localCode.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: _theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                    color: _scheme.onSurface,
                   ),
                 ),
               ),
@@ -472,9 +904,9 @@ class _CreditsPageState extends State<CreditsPage>
                   clientName.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black.withOpacity(0.85),
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: _scheme.onSurface.withOpacity(0.85),
                   ),
                 ),
               ),
@@ -486,9 +918,9 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: _scheme.onSurface,
                   ),
                 ),
               ),
@@ -500,9 +932,9 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: _scheme.onSurface,
                   ),
                 ),
               ),
@@ -519,13 +951,52 @@ class _CreditsPageState extends State<CreditsPage>
                 ),
                 child: Text(
                   statusLabel.toString(),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  style: _theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: _scheme.onSurface,
                     letterSpacing: 0.2,
-                    fontSize: 11,
                   ),
                 ),
+              ),
+              const SizedBox(width: 6),
+              PopupMenuButton<String>(
+                tooltip: 'Acciones',
+                icon: Icon(
+                  Icons.more_vert,
+                  size: 18,
+                  color: _scheme.onSurface.withOpacity(0.7),
+                ),
+                onSelected: (v) {
+                  if (v == 'view') {
+                    _safeSetState(() {
+                      _selectedLayawayId = sale['id'] as int?;
+                    });
+                  }
+                  if (v == 'pay') {
+                    final saleId = sale['id'] as int?;
+                    if (saleId == null) return;
+                    if (pending <= 0) return;
+                    _showLayawayPaymentDialog(
+                      saleId,
+                      localCode.toString(),
+                      clientName.toString(),
+                      total,
+                      pending,
+                      sale['customer_id'] as int?,
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'view',
+                    child: Text('Ver detalle'),
+                  ),
+                  PopupMenuItem(
+                    value: 'pay',
+                    enabled: pending > 0,
+                    child: const Text('Registrar abono'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -619,7 +1090,14 @@ class _CreditsPageState extends State<CreditsPage>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _scheme.primary,
                     foregroundColor: _scheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_controlRadius),
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
               ),
@@ -643,7 +1121,7 @@ class _CreditsPageState extends State<CreditsPage>
     final chipColor = statusLabel == 'PAID' ? _status.success : _status.warning;
     final rowColor = isSelected
         ? _scheme.primary.withOpacity(0.06)
-        : Colors.white;
+        : _scheme.surface;
 
     return Material(
       color: rowColor,
@@ -653,14 +1131,13 @@ class _CreditsPageState extends State<CreditsPage>
         onTap: () {
           setState(() {
             _selectedCreditId = sale['id'] as int?;
-            _selectedCredit = sale;
           });
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white, width: 1.4),
+            border: Border.all(color: _scheme.outlineVariant),
           ),
           child: Row(
             children: [
@@ -670,9 +1147,9 @@ class _CreditsPageState extends State<CreditsPage>
                   localCode.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: _theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                    color: _scheme.onSurface,
                   ),
                 ),
               ),
@@ -683,9 +1160,9 @@ class _CreditsPageState extends State<CreditsPage>
                   clientName.toString(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black.withOpacity(0.85),
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: _scheme.onSurface.withOpacity(0.85),
                   ),
                 ),
               ),
@@ -696,9 +1173,9 @@ class _CreditsPageState extends State<CreditsPage>
                   _formatDate(dueDateMs),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black.withOpacity(0.75),
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _scheme.onSurface.withOpacity(0.75),
                   ),
                 ),
               ),
@@ -710,9 +1187,9 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: _scheme.onSurface,
                   ),
                 ),
               ),
@@ -724,9 +1201,9 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: _scheme.onSurface,
                   ),
                 ),
               ),
@@ -743,13 +1220,44 @@ class _CreditsPageState extends State<CreditsPage>
                 ),
                 child: Text(
                   statusLabel.toString(),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  style: _theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: _scheme.onSurface,
                     letterSpacing: 0.2,
-                    fontSize: 11,
                   ),
                 ),
+              ),
+              const SizedBox(width: 6),
+              PopupMenuButton<String>(
+                tooltip: 'Acciones',
+                icon: Icon(
+                  Icons.more_vert,
+                  size: 18,
+                  color: _scheme.onSurface.withOpacity(0.7),
+                ),
+                onSelected: (v) {
+                  if (v == 'view') {
+                    _safeSetState(() {
+                      _selectedCreditId = sale['id'] as int?;
+                    });
+                  }
+                  if (v == 'pay') {
+                    final saleId = sale['id'] as int?;
+                    if (saleId == null) return;
+                    _showPaymentDialog(
+                      saleId,
+                      localCode.toString(),
+                      clientName.toString(),
+                      totalDue,
+                      pending,
+                      sale['customer_id'] as int?,
+                    );
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'view', child: Text('Ver detalle')),
+                  PopupMenuItem(value: 'pay', child: Text('Registrar abono')),
+                ],
               ),
             ],
           ),
@@ -861,7 +1369,14 @@ class _CreditsPageState extends State<CreditsPage>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _scheme.primary,
                     foregroundColor: _scheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_controlRadius),
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
               ),

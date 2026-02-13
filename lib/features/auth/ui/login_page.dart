@@ -153,6 +153,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         GoRouter.of(rootCtx).refresh();
         GoRouter.of(rootCtx).go('/sales');
       } else {
+        if (!mounted) return;
         setState(() {
           _errorMessage = _usingPin
               ? 'PIN o usuario incorrecto'

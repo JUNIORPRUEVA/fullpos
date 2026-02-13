@@ -242,14 +242,14 @@ class _QuotesPageState extends State<QuotesPage> {
           Icon(
             Icons.summarize_outlined,
             size: 16,
-            color: Colors.white.withOpacity(0.85),
+            color: _brandLight.withOpacity(0.85),
           ),
           const SizedBox(width: 8),
           Text(
             'Cotizaciones: $count',
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: _brandLight,
             ),
           ),
           const SizedBox(width: 12),
@@ -257,7 +257,7 @@ class _QuotesPageState extends State<QuotesPage> {
             'Total: ${money.format(totalAmount)}',
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w800,
-              color: Colors.white,
+              color: _brandLight,
             ),
           ),
         ],
@@ -265,11 +265,12 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
-  ButtonStyle _brandButtonStyle({Color? borderColor}) {
+  ButtonStyle _bottomActionButtonStyle({Color? borderColor}) {
+    final scheme = _scheme;
     return ElevatedButton.styleFrom(
-      backgroundColor: _brandDark,
-      foregroundColor: _brandLight,
-      side: BorderSide(color: borderColor ?? _scheme.outlineVariant),
+      backgroundColor: scheme.primary,
+      foregroundColor: scheme.onPrimary,
+      side: BorderSide(color: borderColor ?? scheme.primary),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(_brandRadius),
       ),
@@ -635,7 +636,7 @@ class _QuotesPageState extends State<QuotesPage> {
                     : () => _convertToSale(quoteDetail),
                 icon: const Icon(Icons.point_of_sale, size: 18),
                 label: const Text('Convertir a venta'),
-                style: _brandButtonStyle(borderColor: scheme.primary),
+                style: _bottomActionButtonStyle(),
               ),
             ),
             const SizedBox(height: 8),
@@ -648,7 +649,7 @@ class _QuotesPageState extends State<QuotesPage> {
                     : () => _convertToTicket(quoteDetail),
                 icon: const Icon(Icons.receipt_long, size: 18),
                 label: const Text('Pasar a ticket'),
-                style: _brandButtonStyle(borderColor: scheme.tertiary),
+                style: _bottomActionButtonStyle(),
               ),
             ),
             const SizedBox(height: 8),
@@ -658,7 +659,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 onPressed: () => _shareWhatsApp(quoteDetail),
                 icon: const Icon(Icons.chat, size: 18),
                 label: const Text('Enviar por WhatsApp'),
-                style: _brandButtonStyle(),
+                style: _bottomActionButtonStyle(),
               ),
             ),
             const SizedBox(height: 8),
@@ -669,7 +670,7 @@ class _QuotesPageState extends State<QuotesPage> {
                     onPressed: () => _viewPDF(quoteDetail),
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('PDF'),
-                    style: _brandButtonStyle(),
+                    style: _bottomActionButtonStyle(),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -678,7 +679,7 @@ class _QuotesPageState extends State<QuotesPage> {
                     onPressed: () => _downloadPDF(quoteDetail),
                     icon: const Icon(Icons.download, size: 18),
                     label: const Text('Descargar'),
-                    style: _brandButtonStyle(),
+                    style: _bottomActionButtonStyle(),
                   ),
                 ),
               ],
@@ -690,7 +691,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 onPressed: () => _duplicateQuote(quoteDetail),
                 icon: const Icon(Icons.copy, size: 18),
                 label: const Text('Duplicar'),
-                style: _brandButtonStyle(),
+                style: _bottomActionButtonStyle(),
               ),
             ),
             const SizedBox(height: 8),
@@ -700,7 +701,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 onPressed: () => _deleteQuote(quoteDetail),
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Eliminar'),
-                style: _brandButtonStyle(borderColor: status.error),
+                style: _bottomActionButtonStyle(),
               ),
             ),
           ],
