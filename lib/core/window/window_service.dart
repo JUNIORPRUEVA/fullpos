@@ -83,6 +83,13 @@ class WindowService {
       await windowManager.setAsFrameless();
     } catch (_) {}
 
+    // Importante: en frameless, el borde redimensionable puede "robar" clicks
+    // cerca de la esquina superior derecha, haciendo difícil presionar
+    // botones custom (minimizar/cerrar). Desactivamos resize en modo POS.
+    try {
+      await windowManager.setResizable(false);
+    } catch (_) {}
+
     if (!_windowsAlwaysOnTopSet) {
       try {
         await windowManager.setAlwaysOnTop(true);
@@ -109,6 +116,10 @@ class WindowService {
 
       if (!_windowsKioskApplied || !alreadyCorrect) {
         try {
+          // Para algunos setups, setBounds requiere resizable=true.
+          try {
+            await windowManager.setResizable(true);
+          } catch (_) {}
           await windowManager.setBounds(bounds);
         } catch (_) {
           try {
@@ -123,6 +134,11 @@ class WindowService {
             await windowManager.setResizable(false);
           } catch (_) {}
         }
+
+        // Asegurar no-resizable al final (mejor hit-testing de botones).
+        try {
+          await windowManager.setResizable(false);
+        } catch (_) {}
       }
     } catch (_) {
       await windowManager.maximize();
@@ -130,6 +146,17 @@ class WindowService {
 
     await _refreshAfterWindowModeChange();
     _windowsKioskApplied = true;
+  }
+
+  /// Aplica el modo POS "kiosk" en Windows.
+  ///
+  /// Pensado para usarse ANTES del primer show (ventana oculta) para evitar
+  /// flashes y evitar cambios de tamaño después de mostrar.
+  static Future<void> applyWindowsPosKioskModeForStartup({
+    bool preferCurrentDisplay = false,
+  }) async {
+    if (!Platform.isWindows) return;
+    await _applyWindowsPosKioskMode(preferCurrentDisplay: preferCurrentDisplay);
   }
 
   /// Inicializar window_manager
@@ -148,11 +175,18 @@ class WindowService {
       // los helpers (fullscreen toggle, enforcer, etc.).
       try {
         final prefs = await SharedPreferences.getInstance();
-        _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
-        fullScreenListenable.value = _isFullScreen;
+        if (Platform.isWindows) {
+          // POS en Windows: siempre en modo kiosko/pantalla completa.
+          _isFullScreen = true;
+          fullScreenListenable.value = true;
+          await prefs.setBool('pos_fullscreen', true);
+        } else {
+          _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
+          fullScreenListenable.value = _isFullScreen;
+        }
       } catch (_) {
-        _isFullScreen = false;
-        fullScreenListenable.value = false;
+        _isFullScreen = Platform.isWindows;
+        fullScreenListenable.value = _isFullScreen;
       }
 
       _isInitialized = true;

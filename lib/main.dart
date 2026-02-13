@@ -23,6 +23,15 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
+      // Desktop window startup (Windows): ocultar y fijar tamaño ANTES de cualquier init pesado.
+      // Esto reduce al mínimo el “flash” de la ventanita al arrancar.
+      try {
+        await windowManager.ensureInitialized();
+        await WindowStartupController.instance.applyHiddenStartup();
+      } catch (_) {
+        // Ignorar: la app debe poder arrancar igual.
+      }
+
       final diagnostics = RenderDiagnostics.instance;
       await diagnostics.ensureInitialized();
       diagnostics.installGlobalErrorHandlers();
@@ -74,14 +83,6 @@ Future<void> main() async {
       if (kDebugMode) {
         ThemeAudit.run();
         await runDbAudit();
-      }
-
-      // Desktop window startup (Windows): ocultar y fijar tamaño ANTES de runApp.
-      try {
-        await windowManager.ensureInitialized();
-        await WindowStartupController.instance.applyHiddenStartup();
-      } catch (_) {
-        // Ignorar: la app debe poder arrancar igual.
       }
 
       // FULLPOS DB HARDENING: sincronizar configuracion en la nube sin bloquear UI.

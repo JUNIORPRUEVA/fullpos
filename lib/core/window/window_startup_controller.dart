@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../constants/app_colors.dart';
+import 'window_service.dart';
 
 /// Centraliza el arranque de ventana en Desktop (especialmente Windows).
 ///
@@ -48,15 +49,25 @@ class WindowStartupController {
       }
 
       // Importante: NO mostrar aquí.
+      // Aplicar modo POS kiosko en Windows ANTES del show.
+      // Esto asegura que la ventana aparezca una sola vez, ya a tamaño final.
       try {
-        await windowManager.setSize(const Size(1280, 720));
-      } catch (_) {}
-      try {
-        await windowManager.setMinimumSize(const Size(1100, 650));
-      } catch (_) {}
-      try {
-        await windowManager.center();
-      } catch (_) {}
+        await WindowService.init();
+        await WindowService.applyWindowsPosKioskModeForStartup(
+          preferCurrentDisplay: false,
+        );
+      } catch (_) {
+        // Fallback: ventana normal maximizada.
+        try {
+          await windowManager.setMinimumSize(const Size(1100, 650));
+        } catch (_) {}
+        try {
+          await windowManager.maximize();
+        } catch (_) {}
+        try {
+          await windowManager.setResizable(false);
+        } catch (_) {}
+      }
     });
   }
 
@@ -73,6 +84,13 @@ class WindowStartupController {
       if (kDebugMode) {
         debugPrint('[WINDOW] show once (after boot ready)');
       }
+      try {
+        final isMin = await windowManager.isMinimized();
+        if (isMin) {
+          await windowManager.restore();
+        }
+      } catch (_) {}
+
       try {
         await windowManager.show();
       } catch (_) {}

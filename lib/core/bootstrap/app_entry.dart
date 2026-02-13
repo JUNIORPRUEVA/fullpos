@@ -34,10 +34,9 @@ class AppEntry extends ConsumerStatefulWidget {
 
 class _AppEntryState extends ConsumerState<AppEntry> {
   @override
-  void initState() {
-    super.initState();
-
-    // Mostrar ventana SOLO cuando el bootstrap esté READY (no por primer frame).
+  Widget build(BuildContext context) {
+    // Mostrar ventana SOLO cuando el bootstrap esté READY.
+    // Importante: `ref.listen` debe ejecutarse dentro de `build`.
     ref.listen<BootStatus>(
       appBootstrapProvider.select((b) => b.snapshot.status),
       (prev, next) {
@@ -46,10 +45,7 @@ class _AppEntryState extends ConsumerState<AppEntry> {
         }
       },
     );
-  }
 
-  @override
-  Widget build(BuildContext context) {
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final delay = ref.watch(_minSplashDelayProvider);
 
