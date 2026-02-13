@@ -60,7 +60,19 @@ class FullPosApp extends ConsumerWidget {
           ],
           routerConfig: router,
           builder: (context, child) {
-            final safeChild = child ?? const BootstrapLoadingScreen();
+            Widget? effectiveChild = child;
+
+            // En algunos estados transitorios (redirects async / router warmup),
+            // go_router puede entregar un placeholder (ej: SizedBox.shrink()).
+            // Eso se ve como una pantalla "vacía" con el color de marca.
+            if (effectiveChild is SizedBox &&
+                effectiveChild.width == 0 &&
+                effectiveChild.height == 0 &&
+                effectiveChild.child == null) {
+              effectiveChild = null;
+            }
+
+            final safeChild = effectiveChild ?? const BootstrapLoadingScreen();
 
             final layered = Stack(
               fit: StackFit.expand,

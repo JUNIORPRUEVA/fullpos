@@ -150,15 +150,9 @@ class _QuotesPageState extends State<QuotesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = _scheme;
+    final totalsWidget = _buildQuotesTotalsSummary();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cotizaciones'),
-        backgroundColor: scheme.primary,
-        foregroundColor: scheme.onPrimary,
-        elevation: 0,
-      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final scale = uiScale(context);
@@ -181,6 +175,7 @@ class _QuotesPageState extends State<QuotesPage> {
               QuotesFilterBar(
                 initialConfig: _filterConfig,
                 onFilterChanged: _onFilterChanged,
+                summary: totalsWidget,
               ),
               Expanded(
                 child: isWide
@@ -197,7 +192,9 @@ class _QuotesPageState extends State<QuotesPage> {
                           SizedBox(width: 12 * scale),
                           SizedBox(
                             width: detailWidth,
-                            child: _buildQuoteDetailsPanel(_selectedQuote),
+                            child: SizedBox.expand(
+                              child: _buildQuoteDetailsPanel(_selectedQuote),
+                            ),
                           ),
                         ],
                       )
@@ -210,6 +207,56 @@ class _QuotesPageState extends State<QuotesPage> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildQuotesTotalsSummary() {
+    final theme = _theme;
+    final scheme = _scheme;
+    final count = _filteredQuotes.length;
+    final totalAmount = _filteredQuotes.fold<double>(
+      0,
+      (sum, q) => sum + q.quote.total,
+    );
+    final money = NumberFormat.currency(
+      locale: 'es_DO',
+      symbol: 'RD\$',
+      decimalDigits: 2,
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.summarize_outlined,
+            size: 16,
+            color: Colors.white.withOpacity(0.85),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Cotizaciones: $count',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Total: ${money.format(totalAmount)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -465,6 +512,86 @@ class _QuotesPageState extends State<QuotesPage> {
                   : 'No',
               color: quote.itbisEnabled ? scheme.outline : scheme.outline,
             ),
+
+            const SizedBox(height: 14),
+            Text(
+              'Productos (${quoteDetail.items.length})',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (quoteDetail.items.isEmpty)
+              Text(
+                'Sin productos.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.7),
+                ),
+              )
+            else
+              Container(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  children: quoteDetail.items.map((item) {
+                    final qtyLabel = item.qty.toStringAsFixed(
+                      item.qty % 1 == 0 ? 0 : 2,
+                    );
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 44,
+                            child: Text(
+                              qtyLabel,
+                              textAlign: TextAlign.right,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              item.description,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 86,
+                            child: Text(
+                              NumberFormat.currency(
+                                locale: 'es_DO',
+                                symbol: 'RD\$',
+                                decimalDigits: 2,
+                              ).format(item.totalLine),
+                              textAlign: TextAlign.right,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: scheme.primary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
             if ((quote.notes ?? '').trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(

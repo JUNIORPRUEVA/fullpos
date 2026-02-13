@@ -54,8 +54,35 @@ class CompactQuoteRow extends StatelessWidget {
     final statusColor = _statusColor(quote.status, scheme, statusTheme);
 
     final bgColor = isSelected
-        ? scheme.primary.withOpacity(0.06)
-        : Colors.white;
+        ? scheme.primaryContainer.withOpacity(0.35)
+        : scheme.surface;
+    final textColor = scheme.onSurface;
+    final mutedText = scheme.onSurface.withOpacity(0.70);
+
+    final canConvert =
+        quote.status != 'CONVERTED' && quote.status != 'CANCELLED';
+
+    String statusLabel(String value) {
+      switch (value) {
+        case 'PASSED_TO_TICKET':
+          return 'TICKET';
+        default:
+          return value;
+      }
+    }
+
+    final statusText = statusLabel(quote.status);
+
+    final actions = <_QuoteAction>[
+      _QuoteAction.view,
+      if (canConvert) _QuoteAction.sell,
+      if (canConvert && onConvertToTicket != null) _QuoteAction.ticket,
+      _QuoteAction.whatsapp,
+      _QuoteAction.pdf,
+      if (onDownload != null) _QuoteAction.download,
+      _QuoteAction.duplicate,
+      _QuoteAction.delete,
+    ];
 
     return Material(
       color: bgColor,
@@ -67,7 +94,7 @@ class CompactQuoteRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white, width: 1.4),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Row(
             children: [
@@ -78,7 +105,7 @@ class CompactQuoteRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.black,
+                    color: textColor,
                     fontWeight: FontWeight.w800,
                     fontFamily: 'monospace',
                   ),
@@ -92,7 +119,7 @@ class CompactQuoteRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.black,
+                    color: textColor,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -105,7 +132,7 @@ class CompactQuoteRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.black.withOpacity(0.75),
+                    color: mutedText,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -123,7 +150,7 @@ class CompactQuoteRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.black,
+                    color: textColor,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -140,21 +167,111 @@ class CompactQuoteRow extends StatelessWidget {
                   border: Border.all(color: statusColor.withOpacity(0.35)),
                 ),
                 child: Text(
-                  quote.status,
+                  statusText,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.black,
+                    color: textColor,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.2,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.chevron_right, color: Colors.black.withOpacity(0.45)),
+              const SizedBox(width: 6),
+              PopupMenuButton<_QuoteAction>(
+                tooltip: 'Acciones',
+                icon: Icon(
+                  Icons.more_vert,
+                  size: 18,
+                  color: scheme.onSurface.withOpacity(0.7),
+                ),
+                onSelected: (action) {
+                  switch (action) {
+                    case _QuoteAction.view:
+                      onTap();
+                      break;
+                    case _QuoteAction.sell:
+                      onSell();
+                      break;
+                    case _QuoteAction.ticket:
+                      onConvertToTicket?.call();
+                      break;
+                    case _QuoteAction.whatsapp:
+                      onWhatsApp();
+                      break;
+                    case _QuoteAction.pdf:
+                      onPdf();
+                      break;
+                    case _QuoteAction.download:
+                      onDownload?.call();
+                      break;
+                    case _QuoteAction.duplicate:
+                      onDuplicate();
+                      break;
+                    case _QuoteAction.delete:
+                      onDelete();
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  for (final a in actions)
+                    PopupMenuItem<_QuoteAction>(
+                      value: a,
+                      child: Row(
+                        children: [
+                          Icon(_actionIcon(a), size: 18),
+                          const SizedBox(width: 10),
+                          Text(_actionLabel(a)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  static String _actionLabel(_QuoteAction action) {
+    switch (action) {
+      case _QuoteAction.view:
+        return 'Ver detalles';
+      case _QuoteAction.sell:
+        return 'Convertir a venta';
+      case _QuoteAction.ticket:
+        return 'Pasar a ticket';
+      case _QuoteAction.whatsapp:
+        return 'Enviar por WhatsApp';
+      case _QuoteAction.pdf:
+        return 'Ver PDF';
+      case _QuoteAction.download:
+        return 'Descargar PDF';
+      case _QuoteAction.duplicate:
+        return 'Duplicar';
+      case _QuoteAction.delete:
+        return 'Eliminar';
+    }
+  }
+
+  static IconData _actionIcon(_QuoteAction action) {
+    switch (action) {
+      case _QuoteAction.view:
+        return Icons.visibility_outlined;
+      case _QuoteAction.sell:
+        return Icons.point_of_sale;
+      case _QuoteAction.ticket:
+        return Icons.receipt_long;
+      case _QuoteAction.whatsapp:
+        return Icons.chat;
+      case _QuoteAction.pdf:
+        return Icons.picture_as_pdf;
+      case _QuoteAction.download:
+        return Icons.download;
+      case _QuoteAction.duplicate:
+        return Icons.copy;
+      case _QuoteAction.delete:
+        return Icons.delete_outline;
+    }
   }
 
   Color _statusColor(
@@ -176,4 +293,15 @@ class CompactQuoteRow extends StatelessWidget {
         return scheme.primary;
     }
   }
+}
+
+enum _QuoteAction {
+  view,
+  sell,
+  ticket,
+  whatsapp,
+  pdf,
+  download,
+  duplicate,
+  delete,
 }
