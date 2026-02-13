@@ -1225,12 +1225,12 @@ class AppDb {
         ON ${DbTables.creditPayments}(client_id)
       ''');
 
-        await db.execute('''
+      await db.execute('''
           CREATE INDEX idx_credit_payments_created 
           ON ${DbTables.creditPayments}(created_at_ms)
         ''');
 
-        await db.execute('''
+      await db.execute('''
           CREATE TABLE ${DbTables.layawayPayments} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sale_id INTEGER NOT NULL,
@@ -1246,17 +1246,17 @@ class AppDb {
           )
         ''');
 
-        await db.execute('''
+      await db.execute('''
           CREATE INDEX idx_layaway_payments_sale
           ON ${DbTables.layawayPayments}(sale_id)
         ''');
 
-        await db.execute('''
+      await db.execute('''
           CREATE INDEX idx_layaway_payments_client
           ON ${DbTables.layawayPayments}(client_id)
         ''');
 
-        await db.execute('''
+      await db.execute('''
           CREATE INDEX idx_layaway_payments_created
           ON ${DbTables.layawayPayments}(created_at_ms)
         ''');
@@ -1567,26 +1567,33 @@ class AppDb {
     }
 
     if (oldVersion < 26) {
-      await db.execute('''
-        ALTER TABLE ${DbTables.sales}
-        ADD COLUMN credit_interest_rate REAL NOT NULL DEFAULT 0
-      ''');
-      await db.execute('''
-        ALTER TABLE ${DbTables.sales}
-        ADD COLUMN credit_term_days INTEGER
-      ''');
-      await db.execute('''
-        ALTER TABLE ${DbTables.sales}
-        ADD COLUMN credit_due_date_ms INTEGER
-      ''');
-      await db.execute('''
-        ALTER TABLE ${DbTables.sales}
-        ADD COLUMN credit_installments INTEGER
-      ''');
-      await db.execute('''
-        ALTER TABLE ${DbTables.sales}
-        ADD COLUMN credit_note TEXT
-      ''');
+      // Idempotente: si la app se cierra a mitad de migración, la columna puede
+      // existir aunque user_version siga siendo < 26. Evita "duplicate column".
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'credit_interest_rate',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'credit_term_days',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'credit_due_date_ms',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'credit_installments',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(db, DbTables.sales, 'credit_note', 'TEXT');
     }
 
     if (oldVersion < 27) {
@@ -3092,11 +3099,7 @@ class AppDb {
             if (keepId == null || username.trim().isEmpty) continue;
             await txn.update(
               DbTables.users,
-              {
-                'deleted_at_ms': now,
-                'is_active': 0,
-                'updated_at_ms': now,
-              },
+              {'deleted_at_ms': now, 'is_active': 0, 'updated_at_ms': now},
               where:
                   'company_id = ? AND username = ? AND deleted_at_ms IS NULL AND id != ?',
               whereArgs: [companyId, username, keepId],
@@ -4444,9 +4447,16 @@ class AppDb {
   ) async {
     if (!await _tableExists(db, table)) return false;
     final columns = await _getTableColumns(db, table);
-    if (columns.contains(column)) return false;
-    await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
-    return true;
+    final key = column.trim().toLowerCase();
+    if (columns.contains(key)) return false;
+    try {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+      return true;
+    } on DatabaseException catch (e) {
+      final message = e.toString().toLowerCase();
+      if (message.contains('duplicate column name')) return false;
+      rethrow;
+    }
   }
 
   static Future<void> _createIndexIfMissing(
