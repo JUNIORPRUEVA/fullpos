@@ -134,12 +134,21 @@ class AppBootstrapController extends ChangeNotifier {
       _log('open db ok');
       if (token != _runToken) return;
 
-      // Asegurar salud e intentar restauración automática antes del preflight.
-      _setMessage('Reparando base de datos...');
-      await AutoRepair.instance
-          .ensureDbHealthy(reason: 'bootstrap')
-          .timeout(const Duration(seconds: 45));
-      _log('auto repair ok');
+      // En bootstrap, ejecutar quick_check y solo auto-reparar si falla.
+      _setMessage('Verificando base de datos...');
+      final db = await AppDb.database;
+      final quickOk = await AppDb.quickCheckOk(db);
+      if (!quickOk) {
+        debugPrint('[DB] quick_check failed -> auto_repair');
+        _setMessage('Reparando base de datos...');
+        await AutoRepair.instance
+            .ensureDbHealthy(reason: 'bootstrap_quick_check_failed')
+            .timeout(const Duration(seconds: 45));
+        await AppDb.database.timeout(const Duration(seconds: 20));
+        _log('auto repair ok (quick_check failed)');
+      } else {
+        _log('quick_check ok');
+      }
       if (token != _runToken) return;
 
       _setMessage('Verificando base de datos...');

@@ -129,6 +129,15 @@ class CashRepository {
           whereArgs: [sessionId],
         );
       });
+
+      // FULLPOS DB HARDENING: checkpoint controlado al cierre de caja.
+      try {
+        await AppDb.safeCheckpoint(truncate: true).timeout(
+          const Duration(seconds: 3),
+        );
+      } catch (_) {
+        // Ignorar.
+      }
     }, stage: 'cash_close_session');
   }
 

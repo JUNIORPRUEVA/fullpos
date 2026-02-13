@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../features/settings/providers/business_settings_provider.dart';
+import '../db/app_db.dart';
 import '../logging/app_logger.dart';
 import 'backup_models.dart';
 import 'backup_orchestrator.dart';
@@ -63,6 +64,14 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
     final enabled = ref.read(businessSettingsProvider).enableAutoBackup;
     if (!enabled) return;
 
+    if (state == AppLifecycleState.detached) {
+      unawaited(
+        AppDb.safeCheckpoint(truncate: true)
+            .timeout(const Duration(seconds: 2))
+            .catchError((_) {}),
+      );
+    }
+
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       unawaited(
@@ -78,6 +87,15 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
   Future<void> onWindowClose() async {
     if (_closing) return;
     _closing = true;
+
+    // FULLPOS DB HARDENING: checkpoint al cerrar la app.
+    try {
+      await AppDb.safeCheckpoint(truncate: true).timeout(
+        const Duration(seconds: 2),
+      );
+    } catch (_) {
+      // Ignorar.
+    }
 
     final enabled = ref.read(businessSettingsProvider).enableAutoBackup;
 

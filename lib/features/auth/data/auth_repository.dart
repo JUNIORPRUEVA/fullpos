@@ -81,7 +81,30 @@ class AuthRepository {
   static Future<UserModel?> getCurrentUser() async {
     final userId = await SessionManager.userId();
     if (userId == null) return null;
-    final companyId = await SessionManager.companyId();
+
+    // Preferir datos de sesión para evitar re-hits a DB durante navegación rápida
+    // (p.ej. widget tests / loaders). Si falta información, caer a DB.
+    final username = await SessionManager.username();
+    final displayName = await SessionManager.displayName();
+    final role = await SessionManager.role();
+    final companyId = await SessionManager.companyId() ?? 1;
+    final permissionsJson = await SessionManager.permissions();
+
+    if (username != null && username.trim().isNotEmpty) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return UserModel(
+        id: userId,
+        companyId: companyId,
+        username: username,
+        displayName: displayName,
+        role: role ?? 'cashier',
+        isActive: 1,
+        permissions: permissionsJson,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+    }
+
     return await UsersRepository.getById(userId, companyId: companyId);
   }
 

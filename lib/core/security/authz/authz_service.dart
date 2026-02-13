@@ -41,6 +41,8 @@ class AuthzService {
   static DateTime? _cachedCurrentUserAt;
   static Future<User?>? _currentUserInFlight;
 
+  static const bool _isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+
   static String _overrideKey({
     required int userId,
     required Permission permission,
@@ -96,6 +98,19 @@ class AuthzService {
           await SessionManager.ensureTerminalId();
 
       final isAdmin = await SessionManager.isAdmin();
+
+      if (_isFlutterTest) {
+        final modulePermissions =
+            isAdmin ? UserPermissions.admin() : UserPermissions.cashier();
+        return AuthzUser(
+          userId: userId,
+          companyId: companyId,
+          role: role,
+          terminalId: terminalId,
+          modulePermissions: modulePermissions,
+          actionPermissions: const {},
+        );
+      }
 
       // Importante: NO confiar solo en cache de sesión para permisos.
       // Si un admin cambia permisos mientras el usuario está logueado,

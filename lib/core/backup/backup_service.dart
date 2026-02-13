@@ -102,6 +102,7 @@ class BackupService {
       );
       await BackupRepository.instance.insertHistory(historyEntry);
     }
+    String? snapshotDirPath;
     try {
       unawaited(
         AppLogger.instance.logInfo(
@@ -110,7 +111,7 @@ class BackupService {
         ),
       );
 
-      // 1) Forzar checkpoint WAL y cerrar DB para copia consistente.
+      // 1) Antes de backup: checkpoint controlado y cerrar DB para copia consistente.
       await _checkpointWalSafely();
       await _closeDbSafely();
 
@@ -132,24 +133,40 @@ class BackupService {
         );
       }
 
+      // 2) Copiar DB a snapshot temporal y verificar con quick_check.
+      final snap = await _createVerifiedDbSnapshot(
+        dbPath: dbPath,
+        stamp: stamp,
+      );
+      if (!snap.ok) {
+        return BackupResult(
+          ok: false,
+          messageUser:
+              'No se pudo crear el backup porque la DB no pasó verificación.',
+          messageDev: snap.messageDev,
+        );
+      }
+      snapshotDirPath = snap.snapshotDirPath;
+
       final included = <String>['db/${p.basename(dbPath)}'];
       final entries = <Map<String, String>>[
-        {'sourcePath': dbPath, 'zipPath': 'db/${p.basename(dbPath)}'},
+        {
+          'sourcePath': snap.dbSnapshotPath!,
+          'zipPath': 'db/${p.basename(dbPath)}',
+        },
       ];
 
-      final wal = File('$dbPath-wal');
-      if (await wal.exists()) {
+      if (snap.walSnapshotPath != null) {
         included.add('db/${p.basename(dbPath)}-wal');
         entries.add({
-          'sourcePath': wal.path,
+          'sourcePath': snap.walSnapshotPath!,
           'zipPath': 'db/${p.basename(dbPath)}-wal',
         });
       }
-      final shm = File('$dbPath-shm');
-      if (await shm.exists()) {
+      if (snap.shmSnapshotPath != null) {
         included.add('db/${p.basename(dbPath)}-shm');
         entries.add({
-          'sourcePath': shm.path,
+          'sourcePath': snap.shmSnapshotPath!,
           'zipPath': 'db/${p.basename(dbPath)}-shm',
         });
       }
@@ -174,7 +191,7 @@ class BackupService {
         }
       }
 
-      final dbChecksum = await _sha256OfFile(dbFile);
+      final dbChecksum = await _sha256OfFile(File(snap.dbSnapshotPath!));
 
       final meta = BackupMeta(
         createdAtIso: startedAt.toIso8601String(),
@@ -224,6 +241,17 @@ class BackupService {
       bool? integrityOk;
       if (verifyIntegrity) {
         integrityOk = await _verifyZipDbIntegrity(outZipTemp, timeout: maxWait);
+        if (integrityOk == false) {
+          try {
+            await outFile.delete();
+          } catch (_) {}
+          return BackupResult(
+            ok: false,
+            messageUser: 'El backup no pasó verificación de integridad.',
+            messageDev: 'verifyIntegrity failed for zip=$outZipTemp',
+            integrityCheckOk: false,
+          );
+        }
       }
 
       // 4) Mover a destino final (atómico cuando sea posible).
@@ -294,6 +322,14 @@ class BackupService {
         messageDev: ex.messageDev,
       );
     } finally {
+      if (snapshotDirPath != null) {
+        try {
+          final dir = Directory(snapshotDirPath!);
+          if (await dir.exists()) await dir.delete(recursive: true);
+        } catch (_) {
+          // Ignorar.
+        }
+      }
       // Reabrir DB para que la app siga normal (manual/auto-lifecycle).
       // En autoWindowClose probablemente la app cerrará igual.
       if (trigger != BackupTrigger.autoWindowClose) {
@@ -303,6 +339,54 @@ class BackupService {
       if (trigger != BackupTrigger.manual) {
         _lastAutoBackupAt = DateTime.now();
       }
+    }
+  }
+
+  Future<_DbSnapshotResult> _createVerifiedDbSnapshot({
+    required String dbPath,
+    required String stamp,
+  }) async {
+    Directory? snapDir;
+    try {
+      final tempDir = await BackupPaths.tempWorkDir();
+      snapDir = Directory(p.join(tempDir.path, 'db_snapshot_$stamp'));
+      if (!await snapDir.exists()) await snapDir.create(recursive: true);
+
+      final baseName = p.basename(dbPath);
+      final dbSnapPath = p.join(snapDir.path, baseName);
+      await File(dbPath).copy(dbSnapPath);
+
+      String? walSnap;
+      final wal = File('$dbPath-wal');
+      if (await wal.exists()) {
+        walSnap = p.join(snapDir.path, '$baseName-wal');
+        await wal.copy(walSnap);
+      }
+
+      String? shmSnap;
+      final shm = File('$dbPath-shm');
+      if (await shm.exists()) {
+        shmSnap = p.join(snapDir.path, '$baseName-shm');
+        await shm.copy(shmSnap);
+      }
+
+      final ok = await AppDb.quickCheckOkOnPath(dbSnapPath);
+      if (!ok) {
+        return _DbSnapshotResult(
+          ok: false,
+          messageDev: 'PRAGMA quick_check failed for snapshot=$dbSnapPath',
+        );
+      }
+
+      return _DbSnapshotResult(
+        ok: true,
+        snapshotDirPath: snapDir.path,
+        dbSnapshotPath: dbSnapPath,
+        walSnapshotPath: walSnap,
+        shmSnapshotPath: shmSnap,
+      );
+    } catch (e) {
+      return _DbSnapshotResult(ok: false, messageDev: 'snapshot error=$e');
     }
   }
 
@@ -585,8 +669,7 @@ class BackupService {
 
   Future<void> _checkpointWalSafely() async {
     try {
-      final db = await AppDb.database;
-      await db.rawQuery('PRAGMA wal_checkpoint(FULL);');
+      await AppDb.safeCheckpoint(truncate: true);
     } catch (_) {
       // Ignorar.
     }
@@ -685,6 +768,24 @@ class BackupService {
     final us = dt.microsecond.toString().padLeft(6, '0');
     return '${dt.year}${two(dt.month)}${two(dt.day)}_${two(dt.hour)}${two(dt.minute)}${two(dt.second)}_$us';
   }
+}
+
+class _DbSnapshotResult {
+  final bool ok;
+  final String? snapshotDirPath;
+  final String? dbSnapshotPath;
+  final String? walSnapshotPath;
+  final String? shmSnapshotPath;
+  final String? messageDev;
+
+  const _DbSnapshotResult({
+    required this.ok,
+    this.snapshotDirPath,
+    this.dbSnapshotPath,
+    this.walSnapshotPath,
+    this.shmSnapshotPath,
+    this.messageDev,
+  });
 }
 
 Future<BackupResult> createBackupNow({

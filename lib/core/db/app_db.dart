@@ -40,6 +40,8 @@ class AppDb {
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
   static const int _dbVersion = 28;
 
+  static bool _pragmasLogged = false;
+
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
 
@@ -250,21 +252,81 @@ class AppDb {
   }
 
   static Future<void> _onConfigure(Database db) async {
-    // Configuración recomendada para reducir riesgo de corrupción y asegurar integridad.
-    // En algunos entornos puede fallar; no debe romper la app.
-    try {
-      await db.execute('PRAGMA foreign_keys = ON;');
-    } catch (_) {}
+    // Configuración recomendada para resistir apagones y reducir corrupción.
+    // Debe ser best-effort: nunca romper apertura por fallo de un PRAGMA.
     try {
       await db.execute('PRAGMA journal_mode = WAL;');
     } catch (_) {}
     try {
-      await db.execute('PRAGMA synchronous = NORMAL;');
+      await db.execute('PRAGMA synchronous = FULL;');
     } catch (_) {}
     try {
-      // FULLPOS DB HARDENING: reducir errores "database is locked".
+      await db.execute('PRAGMA foreign_keys = ON;');
+    } catch (_) {}
+    try {
       await db.execute('PRAGMA busy_timeout = 5000;');
     } catch (_) {}
+    try {
+      await db.execute('PRAGMA temp_store = MEMORY;');
+    } catch (_) {}
+    try {
+      await db.execute('PRAGMA wal_autocheckpoint = 1500;');
+    } catch (_) {}
+
+    if (!_pragmasLogged) {
+      _pragmasLogged = true;
+      debugPrint(
+        '[DB] pragmas applied journal_mode=wal synchronous=FULL fk=1 busy=5000 autocheckpoint=1500',
+      );
+    }
+  }
+
+  /// Ejecuta PRAGMA quick_check sobre un handle ya abierto.
+  ///
+  /// Devuelve true si el resultado es exactamente "ok".
+  static Future<bool> quickCheckOk(Database db) async {
+    try {
+      final rows = await db.rawQuery('PRAGMA quick_check;');
+      if (rows.isEmpty) return false;
+      final firstValue = rows.first.values.isNotEmpty
+          ? rows.first.values.first?.toString().trim().toLowerCase()
+          : null;
+      return firstValue == 'ok';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ejecuta PRAGMA quick_check sobre un archivo de DB (read-only).
+  static Future<bool> quickCheckOkOnPath(String dbPath) async {
+    Database? db;
+    try {
+      DbInit.ensureInitialized();
+      db = await openDatabase(dbPath, readOnly: true);
+      return await quickCheckOk(db);
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        await db?.close();
+      } catch (_) {}
+    }
+  }
+
+  /// Ejecuta un checkpoint WAL controlado.
+  ///
+  /// - Siempre intenta PASSIVE.
+  /// - Si truncate=true, también intenta TRUNCATE.
+  static Future<void> safeCheckpoint({bool truncate = false}) async {
+    try {
+      final db = await database;
+      await db.rawQuery('PRAGMA wal_checkpoint(PASSIVE);');
+      if (truncate) {
+        await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE);');
+      }
+    } catch (_) {
+      // Ignorar: nunca bloquear la app por checkpoint.
+    }
   }
 
   /// Solo para pruebas: cierra y elimina la base de datos para arrancar limpio
