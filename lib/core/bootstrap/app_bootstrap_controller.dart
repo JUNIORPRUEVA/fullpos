@@ -9,6 +9,7 @@ import '../../features/auth/data/auth_repository.dart';
 import '../../features/settings/data/user_model.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
 import '../db/app_db.dart';
+import '../db/auto_repair.dart';
 import '../db_hardening/db_hardening.dart';
 import '../errors/error_mapper.dart';
 import '../logging/app_logger.dart';
@@ -119,6 +120,14 @@ class AppBootstrapController extends ChangeNotifier {
       if (token != _runToken) return;
 
       _setMessage('Abriendo base de datos...');
+        _setMessage('Reparando base de datos...');
+        await AutoRepair.instance
+          .ensureDbHealthy(reason: 'bootstrap')
+          .timeout(const Duration(seconds: 45));
+        _log('auto_repair ok');
+        if (token != _runToken) return;
+
+        _setMessage('Abriendo base de datos...');
       await AppDb.database.timeout(const Duration(seconds: 20));
       _log('open db ok');
       if (token != _runToken) return;

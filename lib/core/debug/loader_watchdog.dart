@@ -47,6 +47,11 @@ class LoaderWatchdog {
     Duration timeout = const Duration(seconds: 8),
     bool captureOrigin = kDebugMode,
   }) {
+    // Stage-specific tuning: auto_repair can legitimately take longer.
+    // Do not change other stages.
+    if (stage == 'auto_repair' && timeout == const Duration(seconds: 8)) {
+      timeout = const Duration(seconds: 25);
+    }
     final now = DateTime.now();
 
     // Circuit breaker: if a stage is being started in a tight loop, stop

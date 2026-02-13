@@ -27,6 +27,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
+import '../../../core/widgets/branded_loading_view.dart';
 import '../../cash/providers/cash_providers.dart';
 import '../../cash/data/cash_movement_model.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
@@ -144,6 +145,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   int _lastScanAtMs = 0;
   bool? _previousCashOpen;
   int _initialLoadToken = 0;
+  bool _loggedFirstBuild = false;
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> _searchResults = [];
@@ -342,8 +344,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final token = ++_initialLoadToken;
     setState(() => _isSearching = true);
     // Deja que se pinte al menos 1 frame antes de ejecutar consultas pesadas.
-    await Future<void>.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
     if (!mounted || token != _initialLoadToken) return;
+
+    debugPrint(
+      '[SALES] sales-data-load-start t=${DateTime.now().toIso8601String()}',
+    );
 
     final productsRepo = ProductsRepository();
     final categoriesRepo = CategoriesRepository();
@@ -453,6 +459,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         }
         _isSearching = false;
       });
+
+      debugPrint(
+        '[SALES] sales-data-ready t=${DateTime.now().toIso8601String()} '
+        'products=${products.length} categories=${categories.length} clients=${clients.length}',
+      );
     } catch (e) {
       if (!mounted || token != _initialLoadToken) return;
       setState(() => _isSearching = false);
@@ -1730,6 +1741,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_loggedFirstBuild) {
+      _loggedFirstBuild = true;
+      debugPrint(
+        '[SALES] sales-first-build t=${DateTime.now().toIso8601String()}',
+      );
+    }
     final cashSessionState = ref.watch(cashSessionControllerProvider);
     final currentSessionId = cashSessionState.valueOrNull?.id;
     final cashIsOpen = currentSessionId != null;
@@ -1972,9 +1989,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                       children: [
                                         Positioned.fill(
                                           child: _isSearching
-                                              ? const Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
+                                              ? const BrandedLoadingView(
+                                                  fullScreen: false,
+                                                  message:
+                                                      'Cargando datos de ventas...',
                                                 )
                                               : ((){
                                                   final products = _filteredProducts();

@@ -12,6 +12,7 @@ import 'core/logging/app_logger.dart';
 import 'core/services/cloud_sync_service.dart';
 import 'core/theme/theme_audit.dart';
 import 'core/window/window_service.dart';
+import 'debug/db_audit.dart';
 import 'features/settings/data/business_settings_model.dart';
 import 'features/settings/data/business_settings_repository.dart';
 import 'features/settings/providers/business_settings_provider.dart';
@@ -71,6 +72,7 @@ Future<void> main() async {
       DbInit.ensureInitialized();
       if (kDebugMode) {
         ThemeAudit.run();
+        await runDbAudit();
       }
 
       // Desktop window init (fullscreen/kiosk + titlebar hidden en Windows).

@@ -1,6 +1,7 @@
 #include "win32_window.h"
 
 #include <dwmapi.h>
+#include <commctrl.h>
 #include <flutter_windows.h>
 
 #include "resource.h"
@@ -53,6 +54,87 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
   FreeLibrary(user32_module);
 }
 
+constexpr COLORREF kFullposBgColor = RGB(0x1A, 0x1A, 0x1A);
+constexpr UINT_PTR kFlutterChildSubclassId = 0xF00D;
+static bool g_flutter_child_painted_once = false;
+
+HBRUSH FullposBackgroundBrush() {
+  static HBRUSH brush = CreateSolidBrush(kFullposBgColor);
+  return brush;
+}
+
+void DebugLogWin32(const wchar_t* event, UINT message) {
+#ifdef _DEBUG
+  SYSTEMTIME st;
+  GetLocalTime(&st);
+  wchar_t buf[256];
+  _snwprintf_s(buf, _TRUNCATE,
+              L"[WIN32][%02d:%02d:%02d.%03d] %s msg=0x%04X\n", st.wHour,
+              st.wMinute, st.wSecond, st.wMilliseconds, event,
+              static_cast<unsigned>(message));
+  OutputDebugStringW(buf);
+#else
+  (void)event;
+  (void)message;
+#endif
+}
+
+void ForceRepaint(HWND hwnd) {
+  if (!hwnd) return;
+  RedrawWindow(hwnd, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+}
+
+LRESULT CALLBACK FlutterChildSubclassProc(HWND hwnd,
+                                          UINT message,
+                                          WPARAM wparam,
+                                          LPARAM lparam,
+                                          UINT_PTR /*uIdSubclass*/,
+                                          DWORD_PTR /*dwRefData*/) {
+  switch (message) {
+    case WM_ERASEBKGND: {
+      DebugLogWin32(L"child:WM_ERASEBKGND", message);
+      HDC hdc = reinterpret_cast<HDC>(wparam);
+      if (hdc) {
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, FullposBackgroundBrush());
+      }
+      return 1;
+    }
+    case WM_PAINT: {
+      DebugLogWin32(L"child:WM_PAINT", message);
+      // Fill a dark background once early to avoid white/black flashes before
+      // Flutter produces the first frame.
+      if (!g_flutter_child_painted_once) {
+        HDC hdc = GetDC(hwnd);
+        if (hdc) {
+          RECT rc;
+          GetClientRect(hwnd, &rc);
+          FillRect(hdc, &rc, FullposBackgroundBrush());
+          ReleaseDC(hwnd, hdc);
+        }
+      }
+      const LRESULT res = DefSubclassProc(hwnd, message, wparam, lparam);
+      g_flutter_child_painted_once = true;
+      return res;
+    }
+    case WM_SHOWWINDOW:
+      DebugLogWin32(L"child:WM_SHOWWINDOW", message);
+      break;
+    case WM_SIZE:
+      DebugLogWin32(L"child:WM_SIZE", message);
+      break;
+    case WM_ACTIVATE:
+      DebugLogWin32(L"child:WM_ACTIVATE", message);
+      break;
+    case WM_DPICHANGED:
+      DebugLogWin32(L"child:WM_DPICHANGED", message);
+      break;
+  }
+  return DefSubclassProc(hwnd, message, wparam, lparam);
+}
+
 }  // namespace
 
 // Manages the Win32Window's window class registration.
@@ -90,7 +172,7 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
   if (!class_registered_) {
     // Fondo oscuro para evitar “pantalla blanca” durante startup/resize
     // cuando la vista de Flutter aún no cubre el área completa.
-    static HBRUSH kBackgroundBrush = CreateSolidBrush(RGB(0x1A, 0x1A, 0x1A));
+    static HBRUSH kBackgroundBrush = FullposBackgroundBrush();
 
     WNDCLASS window_class{};
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
@@ -185,6 +267,28 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_ERASEBKGND: {
+      DebugLogWin32(L"main:WM_ERASEBKGND", message);
+      HDC hdc = reinterpret_cast<HDC>(wparam);
+      if (hdc) {
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, FullposBackgroundBrush());
+      }
+      return 1;
+    }
+
+    case WM_PAINT: {
+      DebugLogWin32(L"main:WM_PAINT", message);
+      PAINTSTRUCT ps;
+      HDC hdc = BeginPaint(hwnd, &ps);
+      if (hdc) {
+        FillRect(hdc, &ps.rcPaint, FullposBackgroundBrush());
+      }
+      EndPaint(hwnd, &ps);
+      return 0;
+    }
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -193,7 +297,14 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_SHOWWINDOW:
+      DebugLogWin32(L"main:WM_SHOWWINDOW", message);
+      ForceRepaint(hwnd);
+      if (child_content_ != nullptr) ForceRepaint(child_content_);
+      return 0;
+
     case WM_DPICHANGED: {
+      DebugLogWin32(L"main:WM_DPICHANGED", message);
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;
       LONG newHeight = newRectSize->bottom - newRectSize->top;
@@ -201,22 +312,30 @@ Win32Window::MessageHandler(HWND hwnd,
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
+      ForceRepaint(hwnd);
+      if (child_content_ != nullptr) ForceRepaint(child_content_);
       return 0;
     }
     case WM_SIZE: {
+      DebugLogWin32(L"main:WM_SIZE", message);
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
         // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
+        ForceRepaint(child_content_);
       }
+      ForceRepaint(hwnd);
       return 0;
     }
 
     case WM_ACTIVATE:
+      DebugLogWin32(L"main:WM_ACTIVATE", message);
       if (child_content_ != nullptr) {
         SetFocus(child_content_);
+        ForceRepaint(child_content_);
       }
+      ForceRepaint(hwnd);
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
@@ -229,6 +348,12 @@ Win32Window::MessageHandler(HWND hwnd,
 
 void Win32Window::Destroy() {
   OnDestroy();
+
+  if (child_content_ != nullptr) {
+    RemoveWindowSubclass(child_content_, FlutterChildSubclassProc,
+                         kFlutterChildSubclassId);
+    child_content_ = nullptr;
+  }
 
   if (window_handle_) {
     DestroyWindow(window_handle_);
@@ -251,6 +376,16 @@ void Win32Window::SetChildContent(HWND content) {
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);
+
+  // Subclass the Flutter child HWND to harden background painting.
+  g_flutter_child_painted_once = false;
+  if (!SetWindowSubclass(content, FlutterChildSubclassProc,
+                         kFlutterChildSubclassId, 0)) {
+    DebugLogWin32(L"child:SetWindowSubclass_failed", GetLastError());
+  }
+
+  ForceRepaint(window_handle_);
+  ForceRepaint(child_content_);
 
   SetFocus(child_content_);
 }

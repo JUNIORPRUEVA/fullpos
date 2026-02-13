@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
+import '../../../core/db/auto_repair.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/session/session_manager.dart';
@@ -20,29 +23,45 @@ class CashRepository {
 
   /// Obtener sesión abierta (global o por usuario)
   static Future<CashSessionModel?> getOpenSession({int? userId}) async {
-    return DbHardening.instance.runDbSafe<CashSessionModel?>(() async {
-      final db = await AppDb.database;
+    Future<CashSessionModel?> attempt() {
+      return DbHardening.instance
+          .runDbSafe<CashSessionModel?>(() async {
+            final db = await AppDb.database;
 
-      String where = 'status = ?';
-      List<dynamic> args = ['OPEN'];
+            String where = 'status = ?';
+            List<dynamic> args = ['OPEN'];
 
-      final resolvedUserId = await _resolveUserId(userId: userId);
-      if (resolvedUserId != null) {
-        where += ' AND opened_by_user_id = ?';
-        args.add(resolvedUserId);
-      }
+            final resolvedUserId = await _resolveUserId(userId: userId);
+            if (resolvedUserId != null) {
+              where += ' AND opened_by_user_id = ?';
+              args.add(resolvedUserId);
+            }
 
-      final result = await db.query(
-        DbTables.cashSessions,
-        where: where,
-        whereArgs: args,
-        orderBy: 'opened_at_ms DESC',
-        limit: 1,
+            final result = await db.query(
+              DbTables.cashSessions,
+              where: where,
+              whereArgs: args,
+              orderBy: 'opened_at_ms DESC',
+              limit: 1,
+            );
+
+            if (result.isEmpty) return null;
+            return CashSessionModel.fromMap(result.first);
+          }, stage: 'cash_get_open_session')
+          .timeout(const Duration(seconds: 8));
+    }
+
+    try {
+      return await attempt();
+    } on TimeoutException {
+      await AutoRepair.instance.ensureDbHealthy(
+        reason: 'cash_get_open_session_timeout',
       );
-
-      if (result.isEmpty) return null;
-      return CashSessionModel.fromMap(result.first);
-    }, stage: 'cash_get_open_session');
+      return await attempt();
+    } on DatabaseException {
+      await AutoRepair.instance.ensureDbHealthy(reason: 'cash_get_open_session');
+      return await attempt();
+    }
   }
 
   /// Abrir nueva sesión de caja

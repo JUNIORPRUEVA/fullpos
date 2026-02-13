@@ -6,7 +6,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/bootstrap/app_entry.dart';
+import '../core/bootstrap/bootstrap_loading_screen.dart';
 import '../core/backup/backup_lifecycle.dart';
+import '../core/brand/fullpos_brand_theme.dart';
 import '../core/loading/app_loading_overlay.dart';
 import '../core/shortcuts/app_shortcuts.dart';
 import '../core/window/window_service.dart';
@@ -38,11 +40,14 @@ class FullPosApp extends ConsumerWidget {
     return AppShortcuts(
       child: BackupLifecycle(
         child: MaterialApp.router(
+          color: FullposBrandTheme.background,
           title: businessSettings.businessName.isNotEmpty
               ? businessSettings.businessName
               : 'FULLPOS',
           debugShowCheckedModeBanner: false,
-          theme: themeData,
+          theme: themeData.copyWith(
+            scaffoldBackgroundColor: FullposBrandTheme.background,
+          ),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -55,9 +60,18 @@ class FullPosApp extends ConsumerWidget {
           ],
           routerConfig: router,
           builder: (context, child) {
+            final safeChild = child ?? const BootstrapLoadingScreen();
+
+            final layered = Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: FullposBrandTheme.background),
+                safeChild,
+              ],
+            );
             final content = AppEntry(
               child: AppLoadingOverlay(
-                child: child ?? const SizedBox.shrink(),
+                child: layered,
               ),
             );
             return AppFrame(child: content);
