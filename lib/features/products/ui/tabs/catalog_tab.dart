@@ -25,6 +25,7 @@ import '../dialogs/product_details_dialog.dart';
 import '../dialogs/product_filters_dialog.dart';
 import '../dialogs/product_form_dialog.dart';
 import '../widgets/product_card.dart';
+import '../widgets/product_thumbnail.dart';
 
 /// Tab de Catálogo de Productos
 class CatalogTab extends StatefulWidget {
@@ -583,6 +584,18 @@ class _CatalogTabState extends State<CatalogTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          SizedBox(
+            height: 240,
+            width: double.infinity,
+            child: ProductThumbnail.fromProduct(
+              product,
+              width: double.infinity,
+              height: 240,
+              borderRadius: BorderRadius.circular(14),
+              showBorder: false,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Text(

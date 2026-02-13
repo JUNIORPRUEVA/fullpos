@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:fullpos/features/products/ui/tabs/catalog_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/categories_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/inventory_tab.dart';
-import 'package:fullpos/features/products/ui/tabs/suppliers_tab.dart';
 
 /// Página principal del módulo de Productos
 class ProductsPage extends StatefulWidget {
@@ -20,7 +19,7 @@ class _ProductsPageState extends State<ProductsPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -46,20 +45,14 @@ class _ProductsPageState extends State<ProductsPage>
           preferredSize: const Size.fromHeight(42),
           child: Container(
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              border: Border(
-                top: BorderSide(
-                  color: scheme.outlineVariant,
-                  width: 1,
-                ),
-              ),
+              color: Colors.black,
             ),
             child: TabBar(
               controller: _tabController,
               indicatorColor: scheme.primary,
               indicatorWeight: 3,
-              labelColor: scheme.primary,
-              unselectedLabelColor: scheme.onSurface.withOpacity(0.6),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white.withOpacity(0.75),
               labelStyle: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -102,17 +95,6 @@ class _ProductsPageState extends State<ProductsPage>
                     ],
                   ),
                 ),
-                Tab(
-                  height: 40,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.local_shipping_outlined, size: 18),
-                      SizedBox(width: 6),
-                      Text('Suplidores'),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -124,7 +106,6 @@ class _ProductsPageState extends State<ProductsPage>
           CatalogTab(),
           InventoryTab(),
           CategoriesTab(),
-          SuppliersTab(),
         ],
       ),
     );
