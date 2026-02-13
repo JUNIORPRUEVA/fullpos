@@ -9,6 +9,7 @@ import '../../features/auth/data/auth_repository.dart';
 import '../../features/settings/data/user_model.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
 import '../db/app_db.dart';
+import '../db/auto_repair.dart';
 import '../db_hardening/db_hardening.dart';
 import '../errors/error_mapper.dart';
 import '../logging/app_logger.dart';
@@ -119,8 +120,26 @@ class AppBootstrapController extends ChangeNotifier {
       if (token != _runToken) return;
 
       _setMessage('Abriendo base de datos...');
-      await AppDb.database.timeout(const Duration(seconds: 20));
+      try {
+        await AppDb.database.timeout(const Duration(seconds: 20));
+      } catch (_) {
+        // Si la DB está tan dañada que falla al abrir, intentar auto-reparación
+        // (restaurar último backup) y luego reintentar la apertura.
+        _setMessage('Reparando base de datos...');
+        await AutoRepair.instance
+            .ensureDbHealthy(reason: 'bootstrap_open_failed')
+            .timeout(const Duration(seconds: 45));
+        await AppDb.database.timeout(const Duration(seconds: 20));
+      }
       _log('open db ok');
+      if (token != _runToken) return;
+
+      // Asegurar salud e intentar restauración automática antes del preflight.
+      _setMessage('Reparando base de datos...');
+      await AutoRepair.instance
+          .ensureDbHealthy(reason: 'bootstrap')
+          .timeout(const Duration(seconds: 45));
+      _log('auto repair ok');
       if (token != _runToken) return;
 
       _setMessage('Verificando base de datos...');

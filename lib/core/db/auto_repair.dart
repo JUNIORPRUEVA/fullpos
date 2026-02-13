@@ -28,9 +28,14 @@ class AutoRepair {
     return _inFlight!;
   }
 
-  Future<void> resetWalShmIfNeeded({String? reason}) async {
+  Future<void> resetWalShmIfNeeded({
+    String? reason,
+    bool reopenAfter = true,
+  }) async {
     final dbPath = await AppDb.databasePath();
-    await _log('resetWalShmIfNeeded start reason=${reason ?? 'unknown'} dbPath=$dbPath');
+    await _log(
+      'resetWalShmIfNeeded start reason=${reason ?? 'unknown'} dbPath=$dbPath',
+    );
 
     // Cerrar handle principal para poder borrar WAL/SHM sin carreras.
     await DatabaseManager.instance.close(reason: 'auto_repair_wal_reset');
@@ -39,7 +44,13 @@ class AutoRepair {
     await _deleteIfExists(File('$dbPath-shm'));
 
     // Reabrir para que las siguientes operaciones usen un handle válido.
-    await DatabaseManager.instance.reopen(reason: 'auto_repair_wal_reset');
+    if (reopenAfter) {
+      try {
+        await DatabaseManager.instance.reopen(reason: 'auto_repair_wal_reset');
+      } catch (e) {
+        await _log('resetWalShmIfNeeded reopen failed error=$e');
+      }
+    }
     await _log('resetWalShmIfNeeded done');
   }
 
@@ -62,8 +73,11 @@ class AutoRepair {
           maxWait: const Duration(seconds: 12),
           notes: 'AUTO_REPAIR ${reason ?? ''}'.trim(),
           recordHistory: false,
+          reopenDbAfter: false,
         );
-        await _log('restoreLatestBackup: result ok=${result.ok} msgDev=${result.messageDev}');
+        await _log(
+          'restoreLatestBackup: result ok=${result.ok} msgDev=${result.messageDev}',
+        );
         if (result.ok) {
           await _log('restoreLatestBackup done (success)');
           return true;
@@ -95,7 +109,7 @@ class AutoRepair {
 
     // 2) WAL reset primero (requisito).
     watchdog.step('auto_repair:wal_reset');
-    await resetWalShmIfNeeded(reason: reason);
+    await resetWalShmIfNeeded(reason: reason, reopenAfter: false);
 
     // 3) Verificar integridad.
     watchdog.step('auto_repair:quick_check');
@@ -118,7 +132,9 @@ class AutoRepair {
 
     // 4) Si sigue mal: renombrar corrupto y restaurar backup válido.
     watchdog.step('auto_repair:restore_latest');
-    await _log('integrity failed: renaming corrupted db and attempting restore');
+    await _log(
+      'integrity failed: renaming corrupted db and attempting restore',
+    );
     await _renameCorrupted(dbPath);
     final restored = await restoreLatestBackup(reason: reason);
     if (!restored) {
@@ -126,7 +142,11 @@ class AutoRepair {
     }
 
     // Reabrir handle para callers.
-    await DatabaseManager.instance.reopen(reason: 'auto_repair_post_restore');
+    try {
+      await DatabaseManager.instance.reopen(reason: 'auto_repair_post_restore');
+    } catch (e, st) {
+      await _log('ensureDbHealthy reopen failed error=$e\n$st');
+    }
     await _log('ensureDbHealthy done restored=$restored');
     watchdog.dispose();
   }

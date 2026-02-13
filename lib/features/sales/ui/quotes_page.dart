@@ -41,6 +41,10 @@ class _QuotesPageState extends State<QuotesPage> {
   QuoteDetailDto? _selectedQuote;
   int? _selectedQuoteId;
 
+  static const _brandDark = Colors.black;
+  static const _brandLight = Colors.white;
+  static const _brandRadius = 10.0;
+
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
   AppStatusTheme get _status =>
@@ -228,8 +232,8 @@ class _QuotesPageState extends State<QuotesPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(10),
+        color: _brandDark,
+        borderRadius: BorderRadius.circular(_brandRadius),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
@@ -258,6 +262,19 @@ class _QuotesPageState extends State<QuotesPage> {
           ),
         ],
       ),
+    );
+  }
+
+  ButtonStyle _brandButtonStyle({Color? borderColor}) {
+    return ElevatedButton.styleFrom(
+      backgroundColor: _brandDark,
+      foregroundColor: _brandLight,
+      side: BorderSide(color: borderColor ?? _scheme.outlineVariant),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_brandRadius),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      textStyle: const TextStyle(fontWeight: FontWeight.w800),
     );
   }
 
@@ -618,6 +635,7 @@ class _QuotesPageState extends State<QuotesPage> {
                     : () => _convertToSale(quoteDetail),
                 icon: const Icon(Icons.point_of_sale, size: 18),
                 label: const Text('Convertir a venta'),
+                style: _brandButtonStyle(borderColor: scheme.primary),
               ),
             ),
             const SizedBox(height: 8),
@@ -630,37 +648,37 @@ class _QuotesPageState extends State<QuotesPage> {
                     : () => _convertToTicket(quoteDetail),
                 icon: const Icon(Icons.receipt_long, size: 18),
                 label: const Text('Pasar a ticket'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: scheme.tertiary,
-                  foregroundColor: scheme.onTertiary,
-                ),
+                style: _brandButtonStyle(borderColor: scheme.tertiary),
               ),
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: ElevatedButton.icon(
                 onPressed: () => _shareWhatsApp(quoteDetail),
                 icon: const Icon(Icons.chat, size: 18),
                 label: const Text('Enviar por WhatsApp'),
+                style: _brandButtonStyle(),
               ),
             ),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: () => _viewPDF(quoteDetail),
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('PDF'),
+                    style: _brandButtonStyle(),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: ElevatedButton.icon(
                     onPressed: () => _downloadPDF(quoteDetail),
                     icon: const Icon(Icons.download, size: 18),
                     label: const Text('Descargar'),
+                    style: _brandButtonStyle(),
                   ),
                 ),
               ],
@@ -668,20 +686,21 @@ class _QuotesPageState extends State<QuotesPage> {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: ElevatedButton.icon(
                 onPressed: () => _duplicateQuote(quoteDetail),
                 icon: const Icon(Icons.copy, size: 18),
                 label: const Text('Duplicar'),
+                style: _brandButtonStyle(),
               ),
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child: ElevatedButton.icon(
                 onPressed: () => _deleteQuote(quoteDetail),
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Eliminar'),
-                style: OutlinedButton.styleFrom(foregroundColor: status.error),
+                style: _brandButtonStyle(borderColor: status.error),
               ),
             ),
           ],

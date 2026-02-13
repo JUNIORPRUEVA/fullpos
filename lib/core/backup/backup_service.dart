@@ -312,6 +312,7 @@ class BackupService {
     String? notes,
     String? expectedChecksumSha256,
     bool recordHistory = true,
+    bool reopenDbAfter = true,
   }) async {
     if (_running) {
       return const BackupResult(
@@ -528,7 +529,9 @@ class BackupService {
         messageDev: ex.messageDev,
       );
     } finally {
-      await _reopenDbSafely();
+      if (reopenDbAfter) {
+        await _reopenDbSafely();
+      }
       _running = false;
     }
   }

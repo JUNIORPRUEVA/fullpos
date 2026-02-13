@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/theme/color_utils.dart';
 import '../../../../core/ui/ui_scale.dart';
 
 /// Configuración para los filtros y búsqueda
@@ -60,6 +59,7 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
 
   static const _brandDark = Colors.black;
   static const _brandLight = Colors.white;
+  static const _controlRadius = 10.0;
 
   @override
   void initState() {
@@ -123,30 +123,40 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
         final verticalPadding = 10.0 * scale;
         final gap = 8.0 * scale;
         final isNarrow = constraints.maxWidth < 980;
+        final baseFieldBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_controlRadius),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        );
+
         final searchField = TextField(
           controller: _searchController,
           onChanged: (text) {
             _updateConfig(_config.copyWith(searchText: text));
           },
+          style: const TextStyle(color: _brandLight),
           decoration: InputDecoration(
             hintText: 'Buscar por cliente, telefono, codigo o total...',
-            prefixIcon: Icon(Icons.search, color: scheme.primary),
+            hintStyle: TextStyle(color: _brandLight.withOpacity(0.70)),
+            filled: true,
+            fillColor: _brandDark,
+            prefixIcon: Icon(
+              Icons.search,
+              color: _brandLight.withOpacity(0.85),
+            ),
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.clear),
+                    color: _brandLight.withOpacity(0.90),
                     onPressed: () {
                       _searchController.clear();
                       _updateConfig(_config.copyWith(searchText: ''));
                     },
                   )
                 : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: scheme.outlineVariant),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: scheme.outlineVariant),
+            border: baseFieldBorder,
+            enabledBorder: baseFieldBorder,
+            focusedBorder: baseFieldBorder.copyWith(
+              borderSide: BorderSide(color: scheme.primary),
             ),
             contentPadding: EdgeInsets.symmetric(
               horizontal: 16 * scale,
@@ -181,14 +191,15 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
             ElevatedButton(
               onPressed: _clearFilters,
               style: ElevatedButton.styleFrom(
-                backgroundColor: scheme.errorContainer,
-                foregroundColor: scheme.onErrorContainer,
+                backgroundColor: _brandDark,
+                foregroundColor: _brandLight,
+                side: BorderSide(color: scheme.outlineVariant),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(_controlRadius),
                 ),
                 padding: EdgeInsets.symmetric(
-                  horizontal: 12 * scale,
-                  vertical: 10 * scale,
+                  horizontal: 14 * scale,
+                  vertical: 12 * scale,
                 ),
               ),
               child: const Row(
@@ -278,8 +289,10 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
         side: BorderSide(
           color: isActive ? scheme.primary : scheme.outlineVariant,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_controlRadius),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       ),
       child: Row(
         children: [
@@ -295,8 +308,12 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: _config.selectedStatus != null
+              ? scheme.primary
+              : scheme.outlineVariant,
+        ),
+        borderRadius: BorderRadius.circular(_controlRadius),
         color: _brandDark,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -331,8 +348,12 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
 
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: _config.sortBy != 'newest'
+              ? scheme.primary
+              : scheme.outlineVariant,
+        ),
+        borderRadius: BorderRadius.circular(_controlRadius),
         color: _brandDark,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8),
