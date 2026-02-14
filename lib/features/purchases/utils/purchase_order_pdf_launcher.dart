@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -34,35 +35,50 @@ class PurchaseOrderPdfLauncher {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (builderContext, setState) {
-            var busy = false;
+        final busy = ValueNotifier<bool>(false);
 
-            Future<T> runBusy<T>(Future<T> Function() fn) async {
-              if (busy) return await fn();
-              busy = true;
-              if (builderContext.mounted) {
-                setState(() {});
-              }
-              try {
-                return await fn();
-              } finally {
-                busy = false;
-                if (builderContext.mounted) {
-                  setState(() {});
-                }
-              }
-            }
+        Future<void> runBusy(Future<void> Function() fn) async {
+          if (busy.value) return;
+          busy.value = true;
+          try {
+            await fn();
+          } finally {
+            busy.value = false;
+          }
+        }
 
-            return Dialog(
-              child: SizedBox(
-                width: 980,
-                height: 720,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(AppSizes.paddingM),
-                      child: Row(
+        final preview = Theme(
+          data: Theme.of(dialogContext).copyWith(
+            colorScheme: Theme.of(dialogContext).colorScheme.copyWith(
+                  primary: AppColors.teal700,
+                  secondary: AppColors.gold,
+                ),
+          ),
+          child: PdfPreview(
+            key: const ValueKey('purchase_order_pdf_preview'),
+            build: (_) async => bytes,
+            canChangeOrientation: false,
+            canChangePageFormat: false,
+            allowPrinting: false,
+            allowSharing: false,
+            dynamicLayout: false,
+            dpi: 96,
+            initialPageFormat: PdfPageFormat.letter,
+          ),
+        );
+
+        return Dialog(
+          child: SizedBox(
+            width: 980,
+            height: 720,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(AppSizes.paddingM),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: busy,
+                    builder: (context, isBusy, _) {
+                      return Row(
                         children: [
                           const Expanded(
                             child: Text(
@@ -71,7 +87,7 @@ class PurchaseOrderPdfLauncher {
                             ),
                           ),
                           OutlinedButton(
-                            onPressed: busy
+                            onPressed: isBusy
                                 ? null
                                 : () {
                                     runBusy(() async {
@@ -96,7 +112,7 @@ class PurchaseOrderPdfLauncher {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            onPressed: busy
+                            onPressed: isBusy
                                 ? null
                                 : () {
                                     runBusy(() async {
@@ -115,37 +131,23 @@ class PurchaseOrderPdfLauncher {
                           ),
                           const SizedBox(width: 8),
                           TextButton(
-                            onPressed: busy
+                            onPressed: isBusy
                                 ? null
                                 : () => Navigator.of(dialogContext).pop(),
                             child: const Text('Cerrar'),
                           ),
                         ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: Theme(
-                        data: Theme.of(dialogContext).copyWith(
-                          colorScheme: Theme.of(dialogContext).colorScheme.copyWith(
-                                primary: AppColors.teal700,
-                                secondary: AppColors.gold,
-                              ),
-                        ),
-                        child: PdfPreview(
-                          build: (format) async => bytes,
-                          canChangeOrientation: false,
-                          canChangePageFormat: false,
-                          allowPrinting: false,
-                          allowSharing: false,
-                        ),
-                      ),
-                    ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-            );
-          },
+                const Divider(height: 1),
+                Expanded(
+                  child: preview,
+                ),
+              ],
+            ),
+          ),
         );
       },
     );

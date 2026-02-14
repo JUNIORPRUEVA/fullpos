@@ -140,11 +140,15 @@ class PurchaseOrderPrinter {
                 const Divider(height: 1),
                 Expanded(
                   child: PdfPreview(
+                    key: const ValueKey('purchase_order_pdf_preview_simple'),
                     build: (format) async => bytes,
                     canChangeOrientation: false,
                     canChangePageFormat: false,
                     allowPrinting: false,
                     allowSharing: false,
+                    dynamicLayout: false,
+                    dpi: 96,
+                    initialPageFormat: PdfPageFormat.letter,
                   ),
                 ),
               ],

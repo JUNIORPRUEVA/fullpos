@@ -126,18 +126,18 @@ class ToolsPage extends ConsumerWidget {
         title: 'Manual y entrenamiento',
         subtitle: 'Guías completas, estreno y respaldo',
         color: scheme.secondary,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const TrainingPage()),
-        ),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const TrainingPage())),
       ),
       _ToolItem(
         icon: Icons.verified_user_outlined,
         title: 'Autorizaciones',
         subtitle: 'Auditoria de permisos',
         color: scheme.primary,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AuthorizationsPage()),
-        ),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AuthorizationsPage())),
       ),
       _ToolItem(
         icon: Icons.description_outlined,
@@ -420,10 +420,7 @@ class _ToolCardState extends State<_ToolCard> {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final cardBg = Color.alphaBlend(
-      widget.tool.color.withOpacity(isDark ? 0.16 : 0.10),
-      scheme.surface,
-    );
+    final cardBg = Color.alphaBlend(widget.tool.color.withOpacity(isDark ? 0.16 : 0.10), scheme.surface);
     final borderColor = scheme.outlineVariant.withOpacity(isDark ? 0.42 : 0.28);
 
     return MouseRegion(
@@ -484,9 +481,7 @@ class _ToolCardState extends State<_ToolCard> {
                   const SizedBox(height: 2),
                   Text(
                     widget.tool.subtitle,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
