@@ -137,7 +137,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     setState(() {
       if (st.error != null && st.error!.trim().isNotEmpty) {
         _licenseFileStatus = st.error;
-      } else if (info?.isActive == true && info?.isExpired == false) {
+      } else if (info?.ok == true && info?.isExpired == false) {
         _licenseFileStatus = 'Licencia aplicada y activa';
       } else {
         _licenseFileStatus = 'Archivo verificado. Verifica el estado.';
@@ -145,11 +145,15 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     });
 
     if (!mounted) return;
-    if (st.error == null &&
-        info?.isActive == true &&
-        info?.isExpired == false) {
-      // Entrar al sistema: llevar al login automáticamente.
-      context.go('/login');
+    final isSuccess =
+        st.error == null && st.uiError == null && info?.ok == true && info?.isExpired == false;
+    if (isSuccess) {
+      // Redirigir de inmediato de forma confiable: navegar en el próximo frame.
+      // Usamos /sales: si no hay sesión, el router enviará a /login.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.go('/sales');
+      });
     }
   }
 

@@ -6,10 +6,6 @@ import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
 
 enum PaymentMethod { cash, card, transfer, mixed, credit, layaway }
 
-class PrintAndConfirmPaymentIntent extends Intent {
-  const PrintAndConfirmPaymentIntent();
-}
-
 /// Diálogo de pago profesional
 class PaymentDialog extends StatefulWidget {
   final double total;
@@ -61,6 +57,17 @@ class _PaymentDialogState extends State<PaymentDialog> {
   ClientModel? _selectedClient;
   bool _isSubmitting = false;
 
+  bool _handleKeyEvent(KeyEvent event) {
+    // En Windows, algunos Function keys no siempre pasan por Shortcuts cuando
+    // hay un TextField enfocado. Capturamos F9 aquí para que siempre confirme.
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.f9) {
+      // Ignorar autorepeat y clicks dobles: _submitPayment ya tiene guard.
+      _submitPayment();
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _submitPayment() async {
     if (_isSubmitting) return;
     if (!mounted) return;
@@ -100,6 +107,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _printTicket = true;
     _downloadInvoicePdf = false;
     _selectedClient = widget.selectedClient;
@@ -118,6 +126,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _cashController.dispose();
     _cardController.dispose();
     _transferController.dispose();
@@ -314,8 +323,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
       }
     }
 
-    // Retornar resultado (cerrar el dialogo del root navigator)
-    Navigator.of(context, rootNavigator: true).pop({
+    // Retornar resultado (cerrar el diálogo que lo presentó)
+    Navigator.of(context).pop({
       'method': _selectedMethod,
       'cash': double.tryParse(_cashController.text) ?? 0,
       'card': double.tryParse(_cardController.text) ?? 0,
@@ -346,15 +355,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
     return DialogKeyboardShortcuts(
       onSubmit: _submitPayment,
       extraShortcuts: const {
-        SingleActivator(LogicalKeyboardKey.f9): PrintAndConfirmPaymentIntent(),
-      },
-      extraActions: {
-        PrintAndConfirmPaymentIntent: CallbackAction<PrintAndConfirmPaymentIntent>(
-          onInvoke: (_) {
-            _submitPayment();
-            return null;
-          },
-        ),
+        // F9 debe comportarse como "confirmar" (igual que Enter).
+        SingleActivator(LogicalKeyboardKey.f9): ActivateIntent(),
       },
       child: Dialog(
         child: Container(
@@ -403,9 +405,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             ),
                           ),
                           IconButton(
-                            onPressed: () =>
-                                Navigator.of(context, rootNavigator: true)
-                                    .pop(),
+                            onPressed: () => Navigator.of(context).pop(),
                             icon: Icon(Icons.close, color: scheme.onPrimary),
                           ),
                         ],
@@ -1138,9 +1138,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               TextButton(
-                                onPressed: () =>
-                                    Navigator.of(context, rootNavigator: true)
-                                        .pop(),
+                                onPressed: () => Navigator.of(context).pop(),
                                 child: const Text('CANCELAR'),
                               ),
                               const SizedBox(width: 12),

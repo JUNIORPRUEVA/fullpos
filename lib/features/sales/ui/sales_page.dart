@@ -1430,6 +1430,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     // operaciones pesadas (DB/PDF/impresion). Evita que se "congele" la UI con
     // el dialogo aun visible.
     await WidgetsBinding.instance.endOfFrame;
+    // En desktop (Windows/Linux/macOS) el cierre del dialog puede quedar visualmente
+    // “pegado” si arrancamos trabajo pesado inmediatamente, y parece que hay que
+    // presionar Cobrar dos veces. Dar un pequeño margen para completar la animación.
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+    }
     if (!mounted) return;
 
     final method = paymentResult['method'] as payment.PaymentMethod;

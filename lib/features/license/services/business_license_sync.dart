@@ -81,21 +81,32 @@ class BusinessLicenseSync {
     }
 
     if (token == null) {
-      // Si el backend dice 204 (sin licencia), limpiar cache CLOUD para que
-      // la app se actualice inmediatamente.
-      final source = await _storage.getLastInfoSource();
-      if (source == _kCloudSource) {
-        try {
-          await _file.delete();
-        } catch (_) {}
-        await _storage.clearLastInfo();
-        // También limpiar la clave para evitar que el gate legacy vuelva a
-        // “revivir” una licencia borrada desde la nube.
-        await _storage.setLicenseKey('');
+      // Si el backend dice 204 (sin licencia), debemos revocar acceso aunque
+      // la licencia local haya sido aplicada por archivo (offline).
+      //
+      // Esto garantiza que acciones del admin (eliminar licencia) surtan efecto
+      // sin reiniciar la app.
+      final hadToken = await _file.readToken() != null;
+      final hadInfo = await _storage.getLastInfo() != null;
+      final hadKey = ((await _storage.getLicenseKey()) ?? '').trim().isNotEmpty;
+      final hadDeniedAt = await _storage.getCloudDeniedAt() != null;
+
+      try {
+        await _file.delete();
+      } catch (_) {}
+
+      await _storage.clearLastInfo();
+
+      // También limpiar la clave para evitar que el gate legacy vuelva a
+      // “revivir” una licencia borrada desde la nube.
+      await _storage.setLicenseKey('');
+
+      // Solo marcar una vez para no generar cambios en cada poll.
+      if (!hadDeniedAt) {
         await _storage.setCloudDeniedNow();
-        return true;
       }
-      return false;
+
+      return hadToken || hadInfo || hadKey || !hadDeniedAt;
     }
 
     try {

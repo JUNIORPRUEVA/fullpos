@@ -331,6 +331,9 @@ class LicenseController extends StateNotifier<LicenseState> {
 
       await storage.setLastInfo(info);
       await storage.setLastInfoSource('offline');
+      // Importante: el router cachea el gate; forzar refresh inmediato para
+      // que el usuario salga de /license al aplicar un archivo válido.
+      bumpLicenseGateRefresh();
       state = state.copyWith(loading: false, info: info);
     } on LicenseApiException catch (e) {
       _setUiError(
@@ -766,7 +769,30 @@ class LicenseController extends StateNotifier<LicenseState> {
       );
       await storage.setLastInfo(info);
       await storage.setLastInfoSource('offline');
+
+      // Important: invalidate the router gate cache immediately.
+      // Otherwise, a navigation to /sales may bounce back to /license
+      // until the cached decision expires or the app restarts.
+      bumpLicenseGateRefresh();
+
       state = state.copyWith(loading: false, info: info);
+
+      // Best-effort: if the business was deleted/blocked in the cloud,
+      // enforce it quickly after an offline upload (when online) instead of
+      // waiting for the next periodic poll.
+      unawaited(
+        businessSync
+            .tryPollFromCloudIfDue(
+              minInterval: Duration.zero,
+              networkTimeout: const Duration(seconds: 2),
+            )
+            .then((changed) async {
+              if (!changed) return;
+              bumpLicenseGateRefresh();
+              await load();
+            })
+            .catchError((_) {}),
+      );
     } on LicenseApiException catch (e) {
       _setUiError(
         LicenseErrorMapper.map(
