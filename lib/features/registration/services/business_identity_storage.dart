@@ -31,6 +31,17 @@ class BusinessIdentityStorage {
   static const _kEmail = 'business.email_v1';
   static const _kTrialStartIso = 'business.trial_start_iso_v1';
 
+  Future<void> clearAll() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_kBusinessId);
+    await sp.remove(_kBusinessName);
+    await sp.remove(_kRole);
+    await sp.remove(_kOwnerName);
+    await sp.remove(_kPhone);
+    await sp.remove(_kEmail);
+    await sp.remove(_kTrialStartIso);
+  }
+
   Future<String> ensureBusinessId() async {
     final sp = await SharedPreferences.getInstance();
     final existing = (sp.getString(_kBusinessId) ?? '').trim();

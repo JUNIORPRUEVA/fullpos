@@ -125,4 +125,15 @@ class PendingRegistrationQueue {
     final next = items.where((e) => e.id != id).toList();
     await save(next);
   }
+
+  Future<void> clear() async {
+    final f = await _file();
+    if (await f.exists()) {
+      try {
+        await f.delete();
+      } catch (_) {
+        // ignore
+      }
+    }
+  }
 }

@@ -9,6 +9,7 @@ import '../../../core/session/session_manager.dart';
 import '../license_config.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../../registration/services/business_registration_service.dart';
+import '../../registration/services/pending_registration_queue.dart';
 import 'license_gate_refresh.dart';
 import '../data/license_models.dart';
 import '../models/license_ui_error.dart';
@@ -892,6 +893,61 @@ class LicenseController extends StateNotifier<LicenseState> {
     await storage.clearAll();
     state = LicenseState.initial();
     await load();
+  }
+
+  /// DEBUG ONLY: Limpia TRIAL + licencia local en esta PC.
+  ///
+  /// - Borra SharedPreferences (license + business identity)
+  /// - Borra %APPDATA%/FullPOS/license.dat
+  /// - Borra cola de registro pendiente
+  ///
+  /// En builds release (producción) no hace nada.
+  Future<void> debugResetLicensingOnThisDevice() async {
+    if (!kDebugMode) return;
+
+    state = state.copyWith(
+      loading: true,
+      error: null,
+      errorCode: null,
+      uiError: null,
+    );
+
+    try {
+      // 1) Archivo local de licencia (cloud/offline)
+      try {
+        await fileStorage.delete();
+      } catch (_) {}
+
+      // 2) Cache de licencia (prefs)
+      try {
+        await storage.clearAll();
+      } catch (_) {}
+
+      // 3) Identidad/TRIAL (prefs)
+      try {
+        await BusinessIdentityStorage().clearAll();
+      } catch (_) {}
+
+      // 4) Registro pendiente offline
+      try {
+        await PendingRegistrationQueue().clear();
+      } catch (_) {}
+
+      // Invalida el gate del router inmediatamente.
+      bumpLicenseGateRefresh();
+
+      state = LicenseState.initial();
+      await load();
+    } catch (e) {
+      _setUiError(
+        LicenseErrorMapper.map(
+          e,
+          context: const LicenseErrorContext(
+            operation: 'debugResetLicensingOnThisDevice',
+          ),
+        ),
+      );
+    }
   }
 }
 

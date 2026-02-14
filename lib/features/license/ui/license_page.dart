@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -589,6 +590,86 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                               label: Text(primaryAction.label),
                             ),
                           ),
+                          if (kDebugMode) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceVariant.withOpacity(0.25),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: scheme.onSurface.withOpacity(0.10),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    'Debug',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Borra TRIAL y licencia local en esta PC (solo debug).',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurface.withOpacity(0.70),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final ok = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) {
+                                          return AlertDialog(
+                                            title: const Text('Reset licencia (debug)'),
+                                            content: const Text(
+                                              'Esto borrará el TRIAL, la identidad del negocio, la cola de registro y el archivo license.dat en esta PC.\n\nSolo funciona en modo debug.',
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(
+                                                  context,
+                                                  false,
+                                                ),
+                                                child: const Text('Cancelar'),
+                                              ),
+                                              FilledButton(
+                                                onPressed: () => Navigator.pop(
+                                                  context,
+                                                  true,
+                                                ),
+                                                child: const Text('Borrar'),
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      );
+                                      if (ok != true) return;
+
+                                      await controller.debugResetLicensingOnThisDevice();
+                                      if (!context.mounted) return;
+                                      setState(() {
+                                        _licenseFileStatus = null;
+                                        _licenseFileName = null;
+                                        _section = _LicenseSection.demo;
+                                      });
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Licencia/TRIAL borrados (debug).'),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.delete_forever_outlined),
+                                    label: const Text('Reset licencia (debug)'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           if (state.loading) ...[
                             const SizedBox(height: 16),
                             const Center(child: CircularProgressIndicator()),

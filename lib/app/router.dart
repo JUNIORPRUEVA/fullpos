@@ -140,7 +140,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
-      if (isOnPublicLicense || isOnSettingsLicense || isOnBlocked) {
+      if (isOnBlocked) {
+        return isLoggedIn ? '/sales' : '/login';
+      }
+      if (isOnPublicLicense || isOnSettingsLicense) {
+        // En debug permitimos abrir la pantalla de licencia desde Configuración
+        // para poder resetear TRIAL/licencia en esta misma PC.
+        if (kDebugMode) return null;
         return isLoggedIn ? '/sales' : '/login';
       }
 
