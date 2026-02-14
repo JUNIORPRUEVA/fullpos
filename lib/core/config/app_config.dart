@@ -6,7 +6,7 @@ import 'dart:io' show Platform;
 class AppConfig {
   AppConfig._();
 
-  static const String defaultApiBaseUrl = 'https://api.fulltechrd.com';
+  static const String defaultApiBaseUrl = 'https://api.fulltechrd.com/';
 
   /// Base para enlaces externos de WhatsApp (soporte).
   static const String whatsappBaseUrl = 'https://wa.me';

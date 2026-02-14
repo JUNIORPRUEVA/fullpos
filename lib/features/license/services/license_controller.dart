@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/session/session_manager.dart';
-import '../../registration/services/business_identity_storage.dart';
 import '../license_config.dart';
+import '../../registration/services/business_identity_storage.dart';
+import '../../registration/services/business_registration_service.dart';
+import 'license_gate_refresh.dart';
 import '../data/license_models.dart';
 import '../models/license_ui_error.dart';
 import 'business_license_api.dart';
@@ -150,6 +152,34 @@ class LicenseController extends StateNotifier<LicenseState> {
             projectCode: kFullposProjectCode,
             ok: false,
           );
+        }
+      }
+
+      // TRIAL offline-first: si no hay una licencia activa, reflejar el trial como
+      // "activo" para que la UI no muestre nuevamente el formulario de demo.
+      final hasActiveLicense =
+          merged?.isActive == true && merged?.isExpired == false;
+      if (!hasActiveLicense) {
+        final identityStorage = BusinessIdentityStorage();
+        final trialStart = await identityStorage.getTrialStart();
+        if (trialStart != null) {
+          final now = DateTime.now().toUtc();
+          final expires = trialStart.toUtc().add(kLocalTrialDuration);
+          if (now.isBefore(expires)) {
+            merged = LicenseInfo(
+              backendBaseUrl: kLicenseBackendBaseUrl,
+              licenseKey: (licenseKey ?? '').trim(),
+              deviceId: deviceId,
+              projectCode: kFullposProjectCode,
+              ok: true,
+              code: 'TRIAL',
+              tipo: 'TRIAL',
+              estado: 'ACTIVA',
+              fechaInicio: trialStart.toUtc(),
+              fechaFin: expires,
+              lastCheckedAt: DateTime.now().toUtc(),
+            );
+          }
         }
       }
 
@@ -413,6 +443,141 @@ class LicenseController extends StateNotifier<LicenseState> {
           ),
         ),
       );
+    }
+  }
+
+  String _normalizePhone(String input) {
+    return input.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  String _normalizeText(String input) {
+    return input.trim().toLowerCase();
+  }
+
+  Future<bool> startLocalTrialOfflineFirst({
+    required String nombreNegocio,
+    required String rolNegocio,
+    required String contactoNombre,
+    required String contactoTelefono,
+  }) async {
+    state = state.copyWith(
+      loading: true,
+      error: null,
+      errorCode: null,
+      uiError: null,
+    );
+
+    try {
+      final negocio = nombreNegocio.trim();
+      final rol = rolNegocio.trim();
+      final contacto = contactoNombre.trim();
+      final telefono = contactoTelefono.trim();
+
+      if (negocio.isEmpty || rol.isEmpty || contacto.isEmpty || telefono.isEmpty) {
+        _setUiError(
+          const LicenseUiError(
+            type: LicenseErrorType.unknown,
+            title: 'Datos incompletos',
+            message: 'Completa los datos del negocio para iniciar la prueba.',
+            supportCode: 'LIC-TRIAL-VALIDATION',
+            actions: [LicenseAction.retry],
+          ),
+        );
+        return false;
+      }
+
+      final identityStorage = BusinessIdentityStorage();
+      final existingStart = await identityStorage.getTrialStart();
+      final nowUtc = DateTime.now().toUtc();
+
+      // Si ya hay una identidad guardada, no permitir “re-registrar” el POS
+      // con otro negocio (evita inconsistencias y abuso).
+      final existingIdentity = await identityStorage.getIdentity();
+      if (existingIdentity != null) {
+        final samePhone =
+            _normalizePhone(existingIdentity.phone) == _normalizePhone(telefono);
+        final sameBusiness = _normalizeText(existingIdentity.businessName) ==
+            _normalizeText(negocio);
+
+        if (!samePhone || !sameBusiness) {
+          _setUiError(
+            const LicenseUiError(
+              type: LicenseErrorType.unauthorized,
+              title: 'Negocio ya registrado',
+              message:
+                  'Este sistema ya está registrado con otros datos. No se permite iniciar prueba con credenciales diferentes.',
+              supportCode: 'LIC-TRIAL-IDENTITY',
+              actions: [LicenseAction.openWhatsapp],
+            ),
+          );
+          return false;
+        }
+      }
+
+      // No permitir reiniciar demo con las mismas credenciales.
+      // Si ya existe trial_start, significa que ese negocio ya usó la prueba.
+      if (existingStart != null) {
+        final expires = existingStart.toUtc().add(kLocalTrialDuration);
+        if (nowUtc.isBefore(expires)) {
+          // Prueba ya activa: no re-registrar ni cambiar datos.
+          bumpLicenseGateRefresh();
+            await load();
+          return true;
+        }
+
+        _setUiError(
+          const LicenseUiError(
+            type: LicenseErrorType.expired,
+            title: 'Prueba vencida',
+            message: 'La prueba ya venció. Debes comprar una licencia.',
+            supportCode: 'LIC-TRIAL-EXPIRED',
+            actions: [LicenseAction.openWhatsapp],
+          ),
+        );
+        return false;
+      }
+
+      final trialStart = await identityStorage.ensureTrialStartNowIfMissing();
+
+      await identityStorage.saveBusinessProfile(
+        businessName: negocio,
+        role: rol,
+        ownerName: contacto,
+        phone: telefono,
+        email: null,
+      );
+
+      const appVersion = String.fromEnvironment(
+        'FULLPOS_APP_VERSION',
+        defaultValue: '1.0.0+1',
+      );
+
+      final reg = BusinessRegistrationService(identityStorage: identityStorage);
+      final payload = await reg.buildPayload(
+        businessName: negocio,
+        role: rol,
+        ownerName: contacto,
+        phone: telefono,
+        email: null,
+        trialStart: trialStart,
+        appVersion: appVersion,
+      );
+      await reg.registerNowOrQueue(payload);
+
+      // Invalida el gate del router inmediatamente.
+      bumpLicenseGateRefresh();
+
+        // Refrescar estado para que la UI deje de mostrar el formulario.
+        await load();
+      return true;
+    } catch (e) {
+      _setUiError(
+        LicenseErrorMapper.map(
+          e,
+          context: const LicenseErrorContext(operation: 'startLocalTrialOfflineFirst'),
+        ),
+      );
+      return false;
     }
   }
 

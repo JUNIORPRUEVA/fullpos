@@ -19,7 +19,6 @@ import '../data/license_models.dart';
 import '../models/license_ui_error.dart';
 import '../services/license_support_message.dart';
 import '../services/license_controller.dart';
-import '../../registration/services/business_registration_service.dart';
 
 class LicensePage extends ConsumerStatefulWidget {
   const LicensePage({super.key});
@@ -213,6 +212,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     required _LicenseSection value,
     required String label,
     required IconData icon,
+    bool expand = true,
   }) {
     final selected = _section == value;
     final onPressed = selected
@@ -223,19 +223,20 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             });
           };
 
-    return Expanded(
-      child: selected
-          ? FilledButton.icon(
-              onPressed: onPressed,
-              icon: Icon(icon),
-              label: Text(label),
-            )
-          : OutlinedButton.icon(
-              onPressed: onPressed,
-              icon: Icon(icon),
-              label: Text(label),
-            ),
-    );
+    final button = selected
+        ? FilledButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            label: Text(label),
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            label: Text(label),
+          );
+
+    if (!expand) return button;
+    return Expanded(child: button);
   }
 
   @override
@@ -257,9 +258,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final onSurface = scheme.onSurface;
-    final mutedText = onSurface.withOpacity(0.72);
     final cardBorder = scheme.primary.withOpacity(0.18);
     final dividerColor = scheme.onSurface.withOpacity(0.10);
+
+    final uiError = state.uiError;
 
     Widget content;
     switch (_section) {
@@ -272,10 +274,17 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       case _LicenseSection.buy:
         content = _buildBuySection(context);
         break;
+      case _LicenseSection.help:
+        content = _buildHelpSection(
+          context,
+          uiError,
+          info: info,
+          controller: controller,
+        );
+        break;
     }
 
     final licenseActive = info?.isActive == true && info?.isExpired == false;
-    final uiError = state.uiError;
 
     final statusLabel = state.loading
         ? 'Verificando licencia...'
@@ -308,47 +317,16 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                   context.go('/login');
                 }
               : () async {
-                  // Registro nube offline-first (no bloquea el flujo DEMO actual).
-                  final negocio = _demoNombreNegocioCtrl.text;
-                  final rol = _demoRolNegocioCtrl.text;
-                  final contacto = _demoContactoNombreCtrl.text;
-                  final telefono = _demoContactoTelefonoCtrl.text;
-                  const appVersion = String.fromEnvironment(
-                    'FULLPOS_APP_VERSION',
-                    defaultValue: '1.0.0+1',
-                  );
-                  unawaited(() async {
-                    final identityStorage = BusinessIdentityStorage();
-                    final trialStart = await identityStorage
-                        .ensureTrialStartNowIfMissing();
-                    await identityStorage.saveBusinessProfile(
-                      businessName: negocio,
-                      role: rol,
-                      ownerName: contacto,
-                      phone: telefono,
-                      email: null,
-                    );
-                    final reg = BusinessRegistrationService(
-                      identityStorage: identityStorage,
-                    );
-                    final payload = await reg.buildPayload(
-                      businessName: negocio,
-                      role: rol,
-                      ownerName: contacto,
-                      phone: telefono,
-                      email: null,
-                      trialStart: trialStart,
-                      appVersion: appVersion,
-                    );
-                    await reg.registerNowOrQueue(payload);
-                  }());
-
-                  await controller.startDemo(
+                  final ok = await controller.startLocalTrialOfflineFirst(
                     nombreNegocio: _demoNombreNegocioCtrl.text,
                     rolNegocio: _demoRolNegocioCtrl.text,
                     contactoNombre: _demoContactoNombreCtrl.text,
                     contactoTelefono: _demoContactoTelefonoCtrl.text,
                   );
+
+                  if (ok && context.mounted) {
+                    context.go('/login');
+                  }
                 },
         );
         break;
@@ -367,6 +345,20 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           icon: Icons.chat_bubble_outline,
           onPressed: () async {
             await _openWhatsapp();
+          },
+        );
+        break;
+      case _LicenseSection.help:
+        primaryAction = (
+          label: 'Verificar ahora',
+          icon: Icons.verified_outlined,
+          onPressed: () async {
+            // Si está esperando activación, preferimos intentar sync nube.
+            if (uiError?.type == LicenseErrorType.notActivated) {
+              await controller.syncBusinessLicenseNow();
+              return;
+            }
+            await controller.check();
           },
         );
         break;
@@ -500,36 +492,6 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                                       ),
                                                 ),
                                               ),
-                                              if (uiError != null)
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 6,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: scheme.surface
-                                                        .withOpacity(0.75),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          999,
-                                                        ),
-                                                    border: Border.all(
-                                                      color: dividerColor,
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    'Soporte: ${uiError.supportCode}',
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.copyWith(
-                                                          color: mutedText,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                        ),
-                                                  ),
-                                                ),
                                             ],
                                           ),
                                         ],
@@ -560,36 +522,60 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                             ),
                             const SizedBox(height: 18),
                           ],
-                          Row(
-                            children: [
-                              _sectionButton(
-                                value: _LicenseSection.demo,
-                                label: 'Prueba',
-                                icon: Icons.play_circle_outline,
-                              ),
-                              const SizedBox(width: 10),
-                              _sectionButton(
-                                value: _LicenseSection.file,
-                                label: 'Activar',
-                                icon: Icons.upload_file,
-                              ),
-                              const SizedBox(width: 10),
-                              _sectionButton(
-                                value: _LicenseSection.buy,
-                                label: 'Comprar',
-                                icon: Icons.shopping_cart_outlined,
-                              ),
-                            ],
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final compact = constraints.maxWidth < 520;
+
+                              final buttons = <Widget>[
+                                _sectionButton(
+                                  value: _LicenseSection.demo,
+                                  label: 'Prueba',
+                                  icon: Icons.play_circle_outline,
+                                  expand: !compact,
+                                ),
+                                _sectionButton(
+                                  value: _LicenseSection.file,
+                                  label: 'Activar',
+                                  icon: Icons.upload_file,
+                                  expand: !compact,
+                                ),
+                                _sectionButton(
+                                  value: _LicenseSection.buy,
+                                  label: 'Comprar',
+                                  icon: Icons.shopping_cart_outlined,
+                                  expand: !compact,
+                                ),
+                                _sectionButton(
+                                  value: _LicenseSection.help,
+                                  label: 'Ayuda',
+                                  icon: Icons.support_agent,
+                                  expand: !compact,
+                                ),
+                              ];
+
+                              if (compact) {
+                                return Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: buttons,
+                                );
+                              }
+
+                              return Row(
+                                children: [
+                                  buttons[0],
+                                  const SizedBox(width: 10),
+                                  buttons[1],
+                                  const SizedBox(width: 10),
+                                  buttons[2],
+                                  const SizedBox(width: 10),
+                                  buttons[3],
+                                ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 18),
                           content,
-                          const SizedBox(height: 18),
-                          _buildHelpPanel(
-                            context,
-                            uiError,
-                            info: info,
-                            controller: controller,
-                          ),
                           const SizedBox(height: 18),
                           SizedBox(
                             width: double.infinity,
@@ -687,8 +673,6 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             info: info,
             controller: controller,
           ),
-          const SizedBox(height: 8),
-          _buildSupportDetails(context, uiError, info: info),
         ],
       ),
     );
@@ -701,7 +685,24 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     required LicenseController controller,
   }) {
     final actions = uiError.actions;
-    if (actions.isEmpty) return const SizedBox.shrink();
+    final hasRetry = actions.contains(LicenseAction.retry);
+    final hasRepair = actions.contains(LicenseAction.repairAndRetry);
+    if (!hasRetry && !hasRepair) {
+      // Aún así damos acceso a Ayuda.
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            setState(() {
+              _section = _LicenseSection.help;
+              _showSupportDetails = true;
+            });
+          },
+          icon: const Icon(Icons.support_agent),
+          label: const Text('Ir a Ayuda'),
+        ),
+      );
+    }
 
     Future<void> onRetry() async {
       if (uiError.type == LicenseErrorType.notActivated) {
@@ -719,13 +720,13 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       spacing: 10,
       runSpacing: 10,
       children: [
-        if (actions.contains(LicenseAction.retry))
+        if (hasRetry)
           FilledButton.icon(
             onPressed: onRetry,
             icon: const Icon(Icons.refresh),
             label: const Text('Reintentar'),
           ),
-        if (actions.contains(LicenseAction.repairAndRetry))
+        if (hasRepair)
           FilledButton.icon(
             onPressed: () async {
               await controller.repairAndRetrySync();
@@ -733,30 +734,139 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             icon: const Icon(Icons.build_circle_outlined),
             label: const Text('Reparar y reintentar'),
           ),
-        if (actions.contains(LicenseAction.openWhatsapp))
-          OutlinedButton.icon(
-            onPressed: () async {
-              await _openWhatsapp(supportCode: uiError.supportCode);
-            },
-            icon: const Icon(Icons.chat_bubble_outline),
-            label: const Text('WhatsApp soporte'),
+        OutlinedButton.icon(
+          onPressed: () {
+            setState(() {
+              _section = _LicenseSection.help;
+              _showSupportDetails = true;
+            });
+          },
+          icon: const Icon(Icons.support_agent),
+          label: const Text('Ir a Ayuda'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHelpSection(
+    BuildContext context,
+    LicenseUiError? uiError, {
+    required LicenseInfo? info,
+    required LicenseController controller,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final code = (uiError?.supportCode ?? 'LIC-HELP-00').trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Ayuda',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w900,
           ),
-        if (actions.contains(LicenseAction.copySupportCode))
-          OutlinedButton.icon(
-            onPressed: () async {
-              await _copySupportCode(context, uiError.supportCode);
-            },
-            icon: const Icon(Icons.copy),
-            label: const Text('Copiar código'),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Si tienes problemas activando o verificando la licencia, usa estas opciones.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurface.withOpacity(0.72),
           ),
-        if (actions.contains(LicenseAction.verifyConnection))
-          OutlinedButton.icon(
-            onPressed: () {
-              setState(() => _showQuickGuide = !_showQuickGuide);
-            },
-            icon: const Icon(Icons.help_outline),
-            label: Text(_showQuickGuide ? 'Ocultar guía' : 'Guía rápida'),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: scheme.surfaceVariant.withOpacity(0.25),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
           ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.support_agent, color: scheme.primary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Soporte',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    code,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.65),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () async {
+                      await _openWhatsapp(supportCode: code);
+                    },
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    label: const Text('WhatsApp soporte'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await _copySupportCode(context, code);
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copiar código'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() => _showQuickGuide = !_showQuickGuide);
+                    },
+                    icon: const Icon(Icons.help_outline),
+                    label: Text(
+                      _showQuickGuide ? 'Ocultar guía' : 'Guía rápida',
+                    ),
+                  ),
+                ],
+              ),
+              if (uiError != null) ...[
+                const SizedBox(height: 10),
+                _buildSupportDetails(context, uiError, info: info),
+              ] else if (_showQuickGuide) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: scheme.surface.withOpacity(0.70),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: scheme.onSurface.withOpacity(0.10),
+                    ),
+                  ),
+                  child: Text(
+                    'Guía rápida:\n'
+                    '• Confirma que tienes internet (abre una página).\n'
+                    '• Si es “Conexión segura falló”, revisa fecha y hora de Windows.\n'
+                    '• Si estás en red corporativa, prueba otra red o hotspot.\n'
+                    '• Intenta de nuevo en 1 minuto.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.80),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -860,98 +970,6 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     );
   }
 
-  Widget _buildHelpPanel(
-    BuildContext context,
-    LicenseUiError? uiError, {
-    required LicenseInfo? info,
-    required LicenseController controller,
-  }) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    // Panel siempre visible (premium UX), pero más compacto si no hay error.
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: scheme.surfaceVariant.withOpacity(0.25),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.support_agent, color: scheme.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Ayuda',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              Text(
-                uiError != null ? uiError.supportCode : ' ',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.65),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            uiError == null
-                ? 'Si necesitas ayuda con tu activación, contáctanos por WhatsApp.'
-                : 'Selecciona una opción para resolverlo ahora.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurface.withOpacity(0.75),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () async {
-                  // "Reintentar" genérico desde ayuda.
-                  if (uiError?.type == LicenseErrorType.notActivated) {
-                    await controller.syncBusinessLicenseNow();
-                  } else {
-                    await controller.check();
-                  }
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Verificar ahora'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await _openWhatsapp(
-                    supportCode: uiError?.supportCode ?? 'LIC-HELP-00',
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('WhatsApp soporte'),
-              ),
-              OutlinedButton.icon(
-                onPressed: uiError == null
-                    ? null
-                    : () async {
-                        await _copySupportCode(context, uiError.supportCode);
-                      },
-                icon: const Icon(Icons.copy),
-                label: const Text('Copiar código'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _copySupportCode(BuildContext context, String code) async {
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
@@ -1008,17 +1026,18 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     ];
 
     if (active) {
+      final isTrial = (info?.code ?? '').toUpperCase() == 'TRIAL';
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Licencia activa',
+            isTrial ? 'Prueba gratis activa' : 'Licencia activa',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          _kv('Device ID', info?.deviceId ?? '-'),
+          if (!isTrial) _kv('Device ID', info?.deviceId ?? '-'),
           _kv('Vence', info?.fechaFin?.toLocal().toString() ?? '-'),
         ],
       );
@@ -1134,4 +1153,4 @@ class _LicensePageState extends ConsumerState<LicensePage> {
   }
 }
 
-enum _LicenseSection { demo, file, buy }
+enum _LicenseSection { demo, file, buy, help }

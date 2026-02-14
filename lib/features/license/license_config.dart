@@ -11,6 +11,11 @@ String get kLicenseBackendBaseUrl => AppConfig.apiBaseUrl;
 
 const kFullposProjectCode = 'FULLPOS';
 
+/// Duración de la prueba GRATIS local (offline-first).
+///
+/// Nota: esta prueba se valida localmente para permitir arrancar sin internet.
+const kLocalTrialDuration = Duration(days: 5);
+
 /// Cada cuánto forzar re-verificación contra backend.
 const kLicenseGateRefreshHours = 6;
 

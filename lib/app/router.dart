@@ -46,16 +46,16 @@ import '../features/license/ui/license_blocked_page.dart';
 import '../features/license/services/license_storage.dart';
 import '../features/license/services/license_api.dart';
 import '../features/license/services/business_license_sync.dart';
+import '../features/license/services/license_gate_refresh.dart';
 import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
+import '../features/registration/services/business_identity_storage.dart';
 
 Future<_LicenseGateDecision>? _licenseGateInFlight;
 _LicenseGateDecision? _licenseGateCached;
 DateTime? _licenseGateCachedAt;
-
-// Notificador para forzar refresh del router cuando se refresca el gate en background.
-final ValueNotifier<int> _licenseGateRefreshToken = ValueNotifier<int>(0);
+int _licenseGateCachedEpoch = 0;
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final bootStatus = ref.watch(
@@ -72,7 +72,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _MergedListenable([
     bootstrap,
     heartbeat,
-    _licenseGateRefreshToken,
+    licenseGateRefreshToken,
   ]);
   ref.onDispose(() {
     refresh.dispose();
@@ -382,13 +382,14 @@ void _refreshLicenseGateInBackground() {
       final before = _licenseGateCached;
       _licenseGateCached = gate;
       _licenseGateCachedAt = DateTime.now();
+      _licenseGateCachedEpoch = licenseGateRefreshToken.value;
 
       // Si cambia el estado, forzar re-evaluar redirects sin reiniciar.
       if (before == null ||
           before.isActive != gate.isActive ||
           before.isBlocked != gate.isBlocked ||
           before.code != gate.code) {
-        _licenseGateRefreshToken.value++;
+        bumpLicenseGateRefresh();
       }
     }),
   );
@@ -397,6 +398,16 @@ void _refreshLicenseGateInBackground() {
 Future<_LicenseGateDecision> _getLicenseGateDecisionFast() async {
   final cached = _licenseGateCached;
   if (cached != null) {
+    // Si algún flujo externo (ej: iniciar prueba) solicita refresh,
+    // invalidamos la decisión cacheada de inmediato.
+    if (_licenseGateCachedEpoch != licenseGateRefreshToken.value) {
+      final gate = await _getLicenseGateDecision();
+      _licenseGateCached = gate;
+      _licenseGateCachedAt = DateTime.now();
+      _licenseGateCachedEpoch = licenseGateRefreshToken.value;
+      return gate;
+    }
+
     if (!_isGateCacheFresh()) {
       _refreshLicenseGateInBackground();
     }
@@ -406,6 +417,7 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionFast() async {
   final gate = await _getLicenseGateDecision();
   _licenseGateCached = gate;
   _licenseGateCachedAt = DateTime.now();
+  _licenseGateCachedEpoch = licenseGateRefreshToken.value;
   return gate;
 }
 
@@ -499,6 +511,22 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
       isBlocked: false,
       code: 'OK',
     );
+  }
+
+  // 3) TRIAL offline-first: permitir acceso durante 5 días desde el inicio.
+  // Esto evita depender del endpoint legacy /start-demo (device_id).
+  final identityStorage = BusinessIdentityStorage();
+  final trialStart = await identityStorage.getTrialStart();
+  if (trialStart != null) {
+    final now = DateTime.now().toUtc();
+    final expires = trialStart.toUtc().add(kLocalTrialDuration);
+    if (now.isBefore(expires)) {
+      return const _LicenseGateDecision(
+        isActive: true,
+        isBlocked: false,
+        code: 'TRIAL',
+      );
+    }
   }
 
   final storage = LicenseStorage();

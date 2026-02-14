@@ -71,6 +71,11 @@ class BusinessIdentityStorage {
     return now;
   }
 
+  Future<void> setTrialStart(DateTime trialStart) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kTrialStartIso, trialStart.toUtc().toIso8601String());
+  }
+
   Future<void> saveBusinessProfile({
     required String businessName,
     required String role,
