@@ -39,7 +39,7 @@ class PurchaseOrdersList extends ConsumerWidget {
     }
 
     return ordersAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const _OrdersListSkeleton(),
       error: (e, _) => Center(
         child: Text(
           'Error cargando órdenes: $e',
@@ -91,10 +91,8 @@ class PurchaseOrdersList extends ConsumerWidget {
         return ListView.separated(
           padding: const EdgeInsets.only(bottom: AppSizes.paddingL),
           itemCount: orders.length + 1,
-          separatorBuilder: (_, __) => Divider(
-            height: 1,
-            color: scheme.outlineVariant.withOpacity(0.4),
-          ),
+          separatorBuilder: (_, __) =>
+              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.4)),
           itemBuilder: (context, index) {
             if (index == 0) {
               return Container(
@@ -126,7 +124,9 @@ class PurchaseOrdersList extends ConsumerWidget {
                 ? scheme.primaryContainer.withOpacity(0.35)
                 : scheme.surface;
 
-            final created = DateTime.fromMillisecondsSinceEpoch(dto.order.createdAtMs);
+            final created = DateTime.fromMillisecondsSinceEpoch(
+              dto.order.createdAtMs,
+            );
             final status = dto.order.status.trim().toUpperCase();
             final statusBg = statusColor(status);
             final statusFg = ColorUtils.readableTextColor(statusBg);
@@ -214,7 +214,9 @@ class PurchaseOrdersList extends ConsumerWidget {
                           children: [
                             IconButton(
                               tooltip: 'Ver PDF',
-                              onPressed: id <= 0 ? null : () => onOpenPdf?.call(id),
+                              onPressed: id <= 0
+                                  ? null
+                                  : () => onOpenPdf?.call(id),
                               icon: const Icon(Icons.picture_as_pdf_outlined),
                             ),
                             IconButton(
@@ -222,17 +224,15 @@ class PurchaseOrdersList extends ConsumerWidget {
                               onPressed: status == 'RECIBIDA'
                                   ? null
                                   : (id <= 0
-                                      ? null
-                                      : () => onReceive?.call(id)),
+                                        ? null
+                                        : () => onReceive?.call(id)),
                               icon: const Icon(Icons.inventory_outlined),
                             ),
                             IconButton(
                               tooltip: 'Editar',
                               onPressed: status == 'RECIBIDA'
                                   ? null
-                                  : (id <= 0
-                                      ? null
-                                      : () => onEdit?.call(id)),
+                                  : (id <= 0 ? null : () => onEdit?.call(id)),
                               icon: const Icon(Icons.edit_outlined),
                             ),
                           ],
@@ -245,6 +245,86 @@ class PurchaseOrdersList extends ConsumerWidget {
             );
           },
         );
+      },
+    );
+  }
+}
+
+class _OrdersListSkeleton extends StatelessWidget {
+  const _OrdersListSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base = scheme.surfaceContainerHighest.withOpacity(0.55);
+    final line = scheme.outlineVariant.withOpacity(0.25);
+
+    Widget row() {
+      return Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSizes.paddingM,
+          vertical: 10,
+        ),
+        child: Row(
+          children: [
+            Container(width: 56, height: 12, color: base),
+            const SizedBox(width: 14),
+            Expanded(child: Container(height: 12, color: base)),
+            const SizedBox(width: 14),
+            Container(width: 130, height: 12, color: base),
+            const SizedBox(width: 14),
+            Container(width: 90, height: 12, color: base),
+            const SizedBox(width: 14),
+            Container(
+              width: 90,
+              height: 22,
+              decoration: BoxDecoration(
+                color: base,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Container(
+              width: 96,
+              height: 22,
+              decoration: BoxDecoration(
+                color: base,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: AppSizes.paddingL),
+      itemCount: 10,
+      separatorBuilder: (_, __) => Divider(height: 1, color: line),
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSizes.paddingM,
+              vertical: 10,
+            ),
+            color: scheme.surfaceContainerHighest.withOpacity(0.35),
+            child: const Row(
+              children: [
+                SizedBox(width: 70, child: Text('Orden')),
+                Expanded(child: Text('Proveedor')),
+                SizedBox(width: 150, child: Text('Fecha')),
+                SizedBox(
+                  width: 120,
+                  child: Text('Total', textAlign: TextAlign.right),
+                ),
+                SizedBox(width: 120, child: Text('Estado')),
+                SizedBox(width: 120, child: Text('Acciones')),
+              ],
+            ),
+          );
+        }
+        return row();
       },
     );
   }

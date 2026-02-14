@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/errors/error_handler.dart';
-import '../../../products/models/product_model.dart';
 import '../../../products/models/supplier_model.dart';
 import '../../data/purchase_order_models.dart';
 import '../../data/purchases_repository.dart';
@@ -27,7 +26,8 @@ class PurchaseTicketPanel extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PurchaseTicketPanel> createState() => _PurchaseTicketPanelState();
+  ConsumerState<PurchaseTicketPanel> createState() =>
+      _PurchaseTicketPanelState();
 }
 
 class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
@@ -64,12 +64,12 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
               final filtered = q.isEmpty
                   ? suppliers
                   : suppliers
-                      .where(
-                        (s) =>
-                            s.name.toLowerCase().contains(q) ||
-                            (s.phone ?? '').toLowerCase().contains(q),
-                      )
-                      .toList(growable: false);
+                        .where(
+                          (s) =>
+                              s.name.toLowerCase().contains(q) ||
+                              (s.phone ?? '').toLowerCase().contains(q),
+                        )
+                        .toList(growable: false);
 
               return AlertDialog(
                 title: const Text('Seleccionar proveedor'),
@@ -93,7 +93,8 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                           child: ListView.separated(
                             shrinkWrap: true,
                             itemCount: filtered.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final s = filtered[index];
                               final isSelected = current?.id == s.id;
@@ -186,7 +187,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
   Future<void> _previewPdf(BuildContext context) async {
     final draft = ref.read(purchaseDraftProvider);
     final supplier = draft.supplier;
-    if (supplier?.id == null) {
+    if (supplier == null || supplier.id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Seleccione un proveedor para previsualizar'),
@@ -223,7 +224,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
     final draft = ref.read(purchaseDraftProvider);
     final supplier = draft.supplier;
 
-    if (supplier?.id == null) {
+    if (supplier == null || supplier.id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Seleccione un proveedor'),
@@ -321,7 +322,8 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       if (ctrl.text != desired && !ctrl.selection.isValid) {
         ctrl.text = desired;
       }
-      if (ctrl.text != desired && ctrl.selection.baseOffset == ctrl.selection.extentOffset) {
+      if (ctrl.text != desired &&
+          ctrl.selection.baseOffset == ctrl.selection.extentOffset) {
         // Si no está editando activamente, sincronizar.
         ctrl.value = TextEditingValue(
           text: desired,
@@ -432,9 +434,8 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
             const SizedBox(width: 10),
             _QtyStepper(
               qty: line.qty,
-              onMinus: () => ref
-                  .read(purchaseDraftProvider.notifier)
-                  .changeQtyBy(id, -1),
+              onMinus: () =>
+                  ref.read(purchaseDraftProvider.notifier).changeQtyBy(id, -1),
               onPlus: () =>
                   ref.read(purchaseDraftProvider.notifier).changeQtyBy(id, 1),
             ),
@@ -448,7 +449,9 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                   signed: false,
                 ),
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^[0-9]*[\.,]?[0-9]{0,4}')),
+                  FilteringTextInputFormatter.allow(
+                    RegExp(r'^[0-9]*[\.,]?[0-9]{0,4}'),
+                  ),
                 ],
                 onSubmitted: (_) => applyCost(),
                 onEditingComplete: applyCost,
@@ -496,10 +499,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
 
     final summary = Column(
       children: [
-        _SummaryRow(
-          label: 'Subtotal',
-          value: currency.format(draft.subtotal),
-        ),
+        _SummaryRow(label: 'Subtotal', value: currency.format(draft.subtotal)),
         _SummaryRow(
           label: 'Impuestos (${draft.taxRatePercent.toStringAsFixed(0)}%)',
           value: currency.format(draft.taxAmount),
@@ -620,7 +620,9 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                                 // Forzar recarga de productos base cuando cambia proveedor.
                                 ref.invalidate(purchaseProductsBaseProvider);
                               },
-                              child: Text(draft.supplier == null ? 'Elegir' : 'Cambiar'),
+                              child: Text(
+                                draft.supplier == null ? 'Elegir' : 'Cambiar',
+                              ),
                             );
                           },
                           loading: () => const SizedBox(
@@ -632,7 +634,10 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                           ),
                           error: (e, _) => Tooltip(
                             message: '$e',
-                            child: const Icon(Icons.error_outline, color: AppColors.error),
+                            child: const Icon(
+                              Icons.error_outline,
+                              color: AppColors.error,
+                            ),
                           ),
                         ),
                       ],
@@ -658,7 +663,10 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                   ],
                 ),
               ),
-              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.45)),
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withOpacity(0.45),
+              ),
               Expanded(child: itemsList),
               Padding(
                 padding: const EdgeInsets.all(AppSizes.paddingM),

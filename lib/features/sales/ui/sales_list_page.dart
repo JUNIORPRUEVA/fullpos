@@ -435,8 +435,8 @@ class _SalesListPageState extends State<SalesListPage> {
                           _selectedStatus == 'completed'
                               ? 'Activas'
                               : _selectedStatus == 'cancelled'
-                                  ? 'Anuladas'
-                                  : 'Estado',
+                              ? 'Anuladas'
+                              : 'Estado',
                           style: theme.textTheme.bodySmall?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
@@ -618,52 +618,6 @@ class _SalesListPageState extends State<SalesListPage> {
                   ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: color.withOpacity(0.9),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

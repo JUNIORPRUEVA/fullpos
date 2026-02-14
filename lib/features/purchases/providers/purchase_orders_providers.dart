@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,46 +52,49 @@ final purchaseOrdersRepoProvider = Provider<PurchasesRepository>((ref) {
   return PurchasesRepository();
 });
 
-final purchaseOrdersListProvider = FutureProvider<List<PurchaseOrderSummaryDto>>((ref) async {
-  final repo = ref.watch(purchaseOrdersRepoProvider);
-  final filters = ref.watch(purchaseOrdersFiltersProvider);
+final purchaseOrdersListProvider =
+    FutureProvider<List<PurchaseOrderSummaryDto>>((ref) async {
+      final repo = ref.watch(purchaseOrdersRepoProvider);
+      final filters = ref.watch(purchaseOrdersFiltersProvider);
 
-  final result = await repo.listOrders(
-    supplierId: filters.supplierId,
-    status: filters.status,
-  );
+      final result = await repo.listOrders(
+        supplierId: filters.supplierId,
+        status: filters.status,
+      );
 
-  final q = filters.query.trim().toLowerCase();
-  final range = filters.range;
+      final q = filters.query.trim().toLowerCase();
+      final range = filters.range;
 
-  bool matches(PurchaseOrderSummaryDto dto) {
-    if (q.isNotEmpty) {
-      final idStr = (dto.order.id ?? 0).toString();
-      if (!dto.supplierName.toLowerCase().contains(q) && !idStr.contains(q)) {
-        return false;
+      bool matches(PurchaseOrderSummaryDto dto) {
+        if (q.isNotEmpty) {
+          final idStr = (dto.order.id ?? 0).toString();
+          if (!dto.supplierName.toLowerCase().contains(q) &&
+              !idStr.contains(q)) {
+            return false;
+          }
+        }
+
+        if (range != null) {
+          final created = DateTime.fromMillisecondsSinceEpoch(
+            dto.order.createdAtMs,
+          );
+          if (created.isBefore(range.start) || created.isAfter(range.end)) {
+            return false;
+          }
+        }
+
+        return true;
       }
-    }
 
-    if (range != null) {
-      final created = DateTime.fromMillisecondsSinceEpoch(dto.order.createdAtMs);
-      if (created.isBefore(range.start) || created.isAfter(range.end)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  return result.where(matches).toList(growable: false);
-});
+      return result.where(matches).toList(growable: false);
+    });
 
 final purchaseSelectedOrderIdProvider = StateProvider<int?>((ref) => null);
 
-final purchaseSelectedOrderDetailProvider = FutureProvider<PurchaseOrderDetailDto?>(
-  (ref) async {
-    final repo = ref.watch(purchaseOrdersRepoProvider);
-    final id = ref.watch(purchaseSelectedOrderIdProvider);
-    if (id == null) return null;
-    return repo.getOrderById(id);
-  },
-);
+final purchaseSelectedOrderDetailProvider =
+    FutureProvider<PurchaseOrderDetailDto?>((ref) async {
+      final repo = ref.watch(purchaseOrdersRepoProvider);
+      final id = ref.watch(purchaseSelectedOrderIdProvider);
+      if (id == null) return null;
+      return repo.getOrderById(id);
+    });

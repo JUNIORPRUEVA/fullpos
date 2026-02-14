@@ -18,7 +18,6 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
-import '../../../core/theme/app_tokens.dart';
 import '../../../core/ui/ui_scale.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import 'widgets/compact_quote_row.dart';
@@ -49,8 +48,6 @@ class _QuotesPageState extends State<QuotesPage> {
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
-  AppTokens get _tokens =>
-      _theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
   AppStatusTheme get _status =>
       _theme.extension<AppStatusTheme>() ??
       AppStatusTheme(
@@ -836,44 +833,6 @@ class _QuotesPageState extends State<QuotesPage> {
                   ),
         ),
       ],
-    );
-  }
-
-  Widget _buildDetailMetric({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    final theme = _theme;
-    final scheme = _scheme;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurface.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
     );
   }
 

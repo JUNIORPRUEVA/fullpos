@@ -29,7 +29,8 @@ class PurchaseOrderAutoService {
   }) async {
     final db = await AppDb.database;
 
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT id, code, name, stock, stock_min, purchase_price
       FROM ${DbTables.products}
       WHERE deleted_at_ms IS NULL
@@ -37,22 +38,27 @@ class PurchaseOrderAutoService {
         AND supplier_id = ?
         AND stock < stock_min
       ORDER BY name ASC
-    ''', [supplierId]);
+    ''',
+      [supplierId],
+    );
 
-    return rows.map((r) {
-      final stock = (r['stock'] as num?)?.toDouble() ?? 0.0;
-      final minStock = (r['stock_min'] as num?)?.toDouble() ?? 0.0;
-      final suggested = (minStock - stock);
-      return PurchaseOrderAutoSuggestion(
-        productId: r['id'] as int,
-        productCode: (r['code'] as String?) ?? '',
-        productName: (r['name'] as String?) ?? '',
-        currentStock: stock,
-        minStock: minStock,
-        suggestedQty: suggested < 0 ? 0 : suggested,
-        unitCost: (r['purchase_price'] as num?)?.toDouble() ?? 0.0,
-      );
-    }).where((e) => e.suggestedQty > 0).toList();
+    return rows
+        .map((r) {
+          final stock = (r['stock'] as num?)?.toDouble() ?? 0.0;
+          final minStock = (r['stock_min'] as num?)?.toDouble() ?? 0.0;
+          final suggested = (minStock - stock);
+          return PurchaseOrderAutoSuggestion(
+            productId: r['id'] as int,
+            productCode: (r['code'] as String?) ?? '',
+            productName: (r['name'] as String?) ?? '',
+            currentStock: stock,
+            minStock: minStock,
+            suggestedQty: suggested < 0 ? 0 : suggested,
+            unitCost: (r['purchase_price'] as num?)?.toDouble() ?? 0.0,
+          );
+        })
+        .where((e) => e.suggestedQty > 0)
+        .toList();
   }
 
   /// Productos agotados (stock <= 0) del suplidor.
@@ -63,7 +69,8 @@ class PurchaseOrderAutoService {
   }) async {
     final db = await AppDb.database;
 
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT id, code, name, stock, stock_min, purchase_price
       FROM ${DbTables.products}
       WHERE deleted_at_ms IS NULL
@@ -71,22 +78,27 @@ class PurchaseOrderAutoService {
         AND supplier_id = ?
         AND stock <= 0
       ORDER BY name ASC
-    ''', [supplierId]);
+    ''',
+      [supplierId],
+    );
 
-    return rows.map((r) {
-      final stock = (r['stock'] as num?)?.toDouble() ?? 0.0;
-      final minStock = (r['stock_min'] as num?)?.toDouble() ?? 0.0;
-      final desired = (minStock > minQty ? minStock : minQty);
-      return PurchaseOrderAutoSuggestion(
-        productId: r['id'] as int,
-        productCode: (r['code'] as String?) ?? '',
-        productName: (r['name'] as String?) ?? '',
-        currentStock: stock,
-        minStock: minStock,
-        suggestedQty: desired,
-        unitCost: (r['purchase_price'] as num?)?.toDouble() ?? 0.0,
-      );
-    }).where((e) => e.suggestedQty > 0).toList();
+    return rows
+        .map((r) {
+          final stock = (r['stock'] as num?)?.toDouble() ?? 0.0;
+          final minStock = (r['stock_min'] as num?)?.toDouble() ?? 0.0;
+          final desired = (minStock > minQty ? minStock : minQty);
+          return PurchaseOrderAutoSuggestion(
+            productId: r['id'] as int,
+            productCode: (r['code'] as String?) ?? '',
+            productName: (r['name'] as String?) ?? '',
+            currentStock: stock,
+            minStock: minStock,
+            suggestedQty: desired,
+            unitCost: (r['purchase_price'] as num?)?.toDouble() ?? 0.0,
+          );
+        })
+        .where((e) => e.suggestedQty > 0)
+        .toList();
   }
 
   /// Sugerencia por ventas recientes.
@@ -101,9 +113,12 @@ class PurchaseOrderAutoService {
   }) async {
     final db = await AppDb.database;
     final now = DateTime.now();
-    final since = now.subtract(Duration(days: lookbackDays)).millisecondsSinceEpoch;
+    final since = now
+        .subtract(Duration(days: lookbackDays))
+        .millisecondsSinceEpoch;
 
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT
         p.id,
         p.code,
@@ -124,32 +139,39 @@ class PurchaseOrderAutoService {
       GROUP BY p.id
       ORDER BY sold_qty DESC
       LIMIT ?
-    ''', [supplierId, since, limit]);
+    ''',
+      [supplierId, since, limit],
+    );
 
     final safeLookback = lookbackDays <= 0 ? 1 : lookbackDays;
     final safeReplenish = replenishDays <= 0 ? 1 : replenishDays;
 
-    return rows.map((r) {
-      final stock = (r['stock'] as num?)?.toDouble() ?? 0.0;
-      final minStock = (r['stock_min'] as num?)?.toDouble() ?? 0.0;
-      final soldQty = (r['sold_qty'] as num?)?.toDouble() ?? 0.0;
+    return rows
+        .map((r) {
+          final stock = (r['stock'] as num?)?.toDouble() ?? 0.0;
+          final minStock = (r['stock_min'] as num?)?.toDouble() ?? 0.0;
+          final soldQty = (r['sold_qty'] as num?)?.toDouble() ?? 0.0;
 
-      final daily = soldQty / safeLookback;
-      final target = daily * safeReplenish;
-      final desired = target > minStock ? target : minStock;
-      final suggested = desired - stock;
+          final daily = soldQty / safeLookback;
+          final target = daily * safeReplenish;
+          final desired = target > minStock ? target : minStock;
+          final suggested = desired - stock;
 
-      final effective = suggested <= 0 ? 0 : (suggested < minQty ? minQty : suggested);
+          final effective = suggested <= 0
+              ? 0.0
+              : (suggested < minQty ? minQty : suggested);
 
-      return PurchaseOrderAutoSuggestion(
-        productId: r['id'] as int,
-        productCode: (r['code'] as String?) ?? '',
-        productName: (r['name'] as String?) ?? '',
-        currentStock: stock,
-        minStock: minStock,
-        suggestedQty: effective,
-        unitCost: (r['purchase_price'] as num?)?.toDouble() ?? 0.0,
-      );
-    }).where((e) => e.suggestedQty > 0).toList();
+          return PurchaseOrderAutoSuggestion(
+            productId: r['id'] as int,
+            productCode: (r['code'] as String?) ?? '',
+            productName: (r['name'] as String?) ?? '',
+            currentStock: stock,
+            minStock: minStock,
+            suggestedQty: effective,
+            unitCost: (r['purchase_price'] as num?)?.toDouble() ?? 0.0,
+          );
+        })
+        .where((e) => e.suggestedQty > 0)
+        .toList();
   }
 }

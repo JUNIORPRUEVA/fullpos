@@ -6,9 +6,12 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../products/models/product_model.dart';
 import '../../products/models/supplier_model.dart';
+import '../data/purchase_order_models.dart';
 import '../data/purchases_repository.dart';
 import '../providers/purchase_catalog_provider.dart';
+import '../providers/purchase_draft_provider.dart';
 import '../providers/purchase_orders_providers.dart';
 import '../utils/purchase_order_pdf_launcher.dart';
 import 'widgets/purchase_order_detail_panel.dart';
@@ -34,6 +37,7 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final dateOnly = DateFormat('dd/MM/yyyy');
 
     final filters = ref.watch(purchaseOrdersFiltersProvider);
     final suppliersAsync = ref.watch(purchaseSuppliersProvider);
@@ -64,11 +68,65 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
           builder: (context, constraints) {
             final isNarrow = constraints.maxWidth < 980;
 
+            Future<void> pickRange() async {
+              final now = DateTime.now();
+              final initial = filters.range;
+              final picked = await showDateRangePicker(
+                context: context,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(now.year + 20),
+                initialDateRange: initial,
+                saveText: 'Aplicar',
+              );
+              if (picked == null) return;
+
+              final normalized = DateTimeRange(
+                start: DateTime(
+                  picked.start.year,
+                  picked.start.month,
+                  picked.start.day,
+                ),
+                end: DateTime(
+                  picked.end.year,
+                  picked.end.month,
+                  picked.end.day,
+                  23,
+                  59,
+                  59,
+                  999,
+                ),
+              );
+
+              ref.read(purchaseOrdersFiltersProvider.notifier).state = filters
+                  .copyWith(range: normalized);
+            }
+
+            final rangeLabel = filters.range == null
+                ? 'Rango'
+                : '${dateOnly.format(filters.range!.start)} - ${dateOnly.format(filters.range!.end)}';
+
+            final range = OutlinedButton.icon(
+              onPressed: pickRange,
+              icon: const Icon(Icons.date_range),
+              label: Text(rangeLabel, overflow: TextOverflow.ellipsis),
+            );
+
+            final clearRange = IconButton(
+              tooltip: 'Limpiar rango',
+              onPressed: filters.range == null
+                  ? null
+                  : () {
+                      ref.read(purchaseOrdersFiltersProvider.notifier).state =
+                          filters.copyWith(clearRange: true);
+                    },
+              icon: const Icon(Icons.filter_alt_off_outlined),
+            );
+
             final search = TextField(
               controller: _searchCtrl,
               onSubmitted: (_) {
-                ref.read(purchaseOrdersFiltersProvider.notifier).state =
-                    filters.copyWith(query: _searchCtrl.text);
+                ref.read(purchaseOrdersFiltersProvider.notifier).state = filters
+                    .copyWith(query: _searchCtrl.text);
               },
               decoration: const InputDecoration(
                 isDense: true,
@@ -91,8 +149,8 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                 DropdownMenuItem(value: 'RECIBIDA', child: Text('Recibida')),
               ],
               onChanged: (v) {
-                ref.read(purchaseOrdersFiltersProvider.notifier).state =
-                    filters.copyWith(status: v);
+                ref.read(purchaseOrdersFiltersProvider.notifier).state = filters
+                    .copyWith(status: v);
               },
             );
 
@@ -139,7 +197,10 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
               style: FilledButton.styleFrom(
                 backgroundColor: scheme.primary,
                 foregroundColor: scheme.onPrimary,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
               ),
             );
 
@@ -150,7 +211,9 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                 ref.invalidate(purchaseSelectedOrderDetailProvider);
               },
               style: IconButton.styleFrom(
-                backgroundColor: scheme.surfaceContainerHighest.withOpacity(0.4),
+                backgroundColor: scheme.surfaceContainerHighest.withOpacity(
+                  0.4,
+                ),
               ),
               icon: const Icon(Icons.refresh),
             );
@@ -183,6 +246,14 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: range),
+                      const SizedBox(width: 10),
+                      clearRange,
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   Align(alignment: Alignment.centerRight, child: newOrder),
                 ],
               );
@@ -204,6 +275,9 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                 const SizedBox(width: 10),
                 SizedBox(width: 240, child: supplier),
                 const SizedBox(width: 10),
+                SizedBox(width: 260, child: range),
+                clearRange,
+                const SizedBox(width: 10),
                 refresh,
                 const SizedBox(width: 10),
                 newOrder,
@@ -212,6 +286,94 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
           },
         ),
       );
+    }
+
+    Future<bool> _confirmOverwriteDraftIfDirty() async {
+      final draft = ref.read(purchaseDraftProvider);
+      if (!draft.hasChanges) return true;
+
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (c) {
+          return AlertDialog(
+            title: const Text('Reemplazar borrador'),
+            content: const Text(
+              'Ya tienes una orden en borrador. ¿Deseas reemplazarla con la orden duplicada?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(c).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(c).pop(true),
+                child: const Text('Reemplazar'),
+              ),
+            ],
+          );
+        },
+      );
+
+      return confirm == true;
+    }
+
+    Future<void> duplicateToDraft(PurchaseOrderDetailDto detail) async {
+      final ok = await _confirmOverwriteDraftIfDirty();
+      if (!ok) return;
+      if (!context.mounted) return;
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final supplier = SupplierModel(
+        id: detail.order.supplierId,
+        name: detail.supplierName,
+        phone: detail.supplierPhone,
+        note: null,
+        isActive: true,
+        deletedAtMs: null,
+        createdAtMs: nowMs,
+        updatedAtMs: nowMs,
+      );
+
+      final lines = detail.items
+          .map(
+            (it) => PurchaseDraftLine(
+              product: ProductModel(
+                id: it.item.productId,
+                code: it.productCode,
+                name: it.productName,
+                supplierId: detail.order.supplierId,
+                purchasePrice: it.item.unitCost,
+                salePrice: 0,
+                stock: 0,
+                reservedStock: 0,
+                stockMin: 0,
+                isActive: true,
+                createdAtMs: nowMs,
+                updatedAtMs: nowMs,
+              ),
+              qty: it.item.qty,
+              unitCost: it.item.unitCost,
+            ),
+          )
+          .toList(growable: false);
+
+      ref
+          .read(purchaseDraftProvider.notifier)
+          .loadFromOrder(
+            supplier: supplier,
+            lines: lines,
+            taxRatePercent: detail.order.taxRate,
+            notes: detail.order.notes,
+            purchaseDate: detail.order.purchaseDateMs != null
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    detail.order.purchaseDateMs!,
+                  )
+                : DateTime.now(),
+          );
+
+      ref.invalidate(purchaseProductsBaseProvider);
+      if (!context.mounted) return;
+      context.go('/purchases/manual');
     }
 
     Future<void> openPdf(int orderId) async {
@@ -294,16 +456,13 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                   );
 
                   final detail = PurchaseOrderDetailPanel(
-                    onOpenPdf: (detail) => PurchaseOrderPdfLauncher.openPreviewDialog(
-                      context: context,
-                      detail: detail,
-                    ),
+                    onOpenPdf: (detail) =>
+                        PurchaseOrderPdfLauncher.openPreviewDialog(
+                          context: context,
+                          detail: detail,
+                        ),
                     onReceive: (id) => receive(id),
-                    onDuplicate: (detail) {
-                      // Duplicar: abrir manual y copiar items.
-                      // Por ahora, reusar ruta legacy de edición no aplica.
-                      context.go('/purchases/manual');
-                    },
+                    onDuplicate: (detail) => duplicateToDraft(detail),
                   );
 
                   if (isNarrow) {

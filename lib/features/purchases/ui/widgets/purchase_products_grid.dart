@@ -123,7 +123,7 @@ class _ProductCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  ProductThumbnail(product: product, size: 44),
+                  ProductThumbnail.fromProduct(product, size: 44),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -203,11 +203,7 @@ class _MetaLine extends StatelessWidget {
   final String value;
   final Color? valueColor;
 
-  const _MetaLine({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  const _MetaLine({required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
@@ -273,10 +269,7 @@ class _EmptyProducts extends StatelessWidget {
   final String title;
   final String message;
 
-  const _EmptyProducts({
-    required this.title,
-    required this.message,
-  });
+  const _EmptyProducts({required this.title, required this.message});
 
   @override
   Widget build(BuildContext context) {

@@ -61,7 +61,8 @@ class PurchaseDraftState {
     );
   }
 
-  bool get hasChanges => supplier != null || notes.trim().isNotEmpty || lines.isNotEmpty;
+  bool get hasChanges =>
+      supplier != null || notes.trim().isNotEmpty || lines.isNotEmpty;
 
   double get subtotal => lines.fold(0.0, (s, l) => s + l.subtotal);
   double get taxAmount => subtotal * (taxRatePercent / 100.0);
@@ -87,14 +88,13 @@ class PurchaseDraftState {
   }
 }
 
-final purchaseDraftProvider = StateNotifierProvider<PurchaseDraftController, PurchaseDraftState>(
-  (ref) => PurchaseDraftController(ref),
-);
+final purchaseDraftProvider =
+    StateNotifierProvider<PurchaseDraftController, PurchaseDraftState>(
+      (ref) => PurchaseDraftController(),
+    );
 
 class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
-  final Ref _ref;
-
-  PurchaseDraftController(this._ref) : super(PurchaseDraftState.initial());
+  PurchaseDraftController() : super(PurchaseDraftState.initial());
 
   void reset({double? taxRatePercent}) {
     state = PurchaseDraftState.initial(
@@ -111,7 +111,9 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
   }
 
   void setTaxRatePercent(double value) {
-    final safe = value.isFinite ? value.clamp(0.0, 100.0) : state.taxRatePercent;
+    final safe = value.isFinite
+        ? value.clamp(0.0, 100.0)
+        : state.taxRatePercent;
     state = state.copyWith(taxRatePercent: safe.toDouble());
   }
 
@@ -123,7 +125,9 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
     final productId = product.id;
     if (productId == null) return;
 
-    final existingIndex = state.lines.indexWhere((l) => l.product.id == productId);
+    final existingIndex = state.lines.indexWhere(
+      (l) => l.product.id == productId,
+    );
     if (existingIndex >= 0) {
       final next = [...state.lines];
       final current = next[existingIndex];
@@ -144,7 +148,9 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
 
   void removeProduct(int productId) {
     state = state.copyWith(
-      lines: state.lines.where((l) => l.product.id != productId).toList(growable: false),
+      lines: state.lines
+          .where((l) => l.product.id != productId)
+          .toList(growable: false),
     );
   }
 
@@ -163,7 +169,10 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
   }
 
   void changeQtyBy(int productId, double delta) {
-    final line = state.lines.where((l) => l.product.id == productId).cast<PurchaseDraftLine?>().firstOrNull;
+    final line = state.lines
+        .where((l) => l.product.id == productId)
+        .cast<PurchaseDraftLine?>()
+        .firstOrNull;
     if (line == null) return;
     setQty(productId, line.qty + delta);
   }

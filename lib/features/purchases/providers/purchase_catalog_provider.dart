@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../products/data/categories_repository.dart';
@@ -43,29 +41,37 @@ class PurchaseCatalogFilterState {
   }
 }
 
-final purchaseCatalogFiltersProvider = StateProvider<PurchaseCatalogFilterState>(
-  (ref) => PurchaseCatalogFilterState.initial(),
-);
+final purchaseCatalogFiltersProvider =
+    StateProvider<PurchaseCatalogFilterState>(
+      (ref) => PurchaseCatalogFilterState.initial(),
+    );
 
-final purchaseSuppliersProvider = FutureProvider<List<SupplierModel>>((ref) async {
+final purchaseSuppliersProvider = FutureProvider<List<SupplierModel>>((
+  ref,
+) async {
   final repo = SuppliersRepository();
   return repo.getAll(includeInactive: false);
 });
 
-final purchaseCategoriesProvider = FutureProvider<List<CategoryModel>>((ref) async {
+final purchaseCategoriesProvider = FutureProvider<List<CategoryModel>>((
+  ref,
+) async {
   final repo = CategoriesRepository();
   return repo.getAll(includeInactive: false, includeDeleted: false);
 });
 
-final purchaseProductsBaseProvider = FutureProvider<List<ProductModel>>((ref) async {
+final purchaseProductsBaseProvider = FutureProvider<List<ProductModel>>((
+  ref,
+) async {
   // Reload base list when supplier/category/onlySupplier changes.
   final filters = ref.watch(purchaseCatalogFiltersProvider);
   final supplier = ref.watch(purchaseDraftProvider.select((s) => s.supplier));
 
   final productsRepo = ProductsRepository();
 
-  final supplierId =
-      (filters.onlySupplierProducts && supplier?.id != null) ? supplier!.id : null;
+  final supplierId = (filters.onlySupplierProducts && supplier?.id != null)
+      ? supplier!.id
+      : null;
 
   return productsRepo.getAll(
     filters: ProductFilters(
@@ -77,22 +83,21 @@ final purchaseProductsBaseProvider = FutureProvider<List<ProductModel>>((ref) as
   );
 });
 
-final purchaseFilteredProductsProvider = Provider<AsyncValue<List<ProductModel>>>(
-  (ref) {
-    final base = ref.watch(purchaseProductsBaseProvider);
-    final filters = ref.watch(purchaseCatalogFiltersProvider);
+final purchaseFilteredProductsProvider =
+    Provider<AsyncValue<List<ProductModel>>>((ref) {
+      final base = ref.watch(purchaseProductsBaseProvider);
+      final filters = ref.watch(purchaseCatalogFiltersProvider);
 
-    return base.whenData((products) {
-      final q = filters.query.trim().toLowerCase();
-      if (q.isEmpty) return products;
+      return base.whenData((products) {
+        final q = filters.query.trim().toLowerCase();
+        if (q.isEmpty) return products;
 
-      bool matches(ProductModel p) {
-        if (p.name.toLowerCase().contains(q)) return true;
-        if (p.code.toLowerCase().contains(q)) return true;
-        return false;
-      }
+        bool matches(ProductModel p) {
+          if (p.name.toLowerCase().contains(q)) return true;
+          if (p.code.toLowerCase().contains(q)) return true;
+          return false;
+        }
 
-      return products.where(matches).toList(growable: false);
+        return products.where(matches).toList(growable: false);
+      });
     });
-  },
-);

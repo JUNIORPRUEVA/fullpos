@@ -48,7 +48,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
 
   List<SaleModel> _completedSales = [];
   List<Map<String, dynamic>> _returns = [];
-  List<CategoryPerformanceData> _categoryPerformance = [];
   bool _isLoading = false;
   String _searchQuery = '';
   int _loadSeq = 0;
@@ -160,7 +159,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
             )
             .toList();
         _returns = returns;
-        _categoryPerformance = categoryPerformance;
 
         _ensureSelection();
       });
@@ -678,37 +676,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                 ),
         );
       },
-    );
-  }
-
-  Widget _buildFilterChip(DateFilter filter) {
-    final isSelected = _selectedFilter == filter;
-    final selectedColor = scheme.primary;
-    final selectedText = ColorUtils.ensureReadableColor(
-      scheme.onPrimary,
-      selectedColor,
-    );
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(
-          _getFilterLabel(filter),
-          style: TextStyle(
-            color: isSelected ? selectedText : scheme.primary,
-            fontWeight: FontWeight.w500,
-            fontSize: 13,
-          ),
-        ),
-        selected: isSelected,
-        selectedColor: selectedColor,
-        backgroundColor: scheme.surface,
-        onSelected: (selected) {
-          if (selected) {
-            setState(() => _selectedFilter = filter);
-            _loadData();
-          }
-        },
-      ),
     );
   }
 
@@ -1537,171 +1504,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
         module: 'sales/returns_list/refund_dialog',
       );
     }
-  }
-
-  Widget _buildCategorySummaryCard({required String title}) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-    );
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.8)),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: scheme.primary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.category, color: scheme.primary, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_categoryPerformance.isEmpty)
-            Text(
-              'No hay movimientos por categoria en este periodo.',
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-            )
-          else ...[
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    'Categoria',
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'Ventas',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'Devol.',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'Neto',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _categoryPerformance.length,
-              separatorBuilder: (_, _) => Divider(
-                height: 16,
-                color: scheme.outlineVariant.withOpacity(0.6),
-              ),
-              itemBuilder: (context, index) {
-                final item = _categoryPerformance[index];
-                return Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.category,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${item.itemsSold.toInt()} vendidos ? ${item.itemsRefunded.toInt()} devueltos',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        currencyFormat.format(item.sales),
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        currencyFormat.format(item.refunds),
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: scheme.error,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        currencyFormat.format(item.netSales),
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
 
