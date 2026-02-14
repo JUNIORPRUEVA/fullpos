@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/brand/fullpos_brand_theme.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/window/window_service.dart';
 import '../services/license_storage.dart';
 
@@ -17,7 +18,7 @@ class LicenseBlockedPage extends StatelessWidget {
     required String message,
   }) async {
     final uri = Uri.parse(
-      'https://wa.me/$_supportPhoneWhatsapp',
+      '${AppConfig.whatsappBaseUrl}/$_supportPhoneWhatsapp',
     ).replace(queryParameters: {'text': message});
     final url = uri.toString();
 

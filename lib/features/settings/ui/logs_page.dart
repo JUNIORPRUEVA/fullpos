@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../core/network/api_client.dart';
 import 'settings_layout.dart';
 
 import 'training/training_page.dart';
@@ -217,9 +217,12 @@ class _LogsPageState extends State<LogsPage> {
     });
 
     try {
-      final response = await http
-          .get(Uri.parse(_companyInfoUrl))
-          .timeout(const Duration(seconds: 6));
+      final api = ApiClient(baseUrl: _companyInfoUrl);
+      final response = await api.get(
+        '',
+        timeout: const Duration(seconds: 6),
+        retry: false,
+      );
       if (response.statusCode != 200) {
         throw Exception('HTTP ${response.statusCode}');
       }

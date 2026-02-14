@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import '../../../core/constants/app_sizes.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/window/window_service.dart';
 import '../../../core/brand/fullpos_brand_theme.dart';
+import '../../registration/services/business_identity_storage.dart';
 import '../license_config.dart';
 import '../data/license_models.dart';
+import '../models/license_ui_error.dart';
+import '../services/license_support_message.dart';
 import '../services/license_controller.dart';
+import '../../registration/services/business_registration_service.dart';
 
 class LicensePage extends ConsumerStatefulWidget {
   const LicensePage({super.key});
@@ -36,6 +43,18 @@ class _LicensePageState extends ConsumerState<LicensePage> {
 
   String? _licenseFileName;
   String? _licenseFileStatus;
+
+  bool _showSupportDetails = false;
+  bool _showQuickGuide = false;
+
+  String _maskKey(String input) {
+    final s = input.trim();
+    if (s.isEmpty) return '';
+    if (s.length <= 8) return '****';
+    final start = s.substring(0, 4);
+    final end = s.substring(s.length - 4);
+    return '$start…$end';
+  }
 
   @override
   void initState() {
@@ -134,42 +153,43 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     }
   }
 
-  Future<void> _openWhatsapp() async {
+  Future<void> _openWhatsapp({String? supportCode}) async {
     final st = ref.read(licenseControllerProvider);
     final info = st.info;
+
+    final businessId = await BusinessIdentityStorage().getBusinessId();
 
     final deviceId = (info?.deviceId ?? '').trim();
     final licenseKey = (info?.licenseKey ?? '').trim();
     final projectCode = (info?.projectCode ?? kFullposProjectCode).trim();
     final estado = (info?.estado ?? '').trim();
-    final code = (info?.code ?? st.errorCode ?? '').trim();
-    final motivo = (info?.motivo ?? '').trim();
 
     final negocio = _demoNombreNegocioCtrl.text.trim();
     final tipoNegocio = _demoRolNegocioCtrl.text.trim();
     final contacto = _demoContactoNombreCtrl.text.trim();
     final telefono = _demoContactoTelefonoCtrl.text.trim();
 
-    final lines = <String>[
-      'Hola soporte, necesito ayuda con FULLPOS.',
-      '',
-      'Device ID: ${deviceId.isNotEmpty ? deviceId : '-'}',
-      'Proyecto: ${projectCode.isNotEmpty ? projectCode : '-'}',
-      'Licencia: ${licenseKey.isNotEmpty ? licenseKey : '-'}',
-      if (estado.isNotEmpty) 'Estado: $estado',
-      if (code.isNotEmpty) 'Código: $code',
-      if (motivo.isNotEmpty) 'Motivo: $motivo',
+    final message = LicenseSupportMessage.build(
+      supportCode: (supportCode ?? st.uiError?.supportCode ?? 'LIC-HELP-00')
+          .trim(),
+      businessId: businessId,
+      deviceId: deviceId,
+      licenseKey: licenseKey,
+      projectCode: projectCode.isNotEmpty ? projectCode : kFullposProjectCode,
+      status: estado,
+    );
+
+    final fullMessage = <String>[
+      message,
       if (negocio.isNotEmpty) 'Negocio: $negocio',
       if (tipoNegocio.isNotEmpty) 'Tipo negocio: $tipoNegocio',
       if (contacto.isNotEmpty) 'Contacto: $contacto',
       if (telefono.isNotEmpty) 'Teléfono: $telefono',
-    ];
-
-    final message = lines.join('\n');
+    ].join('\n');
 
     final uri = Uri.parse(
-      'https://wa.me/$_supportPhoneWhatsapp',
-    ).replace(queryParameters: {'text': message});
+      '${AppConfig.whatsappBaseUrl}/$_supportPhoneWhatsapp',
+    ).replace(queryParameters: {'text': fullMessage});
     final url = uri.toString();
 
     await WindowService.runWithExternalApplication(() async {
@@ -225,24 +245,12 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final info = state.info;
 
     ref.listen(licenseControllerProvider, (prev, next) {
-      final err = next.error;
-      if (err != null && err.isNotEmpty && err != prev?.error) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(err)));
-      }
-
       // Si ya se consumió la DEMO en este equipo/cliente, llevar al flujo de compra.
       if (next.errorCode == 'DEMO_ALREADY_USED' &&
           _section != _LicenseSection.buy) {
         setState(() {
           _section = _LicenseSection.buy;
         });
-      }
-      // Keep text fields in sync when info changes.
-      final i = next.info;
-      if (i != null) {
-        // no-op
       }
     });
 
@@ -267,6 +275,26 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     }
 
     final licenseActive = info?.isActive == true && info?.isExpired == false;
+    final uiError = state.uiError;
+
+    final statusLabel = state.loading
+        ? 'Verificando licencia...'
+        : (licenseActive
+              ? 'Licencia activa'
+              : (uiError?.type == LicenseErrorType.notActivated
+                    ? 'Esperando activación'
+                    : (uiError != null ? 'Atención requerida' : 'Licencia')));
+
+    final statusBg = state.loading
+        ? scheme.surfaceVariant.withOpacity(0.55)
+        : (licenseActive
+              ? scheme.tertiaryContainer
+              : (uiError?.isBlocking == true
+                    ? scheme.errorContainer
+                    : scheme.surfaceVariant.withOpacity(0.55)));
+    final statusFg = uiError?.isBlocking == true
+        ? scheme.onErrorContainer
+        : (licenseActive ? scheme.onTertiaryContainer : scheme.onSurface);
 
     ({String label, IconData icon, Future<void> Function()? onPressed})
     primaryAction;
@@ -280,6 +308,41 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                   context.go('/login');
                 }
               : () async {
+                  // Registro nube offline-first (no bloquea el flujo DEMO actual).
+                  final negocio = _demoNombreNegocioCtrl.text;
+                  final rol = _demoRolNegocioCtrl.text;
+                  final contacto = _demoContactoNombreCtrl.text;
+                  final telefono = _demoContactoTelefonoCtrl.text;
+                  const appVersion = String.fromEnvironment(
+                    'FULLPOS_APP_VERSION',
+                    defaultValue: '1.0.0+1',
+                  );
+                  unawaited(() async {
+                    final identityStorage = BusinessIdentityStorage();
+                    final trialStart = await identityStorage
+                        .ensureTrialStartNowIfMissing();
+                    await identityStorage.saveBusinessProfile(
+                      businessName: negocio,
+                      role: rol,
+                      ownerName: contacto,
+                      phone: telefono,
+                      email: null,
+                    );
+                    final reg = BusinessRegistrationService(
+                      identityStorage: identityStorage,
+                    );
+                    final payload = await reg.buildPayload(
+                      businessName: negocio,
+                      role: rol,
+                      ownerName: contacto,
+                      phone: telefono,
+                      email: null,
+                      trialStart: trialStart,
+                      appVersion: appVersion,
+                    );
+                    await reg.registerNowOrQueue(payload);
+                  }());
+
                   await controller.startDemo(
                     nombreNegocio: _demoNombreNegocioCtrl.text,
                     rolNegocio: _demoRolNegocioCtrl.text,
@@ -397,18 +460,77 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'Adquiere tu licencia y desbloquea FULLPOS',
+                                            statusLabel,
                                             style: theme.textTheme.bodyMedium
                                                 ?.copyWith(
-                                                  color: onSurface,
-                                                  fontWeight: FontWeight.w700,
+                                                  color: statusFg,
+                                                  fontWeight: FontWeight.w800,
                                                 ),
                                           ),
                                           const SizedBox(height: 4),
-                                          Text(
-                                            'Proyecto: $kFullposProjectCode',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(color: mutedText),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 6,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: statusBg,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                  border: Border.all(
+                                                    color: dividerColor,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  'Proyecto: $kFullposProjectCode',
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        color: statusFg,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                ),
+                                              ),
+                                              if (uiError != null)
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: scheme.surface
+                                                        .withOpacity(0.75),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: dividerColor,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    'Soporte: ${uiError.supportCode}',
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodySmall
+                                                        ?.copyWith(
+                                                          color: mutedText,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                         ],
                                       ),
@@ -429,6 +551,15 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                             ],
                           ),
                           const SizedBox(height: 18),
+                          if (uiError != null) ...[
+                            _buildErrorCard(
+                              context,
+                              uiError,
+                              info: info,
+                              controller: controller,
+                            ),
+                            const SizedBox(height: 18),
+                          ],
                           Row(
                             children: [
                               _sectionButton(
@@ -452,6 +583,13 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                           ),
                           const SizedBox(height: 18),
                           content,
+                          const SizedBox(height: 18),
+                          _buildHelpPanel(
+                            context,
+                            uiError,
+                            info: info,
+                            controller: controller,
+                          ),
                           const SizedBox(height: 18),
                           SizedBox(
                             width: double.infinity,
@@ -480,6 +618,346 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildErrorCard(
+    BuildContext context,
+    LicenseUiError uiError, {
+    required LicenseInfo? info,
+    required LicenseController controller,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final bg = uiError.isBlocking
+        ? scheme.errorContainer
+        : scheme.surfaceVariant.withOpacity(0.45);
+    final fg = uiError.isBlocking ? scheme.onErrorContainer : scheme.onSurface;
+
+    IconData iconFor(LicenseErrorType t) {
+      return switch (t) {
+        LicenseErrorType.offline => Icons.wifi_off,
+        LicenseErrorType.timeout => Icons.timer_outlined,
+        LicenseErrorType.dns => Icons.public_off,
+        LicenseErrorType.ssl => Icons.security,
+        LicenseErrorType.serverDown => Icons.cloud_off,
+        LicenseErrorType.unauthorized => Icons.lock_outline,
+        LicenseErrorType.notActivated => Icons.hourglass_bottom,
+        LicenseErrorType.invalidLicenseFile => Icons.insert_drive_file_outlined,
+        LicenseErrorType.expired => Icons.event_busy,
+        LicenseErrorType.corruptedLocalFile => Icons.broken_image_outlined,
+        LicenseErrorType.unknown => Icons.info_outline,
+      };
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(iconFor(uiError.type), color: fg),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  uiError.title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: fg,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            uiError.message,
+            style: theme.textTheme.bodyMedium?.copyWith(color: fg),
+          ),
+          const SizedBox(height: 10),
+          _buildPrimaryActionsRow(
+            context,
+            uiError,
+            info: info,
+            controller: controller,
+          ),
+          const SizedBox(height: 8),
+          _buildSupportDetails(context, uiError, info: info),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrimaryActionsRow(
+    BuildContext context,
+    LicenseUiError uiError, {
+    required LicenseInfo? info,
+    required LicenseController controller,
+  }) {
+    final actions = uiError.actions;
+    if (actions.isEmpty) return const SizedBox.shrink();
+
+    Future<void> onRetry() async {
+      if (uiError.type == LicenseErrorType.notActivated) {
+        await controller.syncBusinessLicenseNow();
+        return;
+      }
+      if (uiError.type == LicenseErrorType.corruptedLocalFile) {
+        await controller.repairAndRetrySync();
+        return;
+      }
+      await controller.check();
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        if (actions.contains(LicenseAction.retry))
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reintentar'),
+          ),
+        if (actions.contains(LicenseAction.repairAndRetry))
+          FilledButton.icon(
+            onPressed: () async {
+              await controller.repairAndRetrySync();
+            },
+            icon: const Icon(Icons.build_circle_outlined),
+            label: const Text('Reparar y reintentar'),
+          ),
+        if (actions.contains(LicenseAction.openWhatsapp))
+          OutlinedButton.icon(
+            onPressed: () async {
+              await _openWhatsapp(supportCode: uiError.supportCode);
+            },
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: const Text('WhatsApp soporte'),
+          ),
+        if (actions.contains(LicenseAction.copySupportCode))
+          OutlinedButton.icon(
+            onPressed: () async {
+              await _copySupportCode(context, uiError.supportCode);
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('Copiar código'),
+          ),
+        if (actions.contains(LicenseAction.verifyConnection))
+          OutlinedButton.icon(
+            onPressed: () {
+              setState(() => _showQuickGuide = !_showQuickGuide);
+            },
+            icon: const Icon(Icons.help_outline),
+            label: Text(_showQuickGuide ? 'Ocultar guía' : 'Guía rápida'),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSupportDetails(
+    BuildContext context,
+    LicenseUiError uiError, {
+    required LicenseInfo? info,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_showQuickGuide) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.surface.withOpacity(0.70),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
+            ),
+            child: Text(
+              'Guía rápida:\n'
+              '• Confirma que tienes internet (abre una página).\n'
+              '• Si es “Conexión segura falló”, revisa fecha y hora de Windows.\n'
+              '• Si estás en red corporativa, prueba otra red o hotspot.\n'
+              '• Intenta de nuevo en 1 minuto.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.80),
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () {
+            setState(() => _showSupportDetails = !_showSupportDetails);
+          },
+          child: Row(
+            children: [
+              Icon(
+                _showSupportDetails ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Detalles para soporte',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '(opcional)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.65),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_showSupportDetails) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.surface.withOpacity(0.70),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
+            ),
+            child: DefaultTextStyle(
+              style: theme.textTheme.bodySmall!.copyWith(
+                color: scheme.onSurface.withOpacity(0.85),
+                height: 1.35,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Código soporte: ${uiError.supportCode}'),
+                  if (uiError.endpoint != null)
+                    Text('Endpoint: ${uiError.endpoint}'),
+                  if (uiError.httpStatusCode != null)
+                    Text('HTTP: ${uiError.httpStatusCode}'),
+                  if (uiError.technicalSummary != null &&
+                      uiError.technicalSummary!.trim().isNotEmpty)
+                    Text('Resumen: ${uiError.technicalSummary}'),
+                  if (info != null && info.deviceId.trim().isNotEmpty)
+                    Text('Device ID: ${info.deviceId.trim()}'),
+                  if (info != null && info.licenseKey.trim().isNotEmpty)
+                    Text('Licencia: ${_maskKey(info.licenseKey)}'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHelpPanel(
+    BuildContext context,
+    LicenseUiError? uiError, {
+    required LicenseInfo? info,
+    required LicenseController controller,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    // Panel siempre visible (premium UX), pero más compacto si no hay error.
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceVariant.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.support_agent, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Ayuda',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Text(
+                uiError != null ? uiError.supportCode : ' ',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.65),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            uiError == null
+                ? 'Si necesitas ayuda con tu activación, contáctanos por WhatsApp.'
+                : 'Selecciona una opción para resolverlo ahora.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurface.withOpacity(0.75),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () async {
+                  // "Reintentar" genérico desde ayuda.
+                  if (uiError?.type == LicenseErrorType.notActivated) {
+                    await controller.syncBusinessLicenseNow();
+                  } else {
+                    await controller.check();
+                  }
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Verificar ahora'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await _openWhatsapp(
+                    supportCode: uiError?.supportCode ?? 'LIC-HELP-00',
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('WhatsApp soporte'),
+              ),
+              OutlinedButton.icon(
+                onPressed: uiError == null
+                    ? null
+                    : () async {
+                        await _copySupportCode(context, uiError.supportCode);
+                      },
+                icon: const Icon(Icons.copy),
+                label: const Text('Copiar código'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copySupportCode(BuildContext context, String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Código copiado.')));
   }
 
   Widget _buildDemoSection(BuildContext context, LicenseInfo? info) {

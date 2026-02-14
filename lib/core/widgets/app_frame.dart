@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../debug/render_diagnostics.dart';
+import '../network/network_status_provider.dart';
 import '../theme/color_utils.dart';
 import '../theme/app_gradient_theme.dart';
 
-class AppFrame extends StatefulWidget {
+class AppFrame extends ConsumerStatefulWidget {
   const AppFrame({
     super.key,
     required this.child,
@@ -17,10 +19,11 @@ class AppFrame extends StatefulWidget {
   final Duration watchdogTimeout;
 
   @override
-  State<AppFrame> createState() => _AppFrameState();
+  ConsumerState<AppFrame> createState() => _AppFrameState();
 }
 
-class _AppFrameState extends State<AppFrame> with WidgetsBindingObserver {
+class _AppFrameState extends ConsumerState<AppFrame>
+    with WidgetsBindingObserver {
   late final RenderDiagnostics _diagnostics;
   late final RenderWatchdog _watchdog;
   bool _firstFrameSeen = false;
@@ -33,11 +36,11 @@ class _AppFrameState extends State<AppFrame> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    // Ensure provider is created early to start polling.
+    ref.read(networkStatusProvider.notifier);
     _diagnostics = RenderDiagnostics.instance;
     unawaited(_diagnostics.ensureInitialized());
-    _watchdog = _diagnostics.createWatchdog(
-      timeout: widget.watchdogTimeout,
-    );
+    _watchdog = _diagnostics.createWatchdog(timeout: widget.watchdogTimeout);
     WidgetsBinding.instance.addObserver(this);
     _startWatchdog();
     WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
@@ -54,6 +57,9 @@ class _AppFrameState extends State<AppFrame> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     unawaited(_diagnostics.logLifecycle(state.name));
+    if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(networkStatusProvider.notifier).checkNow());
+    }
   }
 
   void _startWatchdog({Duration? timeout}) {
@@ -151,6 +157,7 @@ class _AppFrameState extends State<AppFrame> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final net = ref.watch(networkStatusProvider);
     final repaintable = RepaintBoundary(
       child: KeyedSubtree(
         key: ValueKey<bool>(_repaintToggle),
@@ -179,6 +186,7 @@ class _AppFrameState extends State<AppFrame> with WidgetsBindingObserver {
       child: Stack(
         children: [
           Positioned.fill(child: framedChild),
+          if (net.isOffline) _OfflineBanner(message: net.lastError),
           if (_showRecoveryBanner)
             const _RecoveryBanner(message: 'Reiniciando vista...'),
           if (_safeMode)
@@ -200,10 +208,7 @@ class _RecoveryBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bannerBg = scheme.surface.withOpacity(0.9);
-    final bannerFg = ColorUtils.ensureReadableColor(
-      scheme.onSurface,
-      bannerBg,
-    );
+    final bannerFg = ColorUtils.ensureReadableColor(scheme.onSurface, bannerBg);
     return Positioned(
       top: 12,
       left: 12,
@@ -242,6 +247,46 @@ class _RecoveryBanner extends StatelessWidget {
   }
 }
 
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({this.message});
+
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = (message == null || message!.trim().isEmpty)
+        ? 'Sin conexión con el servidor.'
+        : 'Sin conexión: ${message!.trim()}';
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        ignoring: true,
+        child: Material(
+          color: scheme.errorContainer,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: DefaultTextStyle(
+                style: TextStyle(
+                  color: scheme.onErrorContainer,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SafeModeScreen extends StatelessWidget {
   const _SafeModeScreen({required this.onRetry});
 
@@ -263,11 +308,7 @@ class _SafeModeScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.refresh,
-                    size: 36,
-                    color: scheme.primary,
-                  ),
+                  Icon(Icons.refresh, size: 36, color: scheme.primary),
                   const SizedBox(height: 12),
                   Text(
                     'Reiniciando vista segura',

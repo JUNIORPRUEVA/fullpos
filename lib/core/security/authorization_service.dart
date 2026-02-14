@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
-import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
+import '../network/api_client.dart';
 import '../db/app_db.dart';
 import '../db/tables.dart';
 
@@ -532,28 +532,18 @@ class AuthorizationService {
     String? apiKey,
     required Map<String, dynamic> payload,
   }) async {
-    var normalizedBaseUrl = baseUrl.trim();
-    if (!normalizedBaseUrl.startsWith('http://') &&
-        !normalizedBaseUrl.startsWith('https://')) {
-      normalizedBaseUrl = 'https://$normalizedBaseUrl';
-    }
-
-    final base = Uri.parse(normalizedBaseUrl);
-    final basePath = base.path.endsWith('/')
-        ? base.path.substring(0, base.path.length - 1)
-        : base.path;
-    final extraPath = path.startsWith('/') ? path : '/$path';
-    // Importante: conservar cualquier prefijo de path del endpoint.
-    // Ej: https://host/prefix + /api/override/verify => https://host/prefix/api/override/verify
-    final uri = base.replace(path: '$basePath$extraPath');
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final api = ApiClient(baseUrl: baseUrl);
+    final headers = <String, String>{};
     if (apiKey != null && apiKey.trim().isNotEmpty) {
       headers['x-override-key'] = apiKey.trim();
     }
 
-    final response = await http
-        .post(uri, headers: headers, body: jsonEncode(payload))
-        .timeout(defaultRemoteTimeout);
+    final response = await api.postJson(
+      path,
+      headers: headers,
+      body: payload,
+      timeout: defaultRemoteTimeout,
+    );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('HTTP ${response.statusCode}');

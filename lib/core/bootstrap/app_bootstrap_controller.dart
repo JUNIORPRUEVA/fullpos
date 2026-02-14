@@ -17,6 +17,7 @@ import '../database/recovery/database_recovery_service.dart';
 import '../debug/loader_watchdog.dart';
 import '../session/session_manager.dart';
 import '../window/window_service.dart';
+import '../../features/registration/services/business_registration_service.dart';
 
 enum BootStatus { loading, ready, error }
 
@@ -165,6 +166,10 @@ class AppBootstrapController extends ChangeNotifier {
       await _reloadAuthSnapshot().timeout(const Duration(seconds: 20));
       _log('session loaded');
       if (token != _runToken) return;
+
+      // Registro nube offline-first: reintentar una vez lo pendiente.
+      // No debe bloquear el arranque.
+      unawaited(BusinessRegistrationService().retryPendingOnce());
 
       const minSplash = Duration(milliseconds: 900);
       final elapsed = DateTime.now().difference(startedAt);

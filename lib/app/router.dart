@@ -45,6 +45,7 @@ import '../features/license/ui/license_page.dart';
 import '../features/license/ui/license_blocked_page.dart';
 import '../features/license/services/license_storage.dart';
 import '../features/license/services/license_api.dart';
+import '../features/license/services/business_license_sync.dart';
 import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
@@ -475,6 +476,28 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
       isActive: true,
       isBlocked: false,
       code: 'TEST',
+    );
+  }
+
+  // 1) OFFLINE-FIRST: si existe %APPDATA%/FullPOS/license.dat y es válida,
+  // permitir acceso sin red y sin device_id.
+  final businessSync = BusinessLicenseSync();
+  if (await businessSync.applyLocalLicenseIfValid()) {
+    return const _LicenseGateDecision(
+      isActive: true,
+      isBlocked: false,
+      code: 'OK',
+    );
+  }
+
+  // 2) Si hay internet, intentar descargar la licencia (poll cada 30 min).
+  // Esto actualiza el cache local (SharedPreferences) y license.dat si aplica.
+  await businessSync.tryPollFromCloudIfDue();
+  if (await businessSync.applyLocalLicenseIfValid()) {
+    return const _LicenseGateDecision(
+      isActive: true,
+      isBlocked: false,
+      code: 'OK',
     );
   }
 

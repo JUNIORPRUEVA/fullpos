@@ -10,6 +10,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../db/app_db.dart';
 import '../db/tables.dart';
+import '../network/api_client.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/products/data/products_repository.dart';
@@ -107,7 +108,6 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(baseUrl).replace(path: '/api/auth/sync-users');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -188,9 +188,13 @@ class CloudSyncService {
         'users': users,
       };
 
-      final response = await http
-          .post(uri, headers: headers, body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 10));
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/auth/sync-users',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 10),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         String body = '';
@@ -229,19 +233,20 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(
-        baseUrl,
-      ).replace(path: '/api/companies/config/by-rnc');
-      final headers = <String, String>{'Content-Type': 'application/json'};
+      final api = ApiClient(baseUrl: baseUrl);
+      final headers = <String, String>{};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
         headers['x-cloud-key'] = cloudKey;
       }
 
       final payload = await _buildPayload(settings, rnc, cloudCompanyId);
-      final response = await http
-          .put(uri, headers: headers, body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 8));
+      final response = await api.putJson(
+        '/api/companies/config/by-rnc',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 8),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await AppLogger.instance.logWarn(
@@ -271,8 +276,6 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(baseUrl).replace(path: '/api/products/sync/by-rnc');
-
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -381,9 +384,13 @@ class CloudSyncService {
         if (deletedCodes.isNotEmpty) 'deletedProducts': deletedCodes.toList(),
       };
 
-      final response = await http
-          .post(uri, headers: headers, body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 12));
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/products/sync/by-rnc',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 12),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await AppLogger.instance.logWarn(
@@ -416,7 +423,6 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(baseUrl).replace(path: '/api/sales/sync/by-rnc');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -523,9 +529,13 @@ class CloudSyncService {
           'sales': chunk,
         };
 
-        final response = await http
-            .post(uri, headers: headers, body: jsonEncode(payload))
-            .timeout(const Duration(seconds: 20));
+        final api = ApiClient(baseUrl: baseUrl);
+        final response = await api.postJson(
+          '/api/sales/sync/by-rnc',
+          headers: headers,
+          body: payload,
+          timeout: const Duration(seconds: 20),
+        );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
           await AppLogger.instance.logWarn(
@@ -559,7 +569,6 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(baseUrl).replace(path: '/api/cash/sync/by-rnc');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -633,9 +642,13 @@ class CloudSyncService {
         'movements': movements,
       };
 
-      final response = await http
-          .post(uri, headers: headers, body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 20));
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/cash/sync/by-rnc',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 20),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await AppLogger.instance.logWarn(
@@ -668,7 +681,6 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(baseUrl).replace(path: '/api/quotes/sync/by-rnc');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -758,9 +770,13 @@ class CloudSyncService {
           'quotes': chunk,
         };
 
-        final response = await http
-            .post(uri, headers: headers, body: jsonEncode(payload))
-            .timeout(const Duration(seconds: 20));
+        final api = ApiClient(baseUrl: baseUrl);
+        final response = await api.postJson(
+          '/api/quotes/sync/by-rnc',
+          headers: headers,
+          body: payload,
+          timeout: const Duration(seconds: 20),
+        );
         if (response.statusCode < 200 || response.statusCode >= 300) {
           await AppLogger.instance.logWarn(
             'Cloud quotes sync failed status=${response.statusCode}',
@@ -796,7 +812,6 @@ class CloudSyncService {
       }
 
       final baseUrl = _resolveBaseUrl(settings);
-      final uri = Uri.parse(baseUrl).replace(path: '/api/auth/provision-user');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
       if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -813,9 +828,13 @@ class CloudSyncService {
         'role': 'admin',
       };
 
-      final response = await http
-          .post(uri, headers: headers, body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 8));
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        provisionOwnerPath,
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 8),
+      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         await AppLogger.instance.logWarn(
@@ -940,9 +959,8 @@ class CloudSyncService {
       final file = File(filePath);
       if (!await file.exists()) return null;
 
-      final uri = Uri.parse(
-        baseUrl,
-      ).replace(path: '/api/uploads/product-image');
+      final api = ApiClient(baseUrl: baseUrl);
+      final uri = api.uri('/api/uploads/product-image');
       final request = http.MultipartRequest('POST', uri);
       if (cloudKey != null && cloudKey.isNotEmpty) {
         request.headers['x-cloud-key'] = cloudKey;
@@ -975,7 +993,10 @@ class CloudSyncService {
         ),
       );
 
-      final response = await request.send();
+      final response = await api.sendMultipart(
+        request,
+        timeout: const Duration(seconds: 20),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         try {
           final body = await response.stream.bytesToString();
@@ -1007,16 +1028,16 @@ class CloudSyncService {
           : '';
       if (filename.isEmpty) return;
 
-      final uri = Uri.parse(
-        baseUrl,
-      ).replace(path: '/api/uploads/product-image/$filename');
       final headers = <String, String>{};
       if (cloudKey != null && cloudKey.isNotEmpty) {
         headers['x-cloud-key'] = cloudKey;
       }
-      await http
-          .delete(uri, headers: headers)
-          .timeout(const Duration(seconds: 8));
+      final api = ApiClient(baseUrl: baseUrl);
+      await api.delete(
+        '/api/uploads/product-image/$filename',
+        headers: headers,
+        timeout: const Duration(seconds: 8),
+      );
     } catch (_) {}
   }
 }

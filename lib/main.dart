@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
+import 'core/config/app_config.dart';
 import 'core/debug/render_diagnostics.dart';
 import 'core/db/db_init.dart';
 import 'core/errors/error_handler.dart';
@@ -78,6 +79,9 @@ Future<void> main() async {
       } catch (_) {
         // Si falla el logger, no detenemos el arranque.
       }
+
+      // Configuración central (base URL, UA, etc.).
+      await AppConfig.init();
 
       DbInit.ensureInitialized();
       if (kDebugMode) {

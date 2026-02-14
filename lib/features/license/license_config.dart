@@ -1,8 +1,13 @@
+import '../../core/config/app_config.dart';
+
 /// Configuración fija del sistema de licencias.
 ///
 /// Nota: el cliente NO debe configurar esta URL.
-const kLicenseBackendBaseUrl =
-    'https://fulltechpos-proyects-fulltechpos-backend-wed.gcdndd.easypanel.host';
+
+/// Base URL oficial para licencias/registro.
+///
+/// Centralizada en [AppConfig.apiBaseUrl].
+String get kLicenseBackendBaseUrl => AppConfig.apiBaseUrl;
 
 const kFullposProjectCode = 'FULLPOS';
 

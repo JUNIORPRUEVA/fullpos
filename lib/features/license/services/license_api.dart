@@ -1,33 +1,25 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import '../../../core/network/api_client.dart';
 
 import '../data/license_models.dart';
 
 class LicenseApi {
-  final http.Client _client;
-
-  LicenseApi({http.Client? client}) : _client = client ?? http.Client();
-
-  Uri _uri(String baseUrl, String path) {
-    var b = baseUrl.trim();
-    if (b.endsWith('/')) b = b.substring(0, b.length - 1);
-    if (!path.startsWith('/')) path = '/$path';
-    return Uri.parse('$b$path');
-  }
+  LicenseApi();
 
   Future<Map<String, dynamic>> _postJson({
     required String baseUrl,
     required String path,
     required Map<String, dynamic> body,
   }) async {
-    final res = await _client.post(
-      _uri(baseUrl, path),
-      headers: {
-        'content-type': 'application/json',
+    final api = ApiClient(baseUrl: baseUrl);
+    final res = await api.postJson(
+      path,
+      headers: const {
         'accept': 'application/json',
       },
-      body: jsonEncode(body),
+      body: body,
+      timeout: const Duration(seconds: 8),
     );
 
     Map<String, dynamic>? map;
@@ -89,20 +81,19 @@ class LicenseApi {
     required String deviceId,
     required String projectCode,
   }) async {
-    final res = await _client
-        .post(
-      _uri(baseUrl, '/api/licenses/check'),
-      headers: {
-        'content-type': 'application/json',
+    final api = ApiClient(baseUrl: baseUrl);
+    final res = await api.postJson(
+      '/api/licenses/check',
+      headers: const {
         'accept': 'application/json',
       },
-      body: jsonEncode({
+      body: {
         'license_key': licenseKey,
         'device_id': deviceId,
         'project_code': projectCode,
-      }),
-    )
-        .timeout(const Duration(seconds: 8));
+      },
+      timeout: const Duration(seconds: 8),
+    );
 
     Map<String, dynamic>? map;
     try {
@@ -129,19 +120,18 @@ class LicenseApi {
     required String deviceId,
     required String projectCode,
   }) async {
-    final res = await _client
-        .post(
-      _uri(baseUrl, '/api/licenses/auto-activate'),
-      headers: {
-        'content-type': 'application/json',
+    final api = ApiClient(baseUrl: baseUrl);
+    final res = await api.postJson(
+      '/api/licenses/auto-activate',
+      headers: const {
         'accept': 'application/json',
       },
-      body: jsonEncode({
+      body: {
         'device_id': deviceId,
         'project_code': projectCode,
-      }),
-    )
-        .timeout(const Duration(seconds: 8));
+      },
+      timeout: const Duration(seconds: 8),
+    );
 
     Map<String, dynamic>? map;
     try {
@@ -191,25 +181,63 @@ class LicenseApi {
     required Map<String, dynamic> licenseFile,
     String? deviceIdCheck,
   }) {
-    var path = '/api/licenses/verify-offline-file';
-    if (deviceIdCheck != null && deviceIdCheck.trim().isNotEmpty) {
-      path =
-          '$path?device_id=${Uri.encodeQueryComponent(deviceIdCheck.trim())}';
-    }
-    return _postJson(baseUrl: baseUrl, path: path, body: licenseFile);
+    final query = (deviceIdCheck != null && deviceIdCheck.trim().isNotEmpty)
+        ? {'device_id': deviceIdCheck.trim()}
+        : null;
+
+    final api = ApiClient(baseUrl: baseUrl);
+    return () async {
+      final res = await api.postJson(
+        '/api/licenses/verify-offline-file',
+        headers: const {'accept': 'application/json'},
+        queryParameters: query,
+        body: licenseFile,
+        timeout: const Duration(seconds: 8),
+      );
+
+      Map<String, dynamic>? map;
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map<String, dynamic>) map = decoded;
+      } catch (_) {}
+
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        final msg = (map?['message'] ?? map?['error'] ?? res.body).toString();
+        final code = map?['code']?.toString();
+        throw LicenseApiException(
+          message: msg,
+          statusCode: res.statusCode,
+          code: code,
+        );
+      }
+      if (map == null) {
+        throw LicenseApiException(
+          message: 'Respuesta inválida del servidor',
+          statusCode: res.statusCode,
+        );
+      }
+      if (map['ok'] == false) {
+        throw LicenseApiException(
+          message: (map['message'] ?? 'Operación no exitosa').toString(),
+          statusCode: res.statusCode,
+          code: map['code']?.toString(),
+        );
+      }
+      return map;
+    }();
   }
 
   Future<Map<String, dynamic>> getPublicSigningKey({
     required String baseUrl,
   }) async {
-    final res = await _client
-        .get(
-      _uri(baseUrl, '/api/licenses/public-signing-key'),
-      headers: {
+    final api = ApiClient(baseUrl: baseUrl);
+    final res = await api.get(
+      '/api/licenses/public-signing-key',
+      headers: const {
         'accept': 'application/json',
       },
-    )
-        .timeout(const Duration(seconds: 8));
+      timeout: const Duration(seconds: 8),
+    );
 
     Map<String, dynamic>? map;
     try {

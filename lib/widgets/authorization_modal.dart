@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../core/config/backend_config.dart';
 import '../core/security/app_actions.dart';
 import '../core/security/authorization_service.dart';
 import '../core/security/scanner_input_controller.dart';
@@ -177,11 +178,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   }
 
   String? _resolveRemoteBaseUrl() {
-    const fallback = String.fromEnvironment(
-      'BACKEND_BASE_URL',
-      defaultValue:
-          'https://fullpos-proyecto-producion-fullpos-bakend.gcdndd.easypanel.host',
-    );
+    final fallback = backendBaseUrl;
     try {
       final settings = appConfigService.settings;
       final endpoint = settings.cloudEndpoint?.trim();

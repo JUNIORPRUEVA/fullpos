@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../features/settings/data/business_settings_repository.dart';
 import '../config/backend_config.dart';
+import '../network/api_client.dart';
 import '../logging/app_logger.dart';
 
 class CloudBackupUploadResult {
@@ -70,6 +71,7 @@ class CloudBackupService {
         (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
             ? settings.cloudEndpoint!.trim()
             : backendBaseUrl;
+    final api = ApiClient(baseUrl: baseUrl);
     final cloudKey = settings.cloudApiKey?.trim();
     final companyCloudId = settings.cloudCompanyId?.trim();
     final rnc = settings.rnc?.trim();
@@ -81,8 +83,8 @@ class CloudBackupService {
       );
     }
 
-    final uri = Uri.parse(baseUrl).replace(path: '/api/backups/create');
-    final request = http.MultipartRequest('POST', uri);
+  final uri = api.uri('/api/backups/create');
+  final request = http.MultipartRequest('POST', uri);
     request.headers['x-cloud-key'] = cloudKey;
     request.fields['deviceId'] = deviceId;
     request.fields['dbVersion'] = dbVersion.toString();
@@ -100,7 +102,10 @@ class CloudBackupService {
     request.files.add(await http.MultipartFile.fromPath('file', filePath));
 
     try {
-      final response = await request.send();
+      final response = await api.sendMultipart(
+        request,
+        timeout: const Duration(seconds: 20),
+      );
       final payload = await response.stream.bytesToString();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return CloudBackupUploadResult(
@@ -132,24 +137,24 @@ class CloudBackupService {
         (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
             ? settings.cloudEndpoint!.trim()
             : backendBaseUrl;
+    final api = ApiClient(baseUrl: baseUrl);
     final cloudKey = settings.cloudApiKey?.trim();
     final companyCloudId = settings.cloudCompanyId?.trim();
     final rnc = settings.rnc?.trim();
 
     if (cloudKey == null || cloudKey.isEmpty) return [];
-    final uri = Uri.parse(baseUrl).replace(
-      path: '/api/backups/list',
-      queryParameters: {
-        if (companyCloudId != null && companyCloudId.isNotEmpty)
-          'companyCloudId': companyCloudId,
-        if (rnc != null && rnc.isNotEmpty) 'companyRnc': rnc,
-      },
-    );
+    final query = <String, String>{
+      if (companyCloudId != null && companyCloudId.isNotEmpty)
+        'companyCloudId': companyCloudId,
+      if (rnc != null && rnc.isNotEmpty) 'companyRnc': rnc,
+    };
     try {
-      final response = await http.get(
-        uri,
+      final response = await api.get(
+        '/api/backups/list',
+        queryParameters: query.isEmpty ? null : query,
         headers: {'x-cloud-key': cloudKey},
-      ).timeout(const Duration(seconds: 10));
+        timeout: const Duration(seconds: 10),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) return [];
       final data = jsonDecode(response.body) as List<dynamic>;
       return data
@@ -174,16 +179,16 @@ class CloudBackupService {
         (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
             ? settings.cloudEndpoint!.trim()
             : backendBaseUrl;
+    final api = ApiClient(baseUrl: baseUrl);
     final cloudKey = settings.cloudApiKey?.trim();
 
     if (cloudKey == null || cloudKey.isEmpty) return null;
-    final uri = Uri.parse(baseUrl)
-        .replace(path: '/api/backups/download/$cloudBackupId');
     try {
-      final response = await http.get(
-        uri,
+      final response = await api.get(
+        '/api/backups/download/$cloudBackupId',
         headers: {'x-cloud-key': cloudKey},
-      ).timeout(const Duration(seconds: 20));
+        timeout: const Duration(seconds: 20),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
       }
@@ -208,21 +213,19 @@ class CloudBackupService {
         (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
             ? settings.cloudEndpoint!.trim()
             : backendBaseUrl;
+    final api = ApiClient(baseUrl: baseUrl);
     final cloudKey = settings.cloudApiKey?.trim();
 
     if (cloudKey == null || cloudKey.isEmpty) return false;
-    final uri = Uri.parse(baseUrl).replace(path: '/api/backups/restore/validate');
     try {
-      final response = await http
-          .post(
-            uri,
-            headers: {
-              'x-cloud-key': cloudKey,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'cloudBackupId': cloudBackupId}),
-          )
-          .timeout(const Duration(seconds: 12));
+      final response = await api.postJson(
+        '/api/backups/restore/validate',
+        headers: {
+          'x-cloud-key': cloudKey,
+        },
+        body: {'cloudBackupId': cloudBackupId},
+        timeout: const Duration(seconds: 12),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return false;
       }
@@ -269,6 +272,7 @@ class CloudBackupService {
         (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
             ? settings.cloudEndpoint!.trim()
             : backendBaseUrl;
+    final api = ApiClient(baseUrl: baseUrl);
     final cloudKey = settings.cloudApiKey?.trim();
     final companyCloudId = settings.cloudCompanyId?.trim();
     final rnc = settings.rnc?.trim();
@@ -278,28 +282,22 @@ class CloudBackupService {
         (rnc == null || rnc.isEmpty)) {
       return false;
     }
-
-    final uri = Uri.parse(baseUrl).replace(
-      path: '/api/company/actions',
-    );
     try {
-      final response = await http
-          .post(
-            uri,
-            headers: {
-              'x-cloud-key': cloudKey,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'action': action,
-              'phrase': phrase,
-              'adminPin': adminPin,
-              if (companyCloudId != null && companyCloudId.isNotEmpty)
-                'companyCloudId': companyCloudId,
-              if (rnc != null && rnc.isNotEmpty) 'companyRnc': rnc,
-            }),
-          )
-          .timeout(const Duration(seconds: 12));
+      final response = await api.postJson(
+        '/api/company/actions',
+        headers: {
+          'x-cloud-key': cloudKey,
+        },
+        body: {
+          'action': action,
+          'phrase': phrase,
+          'adminPin': adminPin,
+          if (companyCloudId != null && companyCloudId.isNotEmpty)
+            'companyCloudId': companyCloudId,
+          if (rnc != null && rnc.isNotEmpty) 'companyRnc': rnc,
+        },
+        timeout: const Duration(seconds: 12),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return false;
       }

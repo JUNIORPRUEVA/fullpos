@@ -54,12 +54,33 @@ class _PaymentDialogState extends State<PaymentDialog> {
   final _layawayNameController = TextEditingController();
   final _layawayPhoneController = TextEditingController();
   final _receivedController = TextEditingController();
-  final FocusNode _rawKeyFocusNode = FocusNode();
   DateTime? _dueDate;
   double _change = 0.0;
   bool _printTicket = true; // Por defecto imprimir
   bool _downloadInvoicePdf = false;
   ClientModel? _selectedClient;
+  bool _isSubmitting = false;
+
+  Future<void> _submitPayment() async {
+    if (_isSubmitting) return;
+    if (!mounted) return;
+
+    // En desktop, el primer click/tecla a veces solo cambia el foco.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(Duration.zero);
+
+    setState(() => _isSubmitting = true);
+    try {
+      await _processPayment();
+    } catch (e) {
+      if (!mounted) return;
+      _showError('Error al cobrar: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
 
   void _selectPrint() {
     setState(() {
@@ -107,18 +128,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     _layawayNameController.dispose();
     _layawayPhoneController.dispose();
     _receivedController.dispose();
-    _rawKeyFocusNode.dispose();
     super.dispose();
-  }
-
-  void _handleKey(RawKeyEvent event) {
-    if (event is! RawKeyDownEvent) return;
-    final key = event.logicalKey;
-
-    if (key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter) {
-      _processPayment();
-    }
   }
 
   void _calculateReceivedChange() {
@@ -304,8 +314,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
       }
     }
 
-    // Retornar resultado
-    Navigator.pop(context, {
+    // Retornar resultado (cerrar el dialogo del root navigator)
+    Navigator.of(context, rootNavigator: true).pop({
       'method': _selectedMethod,
       'cash': double.tryParse(_cashController.text) ?? 0,
       'card': double.tryParse(_cardController.text) ?? 0,
@@ -333,34 +343,26 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return RawKeyboardListener(
-      focusNode: _rawKeyFocusNode,
-      autofocus: true,
-      onKey: _handleKey,
-      child: DialogKeyboardShortcuts(
-        onSubmit: _processPayment,
-        child: Shortcuts(
-          shortcuts: const {
-            SingleActivator(LogicalKeyboardKey.f9):
-                PrintAndConfirmPaymentIntent(),
+    return DialogKeyboardShortcuts(
+      onSubmit: _submitPayment,
+      extraShortcuts: const {
+        SingleActivator(LogicalKeyboardKey.f9): PrintAndConfirmPaymentIntent(),
+      },
+      extraActions: {
+        PrintAndConfirmPaymentIntent: CallbackAction<PrintAndConfirmPaymentIntent>(
+          onInvoke: (_) {
+            _submitPayment();
+            return null;
           },
-          child: Actions(
-            actions: {
-              PrintAndConfirmPaymentIntent:
-                  CallbackAction<PrintAndConfirmPaymentIntent>(
-                    onInvoke: (_) {
-                      _processPayment();
-                      return null;
-                    },
-                  ),
-            },
-            child: Dialog(
-              child: Container(
-                width: 500,
-                constraints: const BoxConstraints(maxHeight: 700),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+        ),
+      },
+      child: Dialog(
+        child: Container(
+          width: 500,
+          constraints: const BoxConstraints(maxHeight: 700),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
                     // Header
                     Container(
                       padding: const EdgeInsets.all(20),
@@ -401,7 +403,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             ),
                           ),
                           IconButton(
-                            onPressed: () => Navigator.pop(context),
+                            onPressed: () =>
+                                Navigator.of(context, rootNavigator: true)
+                                    .pop(),
                             icon: Icon(Icons.close, color: scheme.onPrimary),
                           ),
                         ],
@@ -508,7 +512,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                             color: scheme.primary,
                                           ),
                                           decoration: InputDecoration(
-                                            hintText: widget.total.toStringAsFixed(2),
+                                            hintText:
+                                                widget.total.toStringAsFixed(2),
                                             hintStyle: TextStyle(
                                               color: scheme.onSurface.withAlpha(102),
                                             ),
@@ -518,15 +523,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                               fontWeight: FontWeight.bold,
                                               color: scheme.primary,
                                             ),
-                                            contentPadding: const EdgeInsets.symmetric(
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
                                               horizontal: 12,
                                               vertical: 8,
                                             ),
                                             border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                             ),
                                             focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               borderSide: BorderSide(
                                                 color: scheme.primary,
                                                 width: 2,
@@ -538,7 +546,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                               RegExp(r'^\d+\.?\d{0,2}'),
                                             ),
                                           ],
-                                          onSubmitted: (_) => _processPayment(),
+                                          onSubmitted: (_) => _submitPayment(),
                                         ),
                                       ),
                                     ],
@@ -1130,12 +1138,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               TextButton(
-                                onPressed: () => Navigator.pop(context),
+                                onPressed: () =>
+                                    Navigator.of(context, rootNavigator: true)
+                                        .pop(),
                                 child: const Text('CANCELAR'),
                               ),
                               const SizedBox(width: 12),
                               ElevatedButton.icon(
-                                onPressed: _processPayment,
+                                onPressed:
+                                    _isSubmitting ? null : _submitPayment,
                                 icon: Icon(
                                   _printTicket ? Icons.print : Icons.download,
                                 ),
@@ -1166,9 +1177,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 

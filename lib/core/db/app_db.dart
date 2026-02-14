@@ -4,6 +4,8 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
+
+import '../config/app_config.dart';
 import '../database/migrations/migration_safety.dart';
 import '../utils/color_utils.dart';
 import 'db_init.dart';
@@ -1914,15 +1916,14 @@ class AppDb {
 
   /// Catálogo demo de herramientas (50 items) repartido en 10 categorías.
   static List<Map<String, dynamic>> _demoProducts() {
-    const base = [
+    final base = [
       {
         'name': 'Taladro recargable 20V',
         'purchasePrice': 2200.0,
         'salePrice': 3200.0,
         'stock': 12.0,
         'stockMin': 2.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1507721999472-8ed4421c4af2?auto=format&fit=crop&w=800&q=80&sig=1',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[0],
         'category': 'Taladros recargables',
       },
       {
@@ -1931,8 +1932,7 @@ class AppDb {
         'salePrice': 2800.0,
         'stock': 10.0,
         'stockMin': 2.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=800&q=80&sig=2',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[1],
         'category': 'Taladros eléctricos',
       },
       {
@@ -1941,8 +1941,7 @@ class AppDb {
         'salePrice': 1150.0,
         'stock': 14.0,
         'stockMin': 2.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80&sig=3',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[2],
         'category': 'Cajas de herramientas',
       },
       {
@@ -1951,8 +1950,7 @@ class AppDb {
         'salePrice': 3400.0,
         'stock': 8.0,
         'stockMin': 2.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1523419400524-fc1e0d787ab7?auto=format&fit=crop&w=800&q=80&sig=4',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[3],
         'category': 'Juegos de cubos',
       },
       {
@@ -1961,8 +1959,7 @@ class AppDb {
         'salePrice': 420.0,
         'stock': 60.0,
         'stockMin': 10.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1503389152951-9f343605f61e?auto=format&fit=crop&w=800&q=80&sig=5',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[4],
         'category': 'Tubería PVC',
       },
       {
@@ -1971,8 +1968,7 @@ class AppDb {
         'salePrice': 4300.0,
         'stock': 6.0,
         'stockMin': 2.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1503389152951-9f343605f61e?auto=format&fit=crop&w=800&q=80&sig=6',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[5],
         'category': 'Electricidad',
       },
       {
@@ -1981,8 +1977,7 @@ class AppDb {
         'salePrice': 780.0,
         'stock': 20.0,
         'stockMin': 3.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1454991727061-2868c0807f7f?auto=format&fit=crop&w=800&q=80&sig=7',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[6],
         'category': 'Plomería',
       },
       {
@@ -1991,8 +1986,7 @@ class AppDb {
         'salePrice': 420.0,
         'stock': 40.0,
         'stockMin': 5.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1514996937319-344454492b37?auto=format&fit=crop&w=800&q=80&sig=8',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[7],
         'category': 'Medición',
       },
       {
@@ -2001,8 +1995,7 @@ class AppDb {
         'salePrice': 250.0,
         'stock': 45.0,
         'stockMin': 6.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1454991924124-4c0796370749?auto=format&fit=crop&w=800&q=80&sig=9',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[8],
         'category': 'Seguridad',
       },
       {
@@ -2011,8 +2004,7 @@ class AppDb {
         'salePrice': 260.0,
         'stock': 70.0,
         'stockMin': 10.0,
-        'imageUrl':
-            'https://images.unsplash.com/photo-1507722407803-9ac805f252d2?auto=format&fit=crop&w=800&q=80&sig=10',
+        'imageUrl': AppConfig.demoUnsplashImageUrls[9],
         'category': 'Adhesivos y sellantes',
       },
     ];
