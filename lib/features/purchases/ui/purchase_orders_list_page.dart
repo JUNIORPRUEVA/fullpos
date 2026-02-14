@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
@@ -424,7 +425,7 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
         shadowColor: theme.shadowColor.withOpacity(0.12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: scheme.outlineVariant.withOpacity(0.6)),
+          side: const BorderSide(color: AppColors.bgDark),
         ),
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -628,7 +629,7 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(18),
                             side: BorderSide(
-                              color: scheme.outlineVariant.withOpacity(0.5),
+                              color: AppColors.bgDark.withOpacity(0.85),
                             ),
                           ),
                           child: ClipRRect(

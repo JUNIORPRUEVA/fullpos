@@ -51,128 +51,133 @@ class _CashOpenDialogState extends State<CashOpenDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: headerBg,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: headerBg,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.open_in_new, color: headerFg, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Abrir Sesión de Caja',
+                        style: TextStyle(
+                          color: headerFg,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, color: headerFg),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.open_in_new, color: headerFg, size: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Abrir Sesión de Caja',
+              // Body
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Ingresa el monto inicial de la caja:',
                       style: TextStyle(
-                        color: headerFg,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: headerFg),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            // Body
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Ingresa el monto inicial de la caja:',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _amountController,
-                    autofocus: true,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _amountController,
+                      autofocus: true,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '0.00',
+                        prefixText: '\$',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                      ),
                     ),
-                    decoration: InputDecoration(
-                      hintText: '0.00',
-                      prefixText: '\$',
-                      border: OutlineInputBorder(
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer.withAlpha(102),
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: scheme.primary.withAlpha(102),
+                        ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer.withAlpha(102),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: scheme.primary.withAlpha(102)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info, color: scheme.primary, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'La sesión se abrirá con el monto especificado',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: scheme.primary,
+                      child: Row(
+                        children: [
+                          Icon(Icons.info, color: scheme.primary, size: 20),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'La sesión se abrirá con el monto especificado',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: scheme.primary,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            // Footer
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
+                  ],
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancelar'),
+              // Footer
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
                   ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _openSession,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: status.success,
-                      foregroundColor: ColorUtils.readableTextColor(
-                        status.success,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancelar'),
                     ),
-                    child: Text('Abrir Sesión'),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: _openSession,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: status.success,
+                        foregroundColor: ColorUtils.readableTextColor(
+                          status.success,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                      ),
+                      child: Text('Abrir Sesión'),
+                    ),
+                  ],
+                ),
               ),
-            ),
             ],
           ),
         ),
@@ -181,7 +186,8 @@ class _CashOpenDialogState extends State<CashOpenDialog> {
   }
 
   void _openSession() {
-    final amount = double.tryParse(_amountController.text);
+    final raw = _amountController.text.trim();
+    final amount = raw.isEmpty ? 0.0 : double.tryParse(raw);
     if (amount == null || amount < 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

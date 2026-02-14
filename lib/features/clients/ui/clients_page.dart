@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
@@ -80,6 +81,8 @@ class _ClientsPageState extends State<ClientsPage> {
   final _filters = ClientFilters();
 
   List<ClientModel> _clients = [];
+  ClientModel? _selectedClient;
+  int? _selectedClientId;
   bool _isLoading = false;
 
   DateTime? _statsFromDate;
@@ -126,6 +129,23 @@ class _ClientsPageState extends State<ClientsPage> {
       if (mounted) {
         setState(() {
           _clients = clients;
+          if (clients.isEmpty) {
+            _selectedClient = null;
+            _selectedClientId = null;
+          } else {
+            final currentId = _selectedClientId;
+            if (currentId == null) {
+              _selectedClient = clients.first;
+              _selectedClientId = clients.first.id;
+            } else {
+              final match = clients.firstWhere(
+                (c) => c.id == currentId,
+                orElse: () => clients.first,
+              );
+              _selectedClient = match;
+              _selectedClientId = match.id;
+            }
+          }
           _isLoading = false;
         });
       }
@@ -186,7 +206,7 @@ class _ClientsPageState extends State<ClientsPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.bgDark),
       ),
       child: Row(
         children: [
@@ -241,7 +261,7 @@ class _ClientsPageState extends State<ClientsPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppSizes.radiusL),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.bgDark),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSizes.paddingL),
@@ -592,10 +612,255 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 
+  void _selectClient(ClientModel client, {required bool showDetails}) {
+    if (!mounted) return;
+    setState(() {
+      _selectedClient = client;
+      _selectedClientId = client.id;
+    });
+    if (showDetails) {
+      _showClientDetails(client);
+    }
+  }
+
+  Widget _buildClientsListHeader() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.70);
+
+    Text label(String text, {TextAlign? align}) {
+      return Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: align,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: muted,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.15,
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingM),
+      height: 34,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(AppSizes.radiusM),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: label('Nombre')),
+          const SizedBox(width: AppSizes.paddingM),
+          Expanded(flex: 1, child: label('Teléfono')),
+          const SizedBox(width: AppSizes.paddingS),
+          Expanded(flex: 1, child: label('RNC')),
+          const SizedBox(width: AppSizes.paddingS),
+          Expanded(flex: 1, child: label('Cédula')),
+          const SizedBox(width: AppSizes.paddingS),
+          SizedBox(width: 64, child: label('Estado', align: TextAlign.center)),
+          const SizedBox(width: AppSizes.paddingS),
+          SizedBox(width: 88, child: label('Crédito', align: TextAlign.center)),
+          const SizedBox(width: AppSizes.paddingS),
+          SizedBox(width: 86, child: label('Creado', align: TextAlign.center)),
+          const SizedBox(width: AppSizes.paddingS),
+          SizedBox(width: 28, child: label('', align: TextAlign.center)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClientDetailsPanel(ClientModel? client) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.7);
+
+    if (client == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Detalle de cliente',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selecciona un cliente para ver sus detalles.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(client.createdAtMs);
+    final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
+    final initials = client.nombre.trim().isNotEmpty
+        ? client.nombre.trim().substring(0, 1).toUpperCase()
+        : '?';
+    final activeColor = client.isActive ? scheme.tertiary : scheme.outline;
+    final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
+
+    Widget chip(String text, Color color, {IconData? icon}) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withOpacity(0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: scheme.onSurface),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              text,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+                letterSpacing: 0.2,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget fieldRow(String label, String value) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 88,
+              child: Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: muted,
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                value,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: scheme.primary.withOpacity(0.12),
+                  foregroundColor: scheme.primary,
+                  child: Text(
+                    initials,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    client.nombre,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Abrir detalle',
+                  onPressed: () => _showClientDetails(client),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                chip(client.isActive ? 'Activo' : 'Inactivo', activeColor),
+                chip(
+                  client.hasCredit ? 'Crédito' : 'Sin crédito',
+                  creditColor,
+                  icon: client.hasCredit ? Icons.credit_card : Icons.block,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            fieldRow(
+              'Teléfono',
+              (client.telefono?.isNotEmpty == true) ? client.telefono! : '-',
+            ),
+            fieldRow(
+              'RNC',
+              (client.rnc?.isNotEmpty == true) ? client.rnc! : '-',
+            ),
+            fieldRow(
+              'Cédula',
+              (client.cedula?.isNotEmpty == true) ? client.cedula! : '-',
+            ),
+            fieldRow(
+              'Dirección',
+              (client.direccion?.isNotEmpty == true) ? client.direccion! : '-',
+            ),
+            fieldRow('Creado', createdLabel),
+          ],
+        ),
+      ),
+    );
+  }
+
   EdgeInsets _contentPadding(BoxConstraints constraints) {
     const maxContentWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
+    final side = ((constraints.maxWidth - contentWidth) / 2)
+        .clamp(12.0, 40.0)
+        .toDouble();
     return EdgeInsets.fromLTRB(side, 16, side, 16);
   }
 
@@ -608,17 +873,24 @@ class _ClientsPageState extends State<ClientsPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final padding = _contentPadding(constraints);
+        final isWide = constraints.maxWidth >= 1200;
         final isNarrow = constraints.maxWidth < 980;
+        final detailWidth = (constraints.maxWidth * 0.28)
+            .clamp(320.0, 420.0)
+            .toDouble();
+        final headerMinWidth = math
+            .max(0.0, constraints.maxWidth - padding.left - padding.right)
+            .toDouble();
 
         final listCard = Container(
           width: double.infinity,
           decoration: BoxDecoration(
             color: scheme.surface,
             borderRadius: BorderRadius.circular(AppSizes.radiusL),
-            border: Border.all(color: scheme.outlineVariant),
+            border: Border.all(color: AppColors.bgDark),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(AppSizes.paddingL),
+            padding: const EdgeInsets.all(AppSizes.paddingM),
             child: Column(
               children: [
                 TextField(
@@ -630,11 +902,11 @@ class _ClientsPageState extends State<ClientsPage> {
                     fillColor: scheme.surfaceContainerHighest,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      borderSide: BorderSide(color: scheme.outlineVariant),
+                      borderSide: const BorderSide(color: AppColors.bgDark),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      borderSide: BorderSide(color: scheme.outlineVariant),
+                      borderSide: const BorderSide(color: AppColors.bgDark),
                     ),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
@@ -672,55 +944,63 @@ class _ClientsPageState extends State<ClientsPage> {
                       ],
                     ),
                   ),
+                if (_clients.isNotEmpty) ...[
+                  _buildClientsListHeader(),
+                  const SizedBox(height: AppSizes.spaceS),
+                ],
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _clients.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.people_outline,
-                                    size: 64,
-                                    color: mutedText,
-                                  ),
-                                  const SizedBox(height: AppSizes.spaceM),
-                                  Text(
-                                    'No hay clientes',
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      color: mutedText,
-                                    ),
-                                  ),
-                                  const SizedBox(height: AppSizes.spaceS),
-                                  Text(
-                                    _filters.query.isNotEmpty ||
-                                            _filters.isActive != null ||
-                                            _filters.hasCredit != null
-                                        ? 'Intenta cambiar los filtros'
-                                        : 'Haz clic en "Nuevo cliente" para agregar uno',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: mutedText,
-                                    ),
-                                  ),
-                                ],
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.people_outline,
+                                size: 64,
+                                color: mutedText,
                               ),
-                            )
-                          : ListView.builder(
-                              itemCount: _clients.length,
-                              itemBuilder: (context, index) {
-                                final client = _clients[index];
-                                return ClientRowTile(
-                                  client: client,
-                                  onViewDetails: () =>
-                                      _showClientDetails(client),
-                                  onEdit: () => _showClientDialog(client),
-                                  onToggleActive: () => _toggleActive(client),
-                                  onToggleCredit: () => _toggleCredit(client),
-                                  onDelete: () => _deleteClient(client),
-                                );
-                              },
-                            ),
+                              const SizedBox(height: AppSizes.spaceM),
+                              Text(
+                                'No hay clientes',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: mutedText,
+                                ),
+                              ),
+                              const SizedBox(height: AppSizes.spaceS),
+                              Text(
+                                _filters.query.isNotEmpty ||
+                                        _filters.isActive != null ||
+                                        _filters.hasCredit != null
+                                    ? 'Intenta cambiar los filtros'
+                                    : 'Haz clic en "Nuevo cliente" para agregar uno',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: mutedText,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _clients.length,
+                          itemBuilder: (context, index) {
+                            final client = _clients[index];
+                            final isSelected = client.id != null
+                                ? client.id == _selectedClientId
+                                : identical(client, _selectedClient);
+                            return ClientRowTile(
+                              client: client,
+                              isSelected: isSelected,
+                              onViewDetails: () =>
+                                  _selectClient(client, showDetails: !isWide),
+                              onEdit: () => _showClientDialog(client),
+                              onToggleActive: () => _toggleActive(client),
+                              onToggleCredit: () => _toggleCredit(client),
+                              onDelete: () => _deleteClient(client),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -732,48 +1012,74 @@ class _ClientsPageState extends State<ClientsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.people, size: 28, color: scheme.primary),
-                  const Spacer(),
-                  ElevatedButton.icon(
-                    onPressed: _exportClientsToExcel,
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Exportar'),
-                  ),
-                  const SizedBox(width: AppSizes.spaceM),
-                  OutlinedButton.icon(
-                    onPressed: _showFiltersDialog,
-                    icon: const Icon(Icons.filter_list, size: 18),
-                    label: const Text('Filtros'),
-                  ),
-                  const SizedBox(width: AppSizes.spaceM),
-                  ElevatedButton.icon(
-                    onPressed: () => _showClientDialog(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Nuevo cliente'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: scheme.tertiary,
-                      foregroundColor: scheme.onTertiary,
+              SizedBox(
+                height: 44,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: headerMinWidth),
+                    child: Row(
+                      children: [
+                        Icon(Icons.people, size: 28, color: scheme.primary),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Clientes',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const Spacer(),
+                        ElevatedButton.icon(
+                          onPressed: _exportClientsToExcel,
+                          icon: const Icon(Icons.download, size: 18),
+                          label: const Text('Exportar'),
+                        ),
+                        const SizedBox(width: AppSizes.spaceM),
+                        OutlinedButton.icon(
+                          onPressed: _showFiltersDialog,
+                          icon: const Icon(Icons.filter_list, size: 18),
+                          label: const Text('Filtros'),
+                        ),
+                        const SizedBox(width: AppSizes.spaceM),
+                        ElevatedButton.icon(
+                          onPressed: () => _showClientDialog(),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Nuevo cliente'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: scheme.tertiary,
+                            foregroundColor: scheme.onTertiary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
               const SizedBox(height: AppSizes.spaceL),
               Expanded(
-                child: isNarrow
-                    ? Column(
-                        children: [
-                          Flexible(flex: 3, child: listCard),
-                          const SizedBox(height: AppSizes.spaceM),
-                          Flexible(flex: 2, child: _buildAnalyticsPanel()),
-                        ],
-                      )
-                    : Row(
+                child: isWide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(child: listCard),
                           const SizedBox(width: AppSizes.spaceL),
-                          SizedBox(width: 360, child: _buildAnalyticsPanel()),
+                          SizedBox(
+                            width: detailWidth,
+                            child: SizedBox.expand(
+                              child: _buildClientDetailsPanel(_selectedClient),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Flexible(flex: 3, child: listCard),
+                          if (isNarrow) ...[
+                            const SizedBox(height: AppSizes.spaceM),
+                            Flexible(flex: 2, child: _buildAnalyticsPanel()),
+                          ],
                         ],
                       ),
               ),
@@ -784,6 +1090,7 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 }
+
 /// Dialog para configurar filtros
 class _FiltersDialog extends StatefulWidget {
   final ClientFilters filters;
@@ -1032,4 +1339,3 @@ class _FiltersDialogState extends State<_FiltersDialog> {
     );
   }
 }
-

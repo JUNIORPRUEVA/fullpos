@@ -6,6 +6,7 @@ import '../../data/client_model.dart';
 /// Widget compacto para mostrar un cliente en una sola linea (tipo tabla)
 class ClientRowTile extends StatelessWidget {
   final ClientModel client;
+  final bool isSelected;
   final VoidCallback onViewDetails;
   final VoidCallback onEdit;
   final VoidCallback onToggleActive;
@@ -15,6 +16,7 @@ class ClientRowTile extends StatelessWidget {
   const ClientRowTile({
     super.key,
     required this.client,
+    this.isSelected = false,
     required this.onViewDetails,
     required this.onEdit,
     required this.onToggleActive,
@@ -31,23 +33,28 @@ class ClientRowTile extends StatelessWidget {
       DateTime.fromMillisecondsSinceEpoch(client.createdAtMs),
     );
     final mutedText = scheme.onSurface.withOpacity(0.7);
-    final roleColor = client.isActive ? scheme.tertiary : scheme.outline;
+    final statusColor = client.isActive ? scheme.tertiary : scheme.outline;
     final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
+    final bgColor = isSelected
+        ? scheme.primaryContainer.withOpacity(0.35)
+        : scheme.surface;
+
+    return Material(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onViewDetails,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSizes.paddingM,
-            vertical: 8,
+            vertical: 6,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Row(
             children: [
@@ -59,7 +66,7 @@ class ClientRowTile extends StatelessWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: roleColor,
+                        color: statusColor,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -67,10 +74,11 @@ class ClientRowTile extends StatelessWidget {
                     Expanded(
                       child: Text(
                         client.nombre,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -81,8 +89,12 @@ class ClientRowTile extends StatelessWidget {
                 flex: 1,
                 child: Text(
                   client.telefono?.isNotEmpty == true ? client.telefono! : '-',
-                  style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: mutedText,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(width: AppSizes.paddingS),
@@ -90,8 +102,12 @@ class ClientRowTile extends StatelessWidget {
                 flex: 1,
                 child: Text(
                   client.rnc?.isNotEmpty == true ? client.rnc! : '-',
-                  style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: mutedText,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(width: AppSizes.paddingS),
@@ -99,52 +115,78 @@ class ClientRowTile extends StatelessWidget {
                 flex: 1,
                 child: Text(
                   client.cedula?.isNotEmpty == true ? client.cedula! : '-',
-                  style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: AppSizes.paddingS),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: roleColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  client.isActive ? 'Activo' : 'Inactivo',
-                  style: TextStyle(
-                    fontSize: 10,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: mutedText,
                     fontWeight: FontWeight.w600,
-                    color: roleColor,
                   ),
                 ),
               ),
               const SizedBox(width: AppSizes.paddingS),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: creditColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: creditColor.withOpacity(0.5)),
+              SizedBox(
+                width: 64,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: statusColor.withOpacity(0.35)),
+                  ),
+                  child: Text(
+                    client.isActive ? 'Activo' : 'Inactivo',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: scheme.onSurface,
+                      letterSpacing: 0.15,
+                    ),
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      client.hasCredit ? Icons.credit_card : Icons.block,
-                      size: 12,
-                      color: creditColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      client.hasCredit ? 'Credito' : 'Sin credito',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: creditColor,
+              ),
+              const SizedBox(width: AppSizes.paddingS),
+              SizedBox(
+                width: 88,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: creditColor.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: creditColor.withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Icon(
+                        client.hasCredit ? Icons.credit_card : Icons.block,
+                        size: 12,
+                        color: scheme.onSurface,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          client.hasCredit ? 'Crédito' : 'Sin crédito',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: scheme.onSurface,
+                            letterSpacing: 0.15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: AppSizes.paddingS),
@@ -152,15 +194,23 @@ class ClientRowTile extends StatelessWidget {
                 width: 86,
                 child: Text(
                   createdDate,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurface.withOpacity(0.5),
+                    color: scheme.onSurface.withOpacity(0.55),
+                    fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
               ),
               const SizedBox(width: AppSizes.paddingS),
               PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: scheme.onSurface, size: 18),
+                tooltip: 'Acciones',
+                icon: Icon(
+                  Icons.more_vert,
+                  color: scheme.onSurface.withOpacity(0.7),
+                  size: 18,
+                ),
                 padding: EdgeInsets.zero,
                 onSelected: (value) {
                   switch (value) {
@@ -183,9 +233,9 @@ class ClientRowTile extends StatelessWidget {
                     value: 'edit',
                     child: Row(
                       children: [
-                        Icon(Icons.edit, size: 16),
-                        SizedBox(width: 8),
-                        Text('Editar', style: TextStyle(fontSize: 13)),
+                        Icon(Icons.edit, size: 18),
+                        SizedBox(width: 10),
+                        Text('Editar'),
                       ],
                     ),
                   ),
@@ -195,13 +245,10 @@ class ClientRowTile extends StatelessWidget {
                       children: [
                         Icon(
                           client.isActive ? Icons.block : Icons.check_circle,
-                          size: 16,
+                          size: 18,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          client.isActive ? 'Desactivar' : 'Activar',
-                          style: TextStyle(fontSize: 13),
-                        ),
+                        const SizedBox(width: 10),
+                        Text(client.isActive ? 'Desactivar' : 'Activar'),
                       ],
                     ),
                   ),
@@ -213,12 +260,11 @@ class ClientRowTile extends StatelessWidget {
                           client.hasCredit
                               ? Icons.credit_card_off
                               : Icons.credit_card,
-                          size: 16,
+                          size: 18,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Text(
-                          client.hasCredit ? 'Quitar Credito' : 'Dar Credito',
-                          style: TextStyle(fontSize: 13),
+                          client.hasCredit ? 'Quitar crédito' : 'Dar crédito',
                         ),
                       ],
                     ),
@@ -228,15 +274,9 @@ class ClientRowTile extends StatelessWidget {
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete, size: 16, color: scheme.error),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Eliminar',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: scheme.error,
-                          ),
-                        ),
+                        Icon(Icons.delete, size: 18, color: scheme.error),
+                        const SizedBox(width: 10),
+                        Text('Eliminar', style: TextStyle(color: scheme.error)),
                       ],
                     ),
                   ),

@@ -64,7 +64,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
           await SessionManager.username() ??
           'Usuario';
 
-      await ref.read(cashSessionControllerProvider.notifier).openSession(
+      await ref
+          .read(cashSessionControllerProvider.notifier)
+          .openSession(
             userId: userId,
             userName: userName,
             openingAmount: amount,
@@ -148,7 +150,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
             decoration: BoxDecoration(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
+              border: Border.all(
+                color: scheme.outlineVariant.withOpacity(0.55),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: theme.shadowColor.withOpacity(0.22),
@@ -209,7 +213,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         ),
                       ),
                       IconButton(
-                        onPressed: _isLoading ? null : () => Navigator.pop(context),
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.pop(context),
                         icon: Icon(Icons.close, color: headerText),
                         tooltip: 'Cerrar',
                       ),
@@ -281,10 +287,11 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                               ),
                             ),
                             validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Ingrese el monto inicial';
-                              }
-                              final amount = double.tryParse(value);
+                              final raw = value?.trim() ?? '';
+                              // Permite abrir caja con monto vacío (se interpreta como 0).
+                              if (raw.isEmpty) return null;
+
+                              final amount = double.tryParse(raw);
                               if (amount == null || amount < 0) {
                                 return 'Monto invalido';
                               }
@@ -311,7 +318,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                               decoration: InputDecoration(
                                 hintText: 'Ej: Apertura de turno manana',
                                 hintStyle: TextStyle(
-                                  color: scheme.onSurfaceVariant.withOpacity(0.8),
+                                  color: scheme.onSurfaceVariant.withOpacity(
+                                    0.8,
+                                  ),
                                 ),
                                 filled: true,
                                 fillColor: fieldFill,
@@ -347,7 +356,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _isLoading ? null : () => Navigator.pop(context),
+                          onPressed: _isLoading
+                              ? null
+                              : () => Navigator.pop(context),
                           icon: const Icon(Icons.close, size: 18),
                           label: const Text('Cancelar'),
                           style: OutlinedButton.styleFrom(
@@ -402,4 +413,3 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
     );
   }
 }
-

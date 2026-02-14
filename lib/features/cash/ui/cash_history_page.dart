@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/printing/models/receipt_text_utils.dart';
 import '../../../core/printing/models/ticket_layout_config.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
@@ -110,6 +111,151 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
     final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
     return EdgeInsets.fromLTRB(side, 12, side, 12);
+  }
+
+  Widget _buildTopHeaderLine({required bool isNarrow}) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dateFormat = DateFormat('dd/MM/yyyy');
+
+    final controlRadius = BorderRadius.circular(10);
+    final controlBorder = BorderSide(color: scheme.outlineVariant);
+
+    ButtonStyle blackControlStyle({EdgeInsetsGeometry? padding}) {
+      return ElevatedButton.styleFrom(
+        backgroundColor: AppColors.bgDark,
+        foregroundColor: Colors.white,
+        side: controlBorder,
+        shape: RoundedRectangleBorder(borderRadius: controlRadius),
+        padding:
+            padding ??
+            const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+        textStyle: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      );
+    }
+
+    final rangeChip = InkWell(
+      onTap: _pickRange,
+      borderRadius: controlRadius,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: scheme.surfaceVariant.withOpacity(0.35),
+          borderRadius: controlRadius,
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.date_range, size: 18, color: scheme.onSurface),
+            const SizedBox(width: 8),
+            Text(
+              '${dateFormat.format(_from)} - ${dateFormat.format(_to)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: scheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final refreshButton = ElevatedButton.icon(
+      onPressed: _load,
+      icon: const Icon(Icons.refresh, size: 18),
+      label: const Text('Actualizar'),
+      style: blackControlStyle(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      ),
+    );
+
+    final tabControl = SizedBox(
+      height: kTextTabBarHeight,
+      child: Material(
+        color: AppColors.bgDark,
+        shape: RoundedRectangleBorder(
+          borderRadius: controlRadius,
+          side: controlBorder,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: TabBar(
+          isScrollable: true,
+          indicator: BoxDecoration(
+            color: scheme.primary,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          indicatorPadding: const EdgeInsets.all(4),
+          dividerColor: Colors.transparent,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white.withOpacity(0.75),
+          labelStyle: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+          ),
+          tabs: const [
+            Tab(text: 'Turnos'),
+            Tab(text: 'Movimientos'),
+          ],
+        ),
+      ),
+    );
+
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        refreshButton,
+        tabControl,
+      ],
+    );
+
+    final left = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Cortes',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 6),
+        rangeChip,
+      ],
+    );
+
+    return Container(
+      width: double.infinity,
+      color: scheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: isNarrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                left,
+                const SizedBox(height: 10),
+                actions,
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: left),
+                const SizedBox(width: 12),
+                actions,
+              ],
+            ),
+    );
   }
 
   void _selectSession(CashSessionModel session, {required bool showDetails}) {
@@ -579,10 +725,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     );
   }
 
-  Widget _buildSessionDetailsPanel(
-    CashSessionModel? session,
-    double maxHeight,
-  ) {
+  Widget _buildSessionDetailsPanel(CashSessionModel? session) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
@@ -594,7 +737,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         decoration: BoxDecoration(
           color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
+          border: Border.all(color: AppColors.bgDark),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -607,7 +750,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Selecciona un turno para ver la informaciÃ³n.',
+              'Selecciona un turno para ver la información.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.7),
               ),
@@ -622,16 +765,13 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.bgDark),
       ),
       child: FutureBuilder<_SessionDetailData>(
         future: _loadSessionDetail(session),
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const SizedBox(
-              height: 200,
-              child: Center(child: CircularProgressIndicator()),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError || snapshot.data == null) {
             return Text(
@@ -641,9 +781,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           }
 
           final data = snapshot.data!;
-          final availableHeight = maxHeight.clamp(320.0, 680.0);
-          return SizedBox(
-            height: availableHeight,
+          return SizedBox.expand(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,7 +952,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         decoration: BoxDecoration(
           color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
+          border: Border.all(color: AppColors.bgDark),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -827,7 +965,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Selecciona un movimiento para ver la informaciÃ³n.',
+              'Selecciona un movimiento para ver la información.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.7),
               ),
@@ -844,7 +982,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.bgDark),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1315,84 +1453,51 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateFormat = DateFormat('dd/MM/yyyy');
 
     return Scaffold(
       appBar: AppBar(
         title: const SizedBox.shrink(),
         toolbarHeight: 8,
-        backgroundColor: scheme.surface,
         elevation: 0,
         surfaceTintColor: scheme.surface,
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 1200;
           final padding = _contentPadding(constraints);
-          final sideWidth = (constraints.maxWidth * 0.3).clamp(300.0, 380.0);
+          final isWide = constraints.maxWidth >= 1200;
+          final isNarrow = constraints.maxWidth < 720;
+          final sideWidth = (constraints.maxWidth * 0.25).clamp(320.0, 460.0);
 
-          return Padding(
-            padding: padding,
+          return DefaultTabController(
+            length: 2,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickRange,
-                        icon: const Icon(Icons.calendar_today),
-                        label: Text(
-                          'Desde ${dateFormat.format(_from)} - Hasta ${dateFormat.format(_to)}',
-                        ),
-                      ),
+                _buildTopHeaderLine(isNarrow: isNarrow),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      padding.left,
+                      12,
+                      padding.right,
+                      padding.bottom,
                     ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Actualizar'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (_loading)
-                  const Expanded(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (_error != null)
-                  Expanded(
-                    child: Center(
-                      child: Text(_error!, style: theme.textTheme.bodyMedium),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: DefaultTabController(
-                      length: 2,
-                      child: Column(
-                        children: [
-                          TabBar(
-                            labelColor: scheme.primary,
-                            indicatorColor: scheme.primary,
-                            tabs: const [
-                              Tab(text: 'Turnos'),
-                              Tab(text: 'Movimientos'),
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _error != null
+                        ? Center(
+                            child: Text(
+                              _error!,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          )
+                        : TabBarView(
+                            children: [
+                              _buildSessionsList(context, isWide, sideWidth),
+                              _buildMovementsList(context, isWide, sideWidth),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: TabBarView(
-                              children: [
-                                _buildSessionsList(context, isWide, sideWidth),
-                                _buildMovementsList(context, isWide, sideWidth),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
+                ),
               ],
             ),
           );
@@ -1408,7 +1513,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final dateTime = DateFormat('dd/MM HH:mm');
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
 
     if (_sessions.isEmpty) {
@@ -1432,6 +1537,21 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             : (diff > 0 ? scheme.tertiary : scheme.error);
         final isSelected = _selectedSession?.id == session.id;
 
+        final opened = dateTime.format(session.openedAt);
+        final closed = session.closedAt != null
+            ? dateTime.format(session.closedAt!)
+            : null;
+        final headline = StringBuffer()
+          ..write('#${session.id ?? '-'}');
+        final userName = session.userName.trim();
+        if (userName.isNotEmpty) {
+          headline.write('  ·  $userName');
+        }
+        headline.write('  ·  $opened');
+        if (closed != null) {
+          headline.write(' → $closed');
+        }
+
         return InkWell(
           onTap: () => _selectSession(session, showDetails: !isWide),
           borderRadius: BorderRadius.circular(12),
@@ -1441,7 +1561,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
               color: scheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? scheme.primary : scheme.outlineVariant,
+                color: isSelected ? scheme.primary : AppColors.bgDark,
                 width: isSelected ? 1.4 : 1,
               ),
             ),
@@ -1461,67 +1581,47 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Text(
+                    headline.toString(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: isWide ? 310 : 230,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '#${session.id ?? '-'}',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                      Flexible(
+                        child: Text(
+                          'Dif ${money.format(diff)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: diffColor,
+                            fontWeight: FontWeight.w800,
                           ),
-                          Text(
-                            money.format(session.closingAmount ?? 0),
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          _pill('Cajero: ${session.userName}', scheme),
-                          _pill(
-                            'Apertura: ${dateTime.format(session.openedAt)}',
-                            scheme,
-                          ),
-                          if (session.closedAt != null)
-                            _pill(
-                              'Cierre: ${dateTime.format(session.closedAt!)}',
-                              scheme,
-                            ),
-                        ],
+                      const SizedBox(width: 10),
+                      Text(
+                        money.format(session.closingAmount ?? 0),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Text(
-                            'Dif: ${money.format(diff)}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: diffColor,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          if (session.expectedCash != null)
-                            Text(
-                              'Esperado: ${money.format(session.expectedCash)}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                        ],
-                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right, color: scheme.outline),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, color: scheme.outline),
               ],
             ),
           ),
@@ -1532,15 +1632,13 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     if (!isWide) return list;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: list),
         const SizedBox(width: 16),
         SizedBox(
           width: sideWidth,
-          child: _buildSessionDetailsPanel(
-            _selectedSession,
-            MediaQuery.of(context).size.height * 0.72,
-          ),
+          child: _buildSessionDetailsPanel(_selectedSession),
         ),
       ],
     );
@@ -1553,7 +1651,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final dateTime = DateFormat('dd/MM HH:mm');
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
 
     if (_movements.isEmpty) {
@@ -1574,6 +1672,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         final isIn = movement.isIn;
         final color = isIn ? scheme.primary : scheme.error;
         final isSelected = _selectedMovement?.id == movement.id;
+
+        final title = '${movement.reason}  ·  ${dateTime.format(movement.createdAt)}';
         return InkWell(
           onTap: () => _selectMovement(movement, showDetails: !isWide),
           borderRadius: BorderRadius.circular(12),
@@ -1583,7 +1683,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
               color: scheme.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? scheme.primary : scheme.outlineVariant,
+                color: isSelected ? scheme.primary : AppColors.bgDark,
                 width: isSelected ? 1.4 : 1,
               ),
             ),
@@ -1596,23 +1696,13 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        movement.reason,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        dateTime.format(movement.createdAt),
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 Text(
@@ -1632,6 +1722,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     if (!isWide) return list;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: list),
         const SizedBox(width: 16),

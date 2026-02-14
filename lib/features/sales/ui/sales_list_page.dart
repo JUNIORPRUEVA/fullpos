@@ -58,15 +58,14 @@ class _SalesListPageState extends State<SalesListPage> {
     _safeSetState(() => _loading = true);
 
     try {
-      final sales = await DbHardening.instance.runDbSafe<List<SaleModel>>(
+      final data = await DbHardening.instance.runDbSafe<List<SaleModel>>(
         () => SalesRepository.getAllSales(),
-        stage: 'sales/history/load',
       );
 
       _safeSetState(() {
-        _sales = sales;
-        _applyFilters();
+        _sales = data;
         _loading = false;
+        _applyFilters();
       });
     } catch (e, st) {
       _safeSetState(() => _loading = false);
@@ -76,15 +75,15 @@ class _SalesListPageState extends State<SalesListPage> {
         stackTrace: st,
         context: context,
         onRetry: _loadSales,
-        module: 'sales/history/load',
+        module: 'sales/history/list',
       );
     }
   }
 
   void _applyFilters() {
-    var filtered = _sales.where((sale) {
-      // Filtro por búsqueda
-      if (_searchQuery.isNotEmpty) {
+    final filtered = _sales.where((sale) {
+      // Filtro por texto
+      if (_searchQuery.trim().isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         if (!sale.localCode.toLowerCase().contains(query) &&
             !(sale.customerNameSnapshot?.toLowerCase().contains(query) ??
@@ -268,305 +267,287 @@ class _SalesListPageState extends State<SalesListPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Scaffold(
       // Deja ver el fondo global (AppFrame) para el degradado claro.
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          // Header con título y estadísticas
+          // Header (una sola fila): buscador + filtros + totales
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Título y botones
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.teal.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
+            color: scheme.surfaceContainerHighest,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final gap = 8.0;
+                final hasActiveFilters =
+                    _searchQuery.isNotEmpty ||
+                    _startDate != null ||
+                    _selectedPaymentMethod != null ||
+                    _selectedStatus != null;
+
+                final baseBorder = OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: scheme.outlineVariant),
+                );
+
+                final searchField = TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por código o cliente...',
+                    filled: true,
+                    fillColor: scheme.surface,
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.trim().isNotEmpty
+                        ? IconButton(
+                            tooltip: 'Limpiar búsqueda',
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              _onSearchChanged('');
+                            },
+                          )
+                        : null,
+                    border: baseBorder,
+                    enabledBorder: baseBorder,
+                    focusedBorder: baseBorder.copyWith(
+                      borderSide: BorderSide(color: scheme.primary),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                  ),
+                );
+
+                final dateButton = OutlinedButton.icon(
+                  onPressed: _selectDateRange,
+                  icon: const Icon(Icons.date_range, size: 18),
+                  label: Text(
+                    _startDate != null
+                        ? '${DateFormat('dd/MM').format(_startDate!)} - ${DateFormat('dd/MM').format(_endDate!)}'
+                        : 'Fechas',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: scheme.outlineVariant),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                  ),
+                );
+
+                final paymentFilter = PopupMenuButton<String>(
+                  onSelected: (value) {
+                    _safeSetState(() {
+                      _selectedPaymentMethod = value == 'all' ? null : value;
+                      _applyFilters();
+                    });
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'all', child: Text('Todos')),
+                    PopupMenuItem(value: 'cash', child: Text('Efectivo')),
+                    PopupMenuItem(value: 'card', child: Text('Tarjeta')),
+                    PopupMenuItem(
+                      value: 'transfer',
+                      child: Text('Transferencia'),
+                    ),
+                    PopupMenuItem(value: 'mixed', child: Text('Mixto')),
+                    PopupMenuItem(value: 'credit', child: Text('Crédito')),
+                    PopupMenuItem(value: 'layaway', child: Text('Apartado')),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      border: Border.all(color: scheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.payment,
+                          size: 18,
+                          color: _selectedPaymentMethod != null
+                              ? scheme.primary
+                              : scheme.onSurface.withOpacity(0.7),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _getPaymentMethodLabel(_selectedPaymentMethod),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.arrow_drop_down, size: 18),
+                      ],
+                    ),
+                  ),
+                );
+
+                final statusFilter = PopupMenuButton<String>(
+                  onSelected: (value) {
+                    _safeSetState(() {
+                      _selectedStatus = value == 'all' ? null : value;
+                      _applyFilters();
+                    });
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'all', child: Text('Todos')),
+                    PopupMenuItem(value: 'completed', child: Text('Activas')),
+                    PopupMenuItem(value: 'cancelled', child: Text('Anuladas')),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      border: Border.all(color: scheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.flag,
+                          size: 18,
+                          color: _selectedStatus != null
+                              ? scheme.primary
+                              : scheme.onSurface.withOpacity(0.7),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _selectedStatus == 'completed'
+                              ? 'Activas'
+                              : _selectedStatus == 'cancelled'
+                                  ? 'Anuladas'
+                                  : 'Estado',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.arrow_drop_down, size: 18),
+                      ],
+                    ),
+                  ),
+                );
+
+                final avg = _cantidadVentas > 0
+                    ? (_totalVentas / _cantidadVentas)
+                    : 0.0;
+                final summary = Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: scheme.outlineVariant),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
                         Icons.receipt_long,
-                        color: Colors.teal,
-                        size: 28,
+                        size: 16,
+                        color: scheme.onSurface.withOpacity(0.8),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'HISTORIAL DE VENTAS',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          Text(
-                            'Registro completo de facturación',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        ],
+                      const SizedBox(width: 8),
+                      Text(
+                        'Ventas: $_cantidadVentas',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                    ),
-                    // Botón refrescar
+                      const SizedBox(width: 12),
+                      Text(
+                        'Total: \$${NumberFormat('#,##0.00', 'en_US').format(_totalVentas)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Prom: \$${NumberFormat('#,##0.00', 'en_US').format(avg)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+
+                final actions = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    dateButton,
+                    SizedBox(width: gap),
+                    paymentFilter,
+                    SizedBox(width: gap),
+                    statusFilter,
+                    if (hasActiveFilters) ...[
+                      SizedBox(width: gap),
+                      OutlinedButton.icon(
+                        onPressed: _clearFilters,
+                        icon: const Icon(Icons.clear_all, size: 18),
+                        label: const Text('Limpiar'),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: scheme.outlineVariant),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                    SizedBox(width: gap),
                     IconButton(
                       onPressed: _loadSales,
                       icon: const Icon(Icons.refresh),
                       tooltip: 'Actualizar',
                     ),
+                    SizedBox(width: gap),
+                    summary,
                   ],
-                ),
-                const SizedBox(height: 16),
+                );
 
-                // Barra de búsqueda y filtros
-                Row(
+                final searchFlex = constraints.maxWidth < 980 ? 5 : 3;
+                final actionsFlex = constraints.maxWidth < 980 ? 7 : 6;
+
+                return Row(
                   children: [
-                    // Búsqueda
+                    Expanded(flex: searchFlex, child: searchField),
+                    SizedBox(width: gap),
                     Expanded(
-                      flex: 2,
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: _onSearchChanged,
-                        decoration: InputDecoration(
-                          hintText: 'Buscar por código o cliente...',
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                        ),
+                      flex: actionsFlex,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: actions,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Filtro de fecha
-                    OutlinedButton.icon(
-                      onPressed: _selectDateRange,
-                      icon: const Icon(Icons.date_range, size: 18),
-                      label: Text(
-                        _startDate != null
-                            ? '${DateFormat('dd/MM').format(_startDate!)} - ${DateFormat('dd/MM').format(_endDate!)}'
-                            : 'FECHAS',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _startDate != null
-                            ? Colors.teal
-                            : Colors.grey.shade700,
-                        side: BorderSide(
-                          color: _startDate != null
-                              ? Colors.teal
-                              : Colors.grey.shade300,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 14,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-
-                    // Filtro método de pago
-                    PopupMenuButton<String>(
-                      onSelected: (value) {
-                        setState(() {
-                          _selectedPaymentMethod = value == 'all'
-                              ? null
-                              : value;
-                          _applyFilters();
-                        });
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(value: 'all', child: Text('Todos')),
-                        const PopupMenuItem(
-                          value: 'cash',
-                          child: Text('Efectivo'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'card',
-                          child: Text('Tarjeta'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'transfer',
-                          child: Text('Transferencia'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'mixed',
-                          child: Text('Mixto'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'credit',
-                          child: Text('Crédito'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'layaway',
-                          child: Text('Apartado'),
-                        ),
-                      ],
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _selectedPaymentMethod != null
-                                ? Colors.teal
-                                : Colors.grey.shade300,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.payment,
-                              size: 18,
-                              color: _selectedPaymentMethod != null
-                                  ? Colors.teal
-                                  : Colors.grey,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _getPaymentMethodLabel(_selectedPaymentMethod),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _selectedPaymentMethod != null
-                                    ? Colors.teal
-                                    : Colors.grey.shade700,
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down, size: 18),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-
-                    // Filtro estado
-                    PopupMenuButton<String>(
-                      onSelected: (value) {
-                        setState(() {
-                          _selectedStatus = value == 'all' ? null : value;
-                          _applyFilters();
-                        });
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(value: 'all', child: Text('Todos')),
-                        const PopupMenuItem(
-                          value: 'completed',
-                          child: Text('✅ Completadas'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'cancelled',
-                          child: Text('❌ Anuladas'),
-                        ),
-                      ],
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _selectedStatus != null
-                                ? Colors.teal
-                                : Colors.grey.shade300,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.flag,
-                              size: 18,
-                              color: _selectedStatus != null
-                                  ? Colors.teal
-                                  : Colors.grey,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _selectedStatus == 'completed'
-                                  ? 'Activas'
-                                  : _selectedStatus == 'cancelled'
-                                  ? 'Anuladas'
-                                  : 'Estado',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _selectedStatus != null
-                                    ? Colors.teal
-                                    : Colors.grey.shade700,
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down, size: 18),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Limpiar filtros
-                    if (_searchQuery.isNotEmpty ||
-                        _startDate != null ||
-                        _selectedPaymentMethod != null ||
-                        _selectedStatus != null)
-                      IconButton(
-                        onPressed: _clearFilters,
-                        icon: const Icon(Icons.clear_all),
-                        tooltip: 'Limpiar filtros',
-                        color: Colors.red,
-                      ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Estadísticas
-                Row(
-                  children: [
-                    _buildStatCard(
-                      'VENTAS',
-                      _cantidadVentas.toString(),
-                      Icons.shopping_cart,
-                      Colors.blue,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildStatCard(
-                      'TOTAL',
-                      '\$${NumberFormat('#,##0.00', 'en_US').format(_totalVentas)}',
-                      Icons.attach_money,
-                      Colors.green,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildStatCard(
-                      'PROMEDIO',
-                      _cantidadVentas > 0
-                          ? '\$${(_totalVentas / _cantidadVentas).toStringAsFixed(2)}'
-                          : '\$0.00',
-                      Icons.analytics,
-                      Colors.orange,
                     ),
                   ],
-                ),
-              ],
+                );
+              },
             ),
           ),
 

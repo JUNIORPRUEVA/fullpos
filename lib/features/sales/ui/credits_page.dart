@@ -175,32 +175,189 @@ class _CreditsPageState extends State<CreditsPage>
         titleSpacing: 0,
         automaticallyImplyLeading: false,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Por Cliente'),
-            Tab(text: 'Ventas a Crédito'),
-            Tab(text: 'Apartados'),
-          ],
-        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
+          : Column(
               children: [
-                // Tab 1: Por Cliente
-                _buildByClientTab(),
-                // Tab 2: Ventas a Crédito
-                _buildCreditSalesTab(),
-                // Tab 3: Apartados
-                _buildLayawayTab(),
+                _buildTopHeaderLine(),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      // Tab 1: Por Cliente
+                      _buildByClientTab(),
+                      // Tab 2: Ventas a Crédito
+                      _buildCreditSalesTab(),
+                      // Tab 3: Apartados
+                      _buildLayawayTab(),
+                    ],
+                  ),
+                ),
               ],
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _loadCredits,
         child: const Icon(Icons.refresh),
       ),
+    );
+  }
+
+  Widget _buildTopHeaderLine() {
+    final scheme = _scheme;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final padding = _pagePadding(constraints);
+        final isNarrow = constraints.maxWidth < 1100;
+
+        late final TextEditingController controller;
+        late final String hint;
+        late final Widget summary;
+
+        switch (_tabController.index) {
+          case 0:
+            final filtered = _filterByQuery(
+              _creditsByClient,
+              _byClientSearchController.text,
+              const ['nombre'],
+            );
+            final sumPending = filtered.fold<double>(
+              0,
+              (sum, c) =>
+                  sum + ((c['total_pending'] as num?)?.toDouble() ?? 0.0),
+            );
+            controller = _byClientSearchController;
+            hint = 'Buscar cliente...';
+            summary = _buildSummaryChip(
+              icon: Icons.people_alt_outlined,
+              left: 'Clientes: ${filtered.length}',
+              right: 'Pend.: ${_formatCurrency(sumPending)}',
+            );
+            break;
+          case 1:
+            final filtered = _filterByQuery(
+              _creditSales,
+              _creditSearchController.text,
+              const [
+                'local_code',
+                'customer_name_snapshot',
+                'customer_phone_snapshot',
+              ],
+            );
+            final pendingTotal = filtered.fold<double>(
+              0,
+              (sum, s) =>
+                  sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
+            );
+            controller = _creditSearchController;
+            hint = 'Buscar por cliente, teléfono o factura...';
+            summary = _buildSummaryChip(
+              icon: Icons.receipt_long,
+              left: 'Ventas: ${filtered.length}',
+              right: 'Pend.: ${_formatCurrency(pendingTotal)}',
+            );
+            break;
+          default:
+            final filtered = _filterByQuery(
+              _layawaySales,
+              _layawaySearchController.text,
+              const [
+                'local_code',
+                'customer_name_snapshot',
+                'customer_phone_snapshot',
+              ],
+            );
+            final pendingTotal = filtered.fold<double>(
+              0,
+              (sum, s) =>
+                  sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
+            );
+            controller = _layawaySearchController;
+            hint = 'Buscar por cliente, teléfono o factura...';
+            summary = _buildSummaryChip(
+              icon: Icons.bookmark,
+              left: 'Apartados: ${filtered.length}',
+              right: 'Pend.: ${_formatCurrency(pendingTotal)}',
+            );
+        }
+
+        final baseBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_controlRadius),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        );
+
+        final searchField = TextField(
+          controller: controller,
+          style: const TextStyle(color: _brandDark),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: _brandDark.withOpacity(0.55)),
+            filled: true,
+            fillColor: _brandLight,
+            prefixIcon: Icon(Icons.search, color: _brandDark.withOpacity(0.75)),
+            suffixIcon: controller.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    color: _brandDark.withOpacity(0.75),
+                    onPressed: () {
+                      _safeSetState(() {
+                        controller.clear();
+                      });
+                    },
+                  )
+                : null,
+            border: baseBorder,
+            enabledBorder: baseBorder,
+            focusedBorder: baseBorder.copyWith(
+              borderSide: BorderSide(color: scheme.primary),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+          onChanged: (_) {
+            _safeSetState(() {});
+          },
+        );
+
+        final headerPadding = EdgeInsets.fromLTRB(
+          padding.left,
+          (padding.top * 0.8).clamp(8.0, 14.0),
+          padding.right,
+          (padding.top * 0.8).clamp(8.0, 14.0),
+        );
+
+        return Container(
+          color: _brandDark,
+          padding: headerPadding,
+          child: Row(
+            children: [
+              Expanded(child: searchField),
+              const SizedBox(width: 10),
+              summary,
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: isNarrow ? 260 : 420),
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  labelColor: _brandLight,
+                  unselectedLabelColor: _brandLight.withOpacity(0.75),
+                  indicatorColor: _brandLight,
+                  tabs: const [
+                    Tab(text: 'Por Cliente'),
+                    Tab(text: 'Ventas a Crédito'),
+                    Tab(text: 'Apartados'),
+                  ],
+                  onTap: (_) => _safeSetState(() {}),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -241,83 +398,6 @@ class _CreditsPageState extends State<CreditsPage>
       }
       return false;
     }).toList();
-  }
-
-  Widget _buildSectionHeader({
-    required TextEditingController controller,
-    required String hint,
-    required Widget summary,
-  }) {
-    final scheme = _scheme;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = _pagePadding(constraints);
-        final isNarrow = constraints.maxWidth < 980;
-        final baseBorder = OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_controlRadius),
-          borderSide: BorderSide(color: scheme.outlineVariant),
-        );
-        final searchField = TextField(
-          controller: controller,
-          style: const TextStyle(color: _brandLight),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: _brandLight.withOpacity(0.70)),
-            filled: true,
-            fillColor: _brandDark,
-            prefixIcon: Icon(
-              Icons.search,
-              color: _brandLight.withOpacity(0.85),
-            ),
-            suffixIcon: controller.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    color: _brandLight.withOpacity(0.90),
-                    onPressed: () {
-                      _safeSetState(() {
-                        controller.clear();
-                      });
-                    },
-                  )
-                : null,
-            border: baseBorder,
-            enabledBorder: baseBorder,
-            focusedBorder: baseBorder.copyWith(
-              borderSide: BorderSide(color: scheme.primary),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
-          ),
-          onChanged: (_) {
-            _safeSetState(() {});
-          },
-        );
-
-        return Container(
-          color: scheme.surfaceContainerHighest,
-          padding: EdgeInsets.fromLTRB(
-            padding.left,
-            (padding.top * 0.8).clamp(8.0, 14.0),
-            padding.right,
-            (padding.top * 0.8).clamp(8.0, 14.0),
-          ),
-          child: isNarrow
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [searchField, const SizedBox(height: 8), summary],
-                )
-              : Row(
-                  children: [
-                    Expanded(flex: 4, child: searchField),
-                    const SizedBox(width: 10),
-                    summary,
-                  ],
-                ),
-        );
-      },
-    );
   }
 
   Widget _buildSummaryChip({
@@ -375,22 +455,9 @@ class _CreditsPageState extends State<CreditsPage>
       _selectedClientName,
       'nombre',
     );
-    final sumPending = filtered.fold<double>(
-      0,
-      (sum, c) => sum + ((c['total_pending'] as num?)?.toDouble() ?? 0.0),
-    );
 
     return Column(
       children: [
-        _buildSectionHeader(
-          controller: _byClientSearchController,
-          hint: 'Buscar cliente...',
-          summary: _buildSummaryChip(
-            icon: Icons.people_alt_outlined,
-            left: 'Clientes: ${filtered.length}',
-            right: 'Pend.: ${_formatCurrency(sumPending)}',
-          ),
-        ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -555,7 +622,7 @@ class _CreditsPageState extends State<CreditsPage>
 
               if (isWide) {
                 return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: list),
                     const SizedBox(width: 12),
@@ -694,22 +761,9 @@ class _CreditsPageState extends State<CreditsPage>
       const ['local_code', 'customer_name_snapshot', 'customer_phone_snapshot'],
     );
     final selected = _findSelectedById(filtered, _selectedCreditId);
-    final pendingTotal = filtered.fold<double>(
-      0,
-      (sum, s) => sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
-    );
 
     return Column(
       children: [
-        _buildSectionHeader(
-          controller: _creditSearchController,
-          hint: 'Buscar por cliente, teléfono o factura...',
-          summary: _buildSummaryChip(
-            icon: Icons.receipt_long,
-            left: 'Ventas: ${filtered.length}',
-            right: 'Pend.: ${_formatCurrency(pendingTotal)}',
-          ),
-        ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -735,7 +789,7 @@ class _CreditsPageState extends State<CreditsPage>
 
               if (isWide) {
                 return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: list),
                     const SizedBox(width: 12),
@@ -780,22 +834,9 @@ class _CreditsPageState extends State<CreditsPage>
       const ['local_code', 'customer_name_snapshot', 'customer_phone_snapshot'],
     );
     final selected = _findSelectedById(filtered, _selectedLayawayId);
-    final pendingTotal = filtered.fold<double>(
-      0,
-      (sum, s) => sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
-    );
 
     return Column(
       children: [
-        _buildSectionHeader(
-          controller: _layawaySearchController,
-          hint: 'Buscar por cliente, teléfono o factura...',
-          summary: _buildSummaryChip(
-            icon: Icons.bookmark,
-            left: 'Apartados: ${filtered.length}',
-            right: 'Pend.: ${_formatCurrency(pendingTotal)}',
-          ),
-        ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -821,7 +862,7 @@ class _CreditsPageState extends State<CreditsPage>
 
               if (isWide) {
                 return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: list),
                     const SizedBox(width: 12),
@@ -1518,58 +1559,53 @@ class _CreditsPageState extends State<CreditsPage>
       context: context,
       builder: (dialogContext) => DialogKeyboardShortcuts(
         onSubmit: () => submit(dialogContext),
-        child: Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Registrar abono',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+        child: _buildTinyDialog(
+          dialogContext,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Registrar abono',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text('Factura: $saleCode'),
+              Text('Cliente: $clientName'),
+              Text('Total: ${_formatCurrency(saleTotal)}'),
+              Text('Pendiente: ${_formatCurrency(pendingAmount)}'),
+              const SizedBox(height: 14),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: false,
                 ),
-                const SizedBox(height: 8),
-                Text('Factura: $saleCode'),
-                Text('Cliente: $clientName'),
-                Text('Total: ${_formatCurrency(saleTotal)}'),
-                Text('Pendiente: ${_formatCurrency(pendingAmount)}'),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: false,
-                  ),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => submit(dialogContext),
-                  decoration: const InputDecoration(
-                    labelText: 'Monto a abonar',
-                    prefixText: '\$ ',
-                  ),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => submit(dialogContext),
+                decoration: const InputDecoration(
+                  labelText: 'Monto a abonar',
+                  prefixText: '\$ ',
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: () => submit(dialogContext),
-                      child: const Text('Registrar'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: () => submit(dialogContext),
+                    child: const Text('Registrar'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -1683,58 +1719,79 @@ class _CreditsPageState extends State<CreditsPage>
       context: context,
       builder: (dialogContext) => DialogKeyboardShortcuts(
         onSubmit: () => submit(dialogContext),
-        child: Dialog(
+        child: _buildTinyDialog(
+          dialogContext,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Registrar abono',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text('Factura: $saleCode'),
+              Text('Cliente: $clientName'),
+              Text('Total: ${_formatCurrency(saleTotal)}'),
+              Text('Pendiente: ${_formatCurrency(pendingAmount)}'),
+              const SizedBox(height: 14),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: false,
+                ),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => submit(dialogContext),
+                decoration: const InputDecoration(
+                  labelText: 'Monto a abonar',
+                  prefixText: '\$ ',
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: () => submit(dialogContext),
+                    child: const Text('Registrar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTinyDialog(BuildContext dialogContext, {required Widget child}) {
+    final size = MediaQuery.sizeOf(dialogContext);
+    final scheme = _scheme;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: size.width * 0.2,
+          maxHeight: size.height * 0.2,
+        ),
+        child: Material(
+          color: scheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: scheme.outlineVariant),
           ),
+          clipBehavior: Clip.antiAlias,
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Registrar abono',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text('Factura: $saleCode'),
-                Text('Cliente: $clientName'),
-                Text('Total: ${_formatCurrency(saleTotal)}'),
-                Text('Pendiente: ${_formatCurrency(pendingAmount)}'),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: false,
-                  ),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => submit(dialogContext),
-                  decoration: const InputDecoration(
-                    labelText: 'Monto a abonar',
-                    prefixText: '\$ ',
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton(
-                      onPressed: () => submit(dialogContext),
-                      child: const Text('Registrar'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            child: SingleChildScrollView(child: child),
           ),
         ),
       ),
