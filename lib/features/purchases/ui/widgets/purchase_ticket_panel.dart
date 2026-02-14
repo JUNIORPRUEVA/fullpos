@@ -93,7 +93,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                           child: ListView.separated(
                             shrinkWrap: true,
                             itemCount: filtered.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final s = filtered[index];
@@ -490,7 +490,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
         : ListView.separated(
             controller: _itemsScroll,
             itemCount: draft.lines.length,
-            separatorBuilder: (_, __) => Divider(
+            separatorBuilder: (_, _) => Divider(
               height: 1,
               color: scheme.outlineVariant.withOpacity(0.45),
             ),

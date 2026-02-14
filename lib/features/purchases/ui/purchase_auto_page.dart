@@ -14,11 +14,7 @@ import '../services/purchase_order_auto_service.dart';
 import 'widgets/purchase_ticket_panel.dart';
 import '../../products/models/product_model.dart';
 
-enum PurchaseAutoStrategy {
-  stockMin,
-  outOfStock,
-  recentSales,
-}
+enum PurchaseAutoStrategy { stockMin, outOfStock, recentSales }
 
 class PurchaseAutoPage extends ConsumerStatefulWidget {
   const PurchaseAutoPage({super.key});
@@ -75,18 +71,18 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
       final id = supplier!.id!;
       final list = switch (_strategy) {
         PurchaseAutoStrategy.stockMin => await _service.suggestBySupplier(
-            supplierId: id,
-          ),
+          supplierId: id,
+        ),
         PurchaseAutoStrategy.outOfStock => await _service.suggestOutOfStock(
-            supplierId: id,
-            minQty: _minQty,
-          ),
+          supplierId: id,
+          minQty: _minQty,
+        ),
         PurchaseAutoStrategy.recentSales => await _service.suggestByRecentSales(
-            supplierId: id,
-            lookbackDays: _lookbackDays,
-            replenishDays: _replenishDays,
-            minQty: _minQty,
-          ),
+          supplierId: id,
+          lookbackDays: _lookbackDays,
+          replenishDays: _replenishDays,
+          minQty: _minQty,
+        ),
       };
 
       if (!mounted) return;
@@ -134,11 +130,9 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
       updatedAtMs: 0,
     );
 
-    ref.read(purchaseDraftProvider.notifier).addProduct(
-          fakeProduct,
-          qty: s.suggestedQty,
-          unitCost: s.unitCost,
-        );
+    ref
+        .read(purchaseDraftProvider.notifier)
+        .addProduct(fakeProduct, qty: s.suggestedQty, unitCost: s.unitCost);
   }
 
   void _addAllSuggestions() {
@@ -263,10 +257,7 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
       }
       if (_error != null) {
         return Center(
-          child: Text(
-            _error!,
-            style: TextStyle(color: scheme.error),
-          ),
+          child: Text(_error!, style: TextStyle(color: scheme.error)),
         );
       }
       if (_suggestions.isEmpty) {
@@ -301,10 +292,8 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
       return ListView.separated(
         padding: const EdgeInsets.only(bottom: AppSizes.paddingL),
         itemCount: _suggestions.length,
-        separatorBuilder: (_, __) => Divider(
-          height: 1,
-          color: scheme.outlineVariant.withOpacity(0.45),
-        ),
+        separatorBuilder: (_, _) =>
+            Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.45)),
         itemBuilder: (context, index) {
           final s = _suggestions[index];
           return ListTile(
@@ -332,7 +321,9 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
                       ),
                       Text(
                         'Costo: ${currency.format(s.unitCost)}',
-                        style: TextStyle(color: scheme.onSurface.withOpacity(0.7)),
+                        style: TextStyle(
+                          color: scheme.onSurface.withOpacity(0.7),
+                        ),
                       ),
                     ],
                   ),
@@ -395,7 +386,9 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
                   children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _suggestions.isEmpty ? null : _addAllSuggestions,
+                        onPressed: _suggestions.isEmpty
+                            ? null
+                            : _addAllSuggestions,
                         icon: const Icon(Icons.playlist_add),
                         label: const Text('Agregar todo al ticket'),
                       ),

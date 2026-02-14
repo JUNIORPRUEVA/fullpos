@@ -574,7 +574,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         physics: const ClampingScrollPhysics(),
         padding: EdgeInsets.zero,
         itemCount: data.sales.length,
-        separatorBuilder: (_, __) => Divider(
+        separatorBuilder: (_, _) => Divider(
           height: 1,
           color: theme.colorScheme.onSurface.withOpacity(0.08),
         ),

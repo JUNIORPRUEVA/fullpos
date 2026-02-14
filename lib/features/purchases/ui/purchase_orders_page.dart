@@ -288,7 +288,7 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
       );
     }
 
-    Future<bool> _confirmOverwriteDraftIfDirty() async {
+    Future<bool> confirmOverwriteDraftIfDirty() async {
       final draft = ref.read(purchaseDraftProvider);
       if (!draft.hasChanges) return true;
 
@@ -318,7 +318,7 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
     }
 
     Future<void> duplicateToDraft(PurchaseOrderDetailDto detail) async {
-      final ok = await _confirmOverwriteDraftIfDirty();
+      final ok = await confirmOverwriteDraftIfDirty();
       if (!ok) return;
       if (!context.mounted) return;
 

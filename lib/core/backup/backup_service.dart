@@ -653,7 +653,13 @@ class BackupService {
       // Desktop necesita sqflite_ffi listo.
       DbInit.ensureInitialized();
 
-      final db = await openDatabase(dbPath, readOnly: true);
+      // En WAL, conexiones readOnly pueden fallar al requerir archivo -shm.
+      // Abrimos con singleInstance=false para no cachear handles durante verificación.
+      final db = await openDatabase(
+        dbPath,
+        readOnly: false,
+        singleInstance: false,
+      );
       final result = await db.rawQuery('PRAGMA integrity_check;');
       await db.close();
       final msg = (result.isNotEmpty ? (result.first.values.first) : null)

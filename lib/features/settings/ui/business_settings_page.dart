@@ -110,6 +110,25 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
     }
   }
 
+  Future<void> _updateFiscalDefault(bool value) async {
+    final current = _appSettings;
+    if (current == null) return;
+    final updated = current.copyWith(fiscalEnabledDefault: value);
+    try {
+      await SettingsRepository.updateAppSettings(updated);
+      if (!mounted) return;
+      setState(() => _appSettings = updated);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error guardando NCF por defecto: $e'),
+          backgroundColor: _scheme.error,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -399,7 +418,9 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
 
   Widget _buildCompanyTab(BusinessSettings settings) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all((MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0)),
+      padding: EdgeInsets.all(
+        (MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -608,7 +629,9 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
 
   Widget _buildTaxesTab(BusinessSettings settings) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all((MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0)),
+      padding: EdgeInsets.all(
+        (MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -653,6 +676,14 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
             ),
             value: _appSettings?.itbisEnabledDefault ?? true,
             onChanged: _appSettings == null ? null : _updateItbisDefault,
+          ),
+          SwitchListTile(
+            title: const Text('NCF activo por defecto en ventas'),
+            subtitle: const Text(
+              'Define el estado inicial del switch de NCF (comprobante fiscal) en la pantalla de ventas.',
+            ),
+            value: _appSettings?.fiscalEnabledDefault ?? false,
+            onChanged: _appSettings == null ? null : _updateFiscalDefault,
           ),
 
           const SizedBox(height: 32),

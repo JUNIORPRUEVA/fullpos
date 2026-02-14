@@ -38,7 +38,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 28;
+  static const int _dbVersion = 29;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -804,6 +804,7 @@ class AppDb {
         CREATE TABLE ${DbTables.appSettings} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           itbis_enabled_default INTEGER NOT NULL DEFAULT 1,
+          fiscal_enabled_default INTEGER NOT NULL DEFAULT 0,
           itbis_rate REAL NOT NULL DEFAULT 0.18,
           ticket_size TEXT NOT NULL DEFAULT '80mm',
           updated_at_ms INTEGER NOT NULL
@@ -813,6 +814,7 @@ class AppDb {
       // Insertar configuración por defecto
       await db.insert(DbTables.appSettings, {
         'itbis_enabled_default': 1,
+        'fiscal_enabled_default': 0,
         'itbis_rate': 0.18,
         'ticket_size': '80mm',
         'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
@@ -1650,6 +1652,17 @@ class AppDb {
       await _migrateProductsCodeUniqueToPartial(db);
     }
 
+    if (oldVersion < 29) {
+      // Migración v29:
+      // - Default controlado del switch de NCF (comprobante fiscal) en ventas.
+      await _addColumnIfMissing(
+        db,
+        DbTables.appSettings,
+        'fiscal_enabled_default',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+
     // v17+: normalizar esquema siempre que haya upgrade
     if (oldVersion < newVersion) {
       await _ensureSchemaIntegrity(db);
@@ -2268,6 +2281,7 @@ class AppDb {
       CREATE TABLE ${DbTables.appSettings} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         itbis_enabled_default INTEGER NOT NULL DEFAULT 1,
+        fiscal_enabled_default INTEGER NOT NULL DEFAULT 0,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
         ticket_size TEXT NOT NULL DEFAULT '80mm',
         updated_at_ms INTEGER NOT NULL
@@ -2275,6 +2289,7 @@ class AppDb {
     ''');
     await db.insert(DbTables.appSettings, {
       'itbis_enabled_default': 1,
+      'fiscal_enabled_default': 0,
       'itbis_rate': 0.18,
       'ticket_size': '80mm',
       'updated_at_ms': now,

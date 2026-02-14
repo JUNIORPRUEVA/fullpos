@@ -13,39 +13,49 @@ class DialogKeyboardShortcuts extends StatelessWidget {
   final Widget child;
   final FutureOr<void> Function()? onSubmit;
   final VoidCallback? onCancel;
+  final Map<ShortcutActivator, Intent>? extraShortcuts;
+  final Map<Type, Action<Intent>>? extraActions;
 
   const DialogKeyboardShortcuts({
     super.key,
     required this.child,
     this.onSubmit,
     this.onCancel,
+    this.extraShortcuts,
+    this.extraActions,
   });
 
   @override
   Widget build(BuildContext context) {
     final submitAction = onSubmit ?? () => Navigator.of(context).maybePop();
-    return Shortcuts(
-      shortcuts: {
-        const SingleActivator(LogicalKeyboardKey.escape): const DismissIntent(),
-        const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
-        const SingleActivator(LogicalKeyboardKey.numpadEnter):
-            const ActivateIntent(),
-      },
-      child: Actions(
-        actions: {
-          DismissIntent: CallbackAction<DismissIntent>(
-            onInvoke: (_) {
-              (onCancel ?? () => Navigator.of(context).maybePop())();
-              return null;
-            },
-          ),
-          ActivateIntent: CallbackAction<ActivateIntent>(
-            onInvoke: (_) {
-              submitAction();
-              return null;
-            },
-          ),
+    final shortcuts = <ShortcutActivator, Intent>{
+      const SingleActivator(LogicalKeyboardKey.escape): const DismissIntent(),
+      const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
+      const SingleActivator(LogicalKeyboardKey.numpadEnter):
+          const ActivateIntent(),
+      ...?extraShortcuts,
+    };
+
+    final actions = <Type, Action<Intent>>{
+      DismissIntent: CallbackAction<DismissIntent>(
+        onInvoke: (_) {
+          (onCancel ?? () => Navigator.of(context).maybePop())();
+          return null;
         },
+      ),
+      ActivateIntent: CallbackAction<ActivateIntent>(
+        onInvoke: (_) {
+          submitAction();
+          return null;
+        },
+      ),
+      ...?extraActions,
+    };
+
+    return Shortcuts(
+      shortcuts: shortcuts,
+      child: Actions(
+        actions: actions,
         child: Focus(autofocus: true, child: child),
       ),
     );

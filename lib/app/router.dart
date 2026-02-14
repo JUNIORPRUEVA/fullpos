@@ -50,6 +50,11 @@ import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
 
 Future<_LicenseGateDecision>? _licenseGateInFlight;
+_LicenseGateDecision? _licenseGateCached;
+DateTime? _licenseGateCachedAt;
+
+// Notificador para forzar refresh del router cuando se refresca el gate en background.
+final ValueNotifier<int> _licenseGateRefreshToken = ValueNotifier<int>(0);
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final bootStatus = ref.watch(
@@ -63,7 +68,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // Heartbeat para re-evaluar redirects (ej: vencimiento o revocación) sin reiniciar.
   // El valor se controla en license_config.dart.
   final heartbeat = _RouterHeartbeat(kLicenseGateHeartbeatInterval);
-  final refresh = _MergedListenable([bootstrap, heartbeat]);
+  final refresh = _MergedListenable([
+    bootstrap,
+    heartbeat,
+    _licenseGateRefreshToken,
+  ]);
   ref.onDispose(() {
     refresh.dispose();
     heartbeat.dispose();
@@ -87,7 +96,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (bootStatus != BootStatus.ready) return null;
 
       // Gate de licencia: distinguir ACTIVA vs BLOQUEADA vs no válida.
-      final gate = await _getLicenseGateDecision();
+      final gate = await _getLicenseGateDecisionFast();
       assert(() {
         debugPrint(
           '[LICENSE] gate: active=${gate.isActive} blocked=${gate.isBlocked} code=${gate.code} path=$path',
@@ -357,6 +366,47 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+bool _isGateCacheFresh() {
+  final at = _licenseGateCachedAt;
+  if (at == null) return false;
+  final age = DateTime.now().difference(at);
+  return age < kLicenseGateFreshWindow;
+}
+
+void _refreshLicenseGateInBackground() {
+  if (_licenseGateInFlight != null) return;
+  unawaited(
+    _getLicenseGateDecision().then((gate) {
+      final before = _licenseGateCached;
+      _licenseGateCached = gate;
+      _licenseGateCachedAt = DateTime.now();
+
+      // Si cambia el estado, forzar re-evaluar redirects sin reiniciar.
+      if (before == null ||
+          before.isActive != gate.isActive ||
+          before.isBlocked != gate.isBlocked ||
+          before.code != gate.code) {
+        _licenseGateRefreshToken.value++;
+      }
+    }),
+  );
+}
+
+Future<_LicenseGateDecision> _getLicenseGateDecisionFast() async {
+  final cached = _licenseGateCached;
+  if (cached != null) {
+    if (!_isGateCacheFresh()) {
+      _refreshLicenseGateInBackground();
+    }
+    return cached;
+  }
+
+  final gate = await _getLicenseGateDecision();
+  _licenseGateCached = gate;
+  _licenseGateCachedAt = DateTime.now();
+  return gate;
+}
 
 class _RouterHeartbeat extends ChangeNotifier {
   late final Timer _timer;

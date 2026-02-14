@@ -660,23 +660,12 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
 
     // Requerimiento UX: texto + iconos del sidebar siempre en blanco.
     // (Independiente del tema/preset que intente forzar foreground oscuro.)
-    const prefersDarkFg = false;
 
-    final idleBg = prefersDarkFg
-        ? Colors.transparent
-        : widget.textColor.withOpacity(0.04);
-    final hoverBgA = prefersDarkFg
-        ? Colors.white.withOpacity(0.96)
-        : widget.hoverColor.withOpacity(0.14);
-    final hoverBgB = prefersDarkFg
-        ? Colors.black.withOpacity(0.08)
-        : widget.hoverColor.withOpacity(0.06);
-    final activeBgA = prefersDarkFg
-        ? Colors.white.withOpacity(0.98)
-        : widget.activeColor.withOpacity(0.22);
-    final activeBgB = prefersDarkFg
-        ? Colors.black.withOpacity(0.10)
-        : widget.activeColor.withOpacity(0.10);
+    final idleBg = widget.textColor.withOpacity(0.04);
+    final hoverBgA = widget.hoverColor.withOpacity(0.14);
+    final hoverBgB = widget.hoverColor.withOpacity(0.06);
+    final activeBgA = widget.activeColor.withOpacity(0.22);
+    final activeBgB = widget.activeColor.withOpacity(0.10);
 
     final baseFg = widget.textColor;
     final fgColor = isActive ? baseFg.withOpacity(0.98) : baseFg;
@@ -730,12 +719,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                 borderRadius: pillRadius,
                 border: Border.all(
                   color: isActive
-                      ? widget.activeColor.withOpacity(
-                          prefersDarkFg ? 0.70 : 0.35,
-                        )
-                      : (prefersDarkFg
-                            ? Colors.black.withOpacity(0.08)
-                            : widget.textColor.withOpacity(0.08)),
+                      ? widget.activeColor.withOpacity(0.35)
+                      : widget.textColor.withOpacity(0.08),
                   width: 1.2,
                 ),
                 boxShadow: [

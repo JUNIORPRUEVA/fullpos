@@ -122,6 +122,14 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
   @override
   void initState() {
     super.initState();
+
+    // Si el flujo es local con lector (scanner) y hay soporte de token offline,
+    // abrimos directamente en modo Token para que el usuario pueda escanear y
+    // presionar Enter sin pasos extra.
+    if (widget.config.scannerEnabled && widget.config.offlineBarcodeEnabled) {
+      _entryMethod = _AuthEntryMethod.token;
+    }
+
     if (widget.config.scannerEnabled) {
       _scanner = ScannerInputController(
         enabled: true,
@@ -134,7 +142,13 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
         emitOnTimeout: false,
         onScan: (data) {
           if (!mounted) return;
-          if (_entryMethod != _AuthEntryMethod.token) return;
+
+          // Permite escanear aunque el diálogo esté en modo Código.
+          // Esto hace que el lector funcione “al instante”: escanea + Enter.
+          if (_entryMethod != _AuthEntryMethod.token) {
+            setState(() => _entryMethod = _AuthEntryMethod.token);
+          }
+          _tokenFocus.requestFocus();
           _tokenController.text = data.trim();
           _validateToken();
         },
@@ -143,7 +157,11 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _codeFocus.requestFocus();
+      if (_entryMethod == _AuthEntryMethod.token) {
+        _tokenFocus.requestFocus();
+      } else {
+        _codeFocus.requestFocus();
+      }
     });
   }
 

@@ -942,8 +942,9 @@ class _QuotePdfPreviewPageState extends State<_QuotePdfPreviewPage> {
       if (!mounted) return;
       setState(() => _loadError = e);
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 

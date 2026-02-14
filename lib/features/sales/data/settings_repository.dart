@@ -9,12 +9,12 @@ class SettingsRepository {
   SettingsRepository._();
 
   // ===== BUSINESS INFO =====
-  
+
   /// Obtiene la información del negocio (solo hay 1 registro)
   static Future<BusinessInfoModel> getBusinessInfo() async {
     final db = await AppDb.database;
     final maps = await db.query(DbTables.businessInfo, limit: 1);
-    
+
     if (maps.isEmpty) {
       // Retornar valores por defecto si no existe
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -28,9 +28,10 @@ class SettingsRepository {
         updatedAtMs: now,
       );
     }
-    
+
     final info = BusinessInfoModel.fromMap(maps.first);
-    final hasCustomData = (info.phone ?? '').trim().isNotEmpty ||
+    final hasCustomData =
+        (info.phone ?? '').trim().isNotEmpty ||
         (info.address ?? '').trim().isNotEmpty ||
         (info.rnc ?? '').trim().isNotEmpty ||
         (info.slogan ?? '').trim().isNotEmpty;
@@ -49,9 +50,9 @@ class SettingsRepository {
   /// Actualiza la información del negocio
   static Future<void> updateBusinessInfo(BusinessInfoModel info) async {
     final db = await AppDb.database;
-    
+
     final existing = await db.query(DbTables.businessInfo, limit: 1);
-    
+
     if (existing.isEmpty) {
       await db.insert(DbTables.businessInfo, info.toMap());
     } else {
@@ -65,32 +66,33 @@ class SettingsRepository {
   }
 
   // ===== APP SETTINGS =====
-  
+
   /// Obtiene la configuración de la app (solo hay 1 registro)
   static Future<AppSettingsModel> getAppSettings() async {
     final db = await AppDb.database;
     final maps = await db.query(DbTables.appSettings, limit: 1);
-    
+
     if (maps.isEmpty) {
       final now = DateTime.now().millisecondsSinceEpoch;
       return AppSettingsModel(
         id: null,
         itbisEnabledDefault: true,
+        fiscalEnabledDefault: false,
         itbisRate: 0.18,
         ticketSize: '80mm',
         updatedAtMs: now,
       );
     }
-    
+
     return AppSettingsModel.fromMap(maps.first);
   }
 
   /// Actualiza la configuración
   static Future<void> updateAppSettings(AppSettingsModel settings) async {
     final db = await AppDb.database;
-    
+
     final existing = await db.query(DbTables.appSettings, limit: 1);
-    
+
     if (existing.isEmpty) {
       await db.insert(DbTables.appSettings, settings.toMap());
     } else {
@@ -104,7 +106,7 @@ class SettingsRepository {
   }
 
   // ===== USERS =====
-  
+
   /// Lista todos los usuarios
   static Future<List<UserModel>> getAllUsers() async {
     final db = await AppDb.database;

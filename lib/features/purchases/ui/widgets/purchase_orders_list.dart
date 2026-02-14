@@ -91,7 +91,7 @@ class PurchaseOrdersList extends ConsumerWidget {
         return ListView.separated(
           padding: const EdgeInsets.only(bottom: AppSizes.paddingL),
           itemCount: orders.length + 1,
-          separatorBuilder: (_, __) =>
+          separatorBuilder: (_, _) =>
               Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.4)),
           itemBuilder: (context, index) {
             if (index == 0) {
@@ -300,7 +300,7 @@ class _OrdersListSkeleton extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.only(bottom: AppSizes.paddingL),
       itemCount: 10,
-      separatorBuilder: (_, __) => Divider(height: 1, color: line),
+      separatorBuilder: (_, _) => Divider(height: 1, color: line),
       itemBuilder: (context, index) {
         if (index == 0) {
           return Container(

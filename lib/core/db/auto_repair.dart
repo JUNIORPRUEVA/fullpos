@@ -190,7 +190,9 @@ class AutoRepair {
   Future<bool> _pragmaCheckOk(String dbPath, String pragma) async {
     Database? db;
     try {
-      db = await openDatabase(dbPath, readOnly: true);
+      // Nota: en WAL, conexiones readOnly pueden fallar (requiere -shm).
+      // Abrimos en modo normal pero sin reutilizar instancia para evitar interferencias.
+      db = await openDatabase(dbPath, readOnly: false, singleInstance: false);
       final rows = await db.rawQuery('PRAGMA $pragma;');
       if (rows.isEmpty) return false;
       final firstValue = rows.first.values.isNotEmpty

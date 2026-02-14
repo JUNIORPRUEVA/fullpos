@@ -42,6 +42,7 @@ import '../../products/models/product_model.dart';
 import '../../products/ui/widgets/product_thumbnail.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import '../../settings/providers/business_settings_provider.dart';
+import '../data/app_settings_model.dart';
 import '../data/ncf_book_model.dart';
 import '../data/ncf_repository.dart';
 import '../data/sale_item_model.dart';
@@ -49,6 +50,7 @@ import '../data/sale_model.dart';
 import '../data/layaway_repository.dart';
 import '../data/sales_model.dart' as legacy_sales;
 import '../data/sales_repository.dart';
+import '../data/settings_repository.dart';
 import '../data/temp_cart_repository.dart';
 import '../data/tickets_repository.dart';
 import '../data/ticket_model.dart';
@@ -69,7 +71,7 @@ class SalesPage extends ConsumerStatefulWidget {
 
 class _SalesPageState extends ConsumerState<SalesPage> {
   // Productos: tarjetas pequeñas y consistentes (no se inflan por resolución).
-  // Ajustes visuales del grid de productos (tamaño fijo premium)
+  // Ajustes visuales qudel grid de productos (tamaño fijo premium)
   static const double _productCardSize = 104;
   static const double _productTileMaxExtent = 124;
   static const double _minProductCardSize = 72.0;
@@ -154,10 +156,24 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   List<NcfBookModel> _availableNcfs = [];
   List<CategoryModel> _categories = [];
   List<ClientModel> _clients = [];
+  AppSettingsModel? _appSettings;
   ProductFilterModel _productFilter = ProductFilterModel();
   String? _selectedCategory;
 
   _Cart get _currentCart => _carts[_currentCartIndex];
+
+  void _applySalesDefaultsToCart(_Cart cart) {
+    final settings = _appSettings;
+    if (settings == null) return;
+
+    cart.itbisRate = settings.itbisRate;
+    cart.itbisEnabled = settings.itbisEnabledDefault;
+    cart.fiscalEnabled = settings.fiscalEnabledDefault;
+    if (cart.fiscalEnabled) {
+      // Fiscal implica ITBIS activo.
+      cart.itbisEnabled = true;
+    }
+  }
 
   BoxConstraints _ticketPanelConstraints(double width) {
     // En layout horizontal, hacemos el panel proporcional para no aplastar
@@ -214,20 +230,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
 
     if (key == LogicalKeyboardKey.f8) {
-      if (_currentCart.items.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Agrega productos antes de cobrar'),
-            backgroundColor: scheme.error,
-          ),
-        );
-        return true;
-      }
-      _processPayment(SaleKind.invoice, initialPrintTicket: true);
-      return true;
-    }
-
-    if (key == LogicalKeyboardKey.f9) {
       if (_currentCart.items.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -363,6 +365,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ClientsRepository.getAll(),
         ticketsRepo.listTickets(),
         tempCartRepo.getAllCarts(),
+        SettingsRepository.getAppSettings(),
       ]);
       if (!mounted || token != _initialLoadToken) return;
 
@@ -371,6 +374,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final clients = results[2] as List<ClientModel>;
       final dbTickets = results[3] as List<PosTicketModel>;
       final tempCarts = results[4] as List<Map<String, dynamic>>;
+      final appSettings = results[5] as AppSettingsModel;
 
       final loadedCarts = <_Cart>[];
 
@@ -452,10 +456,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _searchResults = products;
         _categories = categories;
         _clients = clients;
+        _appSettings = appSettings;
         if (loadedCarts.isNotEmpty) {
           _carts.clear();
           _carts.addAll(loadedCarts);
           _currentCartIndex = 0;
+        } else {
+          // Si no hay carritos cargados, aplicar defaults al carrito inicial.
+          if (_carts.isNotEmpty) {
+            _applySalesDefaultsToCart(_carts.first);
+          }
         }
         _isSearching = false;
       });
@@ -585,7 +595,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               0,
               double.infinity,
             );
-            final layawayStatusLabel = pendingAfter > 0 ? 'PENDIENTE' : 'PAGADO';
+            final layawayStatusLabel = pendingAfter > 0
+                ? 'PENDIENTE'
+                : 'PAGADO';
             await UnifiedTicketPrinter.printSaleTicket(
               sale: sale,
               items: items,
@@ -1310,11 +1322,62 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
+  bool _canEnableFiscalOrNotify() {
+    final missing = <String>[];
+    final client = _currentCart.selectedClient;
+
+    if (client == null) {
+      missing.add('Cliente');
+    } else {
+      final rnc = (client.rnc ?? '').trim();
+      if (rnc.isEmpty) missing.add('RNC del cliente');
+    }
+
+    if (missing.isEmpty) return true;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('No se puede activar NCF. Falta: ${missing.join(', ')}.'),
+        backgroundColor: scheme.error,
+      ),
+    );
+    return false;
+  }
+
+  bool _canProceedWithFiscalOrNotify() {
+    if (!_currentCart.fiscalEnabled) return true;
+
+    final missing = <String>[];
+    final client = _currentCart.selectedClient;
+    if (client == null) {
+      missing.add('Cliente');
+    } else {
+      final rnc = (client.rnc ?? '').trim();
+      if (rnc.isEmpty) missing.add('RNC del cliente');
+    }
+
+    if (!_currentCart.itbisEnabled) missing.add('ITBIS');
+
+    if (missing.isEmpty) return true;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'No se puede continuar con NCF. Falta: ${missing.join(', ')}.',
+        ),
+        backgroundColor: scheme.error,
+      ),
+    );
+    return false;
+  }
+
   Future<void> _processPayment(
     String kind, {
     bool initialPrintTicket = false,
   }) async {
     if (_currentCart.items.isEmpty) return;
+
+    if (!_canProceedWithFiscalOrNotify()) return;
 
     if (_currentCart.fiscalEnabled && _availableNcfs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1363,6 +1426,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (!mounted || paymentResult == null) return;
 
+    // Permite que el cierre del dialogo se renderice antes de continuar con
+    // operaciones pesadas (DB/PDF/impresion). Evita que se "congele" la UI con
+    // el dialogo aun visible.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
     final method = paymentResult['method'] as payment.PaymentMethod;
     final receivedAmountRaw =
         (paymentResult['received'] as num?)?.toDouble() ?? total;
@@ -1372,7 +1441,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final receivedAmount = isCreditPayment ? 0.0 : receivedAmountRaw;
     final changeAmount = isCreditPayment ? 0.0 : changeAmountRaw;
     final shouldPrint = paymentResult['printTicket'] == true;
-    final shouldDownloadInvoicePdf = paymentResult['downloadInvoicePdf'] == true;
+    final shouldDownloadInvoicePdf =
+        paymentResult['downloadInvoicePdf'] == true;
 
     if (method == payment.PaymentMethod.credit) {
       final canCredit = await _authorizeAction(
@@ -1603,7 +1673,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       if (_carts.isNotEmpty) {
         _currentCartIndex = 0;
       } else {
-        _carts.add(_Cart(name: 'Ticket 1'));
+        final cart = _Cart(name: 'Ticket 1');
+        _applySalesDefaultsToCart(cart);
+        _carts.add(cart);
         _currentCartIndex = 0;
       }
       _selectedCartItemIndex = null;
@@ -1650,16 +1722,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     final clientName = (sale.customerNameSnapshot ?? '').trim();
     if (clientName.isEmpty) {
-      throw Exception('Debe seleccionar/configurar un cliente antes de descargar');
+      throw Exception(
+        'Debe seleccionar/configurar un cliente antes de descargar',
+      );
     }
 
     final downloadsDir = await _getBestDownloadDirectory();
     final safeClient = _sanitizeFilenamePart(clientName);
     final safeCode = _sanitizeFilenamePart(sale.localCode);
     final filename = 'FACTURA_${safeClient}_$safeCode.pdf';
-    final file = File(
-      '${downloadsDir.path}${Platform.pathSeparator}$filename',
-    );
+    final file = File('${downloadsDir.path}${Platform.pathSeparator}$filename');
     await file.writeAsBytes(bytes, flush: true);
 
     debugPrint('Factura descargada: ${file.path}');
@@ -1783,8 +1855,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             LogicalKeySet(LogicalKeyboardKey.numpadDivide):
                 const OpenPaymentIntent(),
             LogicalKeySet(LogicalKeyboardKey.f8): const OpenPaymentIntent(),
-            LogicalKeySet(LogicalKeyboardKey.f9):
-                const OpenPaymentAndPrintIntent(),
             LogicalKeySet(
               LogicalKeyboardKey.control,
               LogicalKeyboardKey.backspace,
@@ -1994,8 +2064,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                   message:
                                                       'Cargando datos de ventas...',
                                                 )
-                                              : ((){
-                                                  final products = _filteredProducts();
+                                              : (() {
+                                                  final products =
+                                                      _filteredProducts();
                                                   if (products.isEmpty) {
                                                     return Center(
                                                       child: Column(
@@ -2007,8 +2078,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                             Icons
                                                                 .inventory_2_outlined,
                                                             size: 80,
-                                                            color: scheme.onSurface
-                                                                .withOpacity(0.3),
+                                                            color: scheme
+                                                                .onSurface
+                                                                .withOpacity(
+                                                                  0.3,
+                                                                ),
                                                           ),
                                                           const SizedBox(
                                                             height: 16,
@@ -2018,19 +2092,26 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                             style: TextStyle(
                                                               color: scheme
                                                                   .onSurface
-                                                                  .withOpacity(0.6),
+                                                                  .withOpacity(
+                                                                    0.6,
+                                                                  ),
                                                               fontSize: 18,
                                                               fontWeight:
-                                                                  FontWeight.w500,
+                                                                  FontWeight
+                                                                      .w500,
                                                             ),
                                                           ),
-                                                          const SizedBox(height: 8),
+                                                          const SizedBox(
+                                                            height: 8,
+                                                          ),
                                                           Text(
                                                             'Intenta buscar con otro término',
                                                             style: TextStyle(
                                                               color: scheme
                                                                   .onSurface
-                                                                  .withOpacity(0.4),
+                                                                  .withOpacity(
+                                                                    0.4,
+                                                                  ),
                                                               fontSize: 14,
                                                             ),
                                                           ),
@@ -2049,54 +2130,81 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                           ?.gridBackgroundColor;
                                                       final resolvedGridBg =
                                                           (gridBg == null ||
-                                                                  gridBg.opacity == 0)
-                                                              ? Colors.transparent
-                                                              : gridBg;
+                                                              gridBg.opacity ==
+                                                                  0)
+                                                          ? Colors.transparent
+                                                          : gridBg;
 
                                                       return Container(
                                                         padding:
                                                             const EdgeInsets.only(
-                                                          left: 12,
-                                                          right: 12,
-                                                          top: 8,
-                                                          bottom: 72,
-                                                        ),
+                                                              left: 12,
+                                                              right: 12,
+                                                              top: 8,
+                                                              bottom: 72,
+                                                            ),
                                                         decoration: BoxDecoration(
                                                           color: resolvedGridBg,
                                                           borderRadius:
                                                               BorderRadius.circular(
-                                                            16,
-                                                          ),
+                                                                16,
+                                                              ),
                                                         ),
                                                         child: LayoutBuilder(
                                                           builder: (context, constraints) {
-                                                            final cardSize = _productCardSizeFor(constraints.maxWidth);
-                                                            double maxExtent = stableMaxCrossAxisExtent(
-                                                              availableWidth: constraints.maxWidth,
-                                                              desiredMaxExtent: _productTileMaxExtent,
-                                                              spacing: _gridSpacing,
-                                                              minExtent: _productTileMaxExtent,
+                                                            final cardSize =
+                                                                _productCardSizeFor(
+                                                                  constraints
+                                                                      .maxWidth,
+                                                                );
+                                                            double
+                                                            maxExtent = stableMaxCrossAxisExtent(
+                                                              availableWidth:
+                                                                  constraints
+                                                                      .maxWidth,
+                                                              desiredMaxExtent:
+                                                                  _productTileMaxExtent,
+                                                              spacing:
+                                                                  _gridSpacing,
+                                                              minExtent:
+                                                                  _productTileMaxExtent,
                                                             );
-                                                            if (!maxExtent.isFinite || maxExtent <= 0) {
-                                                              maxExtent = _productTileMaxExtent;
+                                                            if (!maxExtent
+                                                                    .isFinite ||
+                                                                maxExtent <=
+                                                                    0) {
+                                                              maxExtent =
+                                                                  _productTileMaxExtent;
                                                             }
                                                             return GridView.builder(
                                                               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                                                                maxCrossAxisExtent: maxExtent,
-                                                                mainAxisExtent: cardSize * 1.35,
-                                                                crossAxisSpacing: _gridSpacing,
-                                                                mainAxisSpacing: _gridSpacing,
+                                                                maxCrossAxisExtent:
+                                                                    maxExtent,
+                                                                mainAxisExtent:
+                                                                    cardSize *
+                                                                    1.35,
+                                                                crossAxisSpacing:
+                                                                    _gridSpacing,
+                                                                mainAxisSpacing:
+                                                                    _gridSpacing,
                                                               ),
-                                                              itemCount: products.length,
+                                                              itemCount:
+                                                                  products
+                                                                      .length,
                                                               itemBuilder: (context, index) {
-                                                                final product = products[index];
+                                                                final product =
+                                                                    products[index];
                                                                 return Center(
                                                                   child: SizedBox(
-                                                                    width: cardSize,
-                                                                    height: cardSize * 1.15,
+                                                                    width:
+                                                                        cardSize,
+                                                                    height:
+                                                                        cardSize *
+                                                                        1.15,
                                                                     child: _buildProductCard(
                                                                       product,
-                                                                      index: index,
+                                                                      index:
+                                                                          index,
                                                                     ),
                                                                   ),
                                                                 );
@@ -2107,7 +2215,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                       );
                                                     },
                                                   );
-                                                })()
+                                                })(),
                                         ),
                                         Positioned(
                                           bottom: 0,
@@ -3752,6 +3860,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 return;
                               }
 
+                              if (!_canEnableFiscalOrNotify()) return;
+
                               _updateCurrentCart(() {
                                 _currentCart.fiscalEnabled = true;
                                 _currentCart.itbisEnabled = true;
@@ -3857,8 +3967,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           child: Builder(
             builder: (context) {
               final grossSubtotal = _currentCart.calculateGrossSubtotal();
-              final discountsCombined =
-                  _currentCart.calculateTotalDiscountsCombined();
+              final discountsCombined = _currentCart
+                  .calculateTotalDiscountsCombined();
               final itbisAmount = _currentCart.itbisEnabled
                   ? _currentCart.calculateItbis()
                   : 0.0;
@@ -3866,11 +3976,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
               return Column(
                 children: [
-                  _buildSummaryRow(
-                    'Subtotal:',
-                    grossSubtotal,
-                    false,
-                  ),
+                  _buildSummaryRow('Subtotal:', grossSubtotal, false),
                   if (discountsCombined > 0) ...[
                     const SizedBox(height: 4),
                     _buildSummaryRow(
@@ -3891,64 +3997,63 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   if (_currentCart.itbisEnabled || discountsCombined > 0) ...[
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child:
-                          const Divider(thickness: 1.5, color: Colors.black),
+                      child: const Divider(thickness: 1.5, color: Colors.black),
                     ),
                   ],
 
-              // Total destacado
-              GestureDetector(
-                onDoubleTap: _showTotalDiscountDialog,
-                child: Tooltip(
-                  message: 'Doble click para descuento',
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: scheme.secondaryContainer.withOpacity(
-                        _currentCart.items.isEmpty ? 0.2 : 0.35,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: scheme.secondary.withOpacity(0.6),
-                        width: 2.2,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
+                  // Total destacado
+                  GestureDetector(
+                    onDoubleTap: _showTotalDiscountDialog,
+                    child: Tooltip(
+                      message: 'Doble click para descuento',
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: scheme.secondaryContainer.withOpacity(
+                            _currentCart.items.isEmpty ? 0.2 : 0.35,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: scheme.secondary.withOpacity(0.6),
+                            width: 2.2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(
-                              Icons.attach_money,
-                              size: 20,
-                              color: scheme.onSecondaryContainer,
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.attach_money,
+                                  size: 20,
+                                  color: scheme.onSecondaryContainer,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'TOTAL:',
+                                  style: TextStyle(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w800,
+                                    color: scheme.onSecondaryContainer,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 6),
                             Text(
-                              'TOTAL:',
+                              'RD\$${totalAmount.toStringAsFixed(2)}',
                               style: TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w800,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
                                 color: scheme.onSecondaryContainer,
+                                letterSpacing: 0.5,
                               ),
                             ),
                           ],
                         ),
-                        Text(
-                          'RD\$${totalAmount.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: scheme.onSecondaryContainer,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ],
+                ],
               );
             },
           ),
@@ -4290,6 +4395,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   return;
                                 }
 
+                                if (!_canEnableFiscalOrNotify()) return;
+
                                 // Activar valor fiscal implica ITBIS activo
                                 _updateCurrentCart(() {
                                   _currentCart.fiscalEnabled = true;
@@ -4396,9 +4503,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   ),
                   child: Builder(
                     builder: (context) {
-                      final grossSubtotal = _currentCart.calculateGrossSubtotal();
-                      final discountsCombined =
-                          _currentCart.calculateTotalDiscountsCombined();
+                      final grossSubtotal = _currentCart
+                          .calculateGrossSubtotal();
+                      final discountsCombined = _currentCart
+                          .calculateTotalDiscountsCombined();
                       final itbisAmount = _currentCart.itbisEnabled
                           ? _currentCart.calculateItbis()
                           : 0.0;
@@ -4429,7 +4537,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               false,
                               isTax: true,
                             ),
-                          if (_currentCart.itbisEnabled || discountsCombined > 0) ...[
+                          if (_currentCart.itbisEnabled ||
+                              discountsCombined > 0) ...[
                             Padding(
                               padding: EdgeInsets.symmetric(vertical: 10),
                               child: Divider(
@@ -4886,7 +4995,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
       if (!mounted) return;
       setState(() {
-        _carts.add(_Cart(name: ticketName));
+        final cart = _Cart(name: ticketName);
+        _applySalesDefaultsToCart(cart);
+        _carts.add(cart);
         _currentCartIndex = _carts.length - 1;
       });
 
