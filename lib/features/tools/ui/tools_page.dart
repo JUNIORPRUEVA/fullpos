@@ -1,12 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:url_launcher/url_launcher_string.dart';
 
-import '../../settings/providers/business_settings_provider.dart';
 import '../../settings/ui/training/training_page.dart';
-import '../data/owner_app_links.dart';
 import 'authorizations_page.dart';
 import 'scanner_settings_page.dart';
 
@@ -14,111 +10,10 @@ import 'scanner_settings_page.dart';
 class ToolsPage extends ConsumerWidget {
   const ToolsPage({super.key});
 
-  static Future<void> _showOwnerAppDialog(
-    BuildContext context, {
-    required Widget ownerLinksWidget,
-  }) async {
-    final scheme = Theme.of(context).colorScheme;
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.download_rounded, color: scheme.primary),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Descargar FULLPOS Owner',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ownerLinksWidget,
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  static Future<void> _openUrl(BuildContext context, String url) async {
-    final ok = await launchUrlString(url, mode: LaunchMode.externalApplication);
-    // Solo mostrar el snackbar si el usuario intentó abrir el enlace y falló, no por navegación o regreso de otra pantalla.
-    if (!ok && context.mounted) {
-      // Aquí sí es correcto mostrar el mensaje porque es una acción explícita del usuario.
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo abrir el enlace')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final settings = ref.watch(businessSettingsProvider);
-
-    final localLinks = OwnerAppLinks(
-      androidUrl: (settings.cloudOwnerAppAndroidUrl?.trim().isEmpty ?? true)
-          ? null
-          : settings.cloudOwnerAppAndroidUrl!.trim(),
-      iosUrl: (settings.cloudOwnerAppIosUrl?.trim().isEmpty ?? true)
-          ? null
-          : settings.cloudOwnerAppIosUrl!.trim(),
-    );
-
-    final hasLocalLinks =
-        localLinks.androidUrl != null || localLinks.iosUrl != null;
-
-    final ownerLinksWidget = hasLocalLinks
-        ? _OwnerAppLinksCard(data: localLinks, sourceLabel: 'Configuración')
-        : FutureBuilder<OwnerAppLinks>(
-            future: OwnerAppLinks.fetch(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: LinearProgressIndicator(minHeight: 2),
-                );
-              }
-              if (snapshot.hasError) {
-                return Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    'No se pudieron cargar los enlaces de la app del Dueño',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.error,
-                    ),
-                  ),
-                );
-              }
-              return _OwnerAppLinksCard(
-                data: snapshot.data,
-                sourceLabel: 'Servidor',
-              );
-            },
-          );
 
     final tools = <_ToolItem>[
       _ToolItem(
@@ -154,16 +49,6 @@ class ToolsPage extends ConsumerWidget {
         onTap: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const ScannerSettingsPage())),
-      ),
-      _ToolItem(
-        icon: Icons.download_rounded,
-        title: 'Descargas',
-        subtitle: 'FULLPOS Owner',
-        color: scheme.secondary,
-        onTap: () => ToolsPage._showOwnerAppDialog(
-          context,
-          ownerLinksWidget: ownerLinksWidget,
-        ),
       ),
     ];
 
@@ -213,66 +98,13 @@ class ToolsPage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: scheme.outlineVariant.withOpacity(0.35),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: scheme.primaryContainer.withOpacity(0.65),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: scheme.outlineVariant.withOpacity(0.30),
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.apps_rounded,
-                              size: 20,
-                              color: scheme.onPrimaryContainer,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Accesos rápidos',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Herramientas del sistema y utilidades',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const SizedBox(height: 4),
                     Expanded(
                       child: GridView.count(
                         crossAxisCount: crossAxisCount,
                         mainAxisSpacing: gridSpacing,
                         crossAxisSpacing: gridSpacing,
-                        childAspectRatio: 1.25,
+                        childAspectRatio: 1.6,
                         children: [
                           for (final tool in tools) _ToolCard(tool: tool),
                         ],
@@ -284,103 +116,6 @@ class ToolsPage extends ConsumerWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _OwnerAppLinksCard extends StatelessWidget {
-  final OwnerAppLinks? data;
-  final String sourceLabel;
-
-  const _OwnerAppLinksCard({required this.data, required this.sourceLabel});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      color: scheme.surface,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: scheme.outlineVariant.withOpacity(0.35)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'App del Dueño (FULLPOS Owner)',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Chip(
-                        label: Text(sourceLabel),
-                        backgroundColor: scheme.secondaryContainer.withOpacity(
-                          0.75,
-                        ),
-                        labelStyle: TextStyle(
-                          color: scheme.onSecondaryContainer,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: [
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.android),
-                        label: const Text('Descargar Android'),
-                        onPressed: data?.androidUrl != null
-                            ? () =>
-                                  ToolsPage._openUrl(context, data!.androidUrl!)
-                            : null,
-                      ),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.phone_iphone),
-                        label: const Text('Descargar iPhone'),
-                        onPressed: data?.iosUrl != null
-                            ? () => ToolsPage._openUrl(context, data!.iosUrl!)
-                            : null,
-                      ),
-                      if (data?.version != null)
-                        Chip(
-                          label: Text('Versión ${data!.version}'),
-                          backgroundColor: scheme.tertiaryContainer.withOpacity(
-                            0.75,
-                          ),
-                          labelStyle: TextStyle(
-                            color: scheme.onTertiaryContainer,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            if (data?.androidUrl != null)
-              QrImageView(
-                data: data!.androidUrl!,
-                size: 120,
-                backgroundColor: scheme.surface,
-              ),
-          ],
-        ),
       ),
     );
   }
@@ -420,7 +155,7 @@ class _ToolCardState extends State<_ToolCard> {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final cardBg = Color.alphaBlend(widget.tool.color.withOpacity(isDark ? 0.16 : 0.10), scheme.surface);
+    final cardBg = scheme.surface;
     final borderColor = scheme.outlineVariant.withOpacity(isDark ? 0.42 : 0.28);
 
     return MouseRegion(
@@ -447,27 +182,26 @@ class _ToolCardState extends State<_ToolCard> {
             onTap: widget.tool.onTap,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        widget.tool.color.withOpacity(isDark ? 0.20 : 0.12),
-                        scheme.surface,
+                      color: scheme.surfaceVariant.withOpacity(
+                        isDark ? 0.28 : 0.55,
                       ),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: borderColor.withOpacity(0.9)),
                     ),
                     child: Icon(
                       widget.tool.icon,
-                      size: 24,
+                      size: 22,
                       color: widget.tool.color,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Text(
                     widget.tool.title,
                     style: theme.textTheme.labelLarge?.copyWith(
@@ -481,7 +215,9 @@ class _ToolCardState extends State<_ToolCard> {
                   const SizedBox(height: 2),
                   Text(
                     widget.tool.subtitle,
-                    style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

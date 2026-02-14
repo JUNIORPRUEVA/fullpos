@@ -459,16 +459,10 @@ class _NcfCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-
-    final cardBg = Color.alphaBlend(
-      statusColor.withOpacity(isDark ? 0.10 : 0.06),
-      scheme.surface,
-    );
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      color: cardBg,
+      color: scheme.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),

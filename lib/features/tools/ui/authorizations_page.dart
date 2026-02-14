@@ -57,8 +57,10 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: scheme.surface,
       appBar: AppBar(
         title: const Text('Autorizaciones'),
+        surfaceTintColor: scheme.surface,
         actions: [
           IconButton(
             tooltip: 'Recargar',
@@ -77,7 +79,9 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
     }
 
     if (_entries.isEmpty) {
-      return Center(child: Text(_error ?? 'No hay autorizaciones registradas.'));
+      return Center(
+        child: Text(_error ?? 'No hay autorizaciones registradas.'),
+      );
     }
 
     return LayoutBuilder(
@@ -93,18 +97,28 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
 
         if (!isWide) return list;
 
+        final detailWidth = (constraints.maxWidth * 0.25).clamp(320.0, 520.0);
+
         return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(width: 520, child: list),
+            Expanded(child: list),
             VerticalDivider(
               width: 1,
               thickness: 1,
               color: scheme.outlineVariant.withOpacity(0.65),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: details,
+            SizedBox(
+              width: detailWidth,
+              child: Container(
+                color: scheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: SingleChildScrollView(child: details),
+                  ),
+                ),
               ),
             ),
           ],
@@ -115,15 +129,14 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
 
   Widget _buildAuditList(ColorScheme scheme, {required bool isWide}) {
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       itemCount: _entries.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (context, index) {
         final entry = _entries[index];
         final isSelected = _selected?.id == entry.id;
         final action = AppActions.findByCode(entry.actionCode);
         final actionName = action?.name ?? entry.actionCode;
-        final subtitle = action?.description ?? '';
         final time = _dateFormat.format(
           DateTime.fromMillisecondsSinceEpoch(entry.createdAtMs),
         );
@@ -131,83 +144,165 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
         final result = entry.result.toUpperCase();
         final statusColor = _statusColor(result, scheme);
 
-        final card = Card(
-          elevation: 0,
-          color: isSelected ? scheme.primaryContainer.withOpacity(0.12) : null,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: isSelected ? scheme.primary : scheme.outlineVariant,
-              width: isSelected ? 1.4 : 1.0,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        actionName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: statusColor),
-                      ),
-                      child: Text(
-                        result,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
+        final card = LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+
+            final showMethod = w >= 520;
+            final showTime = w >= 680;
+            final showRequested = w >= 860;
+            final showApproved = w >= 1040;
+            final showTerminal = w >= 1200;
+            final terminal = (entry.terminalId ?? '').trim();
+
+            const pillW = 98.0;
+            const methodW = 74.0;
+            const timeW = 132.0;
+            const personW = 170.0;
+            const terminalW = 110.0;
+
+            Widget cell(String text, {TextStyle? style}) {
+              return Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              );
+            }
+
+            return Card(
+              elevation: 0,
+              color: scheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: isSelected ? scheme.primary : scheme.outlineVariant,
+                  width: isSelected ? 1.4 : 1.0,
                 ),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: scheme.onSurface.withOpacity(0.7),
-                      fontSize: 12,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                child: SizedBox(
+                  height: 34,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: cell(
+                          actionName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: pillW,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: statusColor),
+                            ),
+                            child: Text(
+                              result,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (showMethod) ...[
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: methodW,
+                          child: cell(
+                            method,
+                            style: TextStyle(
+                              color: scheme.onSurface.withOpacity(0.75),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (showTime) ...[
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: timeW,
+                          child: cell(
+                            time,
+                            style: TextStyle(
+                              color: scheme.onSurface.withOpacity(0.70),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (showRequested) ...[
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: personW,
+                          child: cell(
+                            entry.requestedLabel,
+                            style: TextStyle(
+                              color: scheme.onSurface.withOpacity(0.70),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (showApproved) ...[
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: personW,
+                          child: cell(
+                            entry.approvedLabel,
+                            style: TextStyle(
+                              color: scheme.onSurface.withOpacity(0.70),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (showTerminal && terminal.isNotEmpty) ...[
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: terminalW,
+                          child: cell(
+                            terminal,
+                            style: TextStyle(
+                              color: scheme.onSurface.withOpacity(0.70),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 6,
-                  children: [
-                    _infoChip('Metodo', method, scheme),
-                    _infoChip('Fecha', time, scheme),
-                    _infoChip('Solicita', entry.requestedLabel, scheme),
-                    _infoChip('Aprueba', entry.approvedLabel, scheme),
-                    if ((entry.terminalId ?? '').trim().isNotEmpty)
-                      _infoChip('Terminal', entry.terminalId!.trim(), scheme),
-                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
 
         return InkWell(
@@ -259,33 +354,6 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
         return scheme.outline;
     }
   }
-
-  Widget _infoChip(String label, String value, ColorScheme scheme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              color: scheme.onSurface.withOpacity(0.7),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _AuthorizationDetailPane extends StatelessWidget {
@@ -313,6 +381,7 @@ class _AuthorizationDetailPane extends StatelessWidget {
 
     return Card(
       elevation: 0,
+      color: scheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(color: scheme.outlineVariant),
@@ -328,8 +397,8 @@ class _AuthorizationDetailPane extends StatelessWidget {
                   child: Text(
                     actionName,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -343,8 +412,8 @@ class _AuthorizationDetailPane extends StatelessWidget {
               Text(
                 subtitle,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurface.withOpacity(0.75),
-                    ),
+                  color: scheme.onSurface.withOpacity(0.75),
+                ),
               ),
             ],
             const SizedBox(height: 14),
@@ -369,9 +438,9 @@ class _AuthorizationDetailPane extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 'Detalle',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
               ...meta.entries.map(

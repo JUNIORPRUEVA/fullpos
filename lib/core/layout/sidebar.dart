@@ -80,6 +80,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
       sidebarBg,
     );
 
+    // IMPORTANTE (UX): El usuario requiere texto + iconos del sidebar en blanco.
+    // Forzamos el color de foreground del sidebar, independientemente del tema.
+    sidebarTextColor = Colors.white;
+
     // En sidebar claro, evita que el texto se vea "negro puro":
     // lo bajamos a gris manteniendo contraste.
     final isSidebarVeryLight = sidebarBg.computeLuminance() > 0.78;
@@ -90,8 +94,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final activeColor = themeSettings.sidebarActiveColor;
     final hoverColor = themeSettings.hoverColor;
 
-    final lightPillStyle = !themeSettings.isDarkMode;
-    final navItemTextColor = sidebarTextColor;
+    // En lightPillStyle (true) se fuerzan foregrounds oscuros en `PremiumNavItem`.
+    // Para cumplir el requerimiento de blancos, lo desactivamos.
+    const lightPillStyle = false;
+    const navItemTextColor = Colors.white;
 
     final borderColor = scheme.outlineVariant.withOpacity(0.35);
     final shadowColor = theme.shadowColor;
@@ -162,11 +168,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   .toUpperCase();
 
           final titleTextGradient = const LinearGradient(
-            colors: [
-              Colors.white,
-              Colors.white,
-              Colors.black54,
-            ],
+            colors: [Colors.white, Colors.white, Colors.black54],
             stops: [0.0, 0.72, 1.0],
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
@@ -193,23 +195,30 @@ class _SidebarState extends ConsumerState<Sidebar> {
               final btnSize = effectiveCollapsed
                   ? 0.0
                   : math.min(desiredBtnSize, contentWidth);
-              final gap = (!effectiveCollapsed && contentWidth > 0) ? padS : 0.0;
+              final gap = (!effectiveCollapsed && contentWidth > 0)
+                  ? padS
+                  : 0.0;
 
               final maxLogoSize = contentWidth - btnSize - gap;
               final showLogo = maxLogoSize >= 24.0;
-              final logoSize = showLogo ? math.min(desiredLogoSize, maxLogoSize) : 0.0;
+              final logoSize = showLogo
+                  ? math.min(desiredLogoSize, maxLogoSize)
+                  : 0.0;
 
               return SizedBox(
                 height: topbarHeight,
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: horizontalPad),
                   child: Row(
-                    mainAxisAlignment:
-                        effectiveCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+                    mainAxisAlignment: effectiveCollapsed
+                        ? MainAxisAlignment.center
+                        : MainAxisAlignment.start,
                     children: [
                       if (showLogo)
                         Tooltip(
-                          message: effectiveCollapsed ? 'Expandir menú' : 'Menú',
+                          message: effectiveCollapsed
+                              ? 'Expandir menú'
+                              : 'Menú',
                           waitDuration: const Duration(milliseconds: 350),
                           child: Material(
                             color: Colors.transparent,
@@ -437,7 +446,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 ),
               ),
               // Accesos fijos inferiores (profesional, alineado, con separador)
-              Divider(color: scheme.outlineVariant.withOpacity(0.35), height: 1),
+              Divider(
+                color: scheme.outlineVariant.withOpacity(0.35),
+                height: 1,
+              ),
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   padS,
@@ -488,14 +500,25 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 ),
               ),
               SizedBox(height: (6 * s).clamp(4.0, 10.0)),
-              Divider(color: scheme.outlineVariant.withOpacity(0.35), height: 1),
+              Divider(
+                color: scheme.outlineVariant.withOpacity(0.35),
+                height: 1,
+              ),
               // Fixed logout button at end of sidebar
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: padM, vertical: (12 * s).clamp(10.0, 16.0)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: padM,
+                  vertical: (12 * s).clamp(10.0, 16.0),
+                ),
                 child: Container(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular((12 * s).clamp(8.0, 14.0)),
-                    color: Color.alphaBlend(scheme.error.withOpacity(0.06), sidebarBg.withOpacity(0.02)),
+                    borderRadius: BorderRadius.circular(
+                      (12 * s).clamp(8.0, 14.0),
+                    ),
+                    color: Color.alphaBlend(
+                      scheme.error.withOpacity(0.06),
+                      sidebarBg.withOpacity(0.02),
+                    ),
                   ),
                   child: PremiumNavItem(
                     icon: Icons.logout,
@@ -506,9 +529,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
                         context: context,
                         builder: (context) => AlertDialog(
                           title: const Text('Cerrar sesión'),
-                          content: const Text('¿Deseas cerrar sesión del sistema?'),
+                          content: const Text(
+                            '¿Deseas cerrar sesión del sistema?',
+                          ),
                           actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancelar'),
+                            ),
                             ElevatedButton.icon(
                               onPressed: () => Navigator.pop(context, true),
                               icon: const Icon(Icons.logout),
@@ -531,7 +559,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                           // atrapado dentro del ShellRoute.
                           if (!context.mounted) return;
                           final rootCtx =
-                              ErrorHandler.navigatorKey.currentContext ?? context;
+                              ErrorHandler.navigatorKey.currentContext ??
+                              context;
                           GoRouter.of(rootCtx).refresh();
                           GoRouter.of(rootCtx).go('/login');
                         } catch (e) {
@@ -629,32 +658,31 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     const duration = Duration(milliseconds: 180);
     final pillRadius = BorderRadius.circular((16 * s).clamp(12.0, 16.0));
 
-    // Estilo: en tema Azul Marca (light), los botones del menú deben verse
-    // blancos con un degradado sutil a negro (y texto/iconos oscuros).
-    // En tema negro, se mantiene el estilo premium actual.
-    final prefersDarkFg = widget.lightPillStyle;
+    // Requerimiento UX: texto + iconos del sidebar siempre en blanco.
+    // (Independiente del tema/preset que intente forzar foreground oscuro.)
+    const prefersDarkFg = false;
 
     final idleBg = prefersDarkFg
-      ? Colors.transparent
-      : widget.textColor.withOpacity(0.04);
+        ? Colors.transparent
+        : widget.textColor.withOpacity(0.04);
     final hoverBgA = prefersDarkFg
-      ? Colors.white.withOpacity(0.96)
-      : widget.hoverColor.withOpacity(0.14);
+        ? Colors.white.withOpacity(0.96)
+        : widget.hoverColor.withOpacity(0.14);
     final hoverBgB = prefersDarkFg
-      ? Colors.black.withOpacity(0.08)
-      : widget.hoverColor.withOpacity(0.06);
+        ? Colors.black.withOpacity(0.08)
+        : widget.hoverColor.withOpacity(0.06);
     final activeBgA = prefersDarkFg
-      ? Colors.white.withOpacity(0.98)
-      : widget.activeColor.withOpacity(0.22);
+        ? Colors.white.withOpacity(0.98)
+        : widget.activeColor.withOpacity(0.22);
     final activeBgB = prefersDarkFg
-      ? Colors.black.withOpacity(0.10)
-      : widget.activeColor.withOpacity(0.10);
+        ? Colors.black.withOpacity(0.10)
+        : widget.activeColor.withOpacity(0.10);
 
-    final baseFg = prefersDarkFg ? Colors.black87 : widget.textColor;
+    final baseFg = widget.textColor;
     final fgColor = isActive ? baseFg.withOpacity(0.98) : baseFg;
     final iconColor = isActive
-      ? (prefersDarkFg ? widget.activeColor.withOpacity(0.98) : widget.activeColor.withOpacity(0.95))
-      : baseFg;
+        ? baseFg.withOpacity(0.98)
+        : baseFg.withOpacity(0.95);
 
     final item = Padding(
       padding: EdgeInsets.symmetric(
@@ -687,30 +715,24 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
               decoration: BoxDecoration(
                 gradient: isActive
                     ? LinearGradient(
-                        colors: [
-                          activeBgA,
-                          activeBgB,
-                        ],
+                        colors: [activeBgA, activeBgB],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
                     : (_isHover
                           ? LinearGradient(
-                              colors: [
-                                hoverBgA,
-                                hoverBgB,
-                              ],
+                              colors: [hoverBgA, hoverBgB],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             )
                           : null),
-                color: isActive || _isHover
-                    ? null
-                    : idleBg,
+                color: isActive || _isHover ? null : idleBg,
                 borderRadius: pillRadius,
                 border: Border.all(
                   color: isActive
-                      ? widget.activeColor.withOpacity(prefersDarkFg ? 0.70 : 0.35)
+                      ? widget.activeColor.withOpacity(
+                          prefersDarkFg ? 0.70 : 0.35,
+                        )
                       : (prefersDarkFg
                             ? Colors.black.withOpacity(0.08)
                             : widget.textColor.withOpacity(0.08)),

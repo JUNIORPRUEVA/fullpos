@@ -18,9 +18,11 @@ const kLicenseGateHeartbeatInterval = Duration(seconds: 5);
 
 /// Tiempo durante el cual consideramos el estado cacheado como "fresco".
 ///
-/// Si es muy alto, el POS tarda en reflejar bloqueos.
-/// Si es muy bajo, puede generar más llamadas al backend.
-const kLicenseGateFreshWindow = Duration(seconds: 3);
+/// Si es muy bajo, el router re-valida (y potencialmente consulta el backend)
+/// en prácticamente cada navegación, causando latencia perceptible.
+///
+/// Nota: el router también usa un "heartbeat" para re-evaluar el gate.
+const kLicenseGateFreshWindow = Duration(minutes: 5);
 
 /// Public key (raw Ed25519 32-byte) en Base64 para validar archivos offline.
 ///
