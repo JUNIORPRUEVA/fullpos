@@ -54,35 +54,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
   final _layawayNameController = TextEditingController();
   final _layawayPhoneController = TextEditingController();
   final _receivedController = TextEditingController();
+  final FocusNode _rawKeyFocusNode = FocusNode();
   DateTime? _dueDate;
   double _change = 0.0;
   bool _printTicket = true; // Por defecto imprimir
   bool _downloadInvoicePdf = false;
   ClientModel? _selectedClient;
-  bool _isSubmitting = false;
-
-  Future<void> _submitPayment() async {
-    if (_isSubmitting) return;
-    if (!mounted) return;
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      // En desktop, el primer click/tecla a veces solo cambia el foco.
-      // Al soltar el foco y ceder un microtask, garantizamos que el primer
-      // intento ejecute y cierre el diálogo.
-      FocusManager.instance.primaryFocus?.unfocus();
-      await Future<void>.delayed(Duration.zero);
-
-      await _processPayment();
-    } catch (e) {
-      if (!mounted) return;
-      _showError('Error al cobrar: $e');
-    } finally {
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-    }
-  }
 
   void _selectPrint() {
     setState(() {
@@ -130,7 +107,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
     _layawayNameController.dispose();
     _layawayPhoneController.dispose();
     _receivedController.dispose();
+    _rawKeyFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleKey(RawKeyEvent event) {
+    if (event is! RawKeyDownEvent) return;
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      _processPayment();
+    }
   }
 
   void _calculateReceivedChange() {
@@ -316,8 +304,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
       }
     }
 
-    // Retornar resultado (cerrar el diálogo en el root navigator)
-    Navigator.of(context, rootNavigator: true).pop({
+    // Retornar resultado
+    Navigator.pop(context, {
       'method': _selectedMethod,
       'cash': double.tryParse(_cashController.text) ?? 0,
       'card': double.tryParse(_cardController.text) ?? 0,
@@ -332,9 +320,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
       'layawayName': _resolveLayawayName(),
       'layawayPhone': _resolveLayawayPhone(),
       'printTicket': _printTicket,
-      'downloadInvoicePdf': widget.allowInvoicePdfDownload
-          ? _downloadInvoicePdf
-          : false,
+      'downloadInvoicePdf':
+          widget.allowInvoicePdfDownload ? _downloadInvoicePdf : false,
     });
   }
 
@@ -346,523 +333,418 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return DialogKeyboardShortcuts(
-      onSubmit: _submitPayment,
-      extraShortcuts: const {
-        SingleActivator(LogicalKeyboardKey.f9): PrintAndConfirmPaymentIntent(),
-      },
-      extraActions: {
-        PrintAndConfirmPaymentIntent: CallbackAction<PrintAndConfirmPaymentIntent>(
-          onInvoke: (_) {
-            _submitPayment();
-            return null;
+    return RawKeyboardListener(
+      focusNode: _rawKeyFocusNode,
+      autofocus: true,
+      onKey: _handleKey,
+      child: DialogKeyboardShortcuts(
+        onSubmit: _processPayment,
+        child: Shortcuts(
+          shortcuts: const {
+            SingleActivator(LogicalKeyboardKey.f9):
+                PrintAndConfirmPaymentIntent(),
           },
-        ),
-      },
-      child: Dialog(
-        child: Container(
-          width: 500,
-          constraints: const BoxConstraints(maxHeight: 700),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: scheme.primary,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(4),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.payment, color: scheme.onPrimary, size: 28),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'PROCESAR PAGO',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: scheme.onPrimary,
-                                ),
-                              ),
-                              Text(
-                                'SELECCIONE EL MÉTODO DE PAGO',
-                                style: TextStyle(
-                                  color: scheme.onPrimary.withAlpha(179),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () =>
-                              Navigator.of(context, rootNavigator: true).pop(),
-                          icon: Icon(Icons.close, color: scheme.onPrimary),
-                        ),
-                      ],
-                    ),
+          child: Actions(
+            actions: {
+              PrintAndConfirmPaymentIntent:
+                  CallbackAction<PrintAndConfirmPaymentIntent>(
+                    onInvoke: (_) {
+                      _processPayment();
+                      return null;
+                    },
                   ),
-
-                  // Body
-                  Flexible(
-                    child: SingleChildScrollView(
+            },
+            child: Dialog(
+              child: Container(
+                width: 500,
+                constraints: const BoxConstraints(maxHeight: 700),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header
+                    Container(
                       padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(4),
+                        ),
+                      ),
+                      child: Row(
                         children: [
-                          // Total a pagar
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: scheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: scheme.secondary,
-                                width: 2,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Icon(
+                            Icons.payment,
+                            color: scheme.onPrimary,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.attach_money,
-                                      color: scheme.secondary,
-                                      size: 28,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      'TOTAL A PAGAR',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: scheme.onSecondaryContainer,
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  'PROCESAR PAGO',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: scheme.onPrimary,
+                                  ),
                                 ),
                                 Text(
-                                  '\$${widget.total.toStringAsFixed(2)}',
+                                  'SELECCIONE EL MÉTODO DE PAGO',
                                   style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: scheme.secondary,
+                                    color: scheme.onPrimary.withAlpha(179),
+                                    fontSize: 13,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-
-                          const SizedBox(height: 16),
-
-                          // Sección de Recibido y Devuelta
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: scheme.outlineVariant),
-                            ),
-                            child: Column(
-                              children: [
-                                // Campo de monto recibido
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.payments,
-                                      color: scheme.primary,
-                                      size: 22,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        _selectedMethod == PaymentMethod.layaway
-                                            ? 'ABONO INICIAL:'
-                                            : 'CLIENTE PAGA CON:',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: TextField(
-                                        controller: _receivedController,
-                                        keyboardType: TextInputType.number,
-                                        textAlign: TextAlign.right,
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: scheme.primary,
-                                        ),
-                                        decoration: InputDecoration(
-                                          hintText: widget.total
-                                              .toStringAsFixed(2),
-                                          hintStyle: TextStyle(
-                                            color: scheme.onSurface.withAlpha(
-                                              102,
-                                            ),
-                                          ),
-                                          prefixText: '\$ ',
-                                          prefixStyle: TextStyle(
-                                            fontSize: 20,
-                                            color: scheme.primary,
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 8,
-                                              ),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                            borderSide: BorderSide(
-                                              color: scheme.primary,
-                                              width: 2,
-                                            ),
-                                          ),
-                                        ),
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.allow(
-                                            RegExp(r'^\d+\.?\d{0,2}'),
-                                          ),
-                                        ],
-                                        onSubmitted: (_) => _submitPayment(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 12),
-
-                                // Devuelta
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: _change > 0
-                                        ? status.success.withAlpha(51)
-                                        : (_change < 0
-                                              ? status.error.withAlpha(51)
-                                              : scheme.surfaceContainerHighest),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            _change >= 0
-                                                ? Icons.arrow_back
-                                                : Icons.warning,
-                                            color: _change > 0
-                                                ? status.success
-                                                : (_change < 0
-                                                      ? status.error
-                                                      : scheme.onSurface
-                                                            .withAlpha(153)),
-                                            size: 22,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            _change >= 0
-                                                ? 'DEVUELTA:'
-                                                : 'FALTA:',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: _change > 0
-                                                  ? status.success
-                                                  : (_change < 0
-                                                        ? status.error
-                                                        : scheme.onSurface
-                                                              .withAlpha(153)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      Text(
-                                        '\$${_change.abs().toStringAsFixed(2)}',
-                                        style: TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                          color: _change > 0
-                                              ? status.success
-                                              : (_change < 0
-                                                    ? status.error
-                                                    : scheme.onSurface
-                                                          .withAlpha(153)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: Icon(Icons.close, color: scheme.onPrimary),
                           ),
+                        ],
+                      ),
+                    ),
 
-                          const SizedBox(height: 24),
-
-                          // Método de pago
-                          const Text(
-                            'MÉTODO DE PAGO',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildMethodChip(
-                                PaymentMethod.cash,
-                                'EFECTIVO',
-                                Icons.money,
-                              ),
-                              _buildMethodChip(
-                                PaymentMethod.card,
-                                'TARJETA',
-                                Icons.credit_card,
-                              ),
-                              _buildMethodChip(
-                                PaymentMethod.transfer,
-                                'TRANSFERENCIA',
-                                Icons.account_balance,
-                              ),
-                              _buildMethodChip(
-                                PaymentMethod.mixed,
-                                'MIXTO',
-                                Icons.payments,
-                              ),
-                              _buildMethodChip(
-                                PaymentMethod.credit,
-                                'CRÉDITO',
-                                Icons.request_quote,
-                              ),
-                              _buildMethodChip(
-                                PaymentMethod.layaway,
-                                'APARTADO',
-                                Icons.bookmark,
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Campos según método
-                          if (_selectedMethod == PaymentMethod.cash) ...[
-                            // Solo el efectivo, la devuelta ya se muestra arriba
-                            const SizedBox.shrink(),
-                          ] else if (_selectedMethod == PaymentMethod.card) ...[
-                            _buildAmountField(
-                              'MONTO CON TARJETA',
-                              _cardController,
-                              Icons.credit_card,
-                            ),
-                          ] else if (_selectedMethod ==
-                              PaymentMethod.transfer) ...[
-                            _buildAmountField(
-                              'MONTO TRANSFERIDO',
-                              _transferController,
-                              Icons.account_balance,
-                            ),
-                          ] else if (_selectedMethod ==
-                              PaymentMethod.mixed) ...[
-                            _buildAmountField(
-                              'EFECTIVO',
-                              _cashController,
-                              Icons.money,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildAmountField(
-                              'TARJETA',
-                              _cardController,
-                              Icons.credit_card,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildAmountField(
-                              'TRANSFERENCIA',
-                              _transferController,
-                              Icons.account_balance,
-                            ),
-                            const SizedBox(height: 16),
+                    // Body
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Total a pagar
                             Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: _change.abs() < 0.01
-                                    ? status.success.withAlpha(31)
-                                    : status.warning.withAlpha(31),
+                                color: scheme.secondaryContainer,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: _change.abs() < 0.01
-                                      ? status.success
-                                      : status.warning,
+                                  color: scheme.secondary,
+                                  width: 2,
                                 ),
                               ),
                               child: Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text(
-                                    'DIFERENCIA:',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.attach_money,
+                                        color: scheme.secondary,
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'TOTAL A PAGAR:',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: scheme.onSecondaryContainer,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   Text(
-                                    '\$${_change.toStringAsFixed(2)}',
+                                    '\$${widget.total.toStringAsFixed(2)}',
                                     style: TextStyle(
-                                      fontSize: 16,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.bold,
-                                      color: _change.abs() < 0.01
-                                          ? status.success
-                                          : status.warning,
+                                      color: scheme.secondary,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          ] else if (_selectedMethod ==
-                              PaymentMethod.credit) ...[
-                            // Cliente
+
+                            const SizedBox(height: 16),
+
+                            // Sección de Recibido y Devuelta
                             Container(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
+                                color: scheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: scheme.outlineVariant,
                                 ),
-                                borderRadius: BorderRadius.circular(8),
                               ),
-                              child: Row(
+                              child: Column(
                                 children: [
-                                  Icon(Icons.person, color: scheme.primary),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'CLIENTE',
+                                  // Campo de monto recibido
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.payments,
+                                        color: scheme.primary,
+                                        size: 22,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                          _selectedMethod ==
+                                                  PaymentMethod.layaway
+                                              ? 'ABONO INICIAL:'
+                                              : 'CLIENTE PAGA CON:',
                                           style: TextStyle(
-                                            fontSize: 12,
-                                            color: scheme.onSurface.withAlpha(
-                                              153,
-                                            ),
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
+                                      ),
+                                      Expanded(
+                                        flex: 2,
+                                        child: TextField(
+                                          controller: _receivedController,
+                                          keyboardType: TextInputType.number,
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: scheme.primary,
+                                          ),
+                                          decoration: InputDecoration(
+                                            hintText: widget.total.toStringAsFixed(2),
+                                            hintStyle: TextStyle(
+                                              color: scheme.onSurface.withAlpha(102),
+                                            ),
+                                            prefixText: '\$ ',
+                                            prefixStyle: TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: scheme.primary,
+                                            ),
+                                            contentPadding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                              borderSide: BorderSide(
+                                                color: scheme.primary,
+                                                width: 2,
+                                              ),
+                                            ),
+                                          ),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.allow(
+                                              RegExp(r'^\d+\.?\d{0,2}'),
+                                            ),
+                                          ],
+                                          onSubmitted: (_) => _processPayment(),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 12),
+
+                                  // Devuelta
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: _change > 0
+                                          ? status.success.withAlpha(51)
+                                          : (_change < 0
+                                                ? status.error.withAlpha(51)
+                                                : scheme
+                                                      .surfaceContainerHighest),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              _change >= 0
+                                                  ? Icons.arrow_back
+                                                  : Icons.warning,
+                                              color: _change > 0
+                                                  ? status.success
+                                                  : (_change < 0
+                                                        ? status.error
+                                                        : scheme.onSurface
+                                                              .withAlpha(153)),
+                                              size: 22,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _change >= 0
+                                                  ? 'DEVUELTA:'
+                                                  : 'FALTA:',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: _change > 0
+                                                    ? status.success
+                                                    : (_change < 0
+                                                          ? status.error
+                                                          : scheme.onSurface
+                                                                .withAlpha(
+                                                                  153,
+                                                                )),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                         Text(
-                                          (_selectedClient?.nombre ?? 'NINGUNO')
-                                              .toUpperCase(),
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
+                                          '\$${_change.abs().toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: _change > 0
+                                                ? status.success
+                                                : (_change < 0
+                                                      ? status.error
+                                                      : scheme.onSurface
+                                                            .withAlpha(153)),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  if (_selectedClient == null)
-                                    ElevatedButton(
-                                      onPressed: _ensureClientSelected,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: scheme.primary,
-                                        foregroundColor: scheme.onPrimary,
-                                      ),
-                                      child: const Text('SELECCIONAR'),
-                                    ),
-                                  if (_selectedClient != null &&
-                                      !_isClientComplete(_selectedClient) &&
-                                      widget.onEditClient != null)
-                                    OutlinedButton(
-                                      onPressed: () => _ensureClientCompleted(
-                                        _selectedClient!,
-                                      ),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: scheme.primary,
-                                      ),
-                                      child: const Text('COMPLETAR'),
-                                    ),
                                 ],
                               ),
                             ),
-                            if (_selectedClient != null &&
-                                !_isClientComplete(_selectedClient))
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  'Faltan datos del cliente (telefono, direccion y RNC/cedula)',
-                                  style: TextStyle(
-                                    color: status.warning,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: 16),
 
-                            // Plazo y cuotas
-                            Row(
+                            const SizedBox(height: 24),
+
+                            // Método de pago
+                            const Text(
+                              'MÉTODO DE PAGO',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
                               children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _termDaysController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'PLAZO (DIAS)',
-                                      border: OutlineInputBorder(),
-                                      prefixIcon: Icon(Icons.timer_outlined),
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                  ),
+                                _buildMethodChip(
+                                  PaymentMethod.cash,
+                                  'EFECTIVO',
+                                  Icons.money,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _installmentsController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'CUOTAS',
-                                      border: OutlineInputBorder(),
-                                      prefixIcon: Icon(
-                                        Icons.stacked_line_chart,
-                                      ),
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                  ),
+                                _buildMethodChip(
+                                  PaymentMethod.card,
+                                  'TARJETA',
+                                  Icons.credit_card,
+                                ),
+                                _buildMethodChip(
+                                  PaymentMethod.transfer,
+                                  'TRANSFERENCIA',
+                                  Icons.account_balance,
+                                ),
+                                _buildMethodChip(
+                                  PaymentMethod.mixed,
+                                  'MIXTO',
+                                  Icons.payments,
+                                ),
+                                _buildMethodChip(
+                                  PaymentMethod.credit,
+                                  'CRÉDITO',
+                                  Icons.request_quote,
+                                ),
+                                _buildMethodChip(
+                                  PaymentMethod.layaway,
+                                  'APARTADO',
+                                  Icons.bookmark,
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
 
-                            // Fecha de vencimiento
-                            InkWell(
-                              onTap: _selectDueDate,
-                              child: Container(
+                            const SizedBox(height: 24),
+
+                            // Campos según método
+                            if (_selectedMethod == PaymentMethod.cash) ...[
+                              // Solo el efectivo, la devuelta ya se muestra arriba
+                              const SizedBox.shrink(),
+                            ] else if (_selectedMethod ==
+                                PaymentMethod.card) ...[
+                              _buildAmountField(
+                                'MONTO CON TARJETA',
+                                _cardController,
+                                Icons.credit_card,
+                              ),
+                            ] else if (_selectedMethod ==
+                                PaymentMethod.transfer) ...[
+                              _buildAmountField(
+                                'MONTO TRANSFERIDO',
+                                _transferController,
+                                Icons.account_balance,
+                              ),
+                            ] else if (_selectedMethod ==
+                                PaymentMethod.mixed) ...[
+                              _buildAmountField(
+                                'EFECTIVO',
+                                _cashController,
+                                Icons.money,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildAmountField(
+                                'TARJETA',
+                                _cardController,
+                                Icons.credit_card,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildAmountField(
+                                'TRANSFERENCIA',
+                                _transferController,
+                                Icons.account_balance,
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _change.abs() < 0.01
+                                      ? status.success.withAlpha(31)
+                                      : status.warning.withAlpha(31),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _change.abs() < 0.01
+                                        ? status.success
+                                        : status.warning,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'DIFERENCIA:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    Text(
+                                      '\$${_change.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: _change.abs() < 0.01
+                                            ? status.success
+                                            : status.warning,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else if (_selectedMethod ==
+                                PaymentMethod.credit) ...[
+                              // Cliente
+                              Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   border: Border.all(
@@ -872,10 +754,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      color: scheme.primary,
-                                    ),
+                                    Icon(Icons.person, color: scheme.primary),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
@@ -883,7 +762,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'FECHA DE VENCIMIENTO',
+                                            'CLIENTE',
                                             style: TextStyle(
                                               fontSize: 12,
                                               color: scheme.onSurface.withAlpha(
@@ -892,9 +771,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                             ),
                                           ),
                                           Text(
-                                            _dueDate != null
-                                                ? '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}'
-                                                : 'SELECCIONAR FECHA',
+                                            (_selectedClient?.nombre ??
+                                                    'NINGUNO')
+                                                .toUpperCase(),
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w600,
@@ -903,186 +782,262 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                         ],
                                       ),
                                     ),
-                                    const Icon(
-                                      Icons.arrow_forward_ios,
-                                      size: 16,
+                                    if (_selectedClient == null)
+                                      ElevatedButton(
+                                        onPressed: _ensureClientSelected,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: scheme.primary,
+                                          foregroundColor: scheme.onPrimary,
+                                        ),
+                                        child: const Text('SELECCIONAR'),
+                                      ),
+                                    if (_selectedClient != null &&
+                                        !_isClientComplete(_selectedClient) &&
+                                        widget.onEditClient != null)
+                                      OutlinedButton(
+                                        onPressed: () => _ensureClientCompleted(
+                                          _selectedClient!,
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: scheme.primary,
+                                        ),
+                                        child: const Text('COMPLETAR'),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (_selectedClient != null &&
+                                  !_isClientComplete(_selectedClient))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    'Faltan datos del cliente (telefono, direccion y RNC/cedula)',
+                                    style: TextStyle(
+                                      color: status.warning,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(height: 16),
+
+                              // Plazo y cuotas
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _termDaysController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'PLAZO (DIAS)',
+                                        border: OutlineInputBorder(),
+                                        prefixIcon: Icon(Icons.timer_outlined),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _installmentsController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'CUOTAS',
+                                        border: OutlineInputBorder(),
+                                        prefixIcon: Icon(
+                                          Icons.stacked_line_chart,
+                                        ),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Fecha de vencimiento
+                              InkWell(
+                                onTap: _selectDueDate,
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: scheme.outlineVariant,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_today,
+                                        color: scheme.primary,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'FECHA DE VENCIMIENTO',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: scheme.onSurface
+                                                    .withAlpha(153),
+                                              ),
+                                            ),
+                                            Text(
+                                              _dueDate != null
+                                                  ? '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}'
+                                                  : 'SELECCIONAR FECHA',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.arrow_forward_ios,
+                                        size: 16,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Interés
+                              TextFormField(
+                                controller: _interestController,
+                                decoration: const InputDecoration(
+                                  labelText: 'INTERÉS (%)',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.percent),
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d+\.?\d{0,2}'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Nota
+                              TextFormField(
+                                controller: _noteController,
+                                decoration: const InputDecoration(
+                                  labelText: 'NOTA / CONDICIONES',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.note),
+                                ),
+                                maxLines: 2,
+                              ),
+                            ] else if (_selectedMethod ==
+                                PaymentMethod.layaway) ...[
+                              // Cliente (apartado)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: scheme.outlineVariant,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.person, color: scheme.primary),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'CLIENTE',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: scheme.onSurface.withAlpha(
+                                                153,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            (_selectedClient?.nombre ??
+                                                    'SIN SELECCIONAR')
+                                                .toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: _ensureClientSelected,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: scheme.primary,
+                                        foregroundColor: scheme.onPrimary,
+                                      ),
+                                      child: const Text('SELECCIONAR'),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Interés
-                            TextFormField(
-                              controller: _interestController,
-                              decoration: const InputDecoration(
-                                labelText: 'INTERÉS (%)',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.percent),
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Nota
-                            TextFormField(
-                              controller: _noteController,
-                              decoration: const InputDecoration(
-                                labelText: 'NOTA / CONDICIONES',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.note),
-                              ),
-                              maxLines: 2,
-                            ),
-                          ] else if (_selectedMethod ==
-                              PaymentMethod.layaway) ...[
-                            // Cliente (apartado)
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: scheme.outlineVariant,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.person, color: scheme.primary),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'CLIENTE',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: scheme.onSurface.withAlpha(
-                                              153,
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          (_selectedClient?.nombre ??
-                                                  'SIN SELECCIONAR')
-                                              .toUpperCase(),
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: _ensureClientSelected,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: scheme.primary,
-                                      foregroundColor: scheme.onPrimary,
-                                    ),
-                                    child: const Text('SELECCIONAR'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _layawayNameController,
-                              decoration: const InputDecoration(
-                                labelText: 'NOMBRE (APARTADO)',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.badge_outlined),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _layawayPhoneController,
-                              decoration: const InputDecoration(
-                                labelText: 'TELÉFONO (APARTADO)',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.phone),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextFormField(
-                              controller: _noteController,
-                              decoration: const InputDecoration(
-                                labelText: 'NOTA (APARTADO)',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.note),
-                              ),
-                              maxLines: 2,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Footer
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: const BorderRadius.vertical(
-                        bottom: Radius.circular(4),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Opción de imprimir ticket
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: scheme.outlineVariant),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _printTicket
-                                    ? Icons.print
-                                    : Icons.print_disabled,
-                                color: _printTicket
-                                    ? scheme.primary
-                                    : scheme.onSurface.withAlpha(153),
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'IMPRIMIR TICKET',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _layawayNameController,
+                                decoration: const InputDecoration(
+                                  labelText: 'NOMBRE (APARTADO)',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.badge_outlined),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Switch(
-                                value: _printTicket,
-                                onChanged: (value) {
-                                  _selectPrint();
-                                },
-                                activeThumbColor: scheme.primary,
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _layawayPhoneController,
+                                decoration: const InputDecoration(
+                                  labelText: 'TELÉFONO (APARTADO)',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.phone),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _noteController,
+                                decoration: const InputDecoration(
+                                  labelText: 'NOTA (APARTADO)',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.note),
+                                ),
+                                maxLines: 2,
                               ),
                             ],
-                          ),
+                          ],
                         ),
+                      ),
+                    ),
 
-                        if (widget.allowInvoicePdfDownload)
+                    // Footer
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(4),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Opción de imprimir ticket
                           Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.symmetric(
@@ -1098,15 +1053,17 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  Icons.download,
-                                  color: _downloadInvoicePdf
+                                  _printTicket
+                                      ? Icons.print
+                                      : Icons.print_disabled,
+                                  color: _printTicket
                                       ? scheme.primary
                                       : scheme.onSurface.withAlpha(153),
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
                                 const Text(
-                                  'DESCARGAR FACTURA (PDF)',
+                                  'IMPRIMIR TICKET',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
@@ -1114,9 +1071,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                 ),
                                 const SizedBox(width: 8),
                                 Switch(
-                                  value: _downloadInvoicePdf,
+                                  value: _printTicket,
                                   onChanged: (value) {
-                                    _selectDownloadInvoicePdf();
+                                    _selectPrint();
                                   },
                                   activeThumbColor: scheme.primary,
                                 ),
@@ -1124,47 +1081,89 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             ),
                           ),
 
-                        // Botones
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.of(
-                                context,
-                                rootNavigator: true,
-                              ).pop(),
-                              child: const Text('CANCELAR'),
-                            ),
-                            const SizedBox(width: 12),
-                            ElevatedButton.icon(
-                              onPressed: _isSubmitting ? null : _submitPayment,
-                              icon: Icon(
-                                _printTicket ? Icons.print : Icons.download,
+                          if (widget.allowInvoicePdfDownload)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
                               ),
-                              label: Text(
-                                _printTicket
-                                    ? 'COBRAR E IMPRIMIR'
-                                    : 'COBRAR Y DESCARGAR',
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: scheme.primary,
-                                foregroundColor: scheme.onPrimary,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 14,
-                                ),
-                                textStyle: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
+                              decoration: BoxDecoration(
+                                color: scheme.surface,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: scheme.outlineVariant,
                                 ),
                               ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.download,
+                                    color: _downloadInvoicePdf
+                                        ? scheme.primary
+                                        : scheme.onSurface.withAlpha(153),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'DESCARGAR FACTURA (PDF)',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Switch(
+                                    value: _downloadInvoicePdf,
+                                    onChanged: (value) {
+                                      _selectDownloadInvoicePdf();
+                                    },
+                                    activeThumbColor: scheme.primary,
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
-                      ],
+
+                          // Botones
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('CANCELAR'),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton.icon(
+                                onPressed: _processPayment,
+                                icon: Icon(
+                                  _printTicket ? Icons.print : Icons.download,
+                                ),
+                                label: Text(
+                                  _printTicket
+                                      ? 'COBRAR E IMPRIMIR'
+                                      : 'COBRAR Y DESCARGAR',
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: scheme.primary,
+                                  foregroundColor: scheme.onPrimary,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 14,
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
