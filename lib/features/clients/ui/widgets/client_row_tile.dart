@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../data/client_model.dart';
 
@@ -32,13 +33,12 @@ class ClientRowTile extends StatelessWidget {
     final createdDate = dateFormat.format(
       DateTime.fromMillisecondsSinceEpoch(client.createdAtMs),
     );
-    final mutedText = scheme.onSurface.withOpacity(0.7);
+    final textColor = AppColors.textDark;
+    final mutedText = AppColors.textDarkMuted;
     final statusColor = client.isActive ? scheme.tertiary : scheme.outline;
     final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
 
-    final bgColor = isSelected
-        ? scheme.primaryContainer.withOpacity(0.35)
-        : scheme.surface;
+    final bgColor = AppColors.surfaceLight;
 
     return Material(
       color: bgColor,
@@ -54,7 +54,10 @@ class ClientRowTile extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.outlineVariant),
+            border: Border.all(
+              color: isSelected ? scheme.primary : scheme.outlineVariant,
+              width: isSelected ? 1.2 : 1,
+            ),
           ),
           child: Row(
             children: [
@@ -78,6 +81,7 @@ class ClientRowTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w700,
+                          color: textColor,
                         ),
                       ),
                     ),
@@ -143,7 +147,7 @@ class ClientRowTile extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w900,
-                      color: scheme.onSurface,
+                      color: textColor,
                       letterSpacing: 0.15,
                     ),
                   ),
@@ -169,7 +173,7 @@ class ClientRowTile extends StatelessWidget {
                       Icon(
                         client.hasCredit ? Icons.credit_card : Icons.block,
                         size: 12,
-                        color: scheme.onSurface,
+                        color: textColor,
                       ),
                       const SizedBox(width: 6),
                       Expanded(
@@ -180,7 +184,7 @@ class ClientRowTile extends StatelessWidget {
                           textAlign: TextAlign.center,
                           style: theme.textTheme.labelSmall?.copyWith(
                             fontWeight: FontWeight.w900,
-                            color: scheme.onSurface,
+                            color: textColor,
                             letterSpacing: 0.15,
                           ),
                         ),
@@ -197,7 +201,7 @@ class ClientRowTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurface.withOpacity(0.55),
+                    color: mutedText,
                     fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
@@ -208,7 +212,7 @@ class ClientRowTile extends StatelessWidget {
                 tooltip: 'Acciones',
                 icon: Icon(
                   Icons.more_vert,
-                  color: scheme.onSurface.withOpacity(0.7),
+                  color: mutedText,
                   size: 18,
                 ),
                 padding: EdgeInsets.zero,

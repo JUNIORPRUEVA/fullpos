@@ -305,95 +305,157 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     );
   }
 
-  Widget _buildFilterChips(ColorScheme scheme) {
+  Widget _buildFilterChipsInline(ColorScheme scheme) {
     final labels = {
       MovementFilter.all: 'Todos',
       MovementFilter.income: 'Entradas',
       MovementFilter.expense: 'Salidas',
     };
 
-    return Wrap(
-      spacing: AppSizes.spaceS,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: MovementFilter.values.map((filter) {
         final isSelected = _filter == filter;
-        return ChoiceChip(
-          label: Text(labels[filter]!),
-          selected: isSelected,
-          onSelected: (_) {
-            setState(() {
-              _filter = filter;
-              _syncSelection(currentFiltered: _filteredMovements);
-            });
-          },
-          selectedColor: scheme.primary,
-          labelStyle: TextStyle(
-            color: isSelected ? scheme.onPrimary : scheme.onSurface,
-            fontWeight: FontWeight.w600,
+        return Padding(
+          padding: const EdgeInsets.only(right: AppSizes.spaceS),
+          child: ChoiceChip(
+            label: Text(labels[filter]!),
+            selected: isSelected,
+            onSelected: (_) {
+              setState(() {
+                _filter = filter;
+                _syncSelection(currentFiltered: _filteredMovements);
+              });
+            },
+            selectedColor: scheme.primary,
+            labelStyle: TextStyle(
+              color: isSelected ? scheme.onPrimary : scheme.onSurface,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         );
       }).toList(),
     );
   }
 
-  Widget _buildSummarySection(
-    ThemeData theme,
-    NumberFormat currencyFormat,
-    ColorScheme scheme,
-    BoxConstraints constraints,
-  ) {
-    final stats = [
-      _SummaryMetric(
-        label: 'Entradas',
-        value: currencyFormat.format(_totalIncome),
-        icon: Icons.arrow_circle_up,
-        color: scheme.primary,
-      ),
-      _SummaryMetric(
-        label: 'Salidas',
-        value: currencyFormat.format(_totalExpense),
-        icon: Icons.arrow_circle_down,
-        color: scheme.error,
-      ),
-      _SummaryMetric(
-        label: 'Balance neto',
-        value: currencyFormat.format(_net),
-        icon: _net >= 0 ? Icons.trending_up : Icons.trending_down,
-        color: _net >= 0 ? scheme.primary : scheme.error,
-      ),
-      _SummaryMetric(
-        label: 'Movimientos',
-        value: _filteredMovements.length.toString(),
-        icon: Icons.list_alt,
-        color: scheme.secondary,
-      ),
-    ];
+  Widget _buildTopCompactBar({
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required NumberFormat currencyFormat,
+    required DateFormat dateFormat,
+    required int count,
+  }) {
+    final netColor = _net >= 0 ? scheme.primary : scheme.error;
 
-    final maxCardWidth = 280.0;
-    final availableWidth =
-        constraints.maxWidth -
-        ((constraints.maxWidth - math.min(constraints.maxWidth, 1280.0)) / 2) *
-            2 -
-        AppSizes.paddingM * 2;
-    final cardWidth = math.min(
-      maxCardWidth,
-      (availableWidth - AppSizes.spaceM * 2) / 2,
-    );
-
-    return Wrap(
-      spacing: AppSizes.spaceM,
-      runSpacing: AppSizes.spaceM,
-      children: stats
-          .map(
-            (metric) => SizedBox(
-              width: cardWidth,
-              child: _MetricCard(
-                metric: metric,
-                color: scheme.surface,
-                onPrimary: scheme.onSurface,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickRange,
+              icon: const Icon(Icons.calendar_month, size: 18),
+              label: Text(
+                '${dateFormat.format(_range.start)} — ${dateFormat.format(_range.end)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                textStyle: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          )
-          .toList(),
+            const SizedBox(width: AppSizes.spaceS),
+            _buildFilterChipsInline(scheme),
+            const SizedBox(width: AppSizes.spaceS),
+            SizedBox(
+              width: 280,
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                    _syncSelection(currentFiltered: _filteredMovements);
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Buscar motivo o turno (#)',
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  filled: true,
+                  fillColor: scheme.surfaceVariant.withOpacity(0.35),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
+                    borderSide: BorderSide(color: scheme.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
+                    borderSide: BorderSide(color: scheme.outlineVariant),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
+                    borderSide: BorderSide(color: scheme.primary),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSizes.spaceS),
+            _InlineMetricPill(
+              label: 'Entradas',
+              value: currencyFormat.format(_totalIncome),
+              color: scheme.primary,
+            ),
+            const SizedBox(width: 8),
+            _InlineMetricPill(
+              label: 'Salidas',
+              value: currencyFormat.format(_totalExpense),
+              color: scheme.error,
+            ),
+            const SizedBox(width: 8),
+            _InlineMetricPill(
+              label: 'Neto',
+              value: currencyFormat.format(_net),
+              color: netColor,
+            ),
+            const SizedBox(width: 8),
+            _InlineMetricPill(
+              label: 'Registros',
+              value: count.toString(),
+              color: scheme.secondary,
+            ),
+            const SizedBox(width: AppSizes.spaceS),
+            ElevatedButton.icon(
+              onPressed: _loadMovements,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Actualizar'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                textStyle: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -410,17 +472,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     final filteredMovements = _filteredMovements;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Gastos e ingresos',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: scheme.surface,
-        surfaceTintColor: scheme.surface,
-      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final padding = _contentPadding(constraints);
@@ -432,55 +483,12 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickRange,
-                        icon: const Icon(Icons.calendar_month),
-                        label: Text(
-                          '${dateFormat.format(_range.start)} — ${dateFormat.format(_range.end)}',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: AppSizes.spaceS),
-                    ElevatedButton.icon(
-                      onPressed: _loadMovements,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Actualizar'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSizes.spaceS),
-                TextField(
-                  controller: _searchController,
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                      _syncSelection(currentFiltered: _filteredMovements);
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por motivo o turno (#)',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: scheme.surfaceVariant.withOpacity(0.3),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                      borderSide: BorderSide(
-                        color: AppColors.bgDark.withOpacity(0.65),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSizes.spaceS),
-                _buildFilterChips(scheme),
-                const SizedBox(height: AppSizes.spaceS),
-                _buildSummarySection(
-                  theme,
-                  currencyFormat,
-                  scheme,
-                  constraints,
+                _buildTopCompactBar(
+                  theme: theme,
+                  scheme: scheme,
+                  currencyFormat: currencyFormat,
+                  dateFormat: dateFormat,
+                  count: filteredMovements.length,
                 ),
                 const SizedBox(height: AppSizes.spaceS),
                 Expanded(
@@ -556,14 +564,10 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
       padding: EdgeInsets.zero,
       itemCount: movements.length + 1,
       separatorBuilder: (_, index) =>
-          index == 0 ? const SizedBox.shrink() : const SizedBox(height: 8),
+          index == 0 ? const SizedBox.shrink() : const SizedBox(height: 6),
       itemBuilder: (context, index) {
         if (index == 0) {
-          return _MovementsHeaderRow(
-            theme: theme,
-            scheme: scheme,
-            count: movements.length,
-          );
+          return _MovementsHeaderRow(theme: theme, scheme: scheme);
         }
 
         final movement = movements[index - 1];
@@ -730,86 +734,64 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
 class _MovementsHeaderRow extends StatelessWidget {
   final ThemeData theme;
   final ColorScheme scheme;
-  final int count;
 
-  const _MovementsHeaderRow({
-    required this.theme,
-    required this.scheme,
-    required this.count,
-  });
+  const _MovementsHeaderRow({required this.theme, required this.scheme});
 
   @override
   Widget build(BuildContext context) {
     final labelStyle = theme.textTheme.labelSmall?.copyWith(
       fontWeight: FontWeight.w800,
-      color: scheme.onSurface.withOpacity(0.65),
+      color: AppColors.textDarkMuted,
       letterSpacing: 0.2,
     );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSizes.spaceXS),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                'Historial',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: Text('Tipo', style: labelStyle, maxLines: 1),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 6,
+              child: Text('Motivo', style: labelStyle, maxLines: 1),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 3,
+              child: Text('Fecha', style: labelStyle, maxLines: 1),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: Text('Turno', style: labelStyle, maxLines: 1),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: Text('Usuario', style: labelStyle, maxLines: 1),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 3,
+              child: Text(
+                'Monto',
+                style: labelStyle,
+                maxLines: 1,
+                textAlign: TextAlign.right,
               ),
-              const Spacer(),
-              Text('$count registros', style: theme.textTheme.bodySmall),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.outlineVariant),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Text('Tipo', style: labelStyle, maxLines: 1),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 6,
-                  child: Text('Motivo', style: labelStyle, maxLines: 1),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 3,
-                  child: Text('Fecha', style: labelStyle, maxLines: 1),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: Text('Turno', style: labelStyle, maxLines: 1),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: Text('Usuario', style: labelStyle, maxLines: 1),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    'Monto',
-                    style: labelStyle,
-                    maxLines: 1,
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -836,11 +818,9 @@ class _CompactMovementRow extends StatelessWidget {
     final isIncome = movement.isIn;
     final badgeColor = isIncome ? scheme.primary : scheme.error;
 
-    final bgColor = isSelected
-        ? scheme.primaryContainer.withOpacity(0.35)
-        : scheme.surface;
-    final textColor = scheme.onSurface;
-    final mutedText = scheme.onSurface.withOpacity(0.70);
+    final bgColor = AppColors.surfaceLight;
+    final textColor = AppColors.textDark;
+    final mutedText = AppColors.textDarkMuted;
 
     final dateLabel = DateFormat('dd/MM/yy HH:mm').format(movement.createdAt);
 
@@ -851,10 +831,13 @@ class _CompactMovementRow extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.outlineVariant),
+            border: Border.all(
+              color: isSelected ? scheme.primary : scheme.outlineVariant,
+              width: isSelected ? 1.2 : 1,
+            ),
           ),
           child: Row(
             children: [
@@ -1010,71 +993,47 @@ class _DetailMetric extends StatelessWidget {
   }
 }
 
-class _SummaryMetric {
+class _InlineMetricPill extends StatelessWidget {
   final String label;
   final String value;
-  final IconData icon;
   final Color color;
 
-  _SummaryMetric({
+  const _InlineMetricPill({
     required this.label,
     required this.value,
-    required this.icon,
     required this.color,
-  });
-}
-
-class _MetricCard extends StatelessWidget {
-  final _SummaryMetric metric;
-  final Color color;
-  final Color onPrimary;
-
-  const _MetricCard({
-    required this.metric,
-    required this.color,
-    required this.onPrimary,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Container(
-      padding: const EdgeInsets.all(AppSizes.paddingM),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        border: Border.all(color: AppColors.bgDark.withOpacity(0.55)),
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: metric.color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(AppSizes.radiusL),
+          Text(
+            '$label: ',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface.withOpacity(0.75),
             ),
-            child: Icon(metric.icon, color: metric.color, size: 20),
+            maxLines: 1,
           ),
-          const SizedBox(width: AppSizes.spaceS),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  metric.label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: onPrimary.withOpacity(0.8),
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  metric.value,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+          Text(
+            value,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: color,
             ),
+            maxLines: 1,
           ),
         ],
       ),

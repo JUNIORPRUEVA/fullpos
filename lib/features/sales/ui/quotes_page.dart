@@ -15,8 +15,10 @@ import '../../../core/printing/quote_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/theme/app_tokens.dart';
 import '../../../core/ui/ui_scale.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import 'widgets/compact_quote_row.dart';
@@ -47,6 +49,8 @@ class _QuotesPageState extends State<QuotesPage> {
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
+  AppTokens get _tokens =>
+      _theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
   AppStatusTheme get _status =>
       _theme.extension<AppStatusTheme>() ??
       AppStatusTheme(
@@ -266,16 +270,27 @@ class _QuotesPageState extends State<QuotesPage> {
   }
 
   ButtonStyle _bottomActionButtonStyle({Color? borderColor}) {
-    final scheme = _scheme;
+    final primary = AppColors.brandBlue;
+    final onPrimary = ColorUtils.readableTextColor(primary);
     return ElevatedButton.styleFrom(
-      backgroundColor: scheme.primary,
-      foregroundColor: scheme.onPrimary,
-      side: BorderSide(color: borderColor ?? scheme.primary),
+      backgroundColor: primary,
+      foregroundColor: onPrimary,
+      disabledBackgroundColor: primary.withOpacity(0.35),
+      disabledForegroundColor: onPrimary.withOpacity(0.70),
+      elevation: 0,
+      side: BorderSide(color: borderColor ?? primary.withOpacity(0.95)),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(_brandRadius),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      minimumSize: const Size(0, 38),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      textStyle: const TextStyle(
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.2,
+        fontSize: 12,
+      ),
     );
   }
 
@@ -386,6 +401,11 @@ class _QuotesPageState extends State<QuotesPage> {
     final quoteId = quote.id;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
     final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
+    final money = NumberFormat.currency(
+      locale: 'es_DO',
+      symbol: 'RD\$',
+      decimalDigits: 2,
+    );
 
     Color statusColor(String value) {
       switch (value) {
@@ -481,57 +501,7 @@ class _QuotesPageState extends State<QuotesPage> {
               ),
             ),
             const SizedBox(height: 14),
-            _buildDetailMetric(
-              label: 'Total',
-              value: NumberFormat.currency(
-                locale: 'es_DO',
-                symbol: 'RD\$',
-                decimalDigits: 2,
-              ).format(quote.total),
-              color: scheme.primary,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Subtotal',
-                    value: NumberFormat.currency(
-                      locale: 'es_DO',
-                      symbol: 'RD\$',
-                      decimalDigits: 2,
-                    ).format(quote.subtotal),
-                    color: scheme.secondary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Descuento',
-                    value: NumberFormat.currency(
-                      locale: 'es_DO',
-                      symbol: 'RD\$',
-                      decimalDigits: 2,
-                    ).format(quote.discountTotal),
-                    color: scheme.tertiary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _buildDetailMetric(
-              label: 'ITBIS',
-              value: quote.itbisEnabled
-                  ? NumberFormat.currency(
-                      locale: 'es_DO',
-                      symbol: 'RD\$',
-                      decimalDigits: 2,
-                    ).format(quote.itbisAmount)
-                  : 'No',
-              color: quote.itbisEnabled ? scheme.outline : scheme.outline,
-            ),
 
-            const SizedBox(height: 14),
             Text(
               'Productos (${quoteDetail.items.length})',
               style: theme.textTheme.labelLarge?.copyWith(
@@ -555,59 +525,114 @@ class _QuotesPageState extends State<QuotesPage> {
                 ),
                 padding: const EdgeInsets.all(10),
                 child: Column(
-                  children: quoteDetail.items.map((item) {
-                    final qtyLabel = item.qty.toStringAsFixed(
-                      item.qty % 1 == 0 ? 0 : 2,
-                    );
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 44,
-                            child: Text(
-                              qtyLabel,
-                              textAlign: TextAlign.right,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                  children: [
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 44,
+                          child: Text(
+                            'Cant',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: scheme.onSurface.withOpacity(0.65),
+                              letterSpacing: 0.15,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              item.description,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Producto',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: scheme.onSurface.withOpacity(0.65),
+                              letterSpacing: 0.15,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: 86,
-                            child: Text(
-                              NumberFormat.currency(
-                                locale: 'es_DO',
-                                symbol: 'RD\$',
-                                decimalDigits: 2,
-                              ).format(item.totalLine),
-                              textAlign: TextAlign.right,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: scheme.primary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 86,
+                          child: Text(
+                            'Importe',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: scheme.onSurface.withOpacity(0.65),
+                              letterSpacing: 0.15,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      height: 1,
+                      color: scheme.outlineVariant,
+                    ),
+                    const SizedBox(height: 6),
+                    ...quoteDetail.items.map((item) {
+                      final qtyLabel = item.qty.toStringAsFixed(
+                        item.qty % 1 == 0 ? 0 : 2,
+                      );
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 44,
+                              child: Text(
+                                qtyLabel,
+                                textAlign: TextAlign.right,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                item.description,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 86,
+                              child: Text(
+                                NumberFormat.currency(
+                                  locale: 'es_DO',
+                                  symbol: 'RD\$',
+                                  decimalDigits: 2,
+                                ).format(item.totalLine),
+                                textAlign: TextAlign.right,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: scheme.primary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
                 ),
               ),
             if ((quote.notes ?? '').trim().isNotEmpty) ...[
@@ -626,6 +651,60 @@ class _QuotesPageState extends State<QuotesPage> {
                 ),
               ),
             ],
+
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Totales',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTotalsRow(
+                    label: 'Subtotal',
+                    value: money.format(quote.subtotal),
+                  ),
+                  const SizedBox(height: 6),
+                  _buildTotalsRow(
+                    label: 'Descuento',
+                    value: quote.discountTotal > 0
+                        ? '-${money.format(quote.discountTotal)}'
+                        : money.format(0),
+                  ),
+                  const SizedBox(height: 6),
+                  _buildTotalsRow(
+                    label: quote.itbisEnabled ? 'ITBIS' : 'ITBIS (No aplica)',
+                    value: quote.itbisEnabled
+                        ? money.format(quote.itbisAmount)
+                        : '—',
+                    muted: !quote.itbisEnabled,
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    height: 1,
+                    color: scheme.outlineVariant,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTotalsRow(
+                    label: 'Total',
+                    value: money.format(quote.total),
+                    isTotal: true,
+                  ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -707,6 +786,56 @@ class _QuotesPageState extends State<QuotesPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTotalsRow({
+    required String label,
+    required String value,
+    bool isTotal = false,
+    bool muted = false,
+  }) {
+    final theme = _theme;
+    final scheme = _scheme;
+    final baseColor = muted
+        ? scheme.onSurface.withOpacity(0.55)
+        : scheme.onSurface.withOpacity(0.9);
+    final valueColor = isTotal ? scheme.primary : baseColor;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style:
+                (isTotal
+                        ? theme.textTheme.titleSmall
+                        : theme.textTheme.bodySmall)
+                    ?.copyWith(
+                      fontWeight: isTotal ? FontWeight.w900 : FontWeight.w800,
+                      color: baseColor,
+                    ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.right,
+          style:
+              (isTotal
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.bodySmall)
+                  ?.copyWith(
+                    fontWeight: isTotal ? FontWeight.w900 : FontWeight.w900,
+                    color: valueColor,
+                    letterSpacing: isTotal ? 0.2 : 0.0,
+                  ),
+        ),
+      ],
     );
   }
 

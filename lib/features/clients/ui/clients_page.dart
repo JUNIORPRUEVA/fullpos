@@ -206,7 +206,7 @@ class _ClientsPageState extends State<ClientsPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        border: Border.all(color: AppColors.bgDark),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -261,7 +261,7 @@ class _ClientsPageState extends State<ClientsPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(AppSizes.radiusL),
-        border: Border.all(color: AppColors.bgDark),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSizes.paddingL),
@@ -612,6 +612,162 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 
+  Widget _buildClientsTopHeaderLine({required double minWidth}) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final total = _clients.length;
+    final activeCount = _clients.where((c) => c.isActive).length;
+    final creditCount = _clients.where((c) => c.hasCredit).length;
+
+    final summary = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.bgDark,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.summarize_outlined,
+            size: 16,
+            color: Colors.white.withOpacity(0.85),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Clientes: $total',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Activos: $activeCount',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Crédito: $creditCount',
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final searchField = SizedBox(
+      width: 320,
+      height: 40,
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Buscar (nombre, teléfono, RNC, cédula...)',
+          prefixIcon: const Icon(Icons.search, size: 18),
+          isDense: true,
+          filled: true,
+          fillColor: scheme.surface,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          suffixIcon: _searchController.text.trim().isNotEmpty
+              ? IconButton(
+                  tooltip: 'Limpiar búsqueda',
+                  onPressed: () {
+                    setState(() {
+                      _searchController.clear();
+                      _filters.query = '';
+                    });
+                    _loadClients();
+                  },
+                  icon: const Icon(Icons.clear, size: 18),
+                )
+              : null,
+        ),
+        onChanged: (value) {
+          setState(() {
+            _filters.query = value;
+          });
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (!mounted) return;
+            if (_filters.query == value) {
+              _loadClients();
+            }
+          });
+        },
+      ),
+    );
+
+    return Container(
+      width: double.infinity,
+      color: scheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: SizedBox(
+        height: 44,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: minWidth),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(Icons.people, size: 22, color: scheme.primary),
+                const SizedBox(width: 10),
+                Text(
+                  'Clientes',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 12),
+                searchField,
+                const SizedBox(width: 12),
+                summary,
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: _showFiltersDialog,
+                  icon: const Icon(Icons.filter_list, size: 18),
+                  label: const Text('Filtros'),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  onPressed: _exportClientsToExcel,
+                  icon: const Icon(Icons.download, size: 18),
+                  label: const Text('Exportar'),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  onPressed: () => _showClientDialog(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Nuevo cliente'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: scheme.tertiary,
+                    foregroundColor: scheme.onTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _selectClient(ClientModel client, {required bool showDetails}) {
     if (!mounted) return;
     setState(() {
@@ -887,63 +1043,11 @@ class _ClientsPageState extends State<ClientsPage> {
           decoration: BoxDecoration(
             color: scheme.surface,
             borderRadius: BorderRadius.circular(AppSizes.radiusL),
-            border: Border.all(color: AppColors.bgDark),
           ),
           child: Padding(
             padding: const EdgeInsets.all(AppSizes.paddingM),
             child: Column(
               children: [
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por nombre, telefono, RNC o cedula...',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: scheme.surfaceContainerHighest,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      borderSide: const BorderSide(color: AppColors.bgDark),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      borderSide: const BorderSide(color: AppColors.bgDark),
-                    ),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              _filters.query = '';
-                              _loadClients();
-                            },
-                          )
-                        : null,
-                  ),
-                  onChanged: (value) {
-                    _filters.query = value;
-                    Future.delayed(const Duration(milliseconds: 500), () {
-                      if (!mounted) return;
-                      if (_filters.query == value) {
-                        _loadClients();
-                      }
-                    });
-                  },
-                ),
-                const SizedBox(height: AppSizes.spaceM),
-                if (_clients.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSizes.spaceM),
-                    child: Row(
-                      children: [
-                        Text(
-                          '${_clients.length} cliente(s) encontrado(s)',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: mutedText,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 if (_clients.isNotEmpty) ...[
                   _buildClientsListHeader(),
                   const SizedBox(height: AppSizes.spaceS),
@@ -1012,51 +1116,7 @@ class _ClientsPageState extends State<ClientsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height: 44,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minWidth: headerMinWidth),
-                    child: Row(
-                      children: [
-                        Icon(Icons.people, size: 28, color: scheme.primary),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Clientes',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const Spacer(),
-                        ElevatedButton.icon(
-                          onPressed: _exportClientsToExcel,
-                          icon: const Icon(Icons.download, size: 18),
-                          label: const Text('Exportar'),
-                        ),
-                        const SizedBox(width: AppSizes.spaceM),
-                        OutlinedButton.icon(
-                          onPressed: _showFiltersDialog,
-                          icon: const Icon(Icons.filter_list, size: 18),
-                          label: const Text('Filtros'),
-                        ),
-                        const SizedBox(width: AppSizes.spaceM),
-                        ElevatedButton.icon(
-                          onPressed: () => _showClientDialog(),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Nuevo cliente'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: scheme.tertiary,
-                            foregroundColor: scheme.onTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              _buildClientsTopHeaderLine(minWidth: headerMinWidth),
               const SizedBox(height: AppSizes.spaceL),
               Expanded(
                 child: isWide
