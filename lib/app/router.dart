@@ -21,6 +21,10 @@ import '../features/clients/ui/clients_page.dart';
 import '../features/products/ui/add_stock_page.dart';
 import '../features/products/ui/products_page.dart';
 import '../features/products/ui/stock_history_page.dart';
+import '../features/purchases/ui/purchase_auto_page.dart';
+import '../features/purchases/ui/purchase_manual_page.dart';
+import '../features/purchases/ui/purchase_mode_selector_page.dart';
+import '../features/purchases/ui/purchase_orders_page.dart';
 import '../features/purchases/ui/purchase_order_create_auto_page.dart';
 import '../features/purchases/ui/purchase_order_create_manual_page.dart';
 import '../features/purchases/ui/purchase_order_receive_page.dart';
@@ -306,11 +310,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Compras / Órdenes de compra
           GoRoute(
             path: '/purchases',
-            builder: (context, state) => const PurchaseOrdersListPage(),
+            builder: (context, state) => const PurchaseModeSelectorPage(),
+          ),
+          GoRoute(
+            path: '/purchases/manual',
+            builder: (context, state) => const PurchaseManualPage(),
           ),
           GoRoute(
             path: '/purchases/new',
             builder: (context, state) => const PurchaseOrderCreateManualPage(),
+          ),
+          // Alias legacy: mantener el listado original accesible.
+          GoRoute(
+            path: '/purchases/list',
+            builder: (context, state) => const PurchaseOrdersListPage(),
+          ),
+          GoRoute(
+            path: '/purchases/orders',
+            builder: (context, state) => const PurchaseOrdersPage(),
           ),
           GoRoute(
             path: '/purchases/edit/:id',
@@ -321,6 +338,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/purchases/auto',
+            builder: (context, state) => const PurchaseAutoPage(),
+          ),
+          // Auto legacy (pantalla anterior)
+          GoRoute(
+            path: '/purchases/auto-legacy',
             builder: (context, state) => const PurchaseOrderCreateAutoPage(),
           ),
           GoRoute(

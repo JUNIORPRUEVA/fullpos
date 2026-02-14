@@ -18,8 +18,13 @@ import '../../utils/purchase_order_pdf_launcher.dart';
 
 class PurchaseTicketPanel extends ConsumerStatefulWidget {
   final VoidCallback? onOrderCreated;
+  final bool isAuto;
 
-  const PurchaseTicketPanel({super.key, this.onOrderCreated});
+  const PurchaseTicketPanel({
+    super.key,
+    this.onOrderCreated,
+    this.isAuto = false,
+  });
 
   @override
   ConsumerState<PurchaseTicketPanel> createState() => _PurchaseTicketPanelState();
@@ -257,7 +262,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
         items: items,
         taxRatePercent: draft.taxRatePercent,
         notes: draft.notes.trim().isEmpty ? null : draft.notes.trim(),
-        isAuto: false,
+        isAuto: widget.isAuto,
         purchaseDateMs: draft.purchaseDate.millisecondsSinceEpoch,
       );
 
