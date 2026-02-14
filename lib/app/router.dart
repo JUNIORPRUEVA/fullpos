@@ -56,6 +56,30 @@ Future<_LicenseGateDecision>? _licenseGateInFlight;
 _LicenseGateDecision? _licenseGateCached;
 DateTime? _licenseGateCachedAt;
 int _licenseGateCachedEpoch = 0;
+Future<void>? _cloudRevokeCheckInFlight;
+
+const _kCloudGateMinPollInterval = Duration(seconds: 15);
+const _kActiveGateDecisionCacheWindow = Duration(seconds: 10);
+
+void _runCloudRevocationCheckInBackground(BusinessLicenseSync sync) {
+  if (_cloudRevokeCheckInFlight != null) return;
+  _cloudRevokeCheckInFlight = sync
+      .tryPollFromCloudIfDue(
+        minInterval: _kCloudGateMinPollInterval,
+        networkTimeout: const Duration(seconds: 2),
+      )
+      .then((changed) {
+        if (changed) {
+          // Si el backend eliminó/bloqueó y el sync limpió/actualizó cache,
+          // forzar re-evaluar redirects inmediatamente.
+          bumpLicenseGateRefresh();
+        }
+      })
+      .catchError((_) {})
+      .whenComplete(() {
+        _cloudRevokeCheckInFlight = null;
+      });
+}
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final bootStatus = ref.watch(
@@ -372,7 +396,14 @@ bool _isGateCacheFresh() {
   final at = _licenseGateCachedAt;
   if (at == null) return false;
   final age = DateTime.now().difference(at);
-  return age < kLicenseGateFreshWindow;
+  final cached = _licenseGateCached;
+  // Cuando la licencia está activa, no queremos quedarnos “pegados” demasiado
+  // tiempo si la nube la revoca/elimina. Reducimos la ventana del cache para
+  // permitir detectar el cambio casi al instante (vía heartbeat + polling).
+  final maxAge = (cached?.isActive ?? false)
+      ? _kActiveGateDecisionCacheWindow
+      : kLicenseGateFreshWindow;
+  return age < maxAge;
 }
 
 void _refreshLicenseGateInBackground() {
@@ -494,6 +525,37 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // 1) OFFLINE-FIRST: si existe %APPDATA%/FullPOS/license.dat y es válida,
   // permitir acceso sin red y sin device_id.
   final businessSync = BusinessLicenseSync();
+  final storage = LicenseStorage();
+  final hasValidLocalToken = await businessSync.applyLocalLicenseIfValid();
+
+  // Si el token local representa un bloqueo, debe ganar sobre TRIAL.
+  final cachedAfterLocal = await storage.getLastInfo();
+  if (cachedAfterLocal?.isBlocked == true) {
+    return _LicenseGateDecision(
+      isActive: false,
+      isBlocked: true,
+      code: cachedAfterLocal?.code,
+    );
+  }
+
+  // Importante: la app NO debe depender de internet.
+  // Si hay token local válido, permitimos acceso inmediatamente.
+  // A la vez, en segundo plano consultamos la nube para detectar
+  // eliminaciones/bloqueos y aplicar el cambio sin reiniciar.
+  if (hasValidLocalToken) {
+    _runCloudRevocationCheckInBackground(businessSync);
+    return const _LicenseGateDecision(
+      isActive: true,
+      isBlocked: false,
+      code: 'OK',
+    );
+  }
+
+  // 2) Sin token local válido: intentar sincronizar desde la nube.
+  await businessSync.tryPollFromCloudIfDue(
+    minInterval: _kCloudGateMinPollInterval,
+    networkTimeout: const Duration(seconds: 2),
+  );
   if (await businessSync.applyLocalLicenseIfValid()) {
     return const _LicenseGateDecision(
       isActive: true,
@@ -502,35 +564,70 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
     );
   }
 
-  // 2) Si hay internet, intentar descargar la licencia (poll cada 30 min).
-  // Esto actualiza el cache local (SharedPreferences) y license.dat si aplica.
-  await businessSync.tryPollFromCloudIfDue();
-  if (await businessSync.applyLocalLicenseIfValid()) {
-    return const _LicenseGateDecision(
-      isActive: true,
-      isBlocked: false,
-      code: 'OK',
+  final cachedAfterPoll = await storage.getLastInfo();
+  if (cachedAfterPoll?.isBlocked == true) {
+    return _LicenseGateDecision(
+      isActive: false,
+      isBlocked: true,
+      code: cachedAfterPoll?.code,
     );
   }
 
   // 3) TRIAL offline-first: permitir acceso durante 5 días desde el inicio.
   // Esto evita depender del endpoint legacy /start-demo (device_id).
   final identityStorage = BusinessIdentityStorage();
+  final cloudDeniedAt = await storage.getCloudDeniedAt();
   final trialStart = await identityStorage.getTrialStart();
   if (trialStart != null) {
     final now = DateTime.now().toUtc();
     final expires = trialStart.toUtc().add(kLocalTrialDuration);
     if (now.isBefore(expires)) {
-      return const _LicenseGateDecision(
-        isActive: true,
-        isBlocked: false,
-        code: 'TRIAL',
-      );
+      // Si el backend explícitamente respondió 204 (sin licencia) luego de
+      // iniciada la prueba, NO permitir que el TRIAL local la ignore.
+      if (cloudDeniedAt != null && cloudDeniedAt.isAfter(trialStart.toUtc())) {
+        // Continuar flujo normal: terminará en pantalla de licencia.
+      } else {
+        return const _LicenseGateDecision(
+          isActive: true,
+          isBlocked: false,
+          code: 'TRIAL',
+        );
+      }
     }
   }
 
-  final storage = LicenseStorage();
+  // Si ya existe business_id (nuevo flujo), NO debemos re-activar por device_id
+  // ni por licenseKey legacy; eso haría que una licencia eliminada en la nube
+  // vuelva a aparecer automáticamente.
+  final businessId = await identityStorage.getBusinessId();
+  final hasBusinessId = businessId != null && businessId.trim().isNotEmpty;
+
   final cached = await storage.getLastInfo();
+
+  if (hasBusinessId) {
+    if (cached != null) {
+      if (cached.isBlocked) {
+        return _LicenseGateDecision(
+          isActive: false,
+          isBlocked: true,
+          code: cached.code,
+        );
+      }
+      if (cached.isActive && !cached.isExpired) {
+        return const _LicenseGateDecision(
+          isActive: true,
+          isBlocked: false,
+          code: 'OK',
+        );
+      }
+    }
+
+    return const _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: 'NO_LICENSE',
+    );
+  }
 
   final deviceId =
       (await storage.getDeviceId()) ?? await SessionManager.ensureTerminalId();

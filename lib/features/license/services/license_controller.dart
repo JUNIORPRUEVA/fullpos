@@ -82,6 +82,9 @@ class LicenseController extends StateNotifier<LicenseState> {
   final LicenseFileRepair fileRepair;
   final LicenseFileStorage fileStorage;
 
+  Timer? _cloudSyncTimer;
+  static const Duration _kCloudSyncInterval = Duration(seconds: 15);
+
   LicenseController({
     required this.api,
     required this.storage,
@@ -95,6 +98,52 @@ class LicenseController extends StateNotifier<LicenseState> {
        fileStorage = fileStorage ?? LicenseFileStorage(),
        super(LicenseState.initial());
 
+  @override
+  void dispose() {
+    _cloudSyncTimer?.cancel();
+    _cloudSyncTimer = null;
+    super.dispose();
+  }
+
+  void _ensureCloudAutoSyncStarted() {
+    if (_cloudSyncTimer != null) return;
+
+    // Poll cloud frequently so admin actions (activar/eliminar) se reflejen
+    // casi al instante sin reiniciar la app.
+    _cloudSyncTimer = Timer.periodic(_kCloudSyncInterval, (_) {
+      unawaited(_cloudSyncTick());
+    });
+
+    // Primer tick inmediato.
+    unawaited(_cloudSyncTick());
+  }
+
+  Future<void> _cloudSyncTick() async {
+    // No bloquear UI; solo refrescar si hay cambios.
+    try {
+      // Si el usuario inició TRIAL sin internet, el registro se queda en cola.
+      // Cuando vuelva el internet, intentar enviarlo para que el backend pueda
+      // emitir un token TRIAL firmado y permitir control remoto.
+      try {
+        await BusinessRegistrationService().retryPendingOnce();
+      } catch (_) {
+        // Ignorar: es un intento best-effort.
+      }
+
+      final changed = await businessSync.tryPollFromCloudIfDue(
+        minInterval: _kCloudSyncInterval,
+        networkTimeout: const Duration(seconds: 4),
+      );
+      if (!changed) return;
+
+      // Invalida gate y refresca estado.
+      bumpLicenseGateRefresh();
+      await load();
+    } catch (_) {
+      // Silencioso: es un sync de fondo.
+    }
+  }
+
   void _setUiError(LicenseUiError err, {String? legacyErrorCode}) {
     state = state.copyWith(
       loading: false,
@@ -107,6 +156,7 @@ class LicenseController extends StateNotifier<LicenseState> {
   }
 
   Future<void> load() async {
+    _ensureCloudAutoSyncStarted();
     state = state.copyWith(
       loading: true,
       error: null,
@@ -279,6 +329,7 @@ class LicenseController extends StateNotifier<LicenseState> {
       );
 
       await storage.setLastInfo(info);
+      await storage.setLastInfoSource('offline');
       state = state.copyWith(loading: false, info: info);
     } on LicenseApiException catch (e) {
       _setUiError(
@@ -473,7 +524,10 @@ class LicenseController extends StateNotifier<LicenseState> {
       final contacto = contactoNombre.trim();
       final telefono = contactoTelefono.trim();
 
-      if (negocio.isEmpty || rol.isEmpty || contacto.isEmpty || telefono.isEmpty) {
+      if (negocio.isEmpty ||
+          rol.isEmpty ||
+          contacto.isEmpty ||
+          telefono.isEmpty) {
         _setUiError(
           const LicenseUiError(
             type: LicenseErrorType.unknown,
@@ -495,8 +549,10 @@ class LicenseController extends StateNotifier<LicenseState> {
       final existingIdentity = await identityStorage.getIdentity();
       if (existingIdentity != null) {
         final samePhone =
-            _normalizePhone(existingIdentity.phone) == _normalizePhone(telefono);
-        final sameBusiness = _normalizeText(existingIdentity.businessName) ==
+            _normalizePhone(existingIdentity.phone) ==
+            _normalizePhone(telefono);
+        final sameBusiness =
+            _normalizeText(existingIdentity.businessName) ==
             _normalizeText(negocio);
 
         if (!samePhone || !sameBusiness) {
@@ -521,7 +577,7 @@ class LicenseController extends StateNotifier<LicenseState> {
         if (nowUtc.isBefore(expires)) {
           // Prueba ya activa: no re-registrar ni cambiar datos.
           bumpLicenseGateRefresh();
-            await load();
+          await load();
           return true;
         }
 
@@ -567,14 +623,16 @@ class LicenseController extends StateNotifier<LicenseState> {
       // Invalida el gate del router inmediatamente.
       bumpLicenseGateRefresh();
 
-        // Refrescar estado para que la UI deje de mostrar el formulario.
-        await load();
+      // Refrescar estado para que la UI deje de mostrar el formulario.
+      await load();
       return true;
     } catch (e) {
       _setUiError(
         LicenseErrorMapper.map(
           e,
-          context: const LicenseErrorContext(operation: 'startLocalTrialOfflineFirst'),
+          context: const LicenseErrorContext(
+            operation: 'startLocalTrialOfflineFirst',
+          ),
         ),
       );
       return false;
@@ -706,6 +764,7 @@ class LicenseController extends StateNotifier<LicenseState> {
         lastCheckedAt: DateTime.now(),
       );
       await storage.setLastInfo(info);
+      await storage.setLastInfoSource('offline');
       state = state.copyWith(loading: false, info: info);
     } on LicenseApiException catch (e) {
       _setUiError(

@@ -13,6 +13,7 @@ import 'license_storage.dart';
 
 class BusinessLicenseSync {
   static const _kLastPollIso = 'license.business_poll_at_iso_v1';
+  static const _kCloudSource = 'cloud';
 
   final BusinessIdentityStorage _identity;
   final BusinessLicenseApi _api;
@@ -40,25 +41,29 @@ class BusinessLicenseSync {
 
       await _storage.setLicenseKey(info.licenseKey);
       await _storage.setLastInfo(info);
+      await _storage.setLastInfoSource(_kCloudSource);
       return info.isActive && !info.isExpired;
     } catch (_) {
       return false;
     }
   }
 
-  Future<void> tryPollFromCloudIfDue({
+  /// Intenta sincronizar desde la nube.
+  ///
+  /// Devuelve `true` si cambió el cache local (actualizó o limpió licencia).
+  Future<bool> tryPollFromCloudIfDue({
     Duration minInterval = const Duration(minutes: 30),
     Duration networkTimeout = const Duration(seconds: 4),
   }) async {
     final businessId = await _identity.getBusinessId();
-    if (businessId == null || businessId.trim().isEmpty) return;
+    if (businessId == null || businessId.trim().isEmpty) return false;
 
     final sp = await SharedPreferences.getInstance();
     final lastIso = (sp.getString(_kLastPollIso) ?? '').trim();
     final last = DateTime.tryParse(lastIso);
     if (last != null) {
       final age = DateTime.now().difference(last);
-      if (age < minInterval) return;
+      if (age < minInterval) return false;
     }
 
     await sp.setString(_kLastPollIso, DateTime.now().toIso8601String());
@@ -72,10 +77,26 @@ class BusinessLicenseSync {
           )
           .timeout(networkTimeout);
     } catch (_) {
-      return;
+      return false;
     }
 
-    if (token == null) return;
+    if (token == null) {
+      // Si el backend dice 204 (sin licencia), limpiar cache CLOUD para que
+      // la app se actualice inmediatamente.
+      final source = await _storage.getLastInfoSource();
+      if (source == _kCloudSource) {
+        try {
+          await _file.delete();
+        } catch (_) {}
+        await _storage.clearLastInfo();
+        // También limpiar la clave para evitar que el gate legacy vuelva a
+        // “revivir” una licencia borrada desde la nube.
+        await _storage.setLicenseKey('');
+        await _storage.setCloudDeniedNow();
+        return true;
+      }
+      return false;
+    }
 
     try {
       await _file.writeToken(token);
@@ -86,10 +107,13 @@ class BusinessLicenseSync {
     // Apply to SharedPreferences cache so the router gate can use it offline.
     final decoded = _decodeTokenToLicenseFile(token);
     final info = await _verifyLicenseFile(decoded);
-    if (info == null) return;
+    if (info == null) return false;
 
     await _storage.setLicenseKey(info.licenseKey);
     await _storage.setLastInfo(info);
+    await _storage.setLastInfoSource(_kCloudSource);
+    await _storage.clearCloudDenied();
+    return true;
   }
 
   Map<String, dynamic> _decodeTokenToLicenseFile(String token) {
@@ -175,6 +199,10 @@ class BusinessLicenseSync {
 
     final planOrTipo = (payload['plan'] ?? payload['tipo'] ?? '').toString();
 
+    final estado = (payload['estado'] ?? payload['status'] ?? 'ACTIVA')
+        .toString()
+        .trim();
+
     // No bloqueamos por device_id: si viene, se respeta para compat.
     final deviceId = (payload['device_id'] ?? '').toString().trim();
 
@@ -186,12 +214,16 @@ class BusinessLicenseSync {
       ok: true,
       code: 'OK',
       tipo: planOrTipo.trim().isEmpty ? null : planOrTipo.trim(),
-      estado: 'ACTIVA',
+      estado: estado.isEmpty ? 'ACTIVA' : estado.toUpperCase(),
       motivo: null,
       fechaInicio: startsAt,
       fechaFin: expiresAt,
       maxDispositivos: _asInt(
-        payload['max_devices'] ?? payload['max_dispositivos'],
+        payload['max_devices'] ??
+            payload['max_dispositivos'] ??
+            (payload['limits'] is Map
+                ? (payload['limits'] as Map)['max_devices']
+                : null),
       ),
       usados: null,
       lastCheckedAt: DateTime.now(),
