@@ -79,14 +79,14 @@ class ApiClient {
   }) {
     final httpClient = HttpClient();
     final client = IOClient(httpClient);
-    final cancel = () {
+    void cancel() {
       try {
         client.close();
       } catch (_) {}
       try {
         httpClient.close(force: true);
       } catch (_) {}
-    };
+    }
 
     final future = ApiClient(
       baseUrl: baseUrl,

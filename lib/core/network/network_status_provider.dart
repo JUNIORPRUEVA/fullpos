@@ -99,6 +99,9 @@ class NetworkStatusController extends StateNotifier<NetworkStatusState> {
     final now = DateTime.now();
     final api = ApiClient();
 
+    Duration? nextDelay;
+    var shouldSchedule = true;
+
     try {
       final res = await api.get(
         _healthPath,
@@ -123,16 +126,18 @@ class NetworkStatusController extends StateNotifier<NetworkStatusState> {
     } finally {
       _inFlight = false;
 
-      if (_disposed) return;
-
-      if (_recheckRequested) {
+      if (_disposed) {
+        shouldSchedule = false;
+      } else if (_recheckRequested) {
         _recheckRequested = false;
-        _scheduleNext(Duration.zero);
-        return;
+        nextDelay = Duration.zero;
+      } else {
+        nextDelay = _intervalForState(state);
       }
-
-      _scheduleNext(_intervalForState(state));
     }
+
+    if (!shouldSchedule) return;
+    _scheduleNext(nextDelay ?? _intervalForState(state));
   }
 
   @override

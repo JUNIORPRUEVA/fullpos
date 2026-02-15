@@ -60,12 +60,40 @@ class _PaymentDialogState extends State<PaymentDialog> {
   bool _handleKeyEvent(KeyEvent event) {
     // En Windows, algunos Function keys no siempre pasan por Shortcuts cuando
     // hay un TextField enfocado. Capturamos F9 aquí para que siempre confirme.
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.f9) {
+    assert(() {
+      // ignore: avoid_print
+      debugPrint(
+        '[PAYMENT] key=${event.logicalKey.keyLabel} logical=${event.logicalKey} physical=${event.physicalKey}',
+      );
+      return true;
+    }());
+
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.f9 ||
+            event.physicalKey == PhysicalKeyboardKey.f9)) {
       // Ignorar autorepeat y clicks dobles: _submitPayment ya tiene guard.
       _submitPayment();
       return true;
     }
     return false;
+  }
+
+  void _handleRawKeyEvent(RawKeyEvent event) {
+    if (event is! RawKeyDownEvent) return;
+    final lk = event.logicalKey;
+    final pk = event.physicalKey;
+
+    assert(() {
+      // ignore: avoid_print
+      debugPrint(
+        '[PAYMENT] raw key=${lk.keyLabel} logical=$lk physical=$pk',
+      );
+      return true;
+    }());
+
+    if (lk == LogicalKeyboardKey.f9 || pk == PhysicalKeyboardKey.f9) {
+      _submitPayment();
+    }
   }
 
   Future<void> _submitPayment() async {
@@ -108,6 +136,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    RawKeyboard.instance.addListener(_handleRawKeyEvent);
     _printTicket = true;
     _downloadInvoicePdf = false;
     _selectedClient = widget.selectedClient;
@@ -127,6 +156,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    RawKeyboard.instance.removeListener(_handleRawKeyEvent);
     _cashController.dispose();
     _cardController.dispose();
     _transferController.dispose();

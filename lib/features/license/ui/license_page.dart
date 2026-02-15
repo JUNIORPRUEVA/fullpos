@@ -146,7 +146,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
 
     if (!mounted) return;
     final isSuccess =
-        st.error == null && st.uiError == null && info?.ok == true && info?.isExpired == false;
+        st.error == null &&
+        st.uiError == null &&
+        info?.ok == true &&
+        info?.isExpired == false;
     if (isSuccess) {
       // Redirigir de inmediato de forma confiable: navegar en el próximo frame.
       // Usamos /sales: si no hay sesión, el router enviará a /login.
@@ -608,9 +611,9 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Text(
+                                  Text(    
                                     'Debug',
-                                    style: theme.textTheme.titleSmall?.copyWith(
+                                        style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w900,
                                     ),
                                   ),
@@ -629,8 +632,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                         context: context,
                                         builder: (context) {
                                           return AlertDialog(
-                                            title: const Text('Reset licencia (debug)'),
-                                            content: const Text(
+                                            title: const Text(
+                                              'Reset licencia (debug)',
+                                                ),
+                                                content: const Text(
                                               'Esto borrará el TRIAL, la identidad del negocio, la cola de registro y el archivo license.dat en esta PC.\n\nSolo funciona en modo debug.',
                                             ),
                                             actions: [
@@ -654,20 +659,27 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                       );
                                       if (ok != true) return;
 
-                                      await controller.debugResetLicensingOnThisDevice();
+                                      await controller
+                                          .debugResetLicensingOnThisDevice();
                                       if (!context.mounted) return;
                                       setState(() {
                                         _licenseFileStatus = null;
                                         _licenseFileName = null;
                                         _section = _LicenseSection.demo;
                                       });
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
-                                          content: Text('Licencia/TRIAL borrados (debug).'),
+                                          content: Text(
+                                            'Licencia/TRIAL borrados (debug).',
+                                          ),
                                         ),
                                       );
                                     },
-                                    icon: const Icon(Icons.delete_forever_outlined),
+                                    icon: const Icon(
+                                      Icons.delete_forever_outlined,
+                                    ),
                                     label: const Text('Reset licencia (debug)'),
                                   ),
                                 ],

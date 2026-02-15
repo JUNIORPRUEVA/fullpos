@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import '../lib/core/db/app_db.dart';
+import 'package:fullpos/core/db/app_db.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

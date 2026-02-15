@@ -185,12 +185,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) =>
-            const FullposBrandScope(child: LoginPage()),
+        FullposBrandScope(child: LoginPage()),
       ),
       GoRoute(
         path: '/force-change-password',
         builder: (context, state) =>
-            const FullposBrandScope(child: ForceChangePasswordPage()),
+        FullposBrandScope(child: ForceChangePasswordPage()),
       ),
       GoRoute(
         path: '/license',
