@@ -593,6 +593,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     hoverColor: hoverColor,
                     lightPillStyle: false,
                     scale: s,
+                    showTrailingChevron: false,
                   ),
                 ),
               ),
@@ -616,6 +617,7 @@ class PremiumNavItem extends StatefulWidget {
   final Color hoverColor;
   final bool lightPillStyle;
   final double scale;
+  final bool showTrailingChevron;
 
   const PremiumNavItem({
     super.key,
@@ -629,6 +631,7 @@ class PremiumNavItem extends StatefulWidget {
     required this.hoverColor,
     this.lightPillStyle = false,
     this.scale = 1.0,
+    this.showTrailingChevron = true,
   });
 
   @override
@@ -676,11 +679,17 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final idleBg = widget.textColor.withOpacity(0.04);
     final hoverBgA = widget.hoverColor.withOpacity(0.14);
     final hoverBgB = widget.hoverColor.withOpacity(0.06);
-    final activeBgA = widget.activeColor.withOpacity(0.22);
-    final activeBgB = widget.activeColor.withOpacity(0.10);
+    final activeBgA = Color.alphaBlend(
+      Colors.white.withOpacity(0.08),
+      AppColors.primaryBlue,
+    );
+    final activeBgB = Color.alphaBlend(
+      Colors.black.withOpacity(0.08),
+      AppColors.primaryBlue,
+    );
 
     final baseFg = widget.textColor;
-    final activeFg = AppColors.darkBlue;
+    final activeFg = Colors.white;
     final fgColor = isActive ? activeFg : baseFg;
     final iconColor = isActive
       ? activeFg
@@ -709,7 +718,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
               duration: duration,
               curve: Curves.easeOut,
               padding: EdgeInsets.symmetric(
-                horizontal: widget.isCollapsed ? 0 : (14 * s).clamp(10.0, 14.0),
+                horizontal: widget.isCollapsed ? 0 : (11 * s).clamp(8.0, 12.0),
                 vertical: widget.isCollapsed
                     ? (10 * s).clamp(7.0, 10.0)
                     : (12 * s).clamp(8.0, 12.0),
@@ -732,7 +741,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                 borderRadius: pillRadius,
                 border: Border.all(
                   color: isActive
-                      ? widget.activeColor.withOpacity(0.35)
+                      ? AppColors.lightBlueHover.withOpacity(0.55)
                       : widget.textColor.withOpacity(0.08),
                   width: 1.2,
                 ),
@@ -762,7 +771,9 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           width: isActive ? 3 : 0,
                           height: (20 * s).clamp(18.0, 22.0),
                           decoration: BoxDecoration(
-                            color: isActive ? AppColors.primaryBlue : Colors.transparent,
+                            color: isActive
+                                ? AppColors.lightBlueHover
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
@@ -773,13 +784,13 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           color: iconColor,
                           size: (21 * s).clamp(18.0, 22.0),
                         ),
-                        SizedBox(width: (12 * s).clamp(8.0, 12.0)),
+                        SizedBox(width: (10 * s).clamp(7.0, 10.0)),
                         Expanded(
                           child: Text(
                             widget.title,
                             style: TextStyle(
                               color: fgColor,
-                              fontSize: (14.5 * s).clamp(12.0, 14.5),
+                              fontSize: (14.0 * s).clamp(11.5, 14.0),
                               fontWeight: isActive
                                   ? FontWeight.w800
                                   : FontWeight.w600,
@@ -789,11 +800,12 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                             softWrap: false,
                           ),
                         ),
-                        Icon(
-                          Icons.chevron_right,
-                          size: (16 * s).clamp(14.0, 16.0),
-                          color: fgColor.withOpacity(0.55),
-                        ),
+                        if (widget.showTrailingChevron)
+                          Icon(
+                            Icons.chevron_right,
+                            size: (16 * s).clamp(14.0, 16.0),
+                            color: fgColor.withOpacity(0.55),
+                          ),
                       ],
                     ),
             ),

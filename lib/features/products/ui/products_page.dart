@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fullpos/theme/app_colors.dart';
 
 import 'package:fullpos/features/products/ui/tabs/catalog_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/categories_tab.dart';
@@ -44,20 +45,38 @@ class _ProductsPageState extends State<ProductsPage>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(42),
           child: Container(
-            decoration: BoxDecoration(color: Colors.black),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: scheme.shadow.withOpacity(0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: TabBar(
               controller: _tabController,
-              indicatorColor: scheme.primary,
+              indicatorColor: AppColors.primaryBlue,
               indicatorWeight: 3,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white.withOpacity(0.75),
+              indicatorSize: TabBarIndicatorSize.label,
+              labelColor: AppColors.primaryBlue,
+              unselectedLabelColor: AppColors.textSecondary,
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.hovered)) {
+                  return AppColors.lightBlueHover.withOpacity(0.55);
+                }
+                return Colors.transparent;
+              }),
               labelStyle: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
+                fontFamily: 'Inter',
               ),
               unselectedLabelStyle: const TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w400,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Inter',
               ),
               tabs: const [
                 Tab(

@@ -12,7 +12,7 @@ class AppShell extends StatefulWidget {
 
   const AppShell({super.key, required this.child});
 
-  static const double _drawerBreakpointWidth = 900;
+  static const double _drawerBreakpointWidth = 1200;
   static const double _shortHeightBreakpoint = 560;
 
   @override
@@ -26,10 +26,13 @@ class _AppShellState extends State<AppShell> {
   bool _isShort = false;
 
   double _sidebarWidthFor(double maxWidth) {
-    // Se adapta proporcionalmente al ancho disponible.
-    // Mantiene un rango para que no se vea ni gigante ni aplastado.
-    final w = maxWidth * 0.17;
-    return w.clamp(170.0, AppSizes.sidebarWidth);
+    // Sidebar más estrecho para una estética corporativa limpia.
+    // Mantiene ancho consistente en resoluciones comunes.
+    if (maxWidth < 1360) {
+      return 220.0;
+    }
+    final proportional = maxWidth * 0.16;
+    return proportional.clamp(220.0, 250.0);
   }
 
   void _updateResponsive(BoxConstraints constraints) {
@@ -64,20 +67,11 @@ class _AppShellState extends State<AppShell> {
             final isShort = _isShort;
             final showFooter = !isShort;
             final sidebarWidth = _sidebarWidthFor(constraints.maxWidth);
-            final sidebarScale =
-                (sidebarWidth / AppSizes.sidebarWidth).clamp(0.75, 1.0);
-            // Topbar más compacto: reduce altura base y límites para que no se vea "alto"
-            // en pantallas grandes.
-            final topbarHeight =
-                (constraints.maxHeight * 0.06).clamp(46.0, 62.0);
-            final topbarScale =
-                (topbarHeight / AppSizes.topbarHeight).clamp(0.85, 1.12);
-            final footerHeight =
-                showFooter
-                    ? (constraints.maxHeight * 0.045).clamp(28.0, 40.0)
-                    : 0.0;
-            final footerScale =
-                (footerHeight / AppSizes.footerHeight).clamp(0.8, 1.12);
+            final sidebarScale = 1.0;
+            final topbarHeight = AppSizes.topbarHeight;
+            final topbarScale = 1.0;
+            final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
+            final footerScale = 1.0;
 
             Widget topbarWidget = Topbar(
               scale: topbarScale,

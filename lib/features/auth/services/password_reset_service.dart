@@ -87,7 +87,7 @@ class PasswordResetService {
           'No se pudo validar el token (HTTP ${fallbackRes.statusCode})',
         );
 
-        if (firstErrorMessage != null && firstErrorMessage!.isNotEmpty) {
+        if (firstErrorMessage != null && firstErrorMessage.isNotEmpty) {
           throw Exception(firstErrorMessage);
         }
 
@@ -166,7 +166,7 @@ class PasswordResetService {
           'No se pudo enviar la solicitud (HTTP ${fallbackRes.statusCode})',
         );
 
-        if (firstErrorMessage != null && firstErrorMessage!.isNotEmpty) {
+        if (firstErrorMessage != null && firstErrorMessage.isNotEmpty) {
           throw Exception(firstErrorMessage);
         }
 

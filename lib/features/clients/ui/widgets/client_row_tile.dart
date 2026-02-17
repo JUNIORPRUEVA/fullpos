@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_sizes.dart';
 import '../../data/client_model.dart';
 
 /// Widget compacto para mostrar un cliente en una sola linea (tipo tabla)
@@ -35,52 +34,80 @@ class ClientRowTile extends StatelessWidget {
     );
     final textColor = AppColors.textDark;
     final mutedText = AppColors.textDarkMuted;
-    final statusColor = client.isActive ? scheme.tertiary : scheme.outline;
-    final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
+    final statusColor = client.isActive
+        ? const Color(0xFF16A34A)
+        : scheme.outline;
+    final creditColor = scheme.primary;
+    final initials = client.nombre.trim().isNotEmpty
+        ? client.nombre.trim().substring(0, 1).toUpperCase()
+        : '?';
 
-    final bgColor = AppColors.surfaceLight;
+    final bgColor = Colors.white;
+    final selectedBg = scheme.primary.withOpacity(0.09);
+    final selectedBorder = scheme.primary.withOpacity(0.62);
 
     return Material(
       color: bgColor,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onViewDetails,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSizes.paddingM,
-            vertical: 6,
-          ),
+        borderRadius: BorderRadius.circular(16),
+        hoverColor: scheme.primary.withOpacity(0.06),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            color: isSelected ? selectedBg : Colors.white,
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isSelected ? scheme.primary : scheme.outlineVariant,
-              width: isSelected ? 1.2 : 1,
+              color: isSelected ? selectedBorder : scheme.outlineVariant,
+              width: isSelected ? 1.3 : 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: theme.shadowColor.withOpacity(isSelected ? 0.10 : 0.06),
+                blurRadius: isSelected ? 14 : 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
             children: [
+              Container(
+                width: 4,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: isSelected ? scheme.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 flex: 2,
                 child: Row(
                   children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: statusColor,
-                        shape: BoxShape.circle,
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: scheme.primary.withOpacity(0.12),
+                      foregroundColor: scheme.primary,
+                      child: Text(
+                        initials,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: AppSizes.paddingS),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         client.nombre,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                        style: theme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w700,
+                          fontSize: 15.5,
                           color: textColor,
                         ),
                       ),
@@ -88,7 +115,7 @@ class ClientRowTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingM),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 1,
                 child: Text(
@@ -101,7 +128,7 @@ class ClientRowTile extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingS),
+              const SizedBox(width: 8),
               Expanded(
                 flex: 1,
                 child: Text(
@@ -109,12 +136,12 @@ class ClientRowTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: mutedText,
+                    color: mutedText.withOpacity(0.9),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingS),
+              const SizedBox(width: 8),
               Expanded(
                 flex: 1,
                 child: Text(
@@ -122,23 +149,20 @@ class ClientRowTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: mutedText,
+                    color: mutedText.withOpacity(0.9),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingS),
+              const SizedBox(width: 8),
               SizedBox(
-                width: 64,
+                width: 72,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.10),
+                    color: statusColor.withOpacity(client.isActive ? 0.14 : 0.12),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: statusColor.withOpacity(0.35)),
+                    border: Border.all(color: statusColor.withOpacity(0.30)),
                   ),
                   child: Text(
                     client.isActive ? 'Activo' : 'Inactivo',
@@ -146,56 +170,39 @@ class ClientRowTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w800,
                       color: textColor,
-                      letterSpacing: 0.15,
+                      fontSize: 11,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingS),
+              const SizedBox(width: 8),
               SizedBox(
-                width: 88,
+                width: 86,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: creditColor.withOpacity(0.10),
+                    color: creditColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: creditColor.withOpacity(0.35)),
+                    border: Border.all(color: creditColor.withOpacity(0.28)),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      Icon(
-                        client.hasCredit ? Icons.credit_card : Icons.block,
-                        size: 12,
-                        color: textColor,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          client.hasCredit ? 'Crédito' : 'Sin crédito',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: textColor,
-                            letterSpacing: 0.15,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    client.hasCredit ? 'Crédito' : 'Sin crédito',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.primary,
+                      fontSize: 11,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingS),
+              const SizedBox(width: 8),
               SizedBox(
-                width: 86,
+                width: 90,
                 child: Text(
                   createdDate,
                   maxLines: 1,
@@ -204,10 +211,10 @@ class ClientRowTile extends StatelessWidget {
                     color: mutedText,
                     fontWeight: FontWeight.w600,
                   ),
-                  textAlign: TextAlign.center,
+                  textAlign: TextAlign.right,
                 ),
               ),
-              const SizedBox(width: AppSizes.paddingS),
+              const SizedBox(width: 6),
               PopupMenuButton<String>(
                 tooltip: 'Acciones',
                 icon: Icon(

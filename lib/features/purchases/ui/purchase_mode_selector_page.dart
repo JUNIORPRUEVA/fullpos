@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 
@@ -12,88 +13,22 @@ class PurchaseModeSelectorPage extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final gradientTheme = theme.extension<AppGradientTheme>();
-    final headerGradient =
-        gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.surface, scheme.surfaceVariant, scheme.primaryContainer],
-          stops: const [0.0, 0.65, 1.0],
+    final headerGradient = gradientTheme?.backgroundGradient ??
+        const LinearGradient(
+          colors: [Color(0xFFFFFFFF), Color(0xFFF3F7FF), Color(0xFFEAF2FF)],
+          stops: [0.0, 0.62, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
-
-    Widget card({
-      required IconData icon,
-      required String title,
-      required String desc,
-      required VoidCallback onTap,
-    }) {
-      return InkWell(
-        borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-            border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
-            boxShadow: [
-              BoxShadow(
-                color: theme.shadowColor.withOpacity(0.12),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSizes.paddingL),
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: scheme.primary.withOpacity(0.25)),
-                  ),
-                  child: Icon(icon, color: scheme.primary, size: 28),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        desc,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface.withOpacity(0.72),
-                          fontWeight: FontWeight.w600,
-                          height: 1.25,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right,
-                  color: scheme.onSurface.withOpacity(0.5),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    const cardGradient = LinearGradient(
+      colors: [AppColors.brandBlueDark, AppColors.brandBlue],
+      stops: [0.0, 1.0],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFFF4F6FA),
       appBar: AppBar(
         title: const Text(
           'Compras',
@@ -102,95 +37,215 @@ class PurchaseModeSelectorPage extends StatelessWidget {
         toolbarHeight: 48,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSizes.paddingL),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSizes.paddingL),
-              decoration: BoxDecoration(
-                gradient: headerGradient,
-                borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-                border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.shadowColor.withOpacity(0.12),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Selecciona un tipo de compra',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: scheme.onSurface,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1160),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+                  decoration: BoxDecoration(
+                    gradient: headerGradient,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppColors.surfaceLightBorder.withOpacity(0.75),
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: theme.shadowColor.withOpacity(0.10),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Manual (catálogo + ticket) o Automática (sugerencias + ticket).',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurface.withOpacity(0.72),
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Selecciona un tipo de compra',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Manual (catálogo + ticket), Automática (sugerencias) o Registro de órdenes.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textDarkSecondary.withOpacity(0.86),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+                const SizedBox(height: 22),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth >= 980;
+                    final children = [
+                      _PurchaseModeActionCard(
+                        icon: Icons.playlist_add,
+                        title: 'Compra Manual',
+                        desc:
+                            'Elige productos del catálogo y arma tu orden con ticket fijo.',
+                        gradient: cardGradient,
+                        onTap: () => context.go('/purchases/manual'),
+                      ),
+                      _PurchaseModeActionCard(
+                        icon: Icons.auto_awesome,
+                        title: 'Compra Automática',
+                        desc:
+                            'Genera sugerencias por reposición y conviértelas en una orden.',
+                        gradient: cardGradient,
+                        onTap: () => context.go('/purchases/auto'),
+                      ),
+                      _PurchaseModeActionCard(
+                        icon: Icons.history,
+                        title: 'Registro de Órdenes',
+                        desc:
+                            'Consulta historial, abre PDF, recibe órdenes y duplica.',
+                        gradient: cardGradient,
+                        onTap: () => context.go('/purchases/orders'),
+                      ),
+                    ];
+
+                    if (!isWide) {
+                      return Column(
+                        children: [
+                          for (final child in children) ...[
+                            child,
+                            const SizedBox(height: 14),
+                          ],
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: children[0]),
+                        const SizedBox(width: 14),
+                        Expanded(child: children[1]),
+                        const SizedBox(width: 14),
+                        Expanded(child: children[2]),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
-            const SizedBox(height: 14),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth >= 980;
-                final children = [
-                  card(
-                    icon: Icons.playlist_add,
-                    title: 'Compra Manual',
-                    desc:
-                        'Elige productos del catálogo y arma tu orden con ticket fijo.',
-                    onTap: () => context.go('/purchases/manual'),
-                  ),
-                  card(
-                    icon: Icons.auto_awesome,
-                    title: 'Compra Automática',
-                    desc:
-                        'Genera sugerencias por reposición y conviértelas en una orden.',
-                    onTap: () => context.go('/purchases/auto'),
-                  ),
-                  card(
-                    icon: Icons.history,
-                    title: 'Registro de Órdenes',
-                    desc:
-                        'Consulta historial, abre PDF, recibe órdenes y duplica.',
-                    onTap: () => context.go('/purchases/orders'),
-                  ),
-                ];
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-                if (!isWide) {
-                  return Column(
-                    children: [
-                      for (final w in children) ...[w, const SizedBox(height: 12)],
-                    ],
-                  );
-                }
+class _PurchaseModeActionCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String desc;
+  final Gradient gradient;
+  final VoidCallback onTap;
 
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: children[0]),
-                    const SizedBox(width: 12),
-                    Expanded(child: children[1]),
-                    const SizedBox(width: 12),
-                    Expanded(child: children[2]),
-                  ],
-                );
-              },
+  const _PurchaseModeActionCard({
+    required this.icon,
+    required this.title,
+    required this.desc,
+    required this.gradient,
+    required this.onTap,
+  });
+
+  @override
+  State<_PurchaseModeActionCard> createState() => _PurchaseModeActionCardState();
+}
+
+class _PurchaseModeActionCardState extends State<_PurchaseModeActionCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        constraints: const BoxConstraints(minHeight: 178),
+        decoration: BoxDecoration(
+          gradient: widget.gradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandBlueDark.withOpacity(_hovered ? 0.28 : 0.20),
+              blurRadius: _hovered ? 22 : 16,
+              offset: Offset(0, _hovered ? 10 : 7),
             ),
           ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: widget.onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(_hovered ? 0.24 : 0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(widget.icon, color: Colors.white, size: 30),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 19,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.desc,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.white.withOpacity(0.82),
+                            fontWeight: FontWeight.w500,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 17,
+                    color: Colors.white.withOpacity(0.72),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

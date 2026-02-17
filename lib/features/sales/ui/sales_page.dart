@@ -74,10 +74,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   // Productos: tarjetas pequeñas y consistentes (no se inflan por resolución).
   // Ajustes visuales qudel grid de productos (tamaño fijo premium)
   static const double _productCardSize = 104;
-  static const double _productTileMaxExtent = 124;
+  static const double _productTileMaxExtent = 116;
   static const double _minProductCardSize = 72.0;
   static const double _ticketsFooterHeight = 60.0;
-  static const double _gridSpacing = 6.0;
+  static const double _gridCrossSpacing = 3.0;
+  static const double _gridMainSpacing = 6.0;
 
   double _productCardSizeFor(double availableWidth) {
     if (!availableWidth.isFinite || availableWidth <= 0) {
@@ -2162,30 +2163,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                   }
                                                   return Builder(
                                                     builder: (context) {
-                                                      final productsTheme =
-                                                          Theme.of(context)
-                                                              .extension<
-                                                                SalesProductsTheme
-                                                              >();
-                                                      final gridBg = productsTheme
-                                                          ?.gridBackgroundColor;
-                                                      final resolvedGridBg =
-                                                          (gridBg == null ||
-                                                              gridBg.opacity ==
-                                                                  0)
-                                                          ? Colors.transparent
-                                                          : gridBg;
-
                                                       return Container(
                                                         padding:
                                                             const EdgeInsets.only(
                                                               left: 12,
-                                                              right: 12,
-                                                              top: 8,
-                                                              bottom: 72,
+                                                              right: 8,
+                                                              top: 12,
+                                                              bottom: 84,
                                                             ),
                                                         decoration: BoxDecoration(
-                                                          color: resolvedGridBg,
+                                                          gradient:
+                                                              backgroundGradient,
                                                           borderRadius:
                                                               BorderRadius.circular(
                                                                 16,
@@ -2206,7 +2194,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                               desiredMaxExtent:
                                                                   _productTileMaxExtent,
                                                               spacing:
-                                                                  _gridSpacing,
+                                                                _gridCrossSpacing,
                                                               minExtent:
                                                                   _productTileMaxExtent,
                                                             );
@@ -2222,12 +2210,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                                 maxCrossAxisExtent:
                                                                     maxExtent,
                                                                 mainAxisExtent:
-                                                                    cardSize *
-                                                                    1.35,
+                                                                cardSize *
+                                                                1.15,
                                                                 crossAxisSpacing:
-                                                                    _gridSpacing,
+                                                                  _gridCrossSpacing,
                                                                 mainAxisSpacing:
-                                                                    _gridSpacing,
+                                                                  _gridMainSpacing,
                                                               ),
                                                               itemCount:
                                                                   products
@@ -2481,9 +2469,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             child: InkWell(
               onTap: isOutOfStock ? null : () => _addProductToCart(product),
               hoverColor: AppColors.lightBlueHover.withOpacity(0.25),
-              child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: _productCardSize,
+                  height: _productCardSize * 1.15,
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                 // Imagen del producto más compacta
                 Expanded(
                   flex: 4,
@@ -2519,9 +2513,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 10.0,
-                                fontWeight: FontWeight.w600,
-                                height: 1.05,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1.1,
                                 color: nameOverlayText,
                                 letterSpacing: 0.1,
                                 shadows: [
@@ -2719,6 +2713,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
               ],
             ),
+                ),
+              ),
             ),
           ),
         ),

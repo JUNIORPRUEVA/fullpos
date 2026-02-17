@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/printing/reports_printer.dart';
 import '../../../core/utils/app_event_bus.dart';
 import '../data/reports_repository.dart';
+import 'client_sales_report_page.dart';
 import 'widgets/date_range_selector.dart';
 import 'widgets/advanced_kpi_cards.dart';
 import 'widgets/sales_bar_chart.dart';
@@ -477,6 +478,19 @@ class _ReportsPageState extends State<ReportsPage>
                   ],
                 ),
                 const Spacer(),
+                _buildActionButton(
+                  icon: Icons.people_alt,
+                  label: 'Ventas por cliente',
+                  color: scheme.tertiary,
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ClientSalesReportPage(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
                 _buildActionButton(
                   icon: Icons.picture_as_pdf,
                   label: 'PDF',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../theme/app_colors.dart';
 import '../../models/product_model.dart';
 import 'product_thumbnail.dart';
 
@@ -30,7 +31,7 @@ class CompactProductCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currencyFormat = NumberFormat.currency(
-      symbol: '\$',
+      symbol: r'\$',
       decimalDigits: 2,
     );
     final numberFormat = NumberFormat.decimalPattern();
@@ -39,20 +40,20 @@ class CompactProductCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
-      elevation: 0.5,
+      elevation: 1,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(14),
         side: BorderSide(color: scheme.outlineVariant, width: 1),
       ),
       color: scheme.surface,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: AppColors.lightBlueHover.withOpacity(0.5),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
-              // Indicador de estado (barra lateral)
               Container(
                 width: 3,
                 height: 40,
@@ -61,17 +62,14 @@ class CompactProductCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 10),
-
+              const SizedBox(width: 12),
               ProductThumbnail.fromProduct(
                 product,
                 size: 44,
                 showBorder: false,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 10),
-
-              // Código del producto
+              const SizedBox(width: 12),
               Container(
                 width: 70,
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
@@ -91,8 +89,6 @@ class CompactProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-
-              // Nombre del producto
               Expanded(
                 flex: 2,
                 child: Text(
@@ -100,6 +96,7 @@ class CompactProductCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
+                    fontFamily: 'Inter',
                     color: scheme.onSurface,
                   ),
                   maxLines: 1,
@@ -107,8 +104,6 @@ class CompactProductCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // Stock
               _buildMiniInfo(
                 numberFormat.format(product.stock),
                 'Stock',
@@ -116,8 +111,6 @@ class CompactProductCard extends StatelessWidget {
                 mutedText,
               ),
               const SizedBox(width: 8),
-
-              // Valor Inventario (costo)
               if (showPurchasePrice) ...[
                 _buildMiniInfo(
                   currencyFormat.format(product.inventoryValue),
@@ -127,8 +120,6 @@ class CompactProductCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
-
-              // Margen
               if (showProfit) ...[
                 _buildMiniInfo(
                   '${product.profitPercentage.toStringAsFixed(0)}%',
@@ -138,29 +129,29 @@ class CompactProductCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
               ],
-
-              // Icono de estado
               Icon(_getStatusIcon(), size: 16, color: statusColor),
               const SizedBox(width: 8),
-
-              // Botón de Agregar Stock
               if (onAddStockTap != null)
                 SizedBox(
                   height: 36,
-                  child: ElevatedButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: onAddStockTap,
                     icon: const Icon(Icons.add_circle_outline, size: 18),
                     label: const Text('Stock'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: scheme.primary,
-                      foregroundColor: scheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primaryBlue,
+                      side: const BorderSide(
+                        color: AppColors.primaryBlue,
+                        width: 1,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       textStyle: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
@@ -186,11 +177,19 @@ class CompactProductCard extends StatelessWidget {
           value,
           style: TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Inter',
             color: color,
           ),
         ),
-        Text(label, style: TextStyle(fontSize: 8, color: mutedText)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 8,
+            color: mutedText,
+            fontFamily: 'Inter',
+          ),
+        ),
       ],
     );
   }

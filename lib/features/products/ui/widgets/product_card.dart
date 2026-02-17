@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:fullpos/theme/app_colors.dart';
 
 import '../../models/product_model.dart';
 import 'product_thumbnail.dart';
@@ -48,19 +49,21 @@ class ProductCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 3),
       color: scheme.surface,
-      elevation: isSelected ? 2 : 0.5,
+      elevation: 1,
+      shadowColor: scheme.shadow.withOpacity(0.06),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: isSelected ? scheme.primary : scheme.outlineVariant,
+          color: isSelected ? AppColors.primaryBlue : AppColors.borderSoft,
           width: isSelected ? 1.4 : 1,
         ),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: AppColors.lightBlueHover.withOpacity(0.6),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
               // Imagen del producto (thumbnail)
@@ -82,9 +85,9 @@ class ProductCard extends StatelessWidget {
                 child: Text(
                   product.code,
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    fontFamily: 'Inter',
                     color: scheme.onSurface,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -105,8 +108,9 @@ class ProductCard extends StatelessWidget {
                       ].join(' • '),
                   ].join('  •  '),
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Inter',
                     color: scheme.onSurface,
                   ),
                   maxLines: 1,
@@ -238,15 +242,16 @@ class ProductCard extends StatelessWidget {
                           icon: const Icon(Icons.add_circle_outline, size: 18),
                           label: const Text('Stock'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: scheme.primary,
-                            foregroundColor: scheme.onPrimary,
+                            backgroundColor: AppColors.primaryBlue,
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             textStyle: const TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Inter',
                             ),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
@@ -273,7 +278,8 @@ class ProductCard extends StatelessWidget {
         label,
         style: TextStyle(
           fontSize: 9,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Inter',
           color: color == scheme.outline ? scheme.onSurface : color,
         ),
       ),
@@ -297,7 +303,8 @@ class ProductCard extends StatelessWidget {
             value,
             style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Inter',
               color: color,
             ),
             maxLines: 1,
@@ -321,6 +328,9 @@ class ProductCard extends StatelessWidget {
       padding: const EdgeInsets.all(6),
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
       visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        backgroundColor: AppColors.lightBlueHover.withOpacity(0.35),
+      ),
     );
   }
 

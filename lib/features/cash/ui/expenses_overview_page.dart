@@ -306,6 +306,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   }
 
   Widget _buildFilterChipsInline(ColorScheme scheme) {
+    final theme = Theme.of(context);
     final labels = {
       MovementFilter.all: 'Todos',
       MovementFilter.income: 'Entradas',
@@ -317,20 +318,34 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
       children: MovementFilter.values.map((filter) {
         final isSelected = _filter == filter;
         return Padding(
-          padding: const EdgeInsets.only(right: AppSizes.spaceS),
-          child: ChoiceChip(
-            label: Text(labels[filter]!),
-            selected: isSelected,
-            onSelected: (_) {
-              setState(() {
-                _filter = filter;
-                _syncSelection(currentFiltered: _filteredMovements);
-              });
-            },
-            selectedColor: scheme.primary,
-            labelStyle: TextStyle(
-              color: isSelected ? scheme.onPrimary : scheme.onSurface,
-              fontWeight: FontWeight.w700,
+          padding: const EdgeInsets.only(right: 8),
+          child: SizedBox(
+            height: 40,
+            child: ChoiceChip(
+              label: Text(labels[filter]!),
+              selected: isSelected,
+              onSelected: (_) {
+                setState(() {
+                  _filter = filter;
+                  _syncSelection(currentFiltered: _filteredMovements);
+                });
+              },
+              selectedColor: AppColors.brandBlue,
+              backgroundColor: AppColors.surfaceLightVariant,
+              side: BorderSide(
+                color: isSelected
+                    ? AppColors.brandBlue
+                    : AppColors.surfaceLightBorder,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+              labelStyle: theme.textTheme.bodySmall?.copyWith(
+                color: isSelected ? Colors.white : AppColors.textDarkSecondary,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
             ),
           ),
         );
@@ -345,20 +360,27 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     required DateFormat dateFormat,
     required int count,
   }) {
-    final netColor = _net >= 0 ? scheme.primary : scheme.error;
-
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandBlueDark.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: AppColors.surfaceLightBorder),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            OutlinedButton.icon(
+            SizedBox(
+              height: 42,
+              child: ElevatedButton.icon(
               onPressed: _pickRange,
               icon: const Icon(Icons.calendar_month, size: 18),
               label: Text(
@@ -366,90 +388,108 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: AppColors.brandBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 textStyle: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  fontSize: 12.8,
                 ),
               ),
+              ),
             ),
-            const SizedBox(width: AppSizes.spaceS),
+            const SizedBox(width: 10),
             _buildFilterChipsInline(scheme),
-            const SizedBox(width: AppSizes.spaceS),
+            const SizedBox(width: 10),
             SizedBox(
               width: 280,
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                    _syncSelection(currentFiltered: _filteredMovements);
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Buscar motivo o turno (#)',
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  filled: true,
-                  fillColor: scheme.surfaceVariant.withOpacity(0.35),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                    borderSide: BorderSide(color: scheme.outlineVariant),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                    borderSide: BorderSide(color: scheme.outlineVariant),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppSizes.radiusL),
-                    borderSide: BorderSide(color: scheme.primary),
+              child: SizedBox(
+                height: 42,
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                      _syncSelection(currentFiltered: _filteredMovements);
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Buscar motivo o turno (#)',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    filled: true,
+                    fillColor: AppColors.surfaceLightVariant,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide(color: AppColors.surfaceLightBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide(color: AppColors.surfaceLightBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: const BorderSide(color: AppColors.brandBlue),
+                    ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: AppSizes.spaceS),
+            const SizedBox(width: 10),
             _InlineMetricPill(
               label: 'Entradas',
               value: currencyFormat.format(_totalIncome),
-              color: scheme.primary,
+              color: AppColors.success,
+              background: AppColors.successLight,
             ),
             const SizedBox(width: 8),
             _InlineMetricPill(
               label: 'Salidas',
               value: currencyFormat.format(_totalExpense),
-              color: scheme.error,
+              color: AppColors.error,
+              background: AppColors.errorLight,
             ),
             const SizedBox(width: 8),
             _InlineMetricPill(
               label: 'Neto',
               value: currencyFormat.format(_net),
-              color: netColor,
+              color: AppColors.brandBlue,
+              background: AppColors.infoLight,
             ),
             const SizedBox(width: 8),
             _InlineMetricPill(
               label: 'Registros',
               value: count.toString(),
               color: scheme.secondary,
+              background: AppColors.surfaceLightVariant,
             ),
-            const SizedBox(width: AppSizes.spaceS),
-            ElevatedButton.icon(
-              onPressed: _loadMovements,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Actualizar'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                textStyle: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+            const SizedBox(width: 10),
+            SizedBox(
+              height: 42,
+              child: ElevatedButton.icon(
+                onPressed: _loadMovements,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Actualizar'),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: AppColors.brandBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  textStyle: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ),
@@ -472,6 +512,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     final filteredMovements = _filteredMovements;
 
     return Scaffold(
+      backgroundColor: AppColors.surfaceLightVariant,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final padding = _contentPadding(constraints);
@@ -490,7 +531,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                   dateFormat: dateFormat,
                   count: filteredMovements.length,
                 ),
-                const SizedBox(height: AppSizes.spaceS),
+                const SizedBox(height: 12),
                 Expanded(
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
@@ -514,7 +555,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                                 isWide: true,
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 16),
                             SizedBox(
                               width: detailWidth,
                               child: SizedBox.expand(
@@ -564,7 +605,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
       padding: EdgeInsets.zero,
       itemCount: movements.length + 1,
       separatorBuilder: (_, index) =>
-          index == 0 ? const SizedBox.shrink() : const SizedBox(height: 6),
+          index == 0 ? const SizedBox.shrink() : const SizedBox(height: 12),
       itemBuilder: (context, index) {
         if (index == 0) {
           return _MovementsHeaderRow(theme: theme, scheme: scheme);
@@ -593,11 +634,18 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     if (movement == null) {
       return Container(
         decoration: BoxDecoration(
-          color: scheme.surface,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
+          border: Border.all(color: AppColors.surfaceLightBorder),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandBlueDark.withOpacity(0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -628,11 +676,18 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.surfaceLightBorder),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandBlueDark.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,15 +700,15 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
+                    color: AppColors.surfaceLightVariant,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: scheme.outlineVariant),
+                    border: Border.all(color: AppColors.surfaceLightBorder),
                   ),
                   child: Text(
                     idLabel,
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w800,
-                      fontFamily: 'monospace',
+                      color: AppColors.textDarkSecondary,
                     ),
                   ),
                 ),
@@ -664,15 +719,17 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.12),
+                    color: (isIncome
+                            ? AppColors.successLight
+                            : AppColors.errorLight)
+                        .withOpacity(0.9),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: badgeColor.withOpacity(0.35)),
                   ),
                   child: Text(
                     isIncome ? 'ENTRADA' : 'SALIDA',
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: scheme.onSurface,
+                      color: isIncome ? AppColors.success : AppColors.error,
                       letterSpacing: 0.2,
                     ),
                   ),
@@ -701,6 +758,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
               value:
                   '${isIncome ? '+' : '-'}${currencyFormat.format(movement.amount)}',
               color: badgeColor,
+              emphasize: true,
             ),
             const SizedBox(height: 10),
             Row(
@@ -709,7 +767,8 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                   child: _DetailMetric(
                     label: 'Turno',
                     value: '#${movement.sessionId}',
-                    color: scheme.secondary,
+                    color: AppColors.textDark,
+                    backgroundColor: AppColors.surfaceLightVariant,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -719,7 +778,8 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     value: movement.userId > 0
                         ? '#${movement.userId}'
                         : 'General',
-                    color: scheme.tertiary,
+                    color: AppColors.textDark,
+                    backgroundColor: AppColors.surfaceLightVariant,
                   ),
                 ),
               ],
@@ -748,11 +808,11 @@ class _MovementsHeaderRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSizes.spaceXS),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant),
+          color: AppColors.surfaceLightVariant,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.surfaceLightBorder),
         ),
         child: Row(
           children: [
@@ -797,7 +857,7 @@ class _MovementsHeaderRow extends StatelessWidget {
   }
 }
 
-class _CompactMovementRow extends StatelessWidget {
+class _CompactMovementRow extends StatefulWidget {
   final CashMovementModel movement;
   final NumberFormat currencyFormat;
   final bool isSelected;
@@ -811,34 +871,56 @@ class _CompactMovementRow extends StatelessWidget {
   });
 
   @override
+  State<_CompactMovementRow> createState() => _CompactMovementRowState();
+}
+
+class _CompactMovementRowState extends State<_CompactMovementRow> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
+    final movement = widget.movement;
     final isIncome = movement.isIn;
-    final badgeColor = isIncome ? scheme.primary : scheme.error;
 
-    final bgColor = AppColors.surfaceLight;
+    final bgColor = Colors.white;
     final textColor = AppColors.textDark;
     final mutedText = AppColors.textDarkMuted;
 
     final dateLabel = DateFormat('dd/MM/yy HH:mm').format(movement.createdAt);
 
-    return Material(
-      color: bgColor,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? scheme.primary : scheme.outlineVariant,
-              width: isSelected ? 1.2 : 1,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isSelected
+              ? AppColors.brandBlue.withOpacity(0.35)
+              : AppColors.surfaceLightBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandBlueDark.withOpacity(
+              widget.isSelected ? 0.10 : (_hovered ? 0.09 : 0.06),
             ),
+            blurRadius: widget.isSelected ? 18 : (_hovered ? 16 : 12),
+            offset: Offset(0, _hovered ? 6 : 4),
           ),
+        ],
+      ),
+      child: InkWell(
+        onTap: widget.onTap,
+        onHover: (value) {
+          if (_hovered == value) return;
+          setState(() => _hovered = value);
+        },
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: AppColors.brandBlue.withOpacity(0.03),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           child: Row(
             children: [
               Expanded(
@@ -849,9 +931,11 @@ class _CompactMovementRow extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.10),
+                    color: (isIncome
+                            ? AppColors.successLight
+                            : AppColors.errorLight)
+                        .withOpacity(0.9),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: badgeColor.withOpacity(0.35)),
                   ),
                   child: Text(
                     isIncome ? 'ENT' : 'SAL',
@@ -859,8 +943,8 @@ class _CompactMovementRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: textColor,
-                      fontWeight: FontWeight.w800,
+                      color: isIncome ? AppColors.success : AppColors.error,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0.2,
                     ),
                   ),
@@ -889,6 +973,7 @@ class _CompactMovementRow extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: mutedText,
                     fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -901,8 +986,8 @@ class _CompactMovementRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: mutedText,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -915,8 +1000,8 @@ class _CompactMovementRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: mutedText,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -924,13 +1009,14 @@ class _CompactMovementRow extends StatelessWidget {
               Expanded(
                 flex: 3,
                 child: Text(
-                  '${isIncome ? '+' : '-'}${currencyFormat.format(movement.amount)}',
+                  '${isIncome ? '+' : '-'}${widget.currencyFormat.format(movement.amount)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: badgeColor,
-                    fontWeight: FontWeight.w800,
+                    color: isIncome ? AppColors.success : AppColors.error,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
                   ),
                 ),
               ),
@@ -946,11 +1032,15 @@ class _DetailMetric extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final bool emphasize;
+  final Color? backgroundColor;
 
   const _DetailMetric({
     required this.label,
     required this.value,
     required this.color,
+    this.emphasize = false,
+    this.backgroundColor,
   });
 
   @override
@@ -961,9 +1051,12 @@ class _DetailMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: backgroundColor ??
+            (emphasize
+                ? AppColors.surfaceLightVariant
+                : AppColors.surfaceLight),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.surfaceLightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -983,6 +1076,7 @@ class _DetailMetric extends StatelessWidget {
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
               color: color,
+              fontSize: emphasize ? 20 : 16,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -997,11 +1091,13 @@ class _InlineMetricPill extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final Color? background;
 
   const _InlineMetricPill({
     required this.label,
     required this.value,
     required this.color,
+    this.background,
   });
 
   @override
@@ -1012,9 +1108,9 @@ class _InlineMetricPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
+        color: background ?? AppColors.surfaceLightVariant,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.surfaceLightBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

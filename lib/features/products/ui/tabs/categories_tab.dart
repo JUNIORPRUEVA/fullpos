@@ -6,6 +6,7 @@ import '../../models/category_model.dart';
 import '../../../../core/security/app_actions.dart';
 import '../../../../core/security/authorization_guard.dart';
 import '../dialogs/category_form_dialog.dart';
+import '../../../../theme/app_colors.dart';
 
 /// Tab de Categorías
 class CategoriesTab extends StatefulWidget {
@@ -168,7 +169,8 @@ class _CategoriesTabState extends State<CategoriesTab> {
                   Text(
                     '${_categories.length} categorías',
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
                     ),
                   ),
                   const Spacer(),
@@ -177,13 +179,16 @@ class _CategoriesTabState extends State<CategoriesTab> {
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Nueva'),
                     style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 10,
                       ),
                       textStyle: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -237,81 +242,87 @@ class _CategoriesTabState extends State<CategoriesTab> {
                               return Container(
                                 margin: const EdgeInsets.symmetric(vertical: 4),
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
+                                  horizontal: 16,
+                                  vertical: 10,
                                 ),
                                 decoration: BoxDecoration(
                                   color: scheme.surface,
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                    color: scheme.outlineVariant,
+                                    color: AppColors.borderSoft,
                                   ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: badgeColor.withOpacity(0.12),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.category,
-                                        color: badgeColor,
-                                        size: 18,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        category.name,
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          decoration: category.isDeleted
-                                              ? TextDecoration.lineThrough
-                                              : null,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    if (category.isDeleted)
-                                      _buildStatusBadge('DEL', scheme.error)
-                                    else if (!category.isActive)
-                                      _buildStatusBadge('INA', scheme.outline),
-                                    const SizedBox(width: 6),
-                                    _buildActionIcon(
-                                      icon: category.isActive
-                                          ? Icons.toggle_on
-                                          : Icons.toggle_off,
-                                      color: category.isActive
-                                          ? scheme.tertiary
-                                          : mutedText,
-                                      tooltip: category.isActive
-                                          ? 'Desactivar'
-                                          : 'Activar',
-                                      onPressed: () => _toggleActive(category),
-                                    ),
-                                    _buildActionIcon(
-                                      icon: Icons.edit,
-                                      color: scheme.primary,
-                                      tooltip: 'Editar',
-                                      onPressed: () =>
-                                          _showCategoryForm(category),
-                                    ),
-                                    _buildActionIcon(
-                                      icon: category.isDeleted
-                                          ? Icons.restore_from_trash
-                                          : Icons.delete,
-                                      color: category.isDeleted
-                                          ? scheme.tertiary
-                                          : scheme.error,
-                                      tooltip: category.isDeleted
-                                          ? 'Restaurar'
-                                          : 'Eliminar',
-                                      onPressed: () => _softDelete(category),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: scheme.shadow.withOpacity(0.05),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
                                     ),
                                   ],
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  hoverColor: AppColors.lightBlueHover.withOpacity(0.55),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: badgeColor.withOpacity(0.12),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.category_outlined,
+                                          color: badgeColor,
+                                          size: 18,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          category.name,
+                                          style: theme.textTheme.bodyMedium?.copyWith(
+                                            fontWeight: FontWeight.w500,
+                                            fontFamily: 'Inter',
+                                            decoration: category.isDeleted
+                                                ? TextDecoration.lineThrough
+                                                : null,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      if (category.isDeleted)
+                                        _buildStatusBadge('DEL', scheme.error)
+                                      else if (!category.isActive)
+                                        _buildStatusBadge('INA', scheme.outline),
+                                      const SizedBox(width: 8),
+                                      Switch.adaptive(
+                                        value: category.isActive,
+                                        onChanged: (_) => _toggleActive(category),
+                                        activeColor: AppColors.primaryBlue,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      _buildActionIcon(
+                                        icon: Icons.edit,
+                                        color: AppColors.primaryBlue,
+                                        tooltip: 'Editar',
+                                        onPressed: () =>
+                                            _showCategoryForm(category),
+                                      ),
+                                      _buildActionIcon(
+                                        icon: category.isDeleted
+                                            ? Icons.restore_from_trash
+                                            : Icons.delete,
+                                        color: category.isDeleted
+                                            ? scheme.tertiary
+                                            : scheme.error,
+                                        tooltip: category.isDeleted
+                                            ? 'Restaurar'
+                                            : 'Eliminar',
+                                        onPressed: () => _softDelete(category),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               );
                             },

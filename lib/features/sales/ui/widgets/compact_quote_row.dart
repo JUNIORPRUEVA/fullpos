@@ -58,7 +58,6 @@ class CompactQuoteRow extends StatelessWidget {
         ? scheme.primaryContainer.withOpacity(0.35)
         : scheme.surface;
     final textColor = scheme.onSurface;
-    final mutedText = scheme.onSurface.withOpacity(0.70);
 
     final canConvert =
         quote.status != 'CONVERTED' && quote.status != 'CANCELLED';

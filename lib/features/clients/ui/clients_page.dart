@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
 import '../data/client_model.dart';
 import '../data/clients_repository.dart';
+import '../../sales/data/sales_model.dart';
 import '../../sales/data/sales_repository.dart';
 import 'client_details_dialog.dart';
 import 'client_form_dialog.dart';
@@ -622,41 +622,54 @@ class _ClientsPageState extends State<ClientsPage> {
 
     final summary = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.bgDark,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.summarize_outlined,
-            size: 16,
-            color: Colors.white.withOpacity(0.85),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Text(
+              'Clientes: $total',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'Clientes: $total',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: scheme.tertiary.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.tertiary.withOpacity(0.28)),
+            ),
+            child: Text(
+              'Activos: $activeCount',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
+              ),
             ),
           ),
-          const SizedBox(width: 12),
-          Text(
-            'Activos: $activeCount',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: scheme.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.primary.withOpacity(0.26)),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            'Crédito: $creditCount',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
+            child: Text(
+              'Crédito: $creditCount',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: scheme.primary,
+              ),
             ),
           ),
         ],
@@ -665,7 +678,7 @@ class _ClientsPageState extends State<ClientsPage> {
 
     final searchField = SizedBox(
       width: 320,
-      height: 40,
+      height: 42,
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
@@ -675,11 +688,11 @@ class _ClientsPageState extends State<ClientsPage> {
           filled: true,
           fillColor: scheme.surface,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: scheme.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: scheme.outlineVariant),
           ),
           suffixIcon: _searchController.text.trim().isNotEmpty
@@ -712,10 +725,21 @@ class _ClientsPageState extends State<ClientsPage> {
 
     return Container(
       width: double.infinity,
-      color: scheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: SizedBox(
-        height: 44,
+      color: scheme.surfaceVariant.withOpacity(0.22),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: theme.shadowColor.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
@@ -743,12 +767,24 @@ class _ClientsPageState extends State<ClientsPage> {
                   onPressed: _showFiltersDialog,
                   icon: const Icon(Icons.filter_list, size: 18),
                   label: const Text('Filtros'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 10),
-                ElevatedButton.icon(
+                OutlinedButton.icon(
                   onPressed: _exportClientsToExcel,
                   icon: const Icon(Icons.download, size: 18),
                   label: const Text('Exportar'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 ElevatedButton.icon(
@@ -756,8 +792,12 @@ class _ClientsPageState extends State<ClientsPage> {
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Nuevo cliente'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: scheme.tertiary,
-                    foregroundColor: scheme.onTertiary,
+                    backgroundColor: const Color(0xFF1E3A8A),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ],
@@ -832,15 +872,23 @@ class _ClientsPageState extends State<ClientsPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final muted = scheme.onSurface.withOpacity(0.7);
+    final money = NumberFormat.currency(symbol: 'RD\$ ', decimalDigits: 2);
+    final dateLabel = DateFormat('dd/MM/yy HH:mm');
 
     if (client == null) {
       return Container(
         decoration: BoxDecoration(
           color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
+          boxShadow: [
+            BoxShadow(
+              color: theme.shadowColor.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -867,6 +915,26 @@ class _ClientsPageState extends State<ClientsPage> {
         : '?';
     final activeColor = client.isActive ? scheme.tertiary : scheme.outline;
     final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
+    final phone = (client.telefono?.isNotEmpty == true) ? client.telefono! : '-';
+    final rnc = (client.rnc?.isNotEmpty == true) ? client.rnc! : '-';
+    final cedula = (client.cedula?.isNotEmpty == true) ? client.cedula! : '-';
+    final direccion = (client.direccion?.isNotEmpty == true) ? client.direccion! : '-';
+
+    Future<Map<String, dynamic>> loadPurchasesData() async {
+      final summary = await SalesRepository.getCustomerPurchaseSummary(client.id!);
+      final purchases = await SalesRepository.listCustomerPurchases(
+        client.id!,
+        limit: 15,
+      );
+      final creditAmount = purchases
+          .where((sale) => (sale.paymentMethod ?? '').toLowerCase() == 'credit')
+          .fold<double>(0.0, (sum, sale) => sum + sale.total);
+      return {
+        'summary': summary,
+        'purchases': purchases,
+        'creditAmount': creditAmount,
+      };
+    }
 
     Widget chip(String text, Color color, {IconData? icon}) {
       return Container(
@@ -898,33 +966,30 @@ class _ClientsPageState extends State<ClientsPage> {
       );
     }
 
-    Widget fieldRow(String label, String value) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
+    Widget infoCard(String label, String value) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: scheme.surfaceVariant.withOpacity(0.28),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 88,
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: muted,
-                  fontWeight: FontWeight.w700,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                value,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -936,9 +1001,15 @@ class _ClientsPageState extends State<ClientsPage> {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: theme.shadowColor.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -946,21 +1017,22 @@ class _ClientsPageState extends State<ClientsPage> {
             Row(
               children: [
                 CircleAvatar(
-                  radius: 18,
+                  radius: 26,
                   backgroundColor: scheme.primary.withOpacity(0.12),
                   foregroundColor: scheme.primary,
                   child: Text(
                     initials,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     client.nombre,
-                    style: theme.textTheme.titleMedium?.copyWith(
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontSize: 19,
                       fontWeight: FontWeight.w900,
                     ),
                     maxLines: 2,
@@ -968,13 +1040,13 @@ class _ClientsPageState extends State<ClientsPage> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Abrir detalle',
-                  onPressed: () => _showClientDetails(client),
-                  icon: const Icon(Icons.open_in_new, size: 18),
+                  tooltip: 'Editar cliente',
+                  onPressed: () => _showClientDialog(client),
+                  icon: const Icon(Icons.edit_outlined, size: 20),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -987,24 +1059,232 @@ class _ClientsPageState extends State<ClientsPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            fieldRow(
-              'Teléfono',
-              (client.telefono?.isNotEmpty == true) ? client.telefono! : '-',
+            const SizedBox(height: 16),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 2.2,
+              children: [
+                infoCard('Teléfono', phone),
+                infoCard('RNC', rnc),
+                infoCard('Cédula', cedula),
+                infoCard('Creado', createdLabel),
+              ],
             ),
-            fieldRow(
-              'RNC',
-              (client.rnc?.isNotEmpty == true) ? client.rnc! : '-',
+            const SizedBox(height: 10),
+            infoCard('Dirección', direccion),
+            const SizedBox(height: 14),
+            FutureBuilder<Map<String, dynamic>>(
+              future: loadPurchasesData(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.error.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: scheme.error.withOpacity(0.28)),
+                    ),
+                    child: Text(
+                      'No se pudo cargar compras del cliente.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                }
+
+                final data = snapshot.data ?? const <String, dynamic>{};
+                final summary =
+                    (data['summary'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
+                final purchases = (data['purchases'] as List<SaleModel>?) ?? <SaleModel>[];
+                final creditAmount = (data['creditAmount'] as num?)?.toDouble() ?? 0.0;
+                final purchasesCount = (summary['count'] as int?) ?? 0;
+                final totalPurchased = (summary['total'] as num?)?.toDouble() ?? 0.0;
+                final lastAtMs = (summary['lastAtMs'] as int?) ?? 0;
+                final hasLastDate = lastAtMs > 0;
+
+                Widget miniStat({
+                  required String label,
+                  required String value,
+                  required IconData icon,
+                }) {
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceVariant.withOpacity(0.28),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(icon, size: 16, color: scheme.primary),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                label,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                value,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Resumen comercial',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    miniStat(
+                      label: 'Cantidad de ventas',
+                      value: purchasesCount.toString(),
+                      icon: Icons.receipt_long,
+                    ),
+                    const SizedBox(height: 8),
+                    miniStat(
+                      label: 'Total comprado',
+                      value: money.format(totalPurchased),
+                      icon: Icons.payments,
+                    ),
+                    const SizedBox(height: 8),
+                    miniStat(
+                      label: 'Monto en ventas a crédito',
+                      value: money.format(creditAmount),
+                      icon: Icons.credit_card,
+                    ),
+                    const SizedBox(height: 8),
+                    miniStat(
+                      label: 'Última compra',
+                      value: hasLastDate
+                          ? dateLabel.format(
+                              DateTime.fromMillisecondsSinceEpoch(lastAtMs),
+                            )
+                          : '-',
+                      icon: Icons.schedule,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Facturas compradas',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (purchases.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceVariant.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Este cliente no tiene facturas registradas.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: muted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else
+                      ...purchases.take(8).map((sale) {
+                        final saleDate = DateTime.fromMillisecondsSinceEpoch(
+                          sale.createdAtMs,
+                        );
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceVariant.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: scheme.outlineVariant),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      sale.localCode,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      dateLabel.format(saleDate),
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        color: muted,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                money.format(sale.total),
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                );
+              },
             ),
-            fieldRow(
-              'Cédula',
-              (client.cedula?.isNotEmpty == true) ? client.cedula! : '-',
-            ),
-            fieldRow(
-              'Dirección',
-              (client.direccion?.isNotEmpty == true) ? client.direccion! : '-',
-            ),
-            fieldRow('Creado', createdLabel),
           ],
         ),
       ),
@@ -1043,6 +1323,13 @@ class _ClientsPageState extends State<ClientsPage> {
           decoration: BoxDecoration(
             color: scheme.surface,
             borderRadius: BorderRadius.circular(AppSizes.radiusL),
+            boxShadow: [
+              BoxShadow(
+                color: theme.shadowColor.withOpacity(0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(AppSizes.paddingM),

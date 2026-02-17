@@ -26,6 +26,7 @@ import '../dialogs/product_filters_dialog.dart';
 import '../dialogs/product_form_dialog.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_thumbnail.dart';
+import '../../../../theme/app_colors.dart' as ui_colors;
 
 /// Tab de Catálogo de Productos
 class CatalogTab extends StatefulWidget {
@@ -573,225 +574,275 @@ class _CatalogTabState extends State<CatalogTab> {
         ),
       );
     }
-
     final canViewPurchasePrice = _isAdmin || _permissions.canViewPurchasePrice;
     final canViewProfit = _isAdmin || _permissions.canViewProfit;
 
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
+        color: ui_colors.AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
       ),
-      padding: const EdgeInsets.all(16),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 240,
-              width: double.infinity,
-              child: ProductThumbnail.fromProduct(
-                product,
-                width: double.infinity,
-                height: 240,
-                borderRadius: BorderRadius.circular(14),
-                showBorder: false,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
+      padding: const EdgeInsets.all(8),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 1,
+        color: ui_colors.AppColors.cardBackground,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: scheme.shadow.withOpacity(0.06),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: ui_colors.AppColors.borderSoft),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
                   decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: scheme.outlineVariant),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: scheme.shadow.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    product.code,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'monospace',
+                  child: SizedBox(
+                    height: 240,
+                    width: double.infinity,
+                    child: ProductThumbnail.fromProduct(
+                      product,
+                      width: double.infinity,
+                      height: 240,
+                      borderRadius: BorderRadius.circular(14),
+                      showBorder: false,
                     ),
                   ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => _showProductDetails(product),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  tooltip: 'Ver detalle',
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              product.name,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                if (product.isDeleted)
-                  _buildStatusBadge('ELIMINADO', scheme.error),
-                if (!product.isActive && !product.isDeleted)
-                  _buildStatusBadge('INACTIVO', scheme.outline),
-                if (product.isOutOfStock && product.isActive)
-                  _buildStatusBadge('AGOTADO', scheme.error),
-                if (product.hasLowStock && product.isActive)
-                  _buildStatusBadge('STOCK BAJO', scheme.tertiary),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (product.categoryId != null || product.supplierId != null) ...[
-              if (product.categoryId != null)
-                _buildInfoLine(
-                  icon: Icons.category_outlined,
-                  label: 'Categoría',
-                  value: _getCategoryName(product.categoryId) ?? '-',
-                ),
-              if (product.supplierId != null)
-                _buildInfoLine(
-                  icon: Icons.business_outlined,
-                  label: 'Suplidor',
-                  value: _getSupplierName(product.supplierId) ?? '-',
-                ),
-              const SizedBox(height: 12),
-            ],
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Precio venta',
-                    value: '\$${product.salePrice.toStringAsFixed(2)}',
-                    color: scheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Stock',
-                    value: product.stock.toStringAsFixed(0),
-                    color: product.isOutOfStock
-                        ? scheme.error
-                        : (product.hasLowStock
-                              ? scheme.tertiary
-                              : scheme.primary),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Disponible',
-                    value: product.availableStock.toStringAsFixed(0),
-                    color: scheme.secondary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Apartado',
-                    value: product.reservedStock.toStringAsFixed(0),
-                    color: scheme.outline,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDetailMetric(
-                    label: 'Stock mínimo',
-                    value: product.stockMin.toStringAsFixed(0),
-                    color: scheme.tertiary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: canViewPurchasePrice
-                      ? _buildDetailMetric(
-                          label: 'Precio compra',
-                          value:
-                              '\$${product.purchasePrice.toStringAsFixed(2)}',
-                          color: scheme.secondary,
-                        )
-                      : _buildDetailMetric(
-                          label: 'Actualizado',
-                          value:
-                              '${product.updatedAt.day.toString().padLeft(2, '0')}/${product.updatedAt.month.toString().padLeft(2, '0')}/${product.updatedAt.year}',
-                          color: scheme.outline,
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: ui_colors.AppColors.borderSoft,
                         ),
+                      ),
+                      child: Text(
+                        product.code,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => _showProductDetails(product),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      tooltip: 'Ver detalle',
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            if (canViewProfit) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDetailMetric(
-                      label: 'Ganancia',
-                      value: '\$${product.profit.toStringAsFixed(2)}',
-                      color: product.profit >= 0
-                          ? scheme.tertiary
-                          : scheme.error,
-                    ),
+                const SizedBox(height: 10),
+                Text(
+                  product.name,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontFamily: 'Inter',
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildDetailMetric(
-                      label: 'Margen',
-                      value: '${product.profitPercentage.toStringAsFixed(1)}%',
-                      color: product.profit >= 0
-                          ? scheme.tertiary
-                          : scheme.error,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (product.isDeleted)
+                      _buildStatusBadge('ELIMINADO', scheme.error),
+                    if (!product.isActive && !product.isDeleted)
+                      _buildStatusBadge('INACTIVO', scheme.outline),
+                    if (product.isOutOfStock && product.isActive)
+                      _buildStatusBadge('AGOTADO', scheme.error),
+                    if (product.hasLowStock && product.isActive)
+                      _buildStatusBadge('STOCK BAJO', scheme.tertiary),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (product.categoryId != null || product.supplierId != null) ...[
+                  if (product.categoryId != null)
+                    _buildInfoLine(
+                      icon: Icons.category_outlined,
+                      label: 'Categoría',
+                      value: _getCategoryName(product.categoryId) ?? '-',
                     ),
+                  if (product.supplierId != null)
+                    _buildInfoLine(
+                      icon: Icons.business_outlined,
+                      label: 'Suplidor',
+                      value: _getSupplierName(product.supplierId) ?? '-',
+                    ),
+                  const SizedBox(height: 12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Precio venta',
+                        value: '\$${product.salePrice.toStringAsFixed(2)}',
+                        color: ui_colors.AppColors.primaryBlue,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Stock',
+                        value: product.stock.toStringAsFixed(0),
+                        color: product.isOutOfStock
+                            ? scheme.error
+                            : (product.hasLowStock
+                                  ? scheme.tertiary
+                                  : ui_colors.AppColors.primaryBlue),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Disponible',
+                        value: product.availableStock.toStringAsFixed(0),
+                        color: scheme.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Apartado',
+                        value: product.reservedStock.toStringAsFixed(0),
+                        color: scheme.outline,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Stock mínimo',
+                        value: product.stockMin.toStringAsFixed(0),
+                        color: scheme.tertiary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: canViewPurchasePrice
+                          ? _buildDetailMetric(
+                              label: 'Precio compra',
+                              value:
+                                  '\$${product.purchasePrice.toStringAsFixed(2)}',
+                              color: scheme.secondary,
+                            )
+                          : _buildDetailMetric(
+                              label: 'Actualizado',
+                              value:
+                                  '${product.updatedAt.day.toString().padLeft(2, '0')}/${product.updatedAt.month.toString().padLeft(2, '0')}/${product.updatedAt.year}',
+                              color: scheme.outline,
+                            ),
+                    ),
+                  ],
+                ),
+                if (canViewProfit) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildDetailMetric(
+                          label: 'Ganancia',
+                          value: '\$${product.profit.toStringAsFixed(2)}',
+                          color: product.profit >= 0
+                              ? scheme.tertiary
+                              : scheme.error,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildDetailMetric(
+                          label: 'Margen',
+                          value:
+                              '${product.profitPercentage.toStringAsFixed(1)}%',
+                          color: product.profit >= 0
+                              ? scheme.tertiary
+                              : scheme.error,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: (_isAdmin || _permissions.canEditProducts)
-                        ? () => _showProductForm(product)
-                        : null,
-                    icon: const Icon(Icons.edit, size: 18),
-                    label: const Text('Editar'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _requestAdjustStock(product),
-                    icon: const Icon(Icons.add_circle_outline, size: 18),
-                    label: const Text('Stock'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: scheme.primary,
-                      foregroundColor: scheme.onPrimary,
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: (_isAdmin || _permissions.canEditProducts)
+                            ? () => _showProductForm(product)
+                            : null,
+                        icon: const Icon(Icons.edit, size: 18),
+                        label: const Text('Editar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ui_colors.AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _requestAdjustStock(product),
+                        icon: const Icon(Icons.add_circle_outline, size: 18),
+                        label: const Text('Stock'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: ui_colors.AppColors.primaryBlue,
+                          side: BorderSide(
+                            color: ui_colors.AppColors.primaryBlue,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -804,14 +855,16 @@ class _CatalogTabState extends State<CatalogTab> {
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.35)),
       ),
       child: Text(
         text,
         style: TextStyle(
-          color: scheme.onSurface,
+          color: color == scheme.outline
+              ? ui_colors.AppColors.textSecondary
+              : scheme.onSurface,
           fontSize: 11,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Inter',
           letterSpacing: 0.2,
         ),
       ),
@@ -856,9 +909,9 @@ class _CatalogTabState extends State<CatalogTab> {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: ui_colors.AppColors.cardBackground,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -866,7 +919,8 @@ class _CatalogTabState extends State<CatalogTab> {
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
+              color: ui_colors.AppColors.textSecondary,
+              fontFamily: 'Inter',
             ),
           ),
           const SizedBox(height: 4),
@@ -875,6 +929,7 @@ class _CatalogTabState extends State<CatalogTab> {
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
               color: color,
+              fontFamily: 'Inter',
             ),
           ),
         ],

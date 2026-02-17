@@ -110,6 +110,24 @@ class TopClient {
   });
 }
 
+class ClientSalesSummary {
+  final int clientId;
+  final String clientName;
+  final double totalSales;
+  final double totalCredit;
+  final int salesCount;
+  final int lastPurchaseAtMs;
+
+  ClientSalesSummary({
+    required this.clientId,
+    required this.clientName,
+    required this.totalSales,
+    required this.totalCredit,
+    required this.salesCount,
+    required this.lastPurchaseAtMs,
+  });
+}
+
 class SalesByUser {
   final int userId;
   final String username;
@@ -126,6 +144,7 @@ class SalesByUser {
 
 class SaleRecord {
   final int id;
+  final int? customerId;
   final String localCode;
   final String kind;
   final int createdAtMs;
@@ -135,6 +154,7 @@ class SaleRecord {
 
   SaleRecord({
     required this.id,
+    this.customerId,
     required this.localCode,
     required this.kind,
     required this.createdAtMs,
@@ -791,6 +811,7 @@ class ReportsRepository {
         '''
       SELECT 
         id,
+        customer_id,
         local_code,
         kind,
         created_at_ms,
@@ -811,6 +832,7 @@ class ReportsRepository {
     return results.map((row) {
       return SaleRecord(
         id: row['id'] as int,
+        customerId: row['customer_id'] as int?,
         localCode: row['local_code'] as String,
         kind: row['kind'] as String,
         createdAtMs: row['created_at_ms'] as int,
@@ -819,6 +841,96 @@ class ReportsRepository {
         paymentMethod: row['payment_method'] as String?,
       );
     }).toList();
+  }
+
+  static Future<List<ClientSalesSummary>> getClientSalesSummaries({
+    required int startMs,
+    required int endMs,
+    int limit = 200,
+  }) async {
+    final db = await AppDb.database;
+
+    final query =
+        '''
+      SELECT
+        s.customer_id AS client_id,
+        COALESCE(NULLIF(TRIM(s.customer_name_snapshot), ''), 'Cliente General') AS client_name,
+        COALESCE(SUM(s.total), 0) AS total_sales,
+        COALESCE(SUM(CASE WHEN COALESCE(LOWER(s.payment_method), '') = 'credit' THEN s.total ELSE 0 END), 0) AS total_credit,
+        COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) AS sales_count,
+        COALESCE(MAX(s.created_at_ms), 0) AS last_purchase_at_ms
+      FROM ${DbTables.sales} s
+      WHERE s.kind IN ('invoice', 'sale', 'return')
+        AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+        AND s.deleted_at_ms IS NULL
+        AND s.customer_id IS NOT NULL
+        AND s.created_at_ms >= ?
+        AND s.created_at_ms <= ?
+      GROUP BY s.customer_id, s.customer_name_snapshot
+      ORDER BY total_sales DESC
+      LIMIT ?
+    ''';
+
+    final rows = await db.rawQuery(query, [startMs, endMs, limit]);
+    return rows
+        .map(
+          (row) => ClientSalesSummary(
+            clientId: row['client_id'] as int? ?? 0,
+            clientName: row['client_name'] as String? ?? 'Cliente General',
+            totalSales: (row['total_sales'] as num?)?.toDouble() ?? 0,
+            totalCredit: (row['total_credit'] as num?)?.toDouble() ?? 0,
+            salesCount: row['sales_count'] as int? ?? 0,
+            lastPurchaseAtMs: row['last_purchase_at_ms'] as int? ?? 0,
+          ),
+        )
+        .toList();
+  }
+
+  static Future<List<SaleRecord>> getSalesListByClient({
+    required int clientId,
+    required int startMs,
+    required int endMs,
+    int limit = 100,
+  }) async {
+    final db = await AppDb.database;
+
+    final query =
+        '''
+      SELECT
+        id,
+        customer_id,
+        local_code,
+        kind,
+        created_at_ms,
+        customer_name_snapshot,
+        total,
+        payment_method
+      FROM ${DbTables.sales}
+      WHERE kind IN ('invoice', 'sale', 'return')
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+        AND deleted_at_ms IS NULL
+        AND customer_id = ?
+        AND created_at_ms >= ?
+        AND created_at_ms <= ?
+      ORDER BY created_at_ms DESC
+      LIMIT ?
+    ''';
+
+    final rows = await db.rawQuery(query, [clientId, startMs, endMs, limit]);
+    return rows
+        .map(
+          (row) => SaleRecord(
+            id: row['id'] as int,
+            customerId: row['customer_id'] as int?,
+            localCode: row['local_code'] as String,
+            kind: row['kind'] as String,
+            createdAtMs: row['created_at_ms'] as int,
+            customerName: row['customer_name_snapshot'] as String?,
+            total: (row['total'] as num?)?.toDouble() ?? 0,
+            paymentMethod: row['payment_method'] as String?,
+          ),
+        )
+        .toList();
   }
 
   /// Exportar a CSV (simple)

@@ -688,11 +688,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
 
     final sales = _filteredSales;
     if (sales.isEmpty) {
@@ -880,11 +875,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
 
     if (_returns.isEmpty) {
       return Center(
@@ -1093,11 +1083,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
   Widget _buildSaleDetailsPanel(SaleModel? sale) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
 
     if (sale == null) {
@@ -1261,11 +1246,6 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
   Widget _buildReturnDetailsPanel(Map<String, dynamic>? ret) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
 
     if (ret == null) {

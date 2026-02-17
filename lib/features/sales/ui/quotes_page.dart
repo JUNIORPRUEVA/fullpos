@@ -15,7 +15,6 @@ import '../../../core/printing/quote_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/errors/app_exception.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/ui/ui_scale.dart';
@@ -39,6 +38,7 @@ class _QuotesPageState extends State<QuotesPage> {
   int _loadSeq = 0;
   late QuotesFilterConfig _filterConfig;
   late SearchDebouncer _searchDebouncer;
+  final ScrollController _quoteItemsScrollController = ScrollController();
 
   QuoteDetailDto? _selectedQuote;
   int? _selectedQuoteId;
@@ -73,6 +73,7 @@ class _QuotesPageState extends State<QuotesPage> {
   @override
   void dispose() {
     _searchDebouncer.dispose();
+    _quoteItemsScrollController.dispose();
     super.dispose();
   }
 
@@ -443,6 +444,34 @@ class _QuotesPageState extends State<QuotesPage> {
     final quoteId = quote.id;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
     final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
+    final compactPrimaryStyle = _primaryActionButtonStyle().copyWith(
+      padding: const MaterialStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      ),
+      minimumSize: const MaterialStatePropertyAll(Size(double.infinity, 34)),
+      visualDensity: VisualDensity.compact,
+    );
+    final compactSecondaryStyle = _secondaryActionButtonStyle().copyWith(
+      padding: const MaterialStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      ),
+      minimumSize: const MaterialStatePropertyAll(Size(double.infinity, 34)),
+      visualDensity: VisualDensity.compact,
+    );
+    final compactIconStyle = _secondaryActionButtonStyle().copyWith(
+      padding: const MaterialStatePropertyAll(EdgeInsets.zero),
+      minimumSize: const MaterialStatePropertyAll(Size(34, 34)),
+      maximumSize: const MaterialStatePropertyAll(Size(34, 34)),
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+    final compactDangerIconStyle = _dangerActionButtonStyle().copyWith(
+      padding: const MaterialStatePropertyAll(EdgeInsets.zero),
+      minimumSize: const MaterialStatePropertyAll(Size(34, 34)),
+      maximumSize: const MaterialStatePropertyAll(Size(34, 34)),
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
     final money = NumberFormat.currency(
       locale: 'es_DO',
       symbol: 'RD\$',
@@ -477,251 +506,274 @@ class _QuotesPageState extends State<QuotesPage> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: ui_colors.AppColors.borderSoft),
-                  ),
-                  child: Text(
-                    quoteId == null
-                        ? 'COT-—'
-                        : 'COT-${quoteId.toString().padLeft(5, '0')}',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: chipColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    quote.status,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: _statusTextColor(quote.status, scheme),
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Abrir detalle',
-                  onPressed: () => _showQuoteDetails(quoteDetail),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              quoteDetail.clientName,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 20,
-                fontFamily: 'Inter',
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              createdLabel,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: ui_colors.AppColors.textSecondary,
-                fontFamily: 'Inter',
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Divider(color: ui_colors.AppColors.borderSoft, height: 16),
-            const SizedBox(height: 8),
-
-            Text(
-              'Productos (${quoteDetail.items.length})',
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (quoteDetail.items.isEmpty)
-              Text(
-                'Sin productos.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.7),
-                ),
-              )
-            else
-              Container(
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: ui_colors.AppColors.borderSoft),
-                ),
-                padding: const EdgeInsets.all(12),
+            Expanded(
+              child: SingleChildScrollView(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        SizedBox(
-                          width: 44,
-                          child: Text(
-                            'Cant',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: ui_colors.AppColors.textSecondary,
-                              fontFamily: 'Inter',
-                              fontSize: 12,
-                              letterSpacing: 0.15,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: ui_colors.AppColors.borderSoft,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          ),
+                          child: Text(
+                            quoteId == null
+                                ? 'COT-—'
+                                : 'COT-${quoteId.toString().padLeft(5, '0')}',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Inter',
+                              fontSize: 14,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: chipColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                           child: Text(
-                            'Producto',
+                            quote.status,
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: ui_colors.AppColors.textSecondary,
+                              color: _statusTextColor(quote.status, scheme),
                               fontFamily: 'Inter',
-                              fontSize: 12,
-                              letterSpacing: 0.15,
+                              fontSize: 11,
+                              letterSpacing: 0.2,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 86,
-                          child: Text(
-                            'Importe',
-                            textAlign: TextAlign.right,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: ui_colors.AppColors.textSecondary,
-                              fontFamily: 'Inter',
-                              fontSize: 12,
-                              letterSpacing: 0.15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: 'Abrir detalle',
+                          onPressed: () => _showQuoteDetails(quoteDetail),
+                          icon: const Icon(Icons.open_in_new, size: 18),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      height: 1,
-                      color: ui_colors.AppColors.borderSoft,
+                    const SizedBox(height: 12),
+                    Text(
+                      quoteDetail.clientName,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 20,
+                        fontFamily: 'Inter',
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      createdLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: ui_colors.AppColors.textSecondary,
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    ...quoteDetail.items.map((item) {
-                      final qtyLabel = item.qty.toStringAsFixed(
-                        item.qty % 1 == 0 ? 0 : 2,
-                      );
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
+                    Divider(color: ui_colors.AppColors.borderSoft, height: 16),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Productos (${quoteDetail.items.length})',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (quoteDetail.items.isEmpty)
+                      Text(
+                        'Sin productos.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurface.withOpacity(0.7),
+                        ),
+                      )
+                    else
+                      Container(
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: ui_colors.AppColors.borderSoft),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
                           children: [
-                            SizedBox(
-                              width: 44,
-                              child: Text(
-                                qtyLabel,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
+                            Row(
+                              children: [
+                                SizedBox(
+                                  width: 44,
+                                  child: Text(
+                                    'Cant',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: ui_colors.AppColors.textSecondary,
+                                      fontFamily: 'Inter',
+                                      fontSize: 12,
+                                      letterSpacing: 0.15,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Producto',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: ui_colors.AppColors.textSecondary,
+                                      fontFamily: 'Inter',
+                                      fontSize: 12,
+                                      letterSpacing: 0.15,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                SizedBox(
+                                  width: 86,
+                                  child: Text(
+                                    'Importe',
+                                    textAlign: TextAlign.right,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: ui_colors.AppColors.textSecondary,
+                                      fontFamily: 'Inter',
+                                      fontSize: 12,
+                                      letterSpacing: 0.15,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                item.description,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              height: 1,
+                              color: ui_colors.AppColors.borderSoft,
                             ),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              width: 86,
-                              child: Text(
-                                NumberFormat.currency(
-                                  locale: 'es_DO',
-                                  symbol: 'RD\$',
-                                  decimalDigits: 2,
-                                ).format(item.totalLine),
-                                textAlign: TextAlign.right,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                  color: scheme.primary,
+                            const SizedBox(height: 8),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 240),
+                              child: Scrollbar(
+                                controller: _quoteItemsScrollController,
+                                thumbVisibility: quoteDetail.items.length > 4,
+                                child: ListView.separated(
+                                  controller: _quoteItemsScrollController,
+                                  primary: false,
+                                  itemCount: quoteDetail.items.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 4),
+                                  itemBuilder: (context, index) {
+                                    final item = quoteDetail.items[index];
+                                    final qtyLabel = item.qty.toStringAsFixed(
+                                      item.qty % 1 == 0 ? 0 : 2,
+                                    );
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 6),
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 44,
+                                            child: Text(
+                                              qtyLabel,
+                                              textAlign: TextAlign.center,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                fontWeight: FontWeight.w500,
+                                                fontFamily: 'Inter',
+                                                fontSize: 14,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              item.description,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                fontWeight: FontWeight.w500,
+                                                fontFamily: 'Inter',
+                                                fontSize: 14,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          SizedBox(
+                                            width: 86,
+                                            child: Text(
+                                              NumberFormat.currency(
+                                                locale: 'es_DO',
+                                                symbol: 'RD\$',
+                                                decimalDigits: 2,
+                                              ).format(item.totalLine),
+                                              textAlign: TextAlign.right,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                                fontFamily: 'Inter',
+                                                fontSize: 14,
+                                                color: scheme.primary,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
                         ),
-                      );
-                    }),
+                      ),
+                    if ((quote.notes ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Notas',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        quote.notes!.trim(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: ui_colors.AppColors.textSecondary,
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
                   ],
                 ),
               ),
-            if ((quote.notes ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Notas',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                quote.notes!.trim(),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: ui_colors.AppColors.textSecondary,
-                  fontFamily: 'Inter',
-                  fontSize: 13,
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerHighest,
@@ -774,8 +826,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 ],
               ),
             ),
-
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -783,12 +834,12 @@ class _QuotesPageState extends State<QuotesPage> {
                     (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
                     ? null
                     : () => _convertToSale(quoteDetail),
-                icon: const Icon(Icons.point_of_sale, size: 18),
+                icon: const Icon(Icons.point_of_sale, size: 16),
                 label: const Text('Convertir a venta'),
-                style: _primaryActionButtonStyle(),
+                style: compactPrimaryStyle,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -796,66 +847,64 @@ class _QuotesPageState extends State<QuotesPage> {
                     (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
                     ? null
                     : () => _convertToTicket(quoteDetail),
-                icon: const Icon(Icons.receipt_long, size: 18),
+                icon: const Icon(Icons.receipt_long, size: 16),
                 label: const Text('Pasar a ticket'),
-                style: _secondaryActionButtonStyle(),
+                style: compactSecondaryStyle,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: () => _shareWhatsApp(quoteDetail),
-                icon: const Icon(Icons.chat, size: 18),
+                icon: const Icon(Icons.chat, size: 16),
                 label: const Text('Enviar por WhatsApp'),
-                style: _secondaryActionButtonStyle(),
+                style: compactSecondaryStyle,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
+                Tooltip(
+                  message: 'Ver PDF',
+                  child: OutlinedButton(
                     onPressed: () => _viewPDF(quoteDetail),
-                    icon: const Icon(Icons.picture_as_pdf, size: 18),
-                    label: const Text('PDF'),
-                    style: _secondaryActionButtonStyle(),
+                    style: compactIconStyle,
+                    child: const Icon(Icons.picture_as_pdf, size: 16),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Descargar PDF',
+                  child: OutlinedButton(
                     onPressed: () => _downloadPDF(quoteDetail),
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Descargar'),
-                    style: _secondaryActionButtonStyle(),
+                    style: compactIconStyle,
+                    child: const Icon(Icons.download, size: 16),
+                  ),
+                ),
+                const Spacer(),
+                Tooltip(
+                  message: 'Duplicar',
+                  child: OutlinedButton(
+                    onPressed: () => _duplicateQuote(quoteDetail),
+                    style: compactIconStyle,
+                    child: const Icon(Icons.copy, size: 16),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Eliminar',
+                  child: OutlinedButton(
+                    onPressed: () => _deleteQuote(quoteDetail),
+                    style: compactDangerIconStyle,
+                    child: const Icon(Icons.delete_outline, size: 16),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _duplicateQuote(quoteDetail),
-                icon: const Icon(Icons.copy, size: 18),
-                label: const Text('Duplicar'),
-                style: _secondaryActionButtonStyle(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _deleteQuote(quoteDetail),
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('Eliminar'),
-                style: _dangerActionButtonStyle(),
-              ),
-            ),
+            const SizedBox(height: 4),
           ],
         ),
-      ),
       ),
     );
   }

@@ -9,8 +9,10 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import '../../cash/data/cash_repository.dart' as cash_repo;
-import '../../../core/theme/app_status_theme.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../theme/app_colors.dart';
+
+enum CreditStatusFilter { all, pending, paid }
 
 class CreditsPage extends StatefulWidget {
   const CreditsPage({super.key});
@@ -35,20 +37,14 @@ class _CreditsPageState extends State<CreditsPage>
   late final TextEditingController _creditSearchController;
   late final TextEditingController _layawaySearchController;
 
-  static const _brandDark = Colors.black;
-  static const _brandLight = Colors.white;
+  CreditStatusFilter _byClientStatusFilter = CreditStatusFilter.all;
+  CreditStatusFilter _creditStatusFilter = CreditStatusFilter.all;
+  CreditStatusFilter _layawayStatusFilter = CreditStatusFilter.all;
+
   static const _controlRadius = 10.0;
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
-  AppStatusTheme get _status =>
-      _theme.extension<AppStatusTheme>() ??
-      AppStatusTheme(
-        success: _scheme.primary,
-        warning: _scheme.tertiary,
-        error: _scheme.error,
-        info: _scheme.secondary,
-      );
   NumberFormat get _currency =>
       NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
 
@@ -214,6 +210,7 @@ class _CreditsPageState extends State<CreditsPage>
         late final TextEditingController controller;
         late final String hint;
         late final Widget summary;
+        late final CreditStatusFilter currentStatusFilter;
 
         switch (_tabController.index) {
           case 0:
@@ -222,16 +219,18 @@ class _CreditsPageState extends State<CreditsPage>
               _byClientSearchController.text,
               const ['nombre'],
             );
-            final sumPending = filtered.fold<double>(
+            final statusFiltered = _filterByClientStatus(filtered);
+            final sumPending = statusFiltered.fold<double>(
               0,
               (sum, c) =>
                   sum + ((c['total_pending'] as num?)?.toDouble() ?? 0.0),
             );
             controller = _byClientSearchController;
             hint = 'Buscar cliente...';
+            currentStatusFilter = _byClientStatusFilter;
             summary = _buildSummaryChip(
               icon: Icons.people_alt_outlined,
-              left: 'Clientes: ${filtered.length}',
+              left: 'Clientes: ${statusFiltered.length}',
               right: 'Pend.: ${_formatCurrency(sumPending)}',
             );
             break;
@@ -245,16 +244,18 @@ class _CreditsPageState extends State<CreditsPage>
                 'customer_phone_snapshot',
               ],
             );
-            final pendingTotal = filtered.fold<double>(
+            final statusFiltered = _filterByCreditStatus(filtered);
+            final pendingTotal = statusFiltered.fold<double>(
               0,
               (sum, s) =>
                   sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
             );
             controller = _creditSearchController;
             hint = 'Buscar por cliente, teléfono o factura...';
+            currentStatusFilter = _creditStatusFilter;
             summary = _buildSummaryChip(
               icon: Icons.receipt_long,
-              left: 'Ventas: ${filtered.length}',
+              left: 'Ventas: ${statusFiltered.length}',
               right: 'Pend.: ${_formatCurrency(pendingTotal)}',
             );
             break;
@@ -268,16 +269,18 @@ class _CreditsPageState extends State<CreditsPage>
                 'customer_phone_snapshot',
               ],
             );
-            final pendingTotal = filtered.fold<double>(
+            final statusFiltered = _filterByLayawayStatus(filtered);
+            final pendingTotal = statusFiltered.fold<double>(
               0,
               (sum, s) =>
                   sum + ((s['amount_pending'] as num?)?.toDouble() ?? 0.0),
             );
             controller = _layawaySearchController;
             hint = 'Buscar por cliente, teléfono o factura...';
+            currentStatusFilter = _layawayStatusFilter;
             summary = _buildSummaryChip(
               icon: Icons.bookmark,
-              left: 'Apartados: ${filtered.length}',
+              left: 'Apartados: ${statusFiltered.length}',
               right: 'Pend.: ${_formatCurrency(pendingTotal)}',
             );
         }
@@ -289,17 +292,25 @@ class _CreditsPageState extends State<CreditsPage>
 
         final searchField = TextField(
           controller: controller,
-          style: const TextStyle(color: _brandDark),
+          style: TextStyle(
+            color: scheme.onSurface,
+            fontFamily: 'Inter',
+            fontSize: 14,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: _brandDark.withOpacity(0.55)),
+            hintStyle: const TextStyle(
+              color: AppColors.textSecondary,
+              fontFamily: 'Inter',
+              fontSize: 13,
+            ),
             filled: true,
-            fillColor: _brandLight,
-            prefixIcon: Icon(Icons.search, color: _brandDark.withOpacity(0.75)),
+            fillColor: Colors.white,
+            prefixIcon: const Icon(Icons.search, color: AppColors.primaryBlue),
             suffixIcon: controller.text.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.clear),
-                    color: _brandDark.withOpacity(0.75),
+                    color: AppColors.textSecondary,
                     onPressed: () {
                       _safeSetState(() {
                         controller.clear();
@@ -310,7 +321,7 @@ class _CreditsPageState extends State<CreditsPage>
             border: baseBorder,
             enabledBorder: baseBorder,
             focusedBorder: baseBorder.copyWith(
-              borderSide: BorderSide(color: scheme.primary),
+              borderSide: const BorderSide(color: AppColors.primaryBlue),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
@@ -330,11 +341,22 @@ class _CreditsPageState extends State<CreditsPage>
         );
 
         return Container(
-          color: _brandDark,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
           padding: headerPadding,
           child: Row(
             children: [
               Expanded(child: searchField),
+              const SizedBox(width: 10),
+              _buildStatusFilterDropdown(currentStatusFilter),
               const SizedBox(width: 10),
               summary,
               const SizedBox(width: 12),
@@ -343,9 +365,20 @@ class _CreditsPageState extends State<CreditsPage>
                 child: TabBar(
                   controller: _tabController,
                   isScrollable: true,
-                  labelColor: _brandLight,
-                  unselectedLabelColor: _brandLight.withOpacity(0.75),
-                  indicatorColor: _brandLight,
+                  labelColor: AppColors.primaryBlue,
+                  unselectedLabelColor: const Color(0xFF374151),
+                  indicatorColor: AppColors.primaryBlue,
+                  indicatorWeight: 3,
+                  labelStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                  ),
                   tabs: const [
                     Tab(text: 'Por Cliente'),
                     Tab(text: 'Ventas a Crédito'),
@@ -400,6 +433,73 @@ class _CreditsPageState extends State<CreditsPage>
     }).toList();
   }
 
+  List<Map<String, dynamic>> _filterByClientStatus(
+    List<Map<String, dynamic>> items,
+  ) {
+    switch (_byClientStatusFilter) {
+      case CreditStatusFilter.all:
+        return items;
+      case CreditStatusFilter.pending:
+        return items
+            .where((c) => ((c['total_pending'] as num?)?.toDouble() ?? 0.0) > 0)
+            .toList();
+      case CreditStatusFilter.paid:
+        return items
+            .where((c) => ((c['total_pending'] as num?)?.toDouble() ?? 0.0) <= 0)
+            .toList();
+    }
+  }
+
+  List<Map<String, dynamic>> _filterByCreditStatus(
+    List<Map<String, dynamic>> items,
+  ) {
+    switch (_creditStatusFilter) {
+      case CreditStatusFilter.all:
+        return items;
+      case CreditStatusFilter.pending:
+        return items.where((sale) {
+          final pending = (sale['amount_pending'] as num?)?.toDouble() ?? 0.0;
+          final status = (sale['credit_status'] ?? sale['status'] ?? '')
+              .toString()
+              .toUpperCase();
+          return pending > 0 || status != 'PAID';
+        }).toList();
+      case CreditStatusFilter.paid:
+        return items.where((sale) {
+          final pending = (sale['amount_pending'] as num?)?.toDouble() ?? 0.0;
+          final status = (sale['credit_status'] ?? sale['status'] ?? '')
+              .toString()
+              .toUpperCase();
+          return pending <= 0 || status == 'PAID';
+        }).toList();
+    }
+  }
+
+  List<Map<String, dynamic>> _filterByLayawayStatus(
+    List<Map<String, dynamic>> items,
+  ) {
+    switch (_layawayStatusFilter) {
+      case CreditStatusFilter.all:
+        return items;
+      case CreditStatusFilter.pending:
+        return items.where((sale) {
+          final pending = (sale['amount_pending'] as num?)?.toDouble() ?? 0.0;
+          final status = (sale['layaway_status'] ?? sale['status'] ?? '')
+              .toString()
+              .toUpperCase();
+          return pending > 0 || status != 'PAID';
+        }).toList();
+      case CreditStatusFilter.paid:
+        return items.where((sale) {
+          final pending = (sale['amount_pending'] as num?)?.toDouble() ?? 0.0;
+          final status = (sale['layaway_status'] ?? sale['status'] ?? '')
+              .toString()
+              .toUpperCase();
+          return pending <= 0 || status == 'PAID';
+        }).toList();
+    }
+  }
+
   Widget _buildSummaryChip({
     required IconData icon,
     required String left,
@@ -409,31 +509,85 @@ class _CreditsPageState extends State<CreditsPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: _brandDark,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(_controlRadius),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: AppColors.borderSoft),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: _brandLight.withOpacity(0.85)),
+          Icon(icon, size: 16, color: AppColors.primaryBlue),
           const SizedBox(width: 8),
           Text(
             left,
             style: _theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: _brandLight,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+              fontFamily: 'Inter',
             ),
           ),
           const SizedBox(width: 12),
           Text(
             right,
             style: _theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: _brandLight,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryBlue,
+              fontFamily: 'Inter',
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStatusFilterDropdown(CreditStatusFilter current) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_controlRadius),
+        border: Border.all(color: AppColors.borderSoft),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<CreditStatusFilter>(
+          value: current,
+          icon: const Icon(Icons.expand_more, color: AppColors.primaryBlue),
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 13,
+            color: Color(0xFF374151),
+            fontWeight: FontWeight.w500,
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: CreditStatusFilter.all,
+              child: Text('Todos'),
+            ),
+            DropdownMenuItem(
+              value: CreditStatusFilter.pending,
+              child: Text('Pendiente'),
+            ),
+            DropdownMenuItem(
+              value: CreditStatusFilter.paid,
+              child: Text('Pagado'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            _safeSetState(() {
+              switch (_tabController.index) {
+                case 0:
+                  _byClientStatusFilter = value;
+                  break;
+                case 1:
+                  _creditStatusFilter = value;
+                  break;
+                default:
+                  _layawayStatusFilter = value;
+              }
+            });
+          },
+        ),
       ),
     );
   }
@@ -444,14 +598,14 @@ class _CreditsPageState extends State<CreditsPage>
     }
 
     final scheme = _scheme;
-    final status = _status;
     final filtered = _filterByQuery(
       _creditsByClient,
       _byClientSearchController.text,
       const ['nombre'],
     );
+    final statusFiltered = _filterByClientStatus(filtered);
     final selected = _findSelectedByStringKey(
-      filtered,
+      statusFiltered,
       _selectedClientName,
       'nombre',
     );
@@ -470,19 +624,19 @@ class _CreditsPageState extends State<CreditsPage>
 
               final list = ListView.separated(
                 padding: padding,
-                itemCount: filtered.length,
+                itemCount: statusFiltered.length,
                 separatorBuilder: (_, index) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
-                  final item = filtered[index];
+                  final item = statusFiltered[index];
                   final clientName = (item['nombre'] ?? 'S/N').toString();
                   final totalPending =
                       (item['total_pending'] as num?)?.toDouble() ?? 0.0;
                   final totalAmount =
                       (item['total_amount'] as num?)?.toDouble() ?? 0.0;
                   final totalCredits = item['total_credits'] as int? ?? 0;
-                  final chipColor = totalPending > 0
-                      ? status.error
-                      : status.success;
+                    final chipColor = totalPending > 0
+                      ? const Color(0xFFFEF3C7)
+                      : const Color(0xFFDCFCE7);
                   final isSelected =
                       _selectedClientName != null &&
                       clientName == _selectedClientName;
@@ -493,9 +647,10 @@ class _CreditsPageState extends State<CreditsPage>
 
                   return Material(
                     color: rowColor,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
+                      hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
                       onTap: () {
                         _safeSetState(() {
                           _selectedClientName = clientName;
@@ -503,12 +658,19 @@ class _CreditsPageState extends State<CreditsPage>
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                          horizontal: 16,
+                          vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: scheme.outlineVariant),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.borderSoft),
+                          boxShadow: [
+                            BoxShadow(
+                              color: scheme.shadow.withOpacity(0.05),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Row(
                           children: [
@@ -519,8 +681,10 @@ class _CreditsPageState extends State<CreditsPage>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: _theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w500,
                                   color: scheme.onSurface,
+                                  fontFamily: 'Inter',
+                                  fontSize: 15,
                                 ),
                               ),
                             ),
@@ -533,8 +697,10 @@ class _CreditsPageState extends State<CreditsPage>
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.right,
                                 style: _theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                   color: scheme.onSurface.withOpacity(0.8),
+                                  fontFamily: 'Inter',
+                                  fontSize: 13,
                                 ),
                               ),
                             ),
@@ -547,8 +713,10 @@ class _CreditsPageState extends State<CreditsPage>
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.right,
                                 style: _theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                   color: scheme.onSurface,
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
@@ -561,8 +729,10 @@ class _CreditsPageState extends State<CreditsPage>
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.right,
                                 style: _theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                  color: scheme.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryBlue,
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
@@ -573,17 +743,18 @@ class _CreditsPageState extends State<CreditsPage>
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: chipColor.withOpacity(0.12),
+                                color: chipColor,
                                 borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: chipColor.withOpacity(0.35),
-                                ),
                               ),
                               child: Text(
-                                totalPending > 0 ? 'PEND.' : 'OK',
+                                totalPending > 0 ? 'PENDING' : 'PAID',
                                 style: _theme.textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                  color: scheme.onSurface,
+                                  fontWeight: FontWeight.w600,
+                                  color: totalPending > 0
+                                      ? const Color(0xFF92400E)
+                                      : const Color(0xFF166534),
+                                  fontFamily: 'Inter',
+                                  fontSize: 11,
                                   letterSpacing: 0.2,
                                 ),
                               ),
@@ -625,7 +796,7 @@ class _CreditsPageState extends State<CreditsPage>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: list),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 24),
                     SizedBox(
                       width: detailWidth,
                       child: SizedBox.expand(child: detail),
@@ -685,17 +856,18 @@ class _CreditsPageState extends State<CreditsPage>
       );
     }
 
-    final status = _status;
     final clientName = (summary['nombre'] ?? 'S/N').toString();
     final totalPending = (summary['total_pending'] as num?)?.toDouble() ?? 0.0;
     final totalAmount = (summary['total_amount'] as num?)?.toDouble() ?? 0.0;
     final totalCredits = summary['total_credits'] as int? ?? 0;
-    final chipColor = totalPending > 0 ? status.error : status.success;
-
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 2,
+      elevation: 1,
       color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.borderSoft),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
@@ -705,18 +877,20 @@ class _CreditsPageState extends State<CreditsPage>
               Text(
                 'Resumen del cliente',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
                   color: scheme.onSurface,
+                  fontFamily: 'Inter',
                 ),
               ),
               const SizedBox(height: 10),
               Text(
                 clientName,
                 style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
                   color: scheme.onSurface,
+                  fontFamily: 'Inter',
                 ),
               ),
               const SizedBox(height: 12),
@@ -730,15 +904,20 @@ class _CreditsPageState extends State<CreditsPage>
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: chipColor.withOpacity(0.12),
+                  color: totalPending > 0
+                      ? const Color(0xFFFEF3C7)
+                      : const Color(0xFFDCFCE7),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: chipColor.withOpacity(0.35)),
                 ),
                 child: Text(
-                  totalPending > 0 ? 'TIENE SALDO PENDIENTE' : 'AL DÍA',
+                  totalPending > 0 ? 'PENDING' : 'PAID',
                   style: _theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                    color: totalPending > 0
+                        ? const Color(0xFF92400E)
+                        : const Color(0xFF166534),
+                    fontFamily: 'Inter',
+                    fontSize: 11,
                     letterSpacing: 0.2,
                   ),
                 ),
@@ -760,7 +939,8 @@ class _CreditsPageState extends State<CreditsPage>
       _creditSearchController.text,
       const ['local_code', 'customer_name_snapshot', 'customer_phone_snapshot'],
     );
-    final selected = _findSelectedById(filtered, _selectedCreditId);
+    final statusFiltered = _filterByCreditStatus(filtered);
+    final selected = _findSelectedById(statusFiltered, _selectedCreditId);
 
     return Column(
       children: [
@@ -769,17 +949,15 @@ class _CreditsPageState extends State<CreditsPage>
             builder: (context, constraints) {
               final padding = _pagePadding(constraints);
               final isWide = constraints.maxWidth >= 1200;
-              final detailWidth = (constraints.maxWidth * 0.25).clamp(
-                300.0,
-                460.0,
-              );
+              final detailWidth =
+                  (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
 
               final list = ListView.separated(
                 padding: padding,
-                itemCount: filtered.length,
+                itemCount: statusFiltered.length,
                 separatorBuilder: (_, index) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
-                  final sale = filtered[index];
+                  final sale = statusFiltered[index];
                   final isSelected = sale['id'] == _selectedCreditId;
                   return _buildCreditRow(sale, isSelected);
                 },
@@ -792,7 +970,7 @@ class _CreditsPageState extends State<CreditsPage>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: list),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 24),
                     SizedBox(
                       width: detailWidth,
                       child: SizedBox.expand(child: detail),
@@ -833,7 +1011,8 @@ class _CreditsPageState extends State<CreditsPage>
       _layawaySearchController.text,
       const ['local_code', 'customer_name_snapshot', 'customer_phone_snapshot'],
     );
-    final selected = _findSelectedById(filtered, _selectedLayawayId);
+    final statusFiltered = _filterByLayawayStatus(filtered);
+    final selected = _findSelectedById(statusFiltered, _selectedLayawayId);
 
     return Column(
       children: [
@@ -842,17 +1021,15 @@ class _CreditsPageState extends State<CreditsPage>
             builder: (context, constraints) {
               final padding = _pagePadding(constraints);
               final isWide = constraints.maxWidth >= 1200;
-              final detailWidth = (constraints.maxWidth * 0.25).clamp(
-                300.0,
-                460.0,
-              );
+              final detailWidth =
+                  (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
 
               final list = ListView.separated(
                 padding: padding,
-                itemCount: filtered.length,
+                itemCount: statusFiltered.length,
                 separatorBuilder: (_, index) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
-                  final sale = filtered[index];
+                  final sale = statusFiltered[index];
                   final isSelected = sale['id'] == _selectedLayawayId;
                   return _buildLayawayRow(sale, isSelected);
                 },
@@ -865,7 +1042,7 @@ class _CreditsPageState extends State<CreditsPage>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: list),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 24),
                     SizedBox(
                       width: detailWidth,
                       child: SizedBox.expand(child: detail),
@@ -903,26 +1080,34 @@ class _CreditsPageState extends State<CreditsPage>
     final pending = pendingRaw.clamp(0.0, double.infinity);
     final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
     final statusLabel = sale['layaway_status'] ?? sale['status'] ?? 'APARTADO';
-    final chipColor = statusLabel == 'PAID' ? _status.success : _status.warning;
+    final isPaid = statusLabel.toString() == 'PAID';
     final rowColor = isSelected
         ? _scheme.primary.withOpacity(0.06)
         : _scheme.surface;
 
     return Material(
       color: rowColor,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
         onTap: () {
           setState(() {
             _selectedLayawayId = sale['id'] as int?;
           });
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.borderSoft),
+            boxShadow: [
+              BoxShadow(
+                color: _scheme.shadow.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -933,8 +1118,10 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     color: _scheme.onSurface,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -946,8 +1133,10 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                     color: _scheme.onSurface.withOpacity(0.85),
+                    fontFamily: 'Inter',
+                    fontSize: 15,
                   ),
                 ),
               ),
@@ -960,8 +1149,10 @@ class _CreditsPageState extends State<CreditsPage>
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     color: _scheme.onSurface,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -974,31 +1165,15 @@ class _CreditsPageState extends State<CreditsPage>
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: _scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlue,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: chipColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: chipColor.withOpacity(0.35)),
-                ),
-                child: Text(
-                  statusLabel.toString(),
-                  style: _theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: _scheme.onSurface,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
+              _statusBadge(isPaid ? 'PAID' : 'PENDING'),
               const SizedBox(width: 6),
               PopupMenuButton<String>(
                 tooltip: 'Acciones',
@@ -1052,6 +1227,10 @@ class _CreditsPageState extends State<CreditsPage>
         margin: EdgeInsets.zero,
         color: _scheme.surface,
         elevation: 1,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: AppColors.borderSoft),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1087,31 +1266,76 @@ class _CreditsPageState extends State<CreditsPage>
 
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 2,
+      elevation: 1,
       color: _scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.borderSoft),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      localCode.toString(),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ),
+                  _statusBadge(isPaid ? 'PAID' : 'PENDING'),
+                ],
+              ),
+              const SizedBox(height: 8),
               Text(
-                'Detalle de apartado',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: _scheme.onSurface,
+                clientName.toString(),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Inter',
                 ),
               ),
-              const SizedBox(height: 12),
-              _detailRow('Factura', localCode.toString()),
-              _detailRow('Cliente', clientName.toString()),
-              if (phone.toString().isNotEmpty)
-                _detailRow('Telefono', phone.toString()),
-              _detailRow('Total', _formatCurrency(total)),
-              _detailRow('Pagado', _formatCurrency(paid)),
-              _detailRow('Pendiente', _formatCurrency(pending)),
-              _detailRow('Estado', isPaid ? 'Saldado' : 'Pendiente'),
+              if (phone.toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  phone.toString(),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Divider(color: AppColors.borderSoft, height: 16),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.borderSoft),
+                ),
+                child: Column(
+                  children: [
+                    _detailRow('Total', _formatCurrency(total)),
+                    _detailRow('Pagado', _formatCurrency(paid)),
+                    _detailRow(
+                      'Pendiente',
+                      _formatCurrency(pending),
+                      isHighlight: true,
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -1129,16 +1353,22 @@ class _CreditsPageState extends State<CreditsPage>
                   icon: const Icon(Icons.payments_outlined, size: 18),
                   label: const Text('Registrar abono'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _scheme.primary,
-                    foregroundColor: _scheme.onPrimary,
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 1,
+                    shadowColor: _scheme.shadow.withOpacity(0.12),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(_controlRadius),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ),
@@ -1159,26 +1389,34 @@ class _CreditsPageState extends State<CreditsPage>
         ((sale['total'] as num?)?.toDouble() ?? 0.0);
     final dueDateMs = sale['credit_due_date_ms'] as int?;
     final statusLabel = sale['credit_status'] ?? sale['status'] ?? 'CREDIT';
-    final chipColor = statusLabel == 'PAID' ? _status.success : _status.warning;
+    final isPaid = statusLabel.toString() == 'PAID';
     final rowColor = isSelected
         ? _scheme.primary.withOpacity(0.06)
         : _scheme.surface;
 
     return Material(
       color: rowColor,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
         onTap: () {
           setState(() {
             _selectedCreditId = sale['id'] as int?;
           });
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.borderSoft),
+            boxShadow: [
+              BoxShadow(
+                color: _scheme.shadow.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -1189,8 +1427,10 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     color: _scheme.onSurface,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -1202,8 +1442,10 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                     color: _scheme.onSurface.withOpacity(0.85),
+                    fontFamily: 'Inter',
+                    fontSize: 15,
                   ),
                 ),
               ),
@@ -1215,8 +1457,10 @@ class _CreditsPageState extends State<CreditsPage>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: _scheme.onSurface.withOpacity(0.75),
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -1229,8 +1473,10 @@ class _CreditsPageState extends State<CreditsPage>
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     color: _scheme.onSurface,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
@@ -1243,31 +1489,15 @@ class _CreditsPageState extends State<CreditsPage>
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: _theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: _scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlue,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: chipColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: chipColor.withOpacity(0.35)),
-                ),
-                child: Text(
-                  statusLabel.toString(),
-                  style: _theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: _scheme.onSurface,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
+              _statusBadge(isPaid ? 'PAID' : 'PENDING'),
               const SizedBox(width: 6),
               PopupMenuButton<String>(
                 tooltip: 'Acciones',
@@ -1313,6 +1543,10 @@ class _CreditsPageState extends State<CreditsPage>
         margin: EdgeInsets.zero,
         color: _scheme.surface,
         elevation: 1,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: AppColors.borderSoft),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -1350,46 +1584,91 @@ class _CreditsPageState extends State<CreditsPage>
     final installments = sale['credit_installments'] as int?;
     final note = (sale['credit_note'] as String?) ?? '';
     final dueDateMs = sale['credit_due_date_ms'] as int?;
-    final installmentAmount = (installments != null && installments > 0)
-        ? totalDue / installments
-        : null;
+    final installmentAmount =
+        (installments != null && installments > 0) ? totalDue / installments : null;
 
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 2,
+      elevation: 1,
       color: _scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.borderSoft),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      localCode.toString(),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ),
+                  _statusBadge(pending <= 0 ? 'PAID' : 'PENDING'),
+                ],
+              ),
+              const SizedBox(height: 8),
               Text(
-                'Detalle de crédito',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: _scheme.onSurface,
+                clientName.toString(),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Inter',
                 ),
               ),
-              const SizedBox(height: 12),
-              _detailRow('Factura', localCode.toString()),
-              _detailRow('Cliente', clientName.toString()),
-              if (phone.toString().isNotEmpty)
-                _detailRow('Telefono', phone.toString()),
-              _detailRow('Total venta', _formatCurrency(baseTotal)),
-              _detailRow('Interes', '${interestRate.toStringAsFixed(2)}%'),
-              _detailRow('Total credito', _formatCurrency(totalDue)),
-              _detailRow('Pagado', _formatCurrency(paid)),
-              _detailRow('Pendiente', _formatCurrency(pending)),
+              if (phone.toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  phone.toString(),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Divider(color: AppColors.borderSoft, height: 16),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.borderSoft),
+                ),
+                child: Column(
+                  children: [
+                    _detailRow('Total venta', _formatCurrency(baseTotal)),
+                    _detailRow('Interés', '${interestRate.toStringAsFixed(2)}%'),
+                    _detailRow('Total crédito', _formatCurrency(totalDue)),
+                    _detailRow('Pagado', _formatCurrency(paid)),
+                    _detailRow(
+                      'Pendiente',
+                      _formatCurrency(pending),
+                      isHighlight: true,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
               if (termDays != null && termDays > 0)
-                _detailRow('Plazo (dias)', termDays.toString()),
+                _detailRow('Plazo (días)', termDays.toString()),
               if (installments != null && installments > 0)
                 _detailRow('Cuotas', installments.toString()),
               if (installmentAmount != null)
                 _detailRow('Valor cuota', _formatCurrency(installmentAmount)),
-              if (dueDateMs != null)
-                _detailRow('Vence', _formatDate(dueDateMs)),
+              if (dueDateMs != null) _detailRow('Vence', _formatDate(dueDateMs)),
               if (note.trim().isNotEmpty) _detailRow('Nota', note),
               const SizedBox(height: 16),
               SizedBox(
@@ -1408,16 +1687,22 @@ class _CreditsPageState extends State<CreditsPage>
                   icon: const Icon(Icons.payments_outlined, size: 18),
                   label: const Text('Registrar abono'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _scheme.primary,
-                    foregroundColor: _scheme.onPrimary,
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 1,
+                    shadowColor: _scheme.shadow.withOpacity(0.12),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(_controlRadius),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ),
@@ -1428,7 +1713,7 @@ class _CreditsPageState extends State<CreditsPage>
     );
   }
 
-  Widget _detailRow(String label, String value) {
+  Widget _detailRow(String label, String value, {bool isHighlight = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1437,9 +1722,11 @@ class _CreditsPageState extends State<CreditsPage>
             flex: 4,
             child: Text(
               label,
-              style: TextStyle(
-                color: _scheme.onSurface.withOpacity(0.7),
-                fontWeight: FontWeight.w600,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'Inter',
+                fontSize: 13,
               ),
             ),
           ),
@@ -1449,12 +1736,34 @@ class _CreditsPageState extends State<CreditsPage>
               value,
               textAlign: TextAlign.right,
               style: TextStyle(
-                color: _scheme.onSurface,
-                fontWeight: FontWeight.w700,
+                color: isHighlight ? AppColors.primaryBlue : _scheme.onSurface,
+                fontWeight: isHighlight ? FontWeight.w700 : FontWeight.w600,
+                fontFamily: 'Inter',
+                fontSize: isHighlight ? 23 : 14,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _statusBadge(String label) {
+    final isPaid = label == 'PAID';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isPaid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: isPaid ? const Color(0xFF166534) : const Color(0xFF92400E),
+          fontFamily: 'Inter',
+          fontSize: 11,
+        ),
       ),
     );
   }

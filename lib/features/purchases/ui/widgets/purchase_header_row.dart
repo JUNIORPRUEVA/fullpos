@@ -50,7 +50,6 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
           filters.copyWith(query: _searchCtrl.text);
     }
 
-    // Mantener controller en sync sin romper cursor: solo si difiere.
     if (_searchCtrl.text != filters.query) {
       _searchCtrl.value = TextEditingValue(
         text: filters.query,
@@ -62,44 +61,67 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
       final items = <DropdownMenuItem<int?>>[
         const DropdownMenuItem(value: null, child: Text('Todas')),
         ...categories.map(
-          (c) => DropdownMenuItem(
-            value: c.id,
-            child: Text(c.name, overflow: TextOverflow.ellipsis),
+          (category) => DropdownMenuItem(
+            value: category.id,
+            child: Text(category.name, overflow: TextOverflow.ellipsis),
           ),
         ),
       ];
 
-      return DropdownButtonFormField<int?>(
-        value: filters.categoryId,
-        items: items,
-        decoration: const InputDecoration(
-          labelText: 'Categoría',
-          isDense: true,
-          border: OutlineInputBorder(),
+      return SizedBox(
+        height: 42,
+        child: DropdownButtonFormField<int?>(
+          value: filters.categoryId,
+          items: items,
+          decoration: InputDecoration(
+            labelText: 'Categoría',
+            isDense: true,
+            filled: true,
+            fillColor: AppColors.surfaceLightVariant,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: scheme.outlineVariant.withOpacity(0.85),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: scheme.outlineVariant.withOpacity(0.85),
+              ),
+            ),
+            focusedBorder: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+              borderSide: BorderSide(color: AppColors.brandBlue, width: 1.2),
+            ),
+          ),
+          onChanged: (value) {
+            ref.read(purchaseCatalogFiltersProvider.notifier).state =
+                filters.copyWith(categoryId: value);
+          },
         ),
-        onChanged: (value) {
-          ref.read(purchaseCatalogFiltersProvider.notifier).state =
-              filters.copyWith(categoryId: value);
-        },
       );
     }
 
     final containerDecoration = BoxDecoration(
-      color: Color.alphaBlend(scheme.surface.withOpacity(0.92), bg),
+      color: Color.alphaBlend(scheme.surface.withOpacity(0.96), bg),
       borderRadius: BorderRadius.circular(AppSizes.radiusXL),
       border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
       boxShadow: [
         BoxShadow(
-          color: theme.shadowColor.withOpacity(0.12),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
+          color: theme.shadowColor.withOpacity(0.10),
+          blurRadius: 14,
+          offset: const Offset(0, 5),
         ),
       ],
     );
 
     return Shortcuts(
       shortcuts: const {
-        // F2 para focus buscador
         SingleActivator(LogicalKeyboardKey.f2): _FocusSearchIntent(),
       },
       child: Actions(
@@ -114,52 +136,105 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
         child: FocusableActionDetector(
           child: Container(
             decoration: containerDecoration,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSizes.paddingM,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isNarrow = constraints.maxWidth < 860;
 
-                final search = TextField(
-                  controller: _searchCtrl,
-                  focusNode: widget.searchFocusNode,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => commitSearch(),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, color: onBg.withOpacity(0.7)),
-                    hintText: 'Buscar producto (nombre o código)',
-                    border: const OutlineInputBorder(),
+                final search = SizedBox(
+                  height: 42,
+                  child: TextField(
+                    controller: _searchCtrl,
+                    focusNode: widget.searchFocusNode,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => commitSearch(),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon: Icon(
+                        Icons.search,
+                        size: 18,
+                        color: onBg.withOpacity(0.68),
+                      ),
+                      hintText: 'Buscar producto (nombre o código)',
+                      filled: true,
+                      fillColor: AppColors.surfaceLightVariant,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: scheme.outlineVariant.withOpacity(0.85),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: scheme.outlineVariant.withOpacity(0.85),
+                        ),
+                      ),
+                      focusedBorder: const OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                        borderSide: BorderSide(
+                          color: AppColors.brandBlue,
+                          width: 1.2,
+                        ),
+                      ),
+                    ),
                   ),
                 );
 
-                final onlySupplier = FilterChip(
-                  selected: filters.onlySupplierProducts,
-                  label: const Text('Solo proveedor'),
-                  onSelected: (v) {
-                    ref.read(purchaseCatalogFiltersProvider.notifier).state =
-                        filters.copyWith(onlySupplierProducts: v);
-                  },
+                final onlySupplier = SizedBox(
+                  height: 40,
+                  child: FilterChip(
+                    selected: filters.onlySupplierProducts,
+                    label: const Text('Solo proveedor'),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    side: BorderSide(
+                      color: filters.onlySupplierProducts
+                          ? AppColors.brandBlue
+                          : scheme.outlineVariant.withOpacity(0.85),
+                    ),
+                    selectedColor: AppColors.brandBlue.withOpacity(0.14),
+                    checkmarkColor: AppColors.brandBlue,
+                    labelStyle: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: filters.onlySupplierProducts
+                          ? AppColors.brandBlue
+                          : AppColors.textDarkSecondary,
+                    ),
+                    onSelected: (value) {
+                      ref.read(purchaseCatalogFiltersProvider.notifier).state =
+                          filters.copyWith(onlySupplierProducts: value);
+                    },
+                  ),
                 );
 
-                final addSupplier = FilledButton.icon(
-                  onPressed: () async {
-                    await showDialog<void>(
-                      context: context,
-                      builder: (c) => const SupplierFormDialog(),
-                    );
-                    ref.invalidate(purchaseSuppliersProvider);
-                  },
-                  icon: const Icon(Icons.add_business),
-                  label: const Text('+ Proveedor'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                    foregroundColor: scheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
+                final addSupplier = SizedBox(
+                  height: 40,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      await showDialog<void>(
+                        context: context,
+                        builder: (dialogContext) => const SupplierFormDialog(),
+                      );
+                      ref.invalidate(purchaseSuppliersProvider);
+                    },
+                    icon: const Icon(Icons.add_business, size: 17),
+                    label: const Text('+ Proveedor'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.brandBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 );
@@ -167,12 +242,12 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
                 final category = categoriesAsync.when(
                   data: categoryDropdown,
                   loading: () => const SizedBox(
-                    height: 48,
+                    height: 42,
                     child: Center(child: LinearProgressIndicator(minHeight: 2)),
                   ),
-                  error: (e, _) => Text(
-                    'Error cargando categorías: $e',
-                    style: TextStyle(color: AppColors.error),
+                  error: (error, _) => Text(
+                    'Error cargando categorías: $error',
+                    style: const TextStyle(color: AppColors.error),
                   ),
                 );
 
