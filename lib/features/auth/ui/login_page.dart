@@ -197,7 +197,43 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (context, setDialogState) {
+              Future<void> requestSupport() async {
+                if (loading) return;
+                if (!dialogContext.mounted) return;
+
+                setDialogState(() {
+                  loading = true;
+                  error = null;
+                  info = null;
+                });
+
+                try {
+                  final supportMessage = await service.requestSupportMessage(
+                    username: recoveryUsername,
+                    message:
+                        'Cliente solicita token para recuperación de contraseña de administrador.',
+                  );
+
+                  if (!dialogContext.mounted) return;
+                  setDialogState(() {
+                    info = supportMessage;
+                  });
+                } catch (e) {
+                  if (!dialogContext.mounted) return;
+                  setDialogState(() {
+                    error = e.toString().replaceFirst('Exception: ', '');
+                  });
+                } finally {
+                  if (dialogContext.mounted) {
+                    setDialogState(() {
+                      loading = false;
+                    });
+                  }
+                }
+              }
+
               Future<void> resetPassword() async {
+                var canUpdateDialogState = true;
                 final token = tokenController.text.trim();
                 final newPassword = newPasswordController.text;
                 final confirmPassword = confirmPasswordController.text;
@@ -253,27 +289,36 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
                   await UsersRepository.changePassword(user.id!, newPassword);
 
-                  if (!mounted) return;
+                  if (!mounted) {
+                    canUpdateDialogState = false;
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                    return;
+                  }
 
                   _mode = _LoginMode.password;
                   _passwordController.text = newPassword;
 
                   if (dialogContext.mounted) {
+                    canUpdateDialogState = false;
                     Navigator.of(dialogContext).pop();
                   }
 
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Contraseña restablecida. Ya puedes iniciar sesión.'),
-                    ),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Contraseña restablecida. Ya puedes iniciar sesión.'),
+                      ),
+                    );
+                  }
                 } catch (e) {
                   if (!dialogContext.mounted) return;
                   setDialogState(() {
                     error = e.toString().replaceFirst('Exception: ', '');
                   });
                 } finally {
-                  if (dialogContext.mounted) {
+                  if (canUpdateDialogState && dialogContext.mounted) {
                     setDialogState(() {
                       loading = false;
                     });
@@ -306,6 +351,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           labelText: 'Token de soporte',
                           hintText: 'ABCD-EF12-3456-7890',
                         ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: loading ? null : requestSupport,
+                        icon: const Icon(Icons.support_agent_outlined),
+                        label: const Text('Solicitar soporte'),
                       ),
                       const SizedBox(height: 10),
                       TextField(

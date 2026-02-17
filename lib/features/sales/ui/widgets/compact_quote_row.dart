@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../data/quote_model.dart';
 import '../../../../core/theme/app_status_theme.dart';
+import '../../../../theme/app_colors.dart';
 
 /// Tarjeta compacta y elevada para listar cotizaciones
 class CompactQuoteRow extends StatelessWidget {
@@ -87,14 +88,23 @@ class CompactQuoteRow extends StatelessWidget {
     return Material(
       color: bgColor,
       borderRadius: BorderRadius.circular(12),
+      elevation: 0,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
+        hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.outlineVariant),
+            border: Border.all(color: AppColors.borderSoft),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -106,12 +116,13 @@ class CompactQuoteRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: textColor,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 16),
               Expanded(
                 flex: 5,
                 child: Text(
@@ -120,11 +131,13 @@ class CompactQuoteRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: textColor,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Inter',
+                    fontSize: 15,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 16),
               Expanded(
                 flex: 3,
                 child: Text(
@@ -132,12 +145,14 @@ class CompactQuoteRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: mutedText,
-                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w400,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 16),
               Expanded(
                 flex: 2,
                 child: Text(
@@ -151,26 +166,28 @@ class CompactQuoteRow extends StatelessWidget {
                   textAlign: TextAlign.right,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: textColor,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter',
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+                  horizontal: 8,
+                  vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: statusColor.withOpacity(0.35)),
                 ),
                 child: Text(
                   statusText,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: textColor,
-                    fontWeight: FontWeight.w800,
+                    color: _statusTextColor(quote.status, scheme),
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Inter',
+                    fontSize: 11,
                     letterSpacing: 0.2,
                   ),
                 ),
@@ -280,17 +297,31 @@ class CompactQuoteRow extends StatelessWidget {
     AppStatusTheme statusTheme,
   ) {
     switch (status) {
+      case 'OPEN':
+        return const Color(0xFFF3F4F6);
       case 'CONVERTED':
         return statusTheme.success;
       case 'CANCELLED':
         return statusTheme.error;
       case 'TICKET':
       case 'PASSED_TO_TICKET':
-        return statusTheme.warning;
+        return const Color(0xFFFEF3C7);
       case 'SENT':
         return statusTheme.info;
       default:
-        return scheme.primary;
+        return const Color(0xFFF3F4F6);
+    }
+  }
+
+  Color _statusTextColor(String status, ColorScheme scheme) {
+    switch (status) {
+      case 'OPEN':
+        return const Color(0xFF374151);
+      case 'TICKET':
+      case 'PASSED_TO_TICKET':
+        return const Color(0xFF92400E);
+      default:
+        return scheme.onSurface;
     }
   }
 }

@@ -8,6 +8,7 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../settings/data/printer_settings_repository.dart';
+import '../../../theme/app_colors.dart';
 
 /// Página de lista de ventas realizadas (Historial completo)
 class SalesListPage extends StatefulWidget {
@@ -36,6 +37,7 @@ class _SalesListPageState extends State<SalesListPage> {
   // Estadísticas
   double _totalVentas = 0;
   int _cantidadVentas = 0;
+  final Set<int> _hoveredSaleIds = <int>{};
 
   @override
   void initState() {
@@ -638,27 +640,51 @@ class _SalesListPageState extends State<SalesListPage> {
     final scheme = Theme.of(context).colorScheme;
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final isCancelled = sale.status == 'cancelled';
+    final saleId = sale.id;
+    final isHovered = saleId != null && _hoveredSaleIds.contains(saleId);
 
     final rowColor = isSelected
-        ? scheme.primary.withOpacity(0.06)
-        : Colors.white;
+        ? AppColors.lightBlueHover
+        : scheme.surface;
     final statusLabel = isCancelled ? 'ANULADA' : 'OK';
-    final statusColor = isCancelled ? scheme.error : Colors.green;
+    final statusColor = isCancelled ? AppColors.error : AppColors.success;
 
-    return Material(
-      color: rowColor,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _selectSale(sale, showDetails: !isWide),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white, width: 1.4),
+    return MouseRegion(
+      onEnter: (_) {
+        if (saleId == null) return;
+        setState(() => _hoveredSaleIds.add(saleId));
+      },
+      onExit: (_) {
+        if (saleId == null) return;
+        setState(() => _hoveredSaleIds.remove(saleId));
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: rowColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryBlue : AppColors.borderSoft,
+            width: isSelected ? 1.4 : 1,
           ),
-          child: Row(
+          boxShadow: [
+            BoxShadow(
+              color: scheme.shadow.withOpacity(isHovered ? 0.12 : 0.06),
+              blurRadius: isHovered ? 14 : 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _selectSale(sale, showDetails: !isWide),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
             children: [
               Expanded(
                 flex: 2,
@@ -668,7 +694,7 @@ class _SalesListPageState extends State<SalesListPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    color: Colors.black,
+                    color: AppColors.textPrimary,
                     decoration: isCancelled ? TextDecoration.lineThrough : null,
                   ),
                 ),
@@ -682,7 +708,7 @@ class _SalesListPageState extends State<SalesListPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: Colors.black.withOpacity(0.85),
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
@@ -695,7 +721,7 @@ class _SalesListPageState extends State<SalesListPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: Colors.black.withOpacity(0.8),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -708,7 +734,7 @@ class _SalesListPageState extends State<SalesListPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: Colors.black.withOpacity(0.7),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -723,8 +749,8 @@ class _SalesListPageState extends State<SalesListPage> {
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     color: isCancelled
-                        ? Colors.black.withOpacity(0.55)
-                        : Colors.black,
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
                     decoration: isCancelled ? TextDecoration.lineThrough : null,
                   ),
                 ),
@@ -736,23 +762,25 @@ class _SalesListPageState extends State<SalesListPage> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
+                  color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: statusColor.withOpacity(0.35)),
+                  border: Border.all(color: statusColor.withOpacity(0.28)),
                 ),
                 child: Text(
                   statusLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                    color: statusColor,
                     letterSpacing: 0.2,
                     fontSize: 11,
                   ),
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(Icons.chevron_right, color: Colors.black.withOpacity(0.5)),
+              Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
+          ),
+            ),
           ),
         ),
       ),

@@ -14,6 +14,7 @@ import '../theme/color_utils.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
 import '../../features/settings/providers/theme_provider.dart';
 import '../../features/products/utils/catalog_pdf_launcher.dart';
+import '../../theme/app_colors.dart';
 
 /// Sidebar del layout principal con navegacion (colapsable).
 ///
@@ -74,7 +75,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    final sidebarBg = themeSettings.sidebarColor;
+    final sidebarBg = AppColors.darkBlue;
     var sidebarTextColor = ColorUtils.ensureReadableColor(
       themeSettings.sidebarTextColor,
       sidebarBg,
@@ -91,8 +92,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
     if (isSidebarVeryLight && isTextVeryDark) {
       sidebarTextColor = sidebarTextColor.withOpacity(0.76);
     }
-    final activeColor = themeSettings.sidebarActiveColor;
-    final hoverColor = themeSettings.hoverColor;
+    final activeColor = AppColors.lightBlueHover;
+    final hoverColor = AppColors.lightBlueHover;
 
     // En lightPillStyle (true) se fuerzan foregrounds oscuros en `PremiumNavItem`.
     // Para cumplir el requerimiento de blancos, lo desactivamos.
@@ -307,15 +308,26 @@ class _SidebarState extends ConsumerState<Sidebar> {
             if (effectiveCollapsed) return const SizedBox.shrink();
             return Padding(
               padding: EdgeInsets.fromLTRB(padM, 10, padM, 6),
-              child: Text(
-                text.toUpperCase(),
-                style: TextStyle(
-                  color: sidebarTextColor.withOpacity(0.65),
-                  // Solo el nombre de cada sección (ej: Ventas, Inventario).
-                  fontSize: (9.5 * s).clamp(8.5, 11.0),
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.9,
-                ),
+              child: Row(
+                children: [
+                  Text(
+                    text.toUpperCase(),
+                    style: TextStyle(
+                      color: sidebarTextColor.withOpacity(0.65),
+                      fontSize: (9.5 * s).clamp(8.5, 11.0),
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.9,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: sidebarTextColor.withOpacity(0.16),
+                    ),
+                  ),
+                ],
               ),
             );
           }
@@ -655,7 +667,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final isEnabled = widget.onTap != null || widget.route != null;
 
     final s = widget.scale.clamp(0.65, 1.12);
-    const duration = Duration(milliseconds: 180);
+    const duration = Duration(milliseconds: 150);
     final pillRadius = BorderRadius.circular((16 * s).clamp(12.0, 16.0));
 
     // Requerimiento UX: texto + iconos del sidebar siempre en blanco.
@@ -668,9 +680,10 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final activeBgB = widget.activeColor.withOpacity(0.10);
 
     final baseFg = widget.textColor;
-    final fgColor = isActive ? baseFg.withOpacity(0.98) : baseFg;
+    final activeFg = AppColors.darkBlue;
+    final fgColor = isActive ? activeFg : baseFg;
     final iconColor = isActive
-        ? baseFg.withOpacity(0.98)
+      ? activeFg
         : baseFg.withOpacity(0.95);
 
     final item = Padding(
@@ -744,6 +757,17 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                     )
                   : Row(
                       children: [
+                        AnimatedContainer(
+                          duration: duration,
+                          width: isActive ? 3 : 0,
+                          height: (20 * s).clamp(18.0, 22.0),
+                          decoration: BoxDecoration(
+                            color: isActive ? AppColors.primaryBlue : Colors.transparent,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        if (isActive)
+                          SizedBox(width: (8 * s).clamp(6.0, 8.0)),
                         Icon(
                           widget.icon,
                           color: iconColor,

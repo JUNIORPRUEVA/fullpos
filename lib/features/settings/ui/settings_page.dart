@@ -20,6 +20,7 @@ import '../../license/services/license_storage.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../../registration/services/business_registration_service.dart';
 import '../../registration/services/pending_registration_queue.dart';
+import '../../../theme/app_colors.dart';
 
 /// Pantalla de configuración con diseño de tarjetas
 class SettingsPage extends StatefulWidget {
@@ -53,16 +54,16 @@ class _SettingsPageState extends State<SettingsPage> {
     final scheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final cardColors = <Color>[
-      scheme.primary,
-      scheme.secondary,
-      scheme.tertiary,
-      scheme.primaryContainer,
-      scheme.secondaryContainer,
-      scheme.tertiaryContainer,
-      scheme.error,
-      scheme.outline,
-      scheme.inversePrimary,
-      scheme.surfaceVariant,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
+      AppColors.primaryBlue,
     ];
 
     return LayoutBuilder(
@@ -110,24 +111,31 @@ class _SettingsPageState extends State<SettingsPage> {
                       color: scheme.surface,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: scheme.outlineVariant.withOpacity(0.35),
+                          color: AppColors.borderSoft,
                       ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: scheme.shadow.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: scheme.primaryContainer.withOpacity(0.65),
+                            color: AppColors.lightBlueHover,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: scheme.outlineVariant.withOpacity(0.30),
+                              color: AppColors.borderSoft,
                             ),
                           ),
                           child: Icon(
                             Icons.settings,
                             size: 22,
-                            color: scheme.onPrimaryContainer,
+                            color: AppColors.primaryBlue,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -147,7 +155,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               Text(
                                 'Personaliza tu sistema POS',
                                 style: textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                             ],
@@ -350,27 +358,27 @@ class _SettingsPageState extends State<SettingsPage> {
     final isDark = theme.brightness == Brightness.dark;
 
     final cardBg = Color.alphaBlend(
-      color.withOpacity(isDark ? 0.14 : 0.10),
+      color.withOpacity(isDark ? 0.12 : 0.07),
       scheme.surface,
     );
     final iconBg = Color.alphaBlend(
       color.withOpacity(isDark ? 0.22 : 0.12),
       scheme.surface,
     );
-    final borderColor = scheme.outlineVariant.withOpacity(isDark ? 0.38 : 0.28);
-    final shadowColor = scheme.shadow.withOpacity(isDark ? 0.18 : 0.10);
+    final borderColor = AppColors.borderSoft;
+    final shadowColor = scheme.shadow.withOpacity(isDark ? 0.14 : 0.06);
 
     return Card(
       color: cardBg,
-      elevation: 0,
+      elevation: 1,
       shadowColor: shadowColor,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: borderColor),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
             Positioned(
@@ -420,7 +428,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
+                                color: AppColors.textSecondary,
                               ),
                             ),
                             if (!isTight) ...[
@@ -430,7 +438,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                             ],

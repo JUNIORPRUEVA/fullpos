@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../settings/ui/training/training_page.dart';
+import '../../../theme/app_colors.dart';
 import 'authorizations_page.dart';
 import 'cash_drawer_settings_page.dart';
 import 'scanner_settings_page.dart';
@@ -21,7 +22,7 @@ class ToolsPage extends ConsumerWidget {
         icon: Icons.menu_book,
         title: 'Manual y entrenamiento',
         subtitle: 'Guías completas, estreno y respaldo',
-        color: scheme.secondary,
+        color: AppColors.primaryBlue,
         onTap: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const TrainingPage())),
@@ -30,7 +31,7 @@ class ToolsPage extends ConsumerWidget {
         icon: Icons.verified_user_outlined,
         title: 'Autorizaciones',
         subtitle: 'Auditoria de permisos',
-        color: scheme.primary,
+        color: AppColors.primaryBlue,
         onTap: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const AuthorizationsPage())),
@@ -39,14 +40,14 @@ class ToolsPage extends ConsumerWidget {
         icon: Icons.description_outlined,
         title: 'NCF',
         subtitle: 'Comprobantes fiscales',
-        color: scheme.tertiary,
+        color: AppColors.primaryBlue,
         onTap: () => context.go('/ncf'),
       ),
       _ToolItem(
         icon: Icons.qr_code_scanner_rounded,
         title: 'Lector',
         subtitle: 'Configurar escáner',
-        color: scheme.primary,
+        color: AppColors.primaryBlue,
         onTap: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const ScannerSettingsPage())),
@@ -55,7 +56,7 @@ class ToolsPage extends ConsumerWidget {
         icon: Icons.point_of_sale,
         title: 'Caja registradora',
         subtitle: 'Apertura automática al cobrar',
-        color: scheme.tertiary,
+        color: AppColors.primaryBlue,
         onTap: () => Navigator.of(
           context,
         ).push(
@@ -69,7 +70,7 @@ class ToolsPage extends ConsumerWidget {
         title: Text(
           'Herramientas',
           style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         surfaceTintColor: scheme.surface,
@@ -168,7 +169,7 @@ class _ToolCardState extends State<_ToolCard> {
     final isDark = theme.brightness == Brightness.dark;
 
     final cardBg = scheme.surface;
-    final borderColor = scheme.outlineVariant.withOpacity(isDark ? 0.42 : 0.28);
+    final borderColor = AppColors.borderSoft;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -185,7 +186,7 @@ class _ToolCardState extends State<_ToolCard> {
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(
               color: _isHovered
-                  ? widget.tool.color.withOpacity(isDark ? 0.45 : 0.35)
+                  ? widget.tool.color.withOpacity(isDark ? 0.42 : 0.32)
                   : borderColor,
               width: _isHovered ? 1.4 : 1.0,
             ),
@@ -201,11 +202,9 @@ class _ToolCardState extends State<_ToolCard> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceVariant.withOpacity(
-                        isDark ? 0.28 : 0.55,
-                      ),
+                      color: AppColors.lightBlueHover,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: borderColor.withOpacity(0.9)),
+                      border: Border.all(color: AppColors.borderSoft),
                     ),
                     child: Icon(
                       widget.tool.icon,
@@ -217,7 +216,7 @@ class _ToolCardState extends State<_ToolCard> {
                   Text(
                     widget.tool.title,
                     style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                       color: scheme.onSurface,
                     ),
                     textAlign: TextAlign.center,
@@ -228,7 +227,7 @@ class _ToolCardState extends State<_ToolCard> {
                   Text(
                     widget.tool.subtitle,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                      color: AppColors.textSecondary,
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,

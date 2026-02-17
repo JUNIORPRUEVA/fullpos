@@ -12,6 +12,7 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
+import '../../../theme/app_colors.dart';
 import '../../cash/data/cash_movement_model.dart';
 import '../../cash/data/cash_repository.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
@@ -53,7 +54,7 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
   int _loadSeq = 0;
 
   // Filtros de fecha
-  DateFilter _selectedFilter = DateFilter.today;
+  DateFilter _selectedFilter = DateFilter.thisMonth;
   DateTime? _customDateFrom;
   DateTime? _customDateTo;
 
@@ -401,7 +402,7 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                                     isWide: true,
                                   ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 24),
                           SizedBox(
                             width: detailWidth,
                             child: SizedBox.expand(child: _buildDetailsPanel()),
@@ -477,10 +478,10 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
         );
 
         final hasActiveFilters =
-            _searchQuery.trim().isNotEmpty ||
-            _selectedFilter != DateFilter.today ||
-            (_selectedFilter == DateFilter.custom &&
-                (_customDateFrom != null || _customDateTo != null));
+          _searchQuery.trim().isNotEmpty ||
+          _selectedFilter != DateFilter.thisMonth ||
+          (_selectedFilter == DateFilter.custom &&
+            (_customDateFrom != null || _customDateTo != null));
 
         final tabToggle = ToggleButtons(
           isSelected: [_activeTab == 0, _activeTab == 1],
@@ -578,7 +579,7 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                   _searchController.clear();
                   _safeSetState(() {
                     _searchQuery = '';
-                    _selectedFilter = DateFilter.today;
+                    _selectedFilter = DateFilter.thisMonth;
                     _customDateFrom = null;
                     _customDateTo = null;
                   });
@@ -719,21 +720,23 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
         final customer = sale.customerNameSnapshot ?? 'Cliente General';
         final isPartial = sale.status == 'PARTIAL_REFUND';
         final statusLabel = isPartial ? 'PARCIAL' : 'OK';
-        final statusColor = isPartial ? status.warning : status.success;
+        const statusBg = Color(0xFFDCFCE7);
+        const statusFg = Color(0xFF166534);
 
         return Material(
           color: isSelected
-              ? scheme.primaryContainer.withOpacity(0.35)
+              ? AppColors.lightBlueHover.withOpacity(0.55)
               : scheme.surface,
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: () => _selectSale(sale, showDetails: !isWide),
             borderRadius: BorderRadius.circular(12),
+            hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: scheme.outlineVariant),
+                border: Border.all(color: AppColors.borderSoft),
               ),
               child: Row(
                 children: [
@@ -744,12 +747,13 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
+                        fontSize: 14,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     flex: 5,
                     child: Text(
@@ -757,11 +761,13 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: 'Inter',
+                        fontSize: 15,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     flex: 3,
                     child: Text(
@@ -769,40 +775,50 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface.withOpacity(0.70),
-                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Inter',
+                        fontSize: 13,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     flex: 2,
-                    child: Text(
-                      money.format(sale.total),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: _buildMoneyText(
+                        amount: sale.total,
+                        bigStyle: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Inter',
+                        ),
+                        smallStyle: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                      horizontal: 8,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.10),
+                      color: statusBg,
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: statusColor.withOpacity(0.35)),
                     ),
                     child: Text(
                       statusLabel,
                       style: theme.textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
+                        color: statusFg,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
+                        fontSize: 11,
                       ),
                     ),
                   ),
@@ -901,17 +917,18 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
 
         return Material(
           color: isSelected
-              ? scheme.primaryContainer.withOpacity(0.35)
+              ? AppColors.lightBlueHover.withOpacity(0.55)
               : scheme.surface,
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: () => _selectReturn(ret, showDetails: !isWide),
             borderRadius: BorderRadius.circular(12),
+            hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: scheme.outlineVariant),
+                border: Border.all(color: AppColors.borderSoft),
               ),
               child: Row(
                 children: [
@@ -922,12 +939,13 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Inter',
+                        fontSize: 14,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     flex: 5,
                     child: Text(
@@ -935,11 +953,13 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: 'Inter',
+                        fontSize: 15,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     flex: 3,
                     child: Text(
@@ -947,21 +967,30 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface.withOpacity(0.70),
-                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w400,
+                        fontFamily: 'Inter',
+                        fontSize: 13,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 16),
                   Expanded(
                     flex: 2,
-                    child: Text(
-                      money.format(total),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: _buildMoneyText(
+                        amount: total,
+                        bigStyle: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Inter',
+                        ),
+                        smallStyle: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
@@ -1042,16 +1071,21 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
         ? _buildSaleDetailsPanel(_selectedSale)
         : _buildReturnDetailsPanel(_selectedReturn);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 2,
+      shadowColor: scheme.shadow.withOpacity(0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.borderSoft),
       ),
-      padding: const EdgeInsets.all(12),
-      child: DefaultTextStyle(
-        style: theme.textTheme.bodyMedium ?? const TextStyle(),
-        child: child,
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: DefaultTextStyle(
+          style: theme.textTheme.bodyMedium ?? const TextStyle(),
+          child: child,
+        ),
       ),
     );
   }
@@ -1090,17 +1124,21 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
           Text(
             sale.localCode,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Inter',
+              fontSize: 22,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
             customer,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w400,
+              fontFamily: 'Inter',
+              fontSize: 14,
             ),
           ),
           const SizedBox(height: 8),
@@ -1116,36 +1154,50 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                 child: Text(
                   dateFormat.format(date),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w400,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Divider(color: AppColors.borderSoft, height: 16),
+          const SizedBox(height: 8),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: scheme.outlineVariant),
+              border: Border.all(color: AppColors.borderSoft),
             ),
             child: Row(
               children: [
                 Text(
                   'Total',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  money.format(sale.total),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+                _buildMoneyText(
+                  amount: sale.total,
+                  bigStyle: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 23,
+                    fontFamily: 'Inter',
+                  ),
+                  smallStyle: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Inter',
+                    fontSize: 16,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -1167,31 +1219,32 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
             child: Text(
               isPartial ? 'Devolución parcial detectada' : 'Venta completada',
               style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Inter',
               ),
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _showSaleDetails(sale),
-                  icon: const Icon(Icons.visibility_outlined, size: 18),
-                  label: const Text('Ver ticket'),
-                ),
+          FilledButton.icon(
+            onPressed: () => _showRefundDialog(sale),
+            icon: const Icon(Icons.assignment_return_outlined, size: 18),
+            label: const Text('Devolver'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+              textStyle: theme.textTheme.titleSmall?.copyWith(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => _showRefundDialog(sale),
-                  icon: const Icon(Icons.assignment_return_outlined, size: 18),
-                  label: const Text('Devolver'),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _showSaleDetails(sale),
+            icon: const Icon(Icons.visibility_outlined, size: 18),
+            label: const Text('Ver ticket'),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(42)),
+          ),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => _loadData(),
             icon: const Icon(Icons.refresh, size: 18),
@@ -1243,17 +1296,21 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
           Text(
             code,
             style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Inter',
+              fontSize: 22,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
             customer,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w400,
+              fontFamily: 'Inter',
+              fontSize: 14,
             ),
           ),
           const SizedBox(height: 8),
@@ -1269,36 +1326,50 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
                 child: Text(
                   dateFormat.format(date),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w400,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Divider(color: AppColors.borderSoft, height: 16),
+          const SizedBox(height: 8),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: scheme.outlineVariant),
+              border: Border.all(color: AppColors.borderSoft),
             ),
             child: Row(
               children: [
                 Text(
                   'Total',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'Inter',
+                    fontSize: 13,
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  money.format(total),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+                _buildMoneyText(
+                  amount: total,
+                  bigStyle: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 23,
+                    fontFamily: 'Inter',
+                  ),
+                  smallStyle: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'Inter',
+                    fontSize: 16,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -1334,6 +1405,26 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
               minimumSize: const Size.fromHeight(42),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoneyText({
+    required double amount,
+    required TextStyle? bigStyle,
+    required TextStyle? smallStyle,
+  }) {
+    final whole = amount.truncate();
+    final decimal = ((amount - whole) * 100).round().abs().toString().padLeft(2, '0');
+    final formatter = NumberFormat.decimalPattern('es_DO');
+
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(text: 'RD\$ ', style: smallStyle),
+          TextSpan(text: formatter.format(whole), style: bigStyle),
+          TextSpan(text: '.$decimal', style: smallStyle),
         ],
       ),
     );

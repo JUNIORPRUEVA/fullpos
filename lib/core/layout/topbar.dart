@@ -8,12 +8,12 @@ import '../theme/app_status_theme.dart';
 import '../theme/color_utils.dart';
 import '../session/session_manager.dart';
 import '../window/window_service.dart';
+import '../../theme/app_colors.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/cash/data/cash_repository.dart';
 import '../../features/cash/ui/cash_open_dialog.dart';
 import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
-import '../../features/settings/providers/theme_provider.dart';
 
 /// Topbar del layout principal con fecha/hora y usuario
 class Topbar extends ConsumerStatefulWidget {
@@ -213,15 +213,11 @@ class _TopbarState extends ConsumerState<Topbar> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();
-    final appBarBg = settings.appBarColor;
-    final appBarFg = ColorUtils.ensureReadableColor(
-      settings.appBarTextColor,
-      appBarBg,
-    );
+    final appBarBg = AppColors.primaryBlue;
+    final appBarFg = Colors.white;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -336,22 +332,16 @@ class _TopbarState extends ConsumerState<Topbar> {
             border: widget.showBottomBorder
                 ? Border(
                     bottom: BorderSide(
-                      color: scheme.primary.withValues(alpha: 0.35),
-                      width: 2,
+                      color: Colors.white.withValues(alpha: 0.16),
+                      width: 1,
                     ),
                   )
                 : null,
             boxShadow: [
               BoxShadow(
-                color: scheme.shadow.withValues(alpha: 0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-              BoxShadow(
-                color: scheme.surface.withValues(alpha: 0.2),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 8,
-                offset: const Offset(0, -2),
-                spreadRadius: -1,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -374,7 +364,7 @@ class _TopbarState extends ConsumerState<Topbar> {
                       TextSpan(
                         text: 'POS',
                         style: TextStyle(
-                          color: scheme.primary,
+                          color: AppColors.lightBlueHover,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -385,12 +375,10 @@ class _TopbarState extends ConsumerState<Topbar> {
                   style: TextStyle(
                     color: appBarFg,
                     fontSize: ((isCompact ? 16 : 18) * s).clamp(14.0, 20.0),
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 0.35,
                     height: 1.0,
-                    // Evita que una fuente configurada "rara" se vea fea en el título.
-                    // En Windows, Segoe UI suele verse muy profesional.
-                    fontFamilyFallback: const ['Segoe UI', 'Roboto', 'Arial'],
+                    fontFamilyFallback: const ['Inter', 'Segoe UI', 'Roboto', 'Arial'],
                   ),
                 ),
               ),
@@ -410,17 +398,17 @@ class _TopbarState extends ConsumerState<Topbar> {
                     : '$tooltipBase\nSi no tienes permiso, te pedirá autorización (PIN).';
 
                 final boxBg = Color.alphaBlend(
-                  scheme.surface.withValues(alpha: 0.72),
-                  appBarBg.withValues(alpha: 0.10),
+                  Colors.white.withValues(alpha: 0.10),
+                  appBarBg.withValues(alpha: 0.08),
                 );
                 final boxBorder = isOpen
-                    ? statusColor.withValues(alpha: 0.22)
-                    : appBarFg.withValues(alpha: 0.18);
+                    ? statusColor.withValues(alpha: 0.45)
+                    : appBarFg.withValues(alpha: 0.22);
                 final hoverBg = Color.alphaBlend(
-                  scheme.surface.withValues(alpha: 0.82),
-                  appBarBg.withValues(alpha: 0.18),
+                  Colors.white.withValues(alpha: 0.16),
+                  appBarBg.withValues(alpha: 0.12),
                 );
-                final hoverBorder = scheme.outlineVariant.withValues(alpha: 0.55);
+                final hoverBorder = Colors.white.withValues(alpha: 0.3);
 
                 return Tooltip(
                   message: tooltip,
@@ -528,34 +516,58 @@ class _TopbarState extends ConsumerState<Topbar> {
                 width: 1,
                 height: (topbarHeight * 0.52).clamp(20.0, 34.0),
                 decoration: BoxDecoration(
-                  color: scheme.outlineVariant.withValues(alpha: 0.28),
+                  color: Colors.white.withValues(alpha: 0.20),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
 
               SizedBox(width: spaceM),
-              // Perfil compacto
-              actionIconButton(
-                icon: Icons.person_outline,
-                tooltip: 'Perfil',
-                onTap: () => context.go('/account'),
-                customBg: Colors.transparent,
-                borderWidth: 0.0,
-              ),
-
-              SizedBox(width: spaceS),
-              // Nombre del usuario (compacto, sin fondo grande)
-              ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: (isCompact ? 140.0 : 240.0) * s),
-                child: Text(
-                  (_displayName ?? _username ?? 'Usuario').trim(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: appBarFg,
-                    fontSize: (14.0 * s).clamp(12.0, 15.0),
-                    fontWeight: FontWeight.w700,
-                    fontFamily: settings.fontFamily,
+              Tooltip(
+                message: 'Perfil',
+                waitDuration: const Duration(milliseconds: 350),
+                child: InkWell(
+                  onTap: () => context.go('/account'),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    constraints: BoxConstraints(maxWidth: (isCompact ? 160.0 : 240.0) * s),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: (12 * s).clamp(10.0, 14.0),
+                      vertical: (8 * s).clamp(7.0, 10.0),
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                          radius: (14 * s).clamp(12.0, 14.0),
+                          backgroundColor: AppColors.lightBlueHover,
+                          child: Icon(
+                            Icons.person,
+                            size: (14 * s).clamp(12.0, 14.0),
+                            color: AppColors.darkBlue,
+                          ),
+                        ),
+                        SizedBox(width: (8 * s).clamp(6.0, 10.0)),
+                        Flexible(
+                          child: Text(
+                            (_displayName ?? _username ?? 'Usuario').trim(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: (13.5 * s).clamp(12.0, 14.5),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

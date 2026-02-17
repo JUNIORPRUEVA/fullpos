@@ -19,6 +19,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/ui/ui_scale.dart';
+import '../../../theme/app_colors.dart' as ui_colors;
 import '../../settings/data/printer_settings_repository.dart';
 import 'widgets/compact_quote_row.dart';
 import 'widgets/quotes_filter_bar.dart';
@@ -42,8 +43,6 @@ class _QuotesPageState extends State<QuotesPage> {
   QuoteDetailDto? _selectedQuote;
   int? _selectedQuoteId;
 
-  static const _brandDark = Colors.black;
-  static const _brandLight = Colors.white;
   static const _brandRadius = 10.0;
 
   ThemeData get _theme => Theme.of(context);
@@ -194,7 +193,7 @@ class _QuotesPageState extends State<QuotesPage> {
                               isWide: true,
                             ),
                           ),
-                          SizedBox(width: 12 * scale),
+                          SizedBox(width: 24 * scale),
                           SizedBox(
                             width: detailWidth,
                             child: SizedBox.expand(
@@ -233,32 +232,30 @@ class _QuotesPageState extends State<QuotesPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: _brandDark,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(_brandRadius),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.summarize_outlined,
-            size: 16,
-            color: _brandLight.withOpacity(0.85),
-          ),
+          const Icon(Icons.summarize_outlined, size: 16, color: ui_colors.AppColors.primaryBlue),
           const SizedBox(width: 8),
           Text(
             'Cotizaciones: $count',
             style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: _brandLight,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+              fontFamily: 'Inter',
             ),
           ),
           const SizedBox(width: 12),
           Text(
             'Total: ${money.format(totalAmount)}',
             style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: _brandLight,
+              fontWeight: FontWeight.w700,
+              color: ui_colors.AppColors.primaryBlue,
+              fontFamily: 'Inter',
             ),
           ),
         ],
@@ -266,8 +263,8 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
-  ButtonStyle _bottomActionButtonStyle({Color? borderColor}) {
-    final primary = AppColors.brandBlue;
+  ButtonStyle _primaryActionButtonStyle({Color? borderColor}) {
+    final primary = ui_colors.AppColors.primaryBlue;
     final onPrimary = ColorUtils.readableTextColor(primary);
     return ElevatedButton.styleFrom(
       backgroundColor: primary,
@@ -284,9 +281,49 @@ class _QuotesPageState extends State<QuotesPage> {
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
       textStyle: const TextStyle(
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.2,
-        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+        fontFamily: 'Inter',
+      ),
+    );
+  }
+
+  ButtonStyle _secondaryActionButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: ui_colors.AppColors.primaryBlue,
+      side: BorderSide(color: ui_colors.AppColors.borderSoft),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_brandRadius),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      minimumSize: const Size(0, 38),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      textStyle: const TextStyle(
+        fontWeight: FontWeight.w500,
+        fontSize: 14,
+        fontFamily: 'Inter',
+      ),
+    );
+  }
+
+  ButtonStyle _dangerActionButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFFB91C1C),
+      side: const BorderSide(color: Color(0xFFFECACA)),
+      backgroundColor: const Color(0xFFFEF2F2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_brandRadius),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      minimumSize: const Size(0, 38),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      textStyle: const TextStyle(
+        fontWeight: FontWeight.w500,
+        fontSize: 14,
+        fontFamily: 'Inter',
       ),
     );
   }
@@ -366,30 +403,38 @@ class _QuotesPageState extends State<QuotesPage> {
     final status = _status;
 
     if (quoteDetail == null) {
-      return Container(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
+      return Card(
+        elevation: 1,
+        shadowColor: scheme.shadow.withOpacity(0.08),
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: ui_colors.AppColors.borderSoft),
         ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Detalle de cotización',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Detalle de cotización',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 20,
+                  fontFamily: 'Inter',
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Selecciona una cotización para ver sus detalles.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface.withOpacity(0.7),
+              const SizedBox(height: 8),
+              Text(
+                'Selecciona una cotización para ver sus detalles.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: ui_colors.AppColors.textSecondary,
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -406,28 +451,33 @@ class _QuotesPageState extends State<QuotesPage> {
 
     Color statusColor(String value) {
       switch (value) {
+        case 'OPEN':
+          return const Color(0xFFF3F4F6);
         case 'CONVERTED':
           return status.success;
         case 'CANCELLED':
           return status.error;
         case 'TICKET':
         case 'PASSED_TO_TICKET':
-          return status.warning;
+          return const Color(0xFFFEF3C7);
         default:
-          return scheme.primary;
+          return const Color(0xFFF3F4F6);
       }
     }
 
     final chipColor = statusColor(quote.status);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
+    return Card(
+      elevation: 1,
+      shadowColor: scheme.shadow.withOpacity(0.08),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: ui_colors.AppColors.borderSoft),
       ),
-      padding: const EdgeInsets.all(16),
-      child: SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -441,15 +491,16 @@ class _QuotesPageState extends State<QuotesPage> {
                   decoration: BoxDecoration(
                     color: scheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: scheme.outlineVariant),
+                    border: Border.all(color: ui_colors.AppColors.borderSoft),
                   ),
                   child: Text(
                     quoteId == null
                         ? 'COT-—'
                         : 'COT-${quoteId.toString().padLeft(5, '0')}',
                     style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
+                      fontSize: 14,
                     ),
                   ),
                 ),
@@ -462,13 +513,14 @@ class _QuotesPageState extends State<QuotesPage> {
                   decoration: BoxDecoration(
                     color: chipColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: chipColor.withOpacity(0.35)),
                   ),
                   child: Text(
                     quote.status,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                      color: _statusTextColor(quote.status, scheme),
+                      fontFamily: 'Inter',
+                      fontSize: 11,
                       letterSpacing: 0.2,
                     ),
                   ),
@@ -485,7 +537,9 @@ class _QuotesPageState extends State<QuotesPage> {
             Text(
               quoteDetail.clientName,
               style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
+                fontSize: 20,
+                fontFamily: 'Inter',
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -494,10 +548,14 @@ class _QuotesPageState extends State<QuotesPage> {
             Text(
               createdLabel,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface.withOpacity(0.7),
+                color: ui_colors.AppColors.textSecondary,
+                fontFamily: 'Inter',
+                fontSize: 13,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
+            Divider(color: ui_colors.AppColors.borderSoft, height: 16),
+            const SizedBox(height: 8),
 
             Text(
               'Productos (${quoteDetail.items.length})',
@@ -518,9 +576,9 @@ class _QuotesPageState extends State<QuotesPage> {
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: scheme.outlineVariant),
+                  border: Border.all(color: ui_colors.AppColors.borderSoft),
                 ),
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
                     Row(
@@ -529,10 +587,12 @@ class _QuotesPageState extends State<QuotesPage> {
                           width: 44,
                           child: Text(
                             'Cant',
-                            textAlign: TextAlign.right,
+                            textAlign: TextAlign.center,
                             style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: scheme.onSurface.withOpacity(0.65),
+                              fontWeight: FontWeight.w600,
+                              color: ui_colors.AppColors.textSecondary,
+                              fontFamily: 'Inter',
+                              fontSize: 12,
                               letterSpacing: 0.15,
                             ),
                             maxLines: 1,
@@ -544,8 +604,10 @@ class _QuotesPageState extends State<QuotesPage> {
                           child: Text(
                             'Producto',
                             style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: scheme.onSurface.withOpacity(0.65),
+                              fontWeight: FontWeight.w600,
+                              color: ui_colors.AppColors.textSecondary,
+                              fontFamily: 'Inter',
+                              fontSize: 12,
                               letterSpacing: 0.15,
                             ),
                             maxLines: 1,
@@ -559,8 +621,10 @@ class _QuotesPageState extends State<QuotesPage> {
                             'Importe',
                             textAlign: TextAlign.right,
                             style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: scheme.onSurface.withOpacity(0.65),
+                              fontWeight: FontWeight.w600,
+                              color: ui_colors.AppColors.textSecondary,
+                              fontFamily: 'Inter',
+                              fontSize: 12,
                               letterSpacing: 0.15,
                             ),
                             maxLines: 1,
@@ -573,24 +637,26 @@ class _QuotesPageState extends State<QuotesPage> {
                     Container(
                       width: double.infinity,
                       height: 1,
-                      color: scheme.outlineVariant,
+                      color: ui_colors.AppColors.borderSoft,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     ...quoteDetail.items.map((item) {
                       final qtyLabel = item.qty.toStringAsFixed(
                         item.qty % 1 == 0 ? 0 : 2,
                       );
                       return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Row(
                           children: [
                             SizedBox(
                               width: 44,
                               child: Text(
                                 qtyLabel,
-                                textAlign: TextAlign.right,
+                                textAlign: TextAlign.center,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -601,7 +667,9 @@ class _QuotesPageState extends State<QuotesPage> {
                               child: Text(
                                 item.description,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -618,7 +686,9 @@ class _QuotesPageState extends State<QuotesPage> {
                                 ).format(item.totalLine),
                                 textAlign: TextAlign.right,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
                                   color: scheme.primary,
                                 ),
                                 maxLines: 1,
@@ -644,17 +714,19 @@ class _QuotesPageState extends State<QuotesPage> {
               Text(
                 quote.notes!.trim(),
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.75),
+                  color: ui_colors.AppColors.textSecondary,
+                  fontFamily: 'Inter',
+                  fontSize: 13,
                 ),
               ),
             ],
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Container(
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: scheme.outlineVariant),
+                border: Border.all(color: ui_colors.AppColors.borderSoft),
               ),
               padding: const EdgeInsets.all(12),
               child: Column(
@@ -663,7 +735,8 @@ class _QuotesPageState extends State<QuotesPage> {
                   Text(
                     'Totales',
                     style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -690,7 +763,7 @@ class _QuotesPageState extends State<QuotesPage> {
                   Container(
                     width: double.infinity,
                     height: 1,
-                    color: scheme.outlineVariant,
+                    color: ui_colors.AppColors.borderSoft,
                   ),
                   const SizedBox(height: 10),
                   _buildTotalsRow(
@@ -712,76 +785,77 @@ class _QuotesPageState extends State<QuotesPage> {
                     : () => _convertToSale(quoteDetail),
                 icon: const Icon(Icons.point_of_sale, size: 18),
                 label: const Text('Convertir a venta'),
-                style: _bottomActionButtonStyle(),
+                style: _primaryActionButtonStyle(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: OutlinedButton.icon(
                 onPressed:
                     (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
                     ? null
                     : () => _convertToTicket(quoteDetail),
                 icon: const Icon(Icons.receipt_long, size: 18),
                 label: const Text('Pasar a ticket'),
-                style: _bottomActionButtonStyle(),
+                style: _secondaryActionButtonStyle(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: () => _shareWhatsApp(quoteDetail),
                 icon: const Icon(Icons.chat, size: 18),
                 label: const Text('Enviar por WhatsApp'),
-                style: _bottomActionButtonStyle(),
+                style: _secondaryActionButtonStyle(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: ElevatedButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: () => _viewPDF(quoteDetail),
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('PDF'),
-                    style: _bottomActionButtonStyle(),
+                    style: _secondaryActionButtonStyle(),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: ElevatedButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: () => _downloadPDF(quoteDetail),
                     icon: const Icon(Icons.download, size: 18),
                     label: const Text('Descargar'),
-                    style: _bottomActionButtonStyle(),
+                    style: _secondaryActionButtonStyle(),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: () => _duplicateQuote(quoteDetail),
                 icon: const Icon(Icons.copy, size: 18),
                 label: const Text('Duplicar'),
-                style: _bottomActionButtonStyle(),
+                style: _secondaryActionButtonStyle(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: () => _deleteQuote(quoteDetail),
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Eliminar'),
-                style: _bottomActionButtonStyle(),
+                style: _dangerActionButtonStyle(),
               ),
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -811,8 +885,10 @@ class _QuotesPageState extends State<QuotesPage> {
                         ? theme.textTheme.titleSmall
                         : theme.textTheme.bodySmall)
                     ?.copyWith(
-                      fontWeight: isTotal ? FontWeight.w900 : FontWeight.w800,
+                      fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
                       color: baseColor,
+                      fontFamily: 'Inter',
+                      fontSize: isTotal ? 15 : 14,
                     ),
           ),
         ),
@@ -827,13 +903,27 @@ class _QuotesPageState extends State<QuotesPage> {
                       ? theme.textTheme.titleMedium
                       : theme.textTheme.bodySmall)
                   ?.copyWith(
-                    fontWeight: isTotal ? FontWeight.w900 : FontWeight.w900,
-                    color: valueColor,
+                    fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
+                    color: isTotal ? ui_colors.AppColors.primaryBlue : valueColor,
+                    fontFamily: 'Inter',
+                    fontSize: isTotal ? 23 : 14,
                     letterSpacing: isTotal ? 0.2 : 0.0,
                   ),
         ),
       ],
     );
+  }
+
+  Color _statusTextColor(String status, ColorScheme scheme) {
+    switch (status) {
+      case 'OPEN':
+        return const Color(0xFF374151);
+      case 'TICKET':
+      case 'PASSED_TO_TICKET':
+        return const Color(0xFF92400E);
+      default:
+        return scheme.onSurface;
+    }
   }
 
   Future<void> _showQuoteDetails(QuoteDetailDto quoteDetail) async {

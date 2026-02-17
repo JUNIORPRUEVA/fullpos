@@ -27,6 +27,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
+import '../../../theme/app_colors.dart';
 import '../../../core/widgets/branded_loading_view.dart';
 import '../../cash/providers/cash_providers.dart';
 import '../../cash/data/cash_movement_model.dart';
@@ -118,7 +119,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   ) {
     return gradientTheme?.backgroundGradient ??
         LinearGradient(
-          colors: [scheme.surface, scheme.surfaceContainerHighest],
+          colors: [
+            scheme.surface,
+            AppColors.lightBlueHover.withOpacity(0.35),
+          ],
           stops: const [0.0, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -148,6 +152,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   bool? _previousCashOpen;
   int _initialLoadToken = 0;
   bool _loggedFirstBuild = false;
+  final Set<int> _hoveredProductIndexes = <int>{};
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> _searchResults = [];
@@ -2448,28 +2453,35 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final formattedPrice = (rawPrice % 1 == 0)
         ? rawPrice.toStringAsFixed(0)
         : rawPrice.toStringAsFixed(2);
+    final isHovered = _hoveredProductIndexes.contains(index);
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: cardBg,
-        border: Border.all(color: cardBorder, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withOpacity(0.12),
-            blurRadius: 12,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Material(
-          color: transparent,
-          child: InkWell(
-            onTap: isOutOfStock ? null : () => _addProductToCart(product),
-            child: Column(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hoveredProductIndexes.add(index)),
+      onExit: (_) => setState(() => _hoveredProductIndexes.remove(index)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: cardBg,
+          border: Border.all(color: cardBorder, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: theme.shadowColor.withOpacity(isHovered ? 0.14 : 0.08),
+              blurRadius: isHovered ? 16 : 10,
+              spreadRadius: isHovered ? 1.2 : 0.4,
+              offset: Offset(0, isHovered ? 6 : 3),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Material(
+            color: transparent,
+            child: InkWell(
+              onTap: isOutOfStock ? null : () => _addProductToCart(product),
+              hoverColor: AppColors.lightBlueHover.withOpacity(0.25),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Imagen del producto más compacta
@@ -2535,12 +2547,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            // Contraste garantizado: fondo ≈ onSurface, texto ≈ surface.
-                            // Evita casos donde el tema deja fondo y texto casi iguales.
-                            color: scheme.onSurface.withOpacity(0.78),
+                            color: AppColors.cardBackground.withOpacity(0.92),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: scheme.surface.withOpacity(0.24),
+                              color: AppColors.borderSoft,
                               width: 1,
                             ),
                           ),
@@ -2548,12 +2558,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             product.code.toUpperCase(),
                             style: TextStyle(
                               fontSize: 8.5,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               fontFamily: 'monospace',
-                              color: ColorUtils.ensureReadableColor(
-                                scheme.surface,
-                                scheme.onSurface,
-                              ),
+                              color: AppColors.textSecondary,
                               letterSpacing: 0.3,
                             ),
                           ),
@@ -2646,7 +2653,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                       child: Text(
                                         '\$$formattedPrice',
                                         style: TextStyle(
-                                          fontSize: 14.5,
+                                          fontSize: 16,
                                           fontWeight: FontWeight.w900,
                                           color: priceColor,
                                           height: 1.0,
@@ -2711,6 +2718,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),
@@ -3361,10 +3369,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildTicketHeaderCard() {
     final totalTickets = _carts.length;
     final itemCount = _currentCart.items.length;
-    final gradientTheme = Theme.of(
-      context,
-    ).extension<SalesDetailGradientTheme>();
-    final backgroundGradient = _resolveSalesDetailGradient(gradientTheme);
+    final headerColor = AppColors.primaryBlue;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -3377,7 +3382,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       color: transparent,
       child: Container(
         decoration: BoxDecoration(
-          gradient: backgroundGradient,
+          color: headerColor,
           borderRadius: BorderRadius.circular(12),
         ),
         child: LayoutBuilder(
@@ -3396,7 +3401,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(
-                      color: salesDetailTextColor.withOpacity(0.18),
+                      color: Colors.white.withOpacity(0.22),
                     ),
                   ),
                   clipBehavior: Clip.antiAlias,
@@ -3405,7 +3410,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     child: SizedBox(
                       width: 34,
                       height: 34,
-                      child: Icon(icon, color: salesDetailTextColor, size: 18),
+                      child: Icon(icon, color: Colors.white, size: 18),
                     ),
                   ),
                 ),
@@ -3425,13 +3430,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     color: transparent,
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: salesDetailTextColor.withOpacity(0.25),
+                      color: Colors.white.withOpacity(0.24),
                     ),
                   ),
                   child: Text(
                     '$itemCount',
                     style: TextStyle(
-                      color: salesDetailTextColor,
+                      color: Colors.white,
                       fontSize: 14,
                       fontWeight: FontWeight.w900,
                       height: 1.0,
@@ -3451,7 +3456,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
-                          color: salesDetailTextColor.withOpacity(0.18),
+                          color: Colors.white.withOpacity(0.22),
                         ),
                       ),
                       clipBehavior: Clip.antiAlias,
@@ -3467,7 +3472,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               Icon(
                                 Icons.receipt_long_outlined,
                                 size: 18,
-                                color: salesDetailTextColor,
+                                color: Colors.white,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -3478,7 +3483,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: salesDetailTextColor,
+                                    color: Colors.white,
                                     fontSize: isCompact ? 13 : 14,
                                     fontWeight: FontWeight.w800,
                                     height: 1.1,
@@ -3488,7 +3493,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               const SizedBox(width: 8),
                               Icon(
                                 Icons.arrow_drop_down,
-                                color: salesDetailTextColor.withOpacity(0.7),
+                                color: Colors.white.withOpacity(0.8),
                               ),
                             ],
                           ),
@@ -4045,13 +4050,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: scheme.secondaryContainer.withOpacity(
+                          color: scheme.primaryContainer.withOpacity(
                             _currentCart.items.isEmpty ? 0.2 : 0.35,
                           ),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: scheme.secondary.withOpacity(0.6),
-                            width: 2.2,
+                            color: scheme.primary.withOpacity(0.45),
+                            width: 1.6,
                           ),
                         ),
                         child: Row(
@@ -4062,15 +4067,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 Icon(
                                   Icons.attach_money,
                                   size: 20,
-                                  color: scheme.onSecondaryContainer,
+                                  color: scheme.primary,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   'TOTAL:',
                                   style: TextStyle(
-                                    fontSize: 19,
+                                    fontSize: 20,
                                     fontWeight: FontWeight.w800,
-                                    color: scheme.onSecondaryContainer,
+                                    color: scheme.primary,
                                   ),
                                 ),
                               ],
@@ -4078,9 +4083,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             Text(
                               'RD\$${totalAmount.toStringAsFixed(2)}',
                               style: TextStyle(
-                                fontSize: 26,
+                                fontSize: 30,
                                 fontWeight: FontWeight.w900,
-                                color: scheme.onSecondaryContainer,
+                                color: scheme.primary,
                                 letterSpacing: 0.5,
                               ),
                             ),
@@ -4121,15 +4126,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _currentCart.items.isEmpty
                           ? scheme.surface
-                          : scheme.primary,
+                        : AppColors.primaryBlue,
                       foregroundColor: _currentCart.items.isEmpty
                           ? scheme.onSurface
-                          : scheme.onPrimary,
+                        : Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      elevation: _currentCart.items.isEmpty ? 0 : 3,
+                      elevation: _currentCart.items.isEmpty ? 0 : 1,
                       shadowColor: scheme.primary.withOpacity(0.25),
                     ),
                   ),
@@ -4166,9 +4171,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                         ? scheme.onSurface
                         : scheme.onSecondary,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    elevation: _currentCart.items.isEmpty ? 0 : 2,
+                    elevation: _currentCart.items.isEmpty ? 0 : 1,
                   ),
                 ),
               ),
@@ -4180,23 +4185,22 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      elevation: 12,
-      shadowColor: Theme.of(context).shadowColor.withOpacity(0.25),
+      elevation: 1,
+      shadowColor: Theme.of(context).shadowColor.withOpacity(0.08),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: scheme.primary.withOpacity(0.08), width: 1),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant.withOpacity(0.6), width: 1),
       ),
       color: transparent,
       child: Container(
         decoration: BoxDecoration(
           gradient: backgroundGradient,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Theme.of(context).shadowColor.withOpacity(0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-              spreadRadius: 1,
+              color: Theme.of(context).shadowColor.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -4671,26 +4675,26 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ),
       child: Card(
         margin: const EdgeInsets.only(bottom: 3),
-        elevation: isSelected ? 4 : 2,
+        elevation: isSelected ? 2 : 1,
         shadowColor: isSelected
             ? scheme.primary.withOpacity(0.3)
-            : Theme.of(context).shadowColor.withOpacity(0.26),
+            : Theme.of(context).shadowColor.withOpacity(0.08),
         color: isSelected ? scheme.primary.withOpacity(0.08) : transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(12),
           side: isSelected
               ? BorderSide(color: scheme.primary.withOpacity(0.45), width: 1.5)
               : BorderSide(
-                  color: scheme.onSurface.withOpacity(0.2),
-                  width: 0.5,
+                  color: scheme.outlineVariant.withOpacity(0.7),
+                  width: 1,
                 ),
         ),
         child: InkWell(
           onTap: () => setState(() => _selectedCartItemIndex = index),
           onDoubleTap: () => _showEditItemDialog(item, index),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               children: [
                 Container(
