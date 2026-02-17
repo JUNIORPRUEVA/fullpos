@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 
 class PurchaseModeSelectorPage extends StatelessWidget {
@@ -11,15 +10,17 @@ class PurchaseModeSelectorPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final gradientTheme = theme.extension<AppGradientTheme>();
-    final headerGradient = gradientTheme?.backgroundGradient ??
+
+    final headerGradient =
+        gradientTheme?.backgroundGradient ??
         const LinearGradient(
           colors: [Color(0xFFFFFFFF), Color(0xFFF3F7FF), Color(0xFFEAF2FF)],
           stops: [0.0, 0.62, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
+
     const cardGradient = LinearGradient(
       colors: [AppColors.brandBlueDark, AppColors.brandBlue],
       stops: [0.0, 1.0],
@@ -38,107 +39,122 @@ class PurchaseModeSelectorPage extends StatelessWidget {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1160),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-                  decoration: BoxDecoration(
-                    gradient: headerGradient,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppColors.surfaceLightBorder.withOpacity(0.75),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.shadowColor.withOpacity(0.10),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Selecciona un tipo de compra',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Manual (catálogo + ticket), Automática (sugerencias) o Registro de órdenes.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textDarkSecondary.withOpacity(0.86),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 22),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth >= 980;
-                    final children = [
-                      _PurchaseModeActionCard(
-                        icon: Icons.playlist_add,
-                        title: 'Compra Manual',
-                        desc:
-                            'Elige productos del catálogo y arma tu orden con ticket fijo.',
-                        gradient: cardGradient,
-                        onTap: () => context.go('/purchases/manual'),
-                      ),
-                      _PurchaseModeActionCard(
-                        icon: Icons.auto_awesome,
-                        title: 'Compra Automática',
-                        desc:
-                            'Genera sugerencias por reposición y conviértelas en una orden.',
-                        gradient: cardGradient,
-                        onTap: () => context.go('/purchases/auto'),
-                      ),
-                      _PurchaseModeActionCard(
-                        icon: Icons.history,
-                        title: 'Registro de Órdenes',
-                        desc:
-                            'Consulta historial, abre PDF, recibe órdenes y duplica.',
-                        gradient: cardGradient,
-                        onTap: () => context.go('/purchases/orders'),
-                      ),
-                    ];
+        child: LayoutBuilder(
+          builder: (context, viewportConstraints) {
+            final contentWidth = viewportConstraints.maxWidth > 1160
+                ? 1160.0
+                : viewportConstraints.maxWidth;
 
-                    if (!isWide) {
-                      return Column(
-                        children: [
-                          for (final child in children) ...[
-                            child,
-                            const SizedBox(height: 14),
-                          ],
+            return Center(
+              child: SizedBox(
+                width: contentWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 20,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: headerGradient,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppColors.surfaceLightBorder.withOpacity(0.75),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.shadowColor.withOpacity(0.10),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
                         ],
-                      );
-                    }
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Selecciona un tipo de compra',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Manual (catálogo + ticket), Automática (sugerencias) o Registro de órdenes.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textDarkSecondary.withOpacity(
+                                0.86,
+                              ),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth >= 980;
 
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: children[0]),
-                        const SizedBox(width: 14),
-                        Expanded(child: children[1]),
-                        const SizedBox(width: 14),
-                        Expanded(child: children[2]),
-                      ],
-                    );
-                  },
+                        final cards = [
+                          _PurchaseModeActionCard(
+                            icon: Icons.playlist_add,
+                            title: 'Compra Manual',
+                            desc:
+                                'Elige productos del catálogo y arma tu orden con ticket fijo.',
+                            gradient: cardGradient,
+                            onTap: () => context.go('/purchases/manual'),
+                          ),
+                          _PurchaseModeActionCard(
+                            icon: Icons.auto_awesome,
+                            title: 'Compra Automática',
+                            desc:
+                                'Genera sugerencias por reposición y conviértelas en una orden.',
+                            gradient: cardGradient,
+                            onTap: () => context.go('/purchases/auto'),
+                          ),
+                          _PurchaseModeActionCard(
+                            icon: Icons.history,
+                            title: 'Registro de Órdenes',
+                            desc:
+                                'Consulta historial, abre PDF, recibe órdenes y duplica.',
+                            gradient: cardGradient,
+                            onTap: () => context.go('/purchases/orders'),
+                          ),
+                        ];
+
+                        if (!isWide) {
+                          return Column(
+                            children: [
+                              cards[0],
+                              const SizedBox(height: 14),
+                              cards[1],
+                              const SizedBox(height: 14),
+                              cards[2],
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: cards[0]),
+                            const SizedBox(width: 14),
+                            Expanded(child: cards[1]),
+                            const SizedBox(width: 14),
+                            Expanded(child: cards[2]),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -161,7 +177,8 @@ class _PurchaseModeActionCard extends StatefulWidget {
   });
 
   @override
-  State<_PurchaseModeActionCard> createState() => _PurchaseModeActionCardState();
+  State<_PurchaseModeActionCard> createState() =>
+      _PurchaseModeActionCardState();
 }
 
 class _PurchaseModeActionCardState extends State<_PurchaseModeActionCard> {
@@ -183,7 +200,9 @@ class _PurchaseModeActionCardState extends State<_PurchaseModeActionCard> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: AppColors.brandBlueDark.withOpacity(_hovered ? 0.28 : 0.20),
+              color: AppColors.brandBlueDark.withOpacity(
+                _hovered ? 0.28 : 0.20,
+              ),
               blurRadius: _hovered ? 22 : 16,
               offset: Offset(0, _hovered ? 10 : 7),
             ),

@@ -57,9 +57,7 @@ class ToolsPage extends ConsumerWidget {
         title: 'Caja registradora',
         subtitle: 'Apertura automática al cobrar',
         color: AppColors.primaryBlue,
-        onTap: () => Navigator.of(
-          context,
-        ).push(
+        onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CashDrawerSettingsPage()),
         ),
       ),
