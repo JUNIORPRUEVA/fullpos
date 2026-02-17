@@ -23,6 +23,11 @@ class ErrorHandler {
   BuildContext? get _fallbackContext => navigatorKey.currentContext;
 
   bool _shouldSuppressPresentation(AppException ex) {
+    // El usuario pidió no mostrar notificaciones de conectividad.
+    if (ex.type == AppErrorType.network || ex.type == AppErrorType.timeout) {
+      return true;
+    }
+
     final dev = ex.messageDev;
     // Errores típicos de debug/noise que no deben mostrarse al usuario.
     if (dev.contains('Zone mismatch')) return true;

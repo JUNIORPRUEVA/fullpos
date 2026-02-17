@@ -13,6 +13,9 @@ import 'business_settings_page.dart';
 import 'logs_page.dart';
 import 'security_settings_page.dart';
 import 'cloud_settings_page.dart';
+import '../../license/data/license_models.dart';
+import '../../license/services/license_file_storage.dart';
+import '../../license/services/license_storage.dart';
 
 /// Pantalla de configuración con diseño de tarjetas
 class SettingsPage extends StatefulWidget {
@@ -166,15 +169,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       childAspectRatio: 2.55,
                       children: [
                         _buildSettingsCard(
-                          icon: Icons.vpn_key,
-                          title: 'Licencia',
-                          subtitle: 'Activación',
-                          description:
-                              'Activar y verificar licencia del sistema.',
-                          color: cardColors[0],
-                          onTap: () => context.go('/settings/license'),
-                        ),
-                        _buildSettingsCard(
                           icon: Icons.print,
                           title: 'Impresora',
                           subtitle: 'Tickets',
@@ -257,6 +251,15 @@ class _SettingsPageState extends State<SettingsPage> {
                           description: 'Diagnósticos y registro de eventos.',
                           color: cardColors[8],
                           onTap: () => _openLogsPage(),
+                        ),
+                        _buildSettingsCard(
+                          icon: Icons.vpn_key,
+                          title: 'Licencia',
+                          subtitle: 'Solo lectura',
+                          description:
+                              'Ver licencia actual, tiempo restante y ubicación.',
+                          color: cardColors[0],
+                          onTap: () => _showLicenseSummaryDialog(),
                         ),
                       ],
                     ),
@@ -628,6 +631,273 @@ class _SettingsPageState extends State<SettingsPage> {
           Navigator.pop(context);
           context.push('/settings/printer');
         },
+      ),
+    );
+  }
+
+  void _showLicenseSummaryDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => const _LicenseSummaryDialogContent(),
+    );
+  }
+}
+
+class _LicenseSummaryDialogContent extends StatefulWidget {
+  const _LicenseSummaryDialogContent();
+
+  @override
+  State<_LicenseSummaryDialogContent> createState() =>
+      _LicenseSummaryDialogContentState();
+}
+
+class _LicenseSummaryDialogContentState
+    extends State<_LicenseSummaryDialogContent> {
+  final LicenseStorage _licenseStorage = LicenseStorage();
+  final LicenseFileStorage _licenseFileStorage = LicenseFileStorage();
+
+  bool _isLoading = true;
+  LicenseInfo? _info;
+  String? _source;
+  String? _licenseFilePath;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLicenseInfo();
+  }
+
+  Future<void> _loadLicenseInfo() async {
+    try {
+      final info = await _licenseStorage.getLastInfo();
+      final source = await _licenseStorage.getLastInfoSource();
+      final file = await _licenseFileStorage.file();
+
+      if (!mounted) return;
+      setState(() {
+        _info = info;
+        _source = source;
+        _licenseFilePath = file.path;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return 'No disponible';
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final year = local.year.toString();
+    return '$day/$month/$year';
+  }
+
+  String _maskLicenseKey(String key) {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) return 'No disponible';
+    if (trimmed.length <= 8) return '****';
+    return '${trimmed.substring(0, 4)}...${trimmed.substring(trimmed.length - 4)}';
+  }
+
+  String _humanizeDays(int totalDays) {
+    if (totalDays <= 0) return '0 días';
+
+    final years = totalDays ~/ 365;
+    final remainingAfterYears = totalDays % 365;
+    final months = remainingAfterYears ~/ 30;
+    final days = remainingAfterYears % 30;
+
+    final parts = <String>[];
+    if (years > 0) {
+      parts.add('$years ${years == 1 ? 'año' : 'años'}');
+    }
+    if (months > 0) {
+      parts.add('$months ${months == 1 ? 'mes' : 'meses'}');
+    }
+    if (days > 0 && years == 0) {
+      parts.add('$days ${days == 1 ? 'día' : 'días'}');
+    }
+
+    if (parts.isEmpty) {
+      return '$totalDays ${totalDays == 1 ? 'día' : 'días'}';
+    }
+    return parts.join(' ');
+  }
+
+  String _remainingTimeText(LicenseInfo? info) {
+    if (info == null) return 'No disponible';
+    final end = info.fechaFin;
+    if (end == null) return 'Sin fecha de vencimiento';
+
+    final now = DateTime.now();
+    final daysDiff = end.difference(now).inDays;
+
+    if (daysDiff < 0) {
+      return 'Vencida';
+    }
+    if (daysDiff == 0) {
+      return 'Vence hoy';
+    }
+    return _humanizeDays(daysDiff);
+  }
+
+  String _statusText(LicenseInfo? info) {
+    if (info == null) return 'Sin licencia registrada';
+    if (info.isExpired) return 'Vencida';
+    if (info.isBlocked) return 'Bloqueada';
+    if (info.isActive) return 'Activa';
+    return 'Pendiente';
+  }
+
+  String _sourceText(String? source) {
+    switch ((source ?? '').trim().toLowerCase()) {
+      case 'cloud':
+        return 'Servidor';
+      case 'offline':
+        return 'Archivo local';
+      default:
+        return 'No disponible';
+    }
+  }
+
+  Widget _infoRow({required String label, required String value}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: 560,
+        padding: const EdgeInsets.all(20),
+        child: _isLoading
+            ? const SizedBox(
+                height: 220,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: scheme.primaryContainer.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.verified_user,
+                          color: scheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Resumen de licencia',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceVariant.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    child: const Text(
+                      'Esta información es solo para consulta. No se puede editar ni eliminar desde aquí.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _infoRow(label: 'Estado', value: _statusText(_info)),
+                  _infoRow(
+                    label: 'Tiempo restante',
+                    value: _remainingTimeText(_info),
+                  ),
+                  _infoRow(
+                    label: 'Tipo de licencia',
+                    value: (_info?.tipo?.trim().isNotEmpty ?? false)
+                        ? _info!.tipo!.trim()
+                        : 'No disponible',
+                  ),
+                  _infoRow(
+                    label: 'Código',
+                    value: (_info?.code?.trim().isNotEmpty ?? false)
+                        ? _info!.code!.trim()
+                        : 'No disponible',
+                  ),
+                  _infoRow(
+                    label: 'Clave',
+                    value: _maskLicenseKey(_info?.licenseKey ?? ''),
+                  ),
+                  _infoRow(
+                    label: 'Inicio',
+                    value: _formatDate(_info?.fechaInicio),
+                  ),
+                  _infoRow(
+                    label: 'Vence',
+                    value: _formatDate(_info?.fechaFin),
+                  ),
+                  _infoRow(
+                    label: 'Dispositivos',
+                    value: _info == null
+                        ? 'No disponible'
+                        : '${_info?.usados ?? 0} de ${_info?.maxDispositivos ?? 0}',
+                  ),
+                  _infoRow(
+                    label: 'Origen',
+                    value: _sourceText(_source),
+                  ),
+                  _infoRow(
+                    label: 'Ubicación archivo',
+                    value: _licenseFilePath ?? 'No disponible',
+                  ),
+                  _infoRow(
+                    label: 'Última revisión',
+                    value: _formatDate(_info?.lastCheckedAt),
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cerrar'),
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

@@ -27,8 +27,7 @@ class ErrorMapper {
     if (error is SocketException) {
       return AppException(
         type: AppErrorType.network,
-        messageUser:
-            'No hay conexión a internet. Revisa tu red y reintenta.',
+        messageUser: '',
         messageDev: '${devPrefix}SocketException: ${error.message}',
         originalError: error,
         stackTrace: st,
@@ -38,7 +37,7 @@ class ErrorMapper {
     if (error is TimeoutException) {
       return AppException(
         type: AppErrorType.timeout,
-        messageUser: 'La operación tardó demasiado. Reintenta.',
+        messageUser: '',
         messageDev: '${devPrefix}TimeoutException: ${error.message}',
         originalError: error,
         stackTrace: st,

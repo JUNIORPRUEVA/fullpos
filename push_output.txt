@@ -1,0 +1,7 @@
+remote: error: Trace: 4f79f8d01164163262fd93dba9d987d35e724a80ebeeb13be07d25cbb670e6ce        
+remote: error: See https://gh.io/lfs for more information.        
+remote: error: File dist/FULLPOS_Setup.exe is 231.08 MB; this exceeds GitHub's file size limit of 100.00 MB        
+remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/JUNIORPRUEVA/fullpos.git
+ ! [remote rejected] feat/compras-20260213 -> feat/compras-20260213 (pre-receive hook declined)
+error: failed to push some refs to 'https://github.com/JUNIORPRUEVA/fullpos.git'

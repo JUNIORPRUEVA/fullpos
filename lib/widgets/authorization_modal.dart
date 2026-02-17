@@ -1,5 +1,8 @@
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -13,6 +16,7 @@ import '../core/services/app_configuration_service.dart';
 import '../core/theme/app_status_theme.dart';
 import '../core/theme/color_utils.dart';
 import '../core/errors/error_handler.dart';
+import '../core/network/api_client.dart';
 
 enum _AuthEntryMethod { code, token }
 
@@ -93,6 +97,19 @@ class AuthorizationModal extends StatefulWidget {
 }
 
 class _AuthorizationModalState extends State<AuthorizationModal> {
+  bool _isConnectivityError(Object error) {
+    if (error is TimeoutException) return true;
+    if (error is SocketException) return true;
+    if (error is HandshakeException) return true;
+    if (error is ApiException) return true;
+    final msg = error.toString().toLowerCase();
+    return msg.contains('tiempo de espera') ||
+        msg.contains('error de red') ||
+        msg.contains('sin conexión') ||
+        msg.contains('sin conexion') ||
+        msg.contains('no se pudo conectar');
+  }
+
   ColorScheme get scheme => Theme.of(context).colorScheme;
   AppStatusTheme get status =>
       Theme.of(context).extension<AppStatusTheme>() ??
@@ -273,6 +290,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
       if (!mounted) return;
       _handleResult(result);
     } catch (e) {
+      if (_isConnectivityError(e)) return;
       _showMessage('Error: $e');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -297,6 +315,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
         _lastGeneratedExpiry = generated.expiresAt;
       });
     } catch (e) {
+      if (_isConnectivityError(e)) return;
       _showMessage('No se pudo generar el token: $e');
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -338,6 +357,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
       if (seq != _tokenValidateSeq) return;
       _handleResult(result);
     } catch (e) {
+      if (_isConnectivityError(e)) return;
       _showMessage('Error validando token: $e');
     } finally {
       if (mounted && seq == _tokenValidateSeq) {
@@ -356,6 +376,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
 
   void _showMessage(String message) {
     if (!mounted) return;
+    if (message.trim().isEmpty) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
@@ -806,13 +827,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
     if (!widget.config.remoteEnabled) return const SizedBox.shrink();
 
     if (!widget.isOnline) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Text(
-          'Método remoto requiere internet.',
-          style: TextStyle(color: status.warning),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     final baseUrl = _resolveRemoteBaseUrl();

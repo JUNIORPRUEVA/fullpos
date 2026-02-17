@@ -492,6 +492,11 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   }
 
   Future<void> _quickCreateCategory() async {
+    final previousCategoryIds = _categories
+        .map((c) => c.id)
+        .whereType<int>()
+        .toSet();
+
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => const CategoryFormDialog(),
@@ -500,12 +505,30 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     if (!mounted) return;
     if (result == true) {
       // Recargar categorías
-      final categories = await _categoriesRepo.getAll();
+      var categories = await _categoriesRepo.getAll();
+
+      if (categories.length == _categories.length) {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        categories = await _categoriesRepo.getAll();
+      }
+
+      int? newCategoryId;
+      for (final category in categories) {
+        final id = category.id;
+        if (id != null && !previousCategoryIds.contains(id)) {
+          newCategoryId = id;
+          break;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _categories = categories;
-        if (categories.isNotEmpty) {
-          _selectedCategoryId = categories.last.id;
+        if (newCategoryId != null) {
+          _selectedCategoryId = newCategoryId;
+        } else if (_selectedCategoryId != null &&
+            !categories.any((c) => c.id == _selectedCategoryId)) {
+          _selectedCategoryId = null;
         }
       });
     }
@@ -646,8 +669,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                       Row(
                         children: [
                           Expanded(
-                            child: DropdownButtonFormField<int>(
-                              initialValue: _selectedCategoryId,
+                            child: DropdownButtonFormField<int?>(
+                              value: _selectedCategoryId,
                               decoration: const InputDecoration(
                                 labelText: 'Categoría',
                                 border: OutlineInputBorder(),

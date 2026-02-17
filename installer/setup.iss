@@ -3,9 +3,15 @@
 #define MyAppPublisher "FULLTECH SRL"
 #define MyAppExeName "fullpos.exe"
 
+; Carpeta de release de Flutter Windows (se genera con: flutter build windows --release)
+#define MyAppSourceDir "..\build\windows\x64\runner\Release"
+
 ; Branding (ajusta estos paths si cambias los archivos)
-#define BrandSetupIcon "..\assets\imagen\fullpos_icon (1).ico"
-#define BrandWizardImage "..\assets\imagen\windowlogo.png"
+; Icono del instalador (lo que ves en el .exe del Setup)
+#define BrandSetupIcon "..\assets\imagen\app_icon.ico"
+
+; Imágenes del wizard (Inno Setup suele trabajar mejor con PNG/BMP aquí)
+#define BrandWizardImage "..\assets\imagen\lonchericon.png"
 #define BrandWizardSmallImage "..\assets\imagen\lonchericon.png"
 
 #define SupportPhone "8295319442"
@@ -25,11 +31,12 @@ WizardSmallImageFile={#BrandWizardSmallImage}
 
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
+; Generar el instalador dentro de installer/output (evita la carpeta dist)
 OutputDir=output
 OutputBaseFilename={#MyAppName}_Setup
 Compression=lzma
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -45,8 +52,9 @@ MinVersion=10.0
 Name: "desktopicon"; Description: "Crear icono en el escritorio"; GroupDescription: "Iconos:"; Flags: unchecked
 
 [Files]
-; Copiar TODA la carpeta Release (exe + dll + data + plugins)
-Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Copiar TODO el release de Windows (exe + dll + data + flutter_assets + plugins)
+; Importante: para Flutter Windows NO basta con el .exe; también se requiere la carpeta data/ y DLLs.
+Source: "{#MyAppSourceDir}\*"; DestDir: "{app}"; Excludes: "*.pdb,*.ilk,*.exp,*.lib"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Redistributables
 Source: "redist\VC_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
@@ -127,12 +135,38 @@ begin
 end;
 
 function NeedsVCRedist(): Boolean;
+var
+  Installed: Cardinal;
 begin
+  { Método robusto: clave oficial de VC++ runtime x64 }
+  if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
+  begin
+    Result := Installed <> 1;
+    Exit;
+  end;
+
+  { Fallback por nombre en desinstalador }
   Result := not IsInstalledByDisplayName('Microsoft Visual C++ 2015-2022 Redistributable (x64)');
 end;
 
 function NeedsWebView2(): Boolean;
+var
+  Pv: string;
 begin
+  { Método robusto: clave oficial de EdgeUpdate para WebView2 Runtime }
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F1E7C265-6C31-4F67-BB8C-6D5F8A2A321A}', 'pv', Pv) then
+  begin
+    Result := Trim(Pv) = '';
+    Exit;
+  end;
+
+  if RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F1E7C265-6C31-4F67-BB8C-6D5F8A2A321A}', 'pv', Pv) then
+  begin
+    Result := Trim(Pv) = '';
+    Exit;
+  end;
+
+  { Fallback por nombre en desinstalador }
   Result := not IsInstalledByDisplayName('Microsoft Edge WebView2 Runtime');
 end;
 

@@ -8,6 +8,12 @@ class AppConfig {
 
   static const String defaultApiBaseUrl = 'https://api.fulltechrd.com/';
 
+  /// Backend dedicado para licencias (FULLPOS license service).
+  ///
+  /// Se usa para activar/verificar licencias y registro de negocio.
+  static const String defaultLicenseApiBaseUrl =
+      'https://fullpos-backend-fullposlicenciaswed.onqyr1.easypanel.host/';
+
   /// Base para enlaces externos de WhatsApp (soporte).
   static const String whatsappBaseUrl = 'https://wa.me';
 
@@ -28,10 +34,12 @@ class AppConfig {
   ];
 
   static String? _apiBaseUrl;
+  static String? _licenseApiBaseUrl;
 
   /// Inicializa/cacha configuración (llamar al arranque).
   static Future<void> init() async {
     _apiBaseUrl = _resolveApiBaseUrl();
+    _licenseApiBaseUrl = _resolveLicenseApiBaseUrl();
   }
 
   /// Base URL oficial de la API.
@@ -40,6 +48,14 @@ class AppConfig {
   /// - `FULLPOS_API_URL` (nuevo)
   /// - `BACKEND_BASE_URL` (legacy / compatibilidad)
   static String get apiBaseUrl => _apiBaseUrl ??= _resolveApiBaseUrl();
+
+  /// Base URL del backend de licencias.
+  ///
+  /// Overrides soportados (en orden):
+  /// - `FULLPOS_LICENSE_API_URL`
+  /// - `LICENSE_API_URL` (legacy / compatibilidad)
+  static String get licenseApiBaseUrl =>
+      _licenseApiBaseUrl ??= _resolveLicenseApiBaseUrl();
 
   static String get appVersion => const String.fromEnvironment(
     'FULLPOS_APP_VERSION',
@@ -71,6 +87,27 @@ class AppConfig {
     }
 
     return normalizeBaseUrl(defaultApiBaseUrl);
+  }
+
+  static String _resolveLicenseApiBaseUrl() {
+    final explicit = const String.fromEnvironment(
+      'FULLPOS_LICENSE_API_URL',
+      defaultValue: '',
+    );
+    if (explicit.trim().isNotEmpty) {
+      return normalizeBaseUrl(explicit);
+    }
+
+    // Compatibilidad con builds existentes.
+    final legacy = const String.fromEnvironment(
+      'LICENSE_API_URL',
+      defaultValue: '',
+    );
+    if (legacy.trim().isNotEmpty) {
+      return normalizeBaseUrl(legacy);
+    }
+
+    return normalizeBaseUrl(defaultLicenseApiBaseUrl);
   }
 
   static String normalizeBaseUrl(String input) {

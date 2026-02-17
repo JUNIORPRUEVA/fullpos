@@ -249,7 +249,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                             ),
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
-                                RegExp(r'^\\d*\\.?\\d{0,2}'),
+                                RegExp(r'^\d*\.?\d{0,2}'),
                               ),
                             ],
                             style: theme.textTheme.titleLarge?.copyWith(

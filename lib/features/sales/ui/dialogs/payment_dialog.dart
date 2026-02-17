@@ -56,6 +56,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   bool _downloadInvoicePdf = false;
   ClientModel? _selectedClient;
   bool _isSubmitting = false;
+  bool _hasRequestedClose = false;
 
   bool _handleKeyEvent(KeyEvent event) {
     // En Windows, algunos Function keys no siempre pasan por Shortcuts cuando
@@ -68,32 +69,17 @@ class _PaymentDialogState extends State<PaymentDialog> {
       return true;
     }());
 
-    if (event is KeyDownEvent &&
-        (event.logicalKey == LogicalKeyboardKey.f9 ||
-            event.physicalKey == PhysicalKeyboardKey.f9)) {
-      // Ignorar autorepeat y clicks dobles: _submitPayment ya tiene guard.
-      _submitPayment();
+    if (event.logicalKey == LogicalKeyboardKey.f9 ||
+        event.physicalKey == PhysicalKeyboardKey.f9) {
+      // Evitar que el autorepeat provoque cobros dobles.
+      if (event is KeyRepeatEvent) return true;
+      if (event is KeyDownEvent) {
+        // Ignorar clicks dobles: _submitPayment ya tiene guard.
+        _submitPayment();
+      }
       return true;
     }
     return false;
-  }
-
-  void _handleRawKeyEvent(RawKeyEvent event) {
-    if (event is! RawKeyDownEvent) return;
-    final lk = event.logicalKey;
-    final pk = event.physicalKey;
-
-    assert(() {
-      // ignore: avoid_print
-      debugPrint(
-        '[PAYMENT] raw key=${lk.keyLabel} logical=$lk physical=$pk',
-      );
-      return true;
-    }());
-
-    if (lk == LogicalKeyboardKey.f9 || pk == PhysicalKeyboardKey.f9) {
-      _submitPayment();
-    }
   }
 
   Future<void> _submitPayment() async {
@@ -102,9 +88,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
     // En desktop, el primer click/tecla a veces solo cambia el foco.
     FocusManager.instance.primaryFocus?.unfocus();
-    await Future<void>.delayed(Duration.zero);
-
     setState(() => _isSubmitting = true);
+    await Future<void>.delayed(Duration.zero);
     try {
       await _processPayment();
     } catch (e) {
@@ -136,7 +121,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
-    RawKeyboard.instance.addListener(_handleRawKeyEvent);
     _printTicket = true;
     _downloadInvoicePdf = false;
     _selectedClient = widget.selectedClient;
@@ -156,7 +140,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
-    RawKeyboard.instance.removeListener(_handleRawKeyEvent);
     _cashController.dispose();
     _cardController.dispose();
     _transferController.dispose();
@@ -354,7 +337,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
 
     // Retornar resultado (cerrar el diálogo que lo presentó)
-    Navigator.of(context).pop({
+    final result = {
       'method': _selectedMethod,
       'cash': double.tryParse(_cashController.text) ?? 0,
       'card': double.tryParse(_cardController.text) ?? 0,
@@ -371,6 +354,16 @@ class _PaymentDialogState extends State<PaymentDialog> {
       'printTicket': _printTicket,
       'downloadInvoicePdf':
           widget.allowInvoicePdfDownload ? _downloadInvoicePdf : false,
+    };
+    _closeDialog(result);
+  }
+
+  void _closeDialog(Map<String, dynamic> result) {
+    if (_hasRequestedClose) return;
+    _hasRequestedClose = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).pop(result);
     });
   }
 
@@ -384,10 +377,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
   Widget build(BuildContext context) {
     return DialogKeyboardShortcuts(
       onSubmit: _submitPayment,
-      extraShortcuts: const {
-        // F9 debe comportarse como "confirmar" (igual que Enter).
-        SingleActivator(LogicalKeyboardKey.f9): ActivateIntent(),
-      },
       child: Dialog(
         child: Container(
           width: 500,

@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../debug/render_diagnostics.dart';
-import '../network/network_status_provider.dart';
-import '../theme/color_utils.dart';
 import '../theme/app_gradient_theme.dart';
 
 class AppFrame extends ConsumerStatefulWidget {
@@ -23,25 +23,28 @@ class AppFrame extends ConsumerStatefulWidget {
 }
 
 class _AppFrameState extends ConsumerState<AppFrame>
-    with WidgetsBindingObserver {
+  with WidgetsBindingObserver, WindowListener {
   late final RenderDiagnostics _diagnostics;
   late final RenderWatchdog _watchdog;
   bool _firstFrameSeen = false;
   bool _repaintToggle = false;
-  bool _showRecoveryBanner = false;
-  bool _safeMode = false;
   int _attempts = 0;
-  Timer? _bannerTimer;
+  DateTime? _lastResumeRecoveryAt;
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
   void initState() {
     super.initState();
-    // Ensure provider is created early to start polling.
-    ref.read(networkStatusProvider.notifier);
     _diagnostics = RenderDiagnostics.instance;
     unawaited(_diagnostics.ensureInitialized());
     _watchdog = _diagnostics.createWatchdog(timeout: widget.watchdogTimeout);
     WidgetsBinding.instance.addObserver(this);
+    if (_isDesktop) {
+      try {
+        windowManager.addListener(this);
+      } catch (_) {}
+    }
     _startWatchdog();
     WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
   }
@@ -49,8 +52,12 @@ class _AppFrameState extends ConsumerState<AppFrame>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_isDesktop) {
+      try {
+        windowManager.removeListener(this);
+      } catch (_) {}
+    }
     _watchdog.dispose();
-    _bannerTimer?.cancel();
     super.dispose();
   }
 
@@ -58,8 +65,60 @@ class _AppFrameState extends ConsumerState<AppFrame>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     unawaited(_diagnostics.logLifecycle(state.name));
     if (state == AppLifecycleState.resumed) {
-      unawaited(ref.read(networkStatusProvider.notifier).checkNow());
+      unawaited(_recoverAfterResume());
     }
+  }
+
+  @override
+  void onWindowRestore() {
+    unawaited(_recoverAfterResume());
+  }
+
+  @override
+  void onWindowFocus() {
+    unawaited(_recoverAfterResume());
+  }
+
+  @override
+  void onWindowResized() {
+    unawaited(_recoverAfterResume());
+  }
+
+  Future<void> _recoverAfterResume() async {
+    final now = DateTime.now();
+    final last = _lastResumeRecoveryAt;
+    if (last != null && now.difference(last) < const Duration(milliseconds: 800)) {
+      return;
+    }
+    _lastResumeRecoveryAt = now;
+
+    _startWatchdog(timeout: const Duration(seconds: 2));
+    if (mounted) {
+      setState(() {
+        _repaintToggle = !_repaintToggle;
+      });
+    }
+
+    if (_isDesktop) {
+      try {
+        final isMin = await windowManager.isMinimized();
+        if (isMin) {
+          await windowManager.restore();
+        }
+        await windowManager.focus();
+      } catch (_) {}
+    }
+
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _onFirstFramePainted();
+      WidgetsBinding.instance.scheduleFrame();
+      WidgetsBinding.instance.addPostFrameCallback((__) {
+        if (!mounted) return;
+        _onFirstFramePainted();
+      });
+    });
   }
 
   void _startWatchdog({Duration? timeout}) {
@@ -70,11 +129,12 @@ class _AppFrameState extends ConsumerState<AppFrame>
   }
 
   void _onFirstFramePainted() {
-    if (_firstFrameSeen) return;
-    _firstFrameSeen = true;
-    _diagnostics.markFirstFramePainted(source: 'AppFrame');
+    if (!_firstFrameSeen) {
+      _firstFrameSeen = true;
+      _diagnostics.markFirstFramePainted(source: 'AppFrame');
+    }
+    _attempts = 0;
     _watchdog.markFramePainted();
-    _hideBannerSoon();
   }
 
   bool _hasSurface() {
@@ -100,64 +160,44 @@ class _AppFrameState extends ConsumerState<AppFrame>
 
     _diagnostics.logRecoveryAction('repaint_toggle', attempt: _attempts);
     setState(() {
-      _showRecoveryBanner = true;
       _repaintToggle = !_repaintToggle;
     });
 
     WidgetsBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_firstFrameSeen || hasSurface) {
-        _hideBannerSoon();
+      if (hasSurface) {
+        _onFirstFramePainted();
         return;
       }
 
       if (_attempts >= 2) {
-        _enterSafeMode();
-        return;
+        unawaited(_forceWindowRefresh());
       }
 
       _startWatchdog(timeout: const Duration(seconds: 2));
     });
   }
 
-  void _enterSafeMode() {
-    unawaited(_diagnostics.logSafeMode(true, attempts: _attempts));
-    setState(() {
-      _safeMode = true;
-      _showRecoveryBanner = true;
-    });
-    Future<void>.delayed(const Duration(seconds: 2), () {
-      if (!mounted || !_safeMode) return;
-      _exitSafeModeAndRetry();
-    });
-  }
-
-  void _exitSafeModeAndRetry() {
-    unawaited(_diagnostics.logSafeMode(false, attempts: _attempts));
-    setState(() {
-      _safeMode = false;
-      _attempts = 0;
-      _repaintToggle = !_repaintToggle;
-      _showRecoveryBanner = false;
-    });
-    _startWatchdog();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
-  }
-
-  void _hideBannerSoon() {
-    _bannerTimer?.cancel();
-    _bannerTimer = Timer(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() {
-        _showRecoveryBanner = false;
-      });
-    });
+  Future<void> _forceWindowRefresh() async {
+    if (!_isDesktop) return;
+    try {
+      final isVisible = await windowManager.isVisible();
+      if (!isVisible) {
+        await windowManager.show();
+      }
+      final isMin = await windowManager.isMinimized();
+      if (isMin) {
+        await windowManager.restore();
+      }
+      await windowManager.focus();
+      WidgetsBinding.instance.scheduleFrame();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    final net = ref.watch(networkStatusProvider);
     final repaintable = RepaintBoundary(
       child: KeyedSubtree(
         key: ValueKey<bool>(_repaintToggle),
@@ -186,159 +226,7 @@ class _AppFrameState extends ConsumerState<AppFrame>
       child: Stack(
         children: [
           Positioned.fill(child: framedChild),
-          if (net.isOffline) _OfflineBanner(message: net.lastError),
-          if (_showRecoveryBanner)
-            const _RecoveryBanner(message: 'Reiniciando vista...'),
-          if (_safeMode)
-            Positioned.fill(
-              child: _SafeModeScreen(onRetry: _exitSafeModeAndRetry),
-            ),
         ],
-      ),
-    );
-  }
-}
-
-class _RecoveryBanner extends StatelessWidget {
-  const _RecoveryBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final bannerBg = scheme.surface.withOpacity(0.9);
-    final bannerFg = ColorUtils.ensureReadableColor(scheme.onSurface, bannerBg);
-    return Positioned(
-      top: 12,
-      left: 12,
-      right: 12,
-      child: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(10),
-        color: bannerBg,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(bannerFg),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                message,
-                style: TextStyle(
-                  color: bannerFg,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OfflineBanner extends StatelessWidget {
-  const _OfflineBanner({this.message});
-
-  final String? message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = (message == null || message!.trim().isEmpty)
-        ? 'Sin conexión con el servidor.'
-        : 'Sin conexión: ${message!.trim()}';
-
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        ignoring: true,
-        child: Material(
-          color: scheme.errorContainer,
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: DefaultTextStyle(
-                style: TextStyle(
-                  color: scheme.onErrorContainer,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-                child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SafeModeScreen extends StatelessWidget {
-  const _SafeModeScreen({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Material(
-      color: theme.scaffoldBackgroundColor,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Card(
-            elevation: 6,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.refresh, size: 36, color: scheme.primary),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Reiniciando vista segura',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Si ves esta pantalla, el renderer no entregó el primer frame a tiempo. '
-                    'Reintentaremos con un repintado seguro.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: scheme.onSurface.withOpacity(0.8),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  FilledButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.replay),
-                    label: const Text('Reintentar'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

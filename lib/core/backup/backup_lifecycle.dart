@@ -22,6 +22,9 @@ class BackupLifecycle extends ConsumerStatefulWidget {
 class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
     with WidgetsBindingObserver, WindowListener {
   bool _closing = false;
+  Timer? _lifecycleBackupTimer;
+
+  static const Duration _autoBackupDelayAfterPause = Duration(seconds: 12);
 
   bool get _isDesktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
@@ -48,6 +51,7 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _lifecycleBackupTimer?.cancel();
     if (_isDesktop) {
       try {
         windowManager.removeListener(this);
@@ -61,10 +65,24 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final enabled = ref.read(businessSettingsProvider).enableAutoBackup;
-    if (!enabled) return;
+    if (!enabled) {
+      _cancelPendingLifecycleBackup();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      _cancelPendingLifecycleBackup();
+      return;
+    }
 
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+        state == AppLifecycleState.inactive) {
+      _scheduleLifecycleBackup();
+      return;
+    }
+
+    if (state == AppLifecycleState.detached) {
+      _cancelPendingLifecycleBackup();
       unawaited(
         BackupOrchestrator.instance.triggerAutoBackupIfAllowed(
           enabled: true,
@@ -72,6 +90,23 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
         ),
       );
     }
+  }
+
+  void _scheduleLifecycleBackup() {
+    _lifecycleBackupTimer?.cancel();
+    _lifecycleBackupTimer = Timer(_autoBackupDelayAfterPause, () {
+      unawaited(
+        BackupOrchestrator.instance.triggerAutoBackupIfAllowed(
+          enabled: true,
+          trigger: BackupTrigger.autoLifecycle,
+        ),
+      );
+    });
+  }
+
+  void _cancelPendingLifecycleBackup() {
+    _lifecycleBackupTimer?.cancel();
+    _lifecycleBackupTimer = null;
   }
 
   @override

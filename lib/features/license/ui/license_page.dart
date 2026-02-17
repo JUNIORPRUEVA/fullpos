@@ -611,9 +611,9 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Text(    
+                                  Text(
                                     'Debug',
-                                        style: theme.textTheme.titleSmall?.copyWith(
+                                    style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w900,
                                     ),
                                   ),
@@ -634,8 +634,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                           return AlertDialog(
                                             title: const Text(
                                               'Reset licencia (debug)',
-                                                ),
-                                                content: const Text(
+                                            ),
+                                            content: const Text(
                                               'Esto borrará el TRIAL, la identidad del negocio, la cola de registro y el archivo license.dat en esta PC.\n\nSolo funciona en modo debug.',
                                             ),
                                             actions: [
@@ -804,13 +804,16 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     Future<void> onRetry() async {
       if (uiError.type == LicenseErrorType.notActivated) {
         await controller.syncBusinessLicenseNow();
+        if (!mounted) return;
         return;
       }
       if (uiError.type == LicenseErrorType.corruptedLocalFile) {
         await controller.repairAndRetrySync();
+        if (!mounted) return;
         return;
       }
       await controller.check();
+      if (!mounted) return;
     }
 
     return Wrap(
@@ -827,6 +830,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           FilledButton.icon(
             onPressed: () async {
               await controller.repairAndRetrySync();
+              if (!mounted) return;
             },
             icon: const Icon(Icons.build_circle_outlined),
             label: const Text('Reparar y reintentar'),
@@ -912,6 +916,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                   FilledButton.icon(
                     onPressed: () async {
                       await _openWhatsapp(supportCode: code);
+                      if (!context.mounted) return;
                     },
                     icon: const Icon(Icons.chat_bubble_outline),
                     label: const Text('WhatsApp soporte'),
@@ -919,6 +924,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                   OutlinedButton.icon(
                     onPressed: () async {
                       await _copySupportCode(context, code);
+                      if (!context.mounted) return;
                     },
                     icon: const Icon(Icons.copy),
                     label: const Text('Copiar código'),
@@ -950,10 +956,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                   ),
                   child: Text(
                     'Guía rápida:\n'
-                    '• Confirma que tienes internet (abre una página).\n'
-                    '• Si es “Conexión segura falló”, revisa fecha y hora de Windows.\n'
-                    '• Si estás en red corporativa, prueba otra red o hotspot.\n'
-                    '• Intenta de nuevo en 1 minuto.',
+                    '• Intenta de nuevo en 1 minuto.\n'
+                    '• Si persiste, contacta soporte.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: scheme.onSurface.withOpacity(0.80),
                       height: 1.35,
@@ -990,10 +994,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             ),
             child: Text(
               'Guía rápida:\n'
-              '• Confirma que tienes internet (abre una página).\n'
-              '• Si es “Conexión segura falló”, revisa fecha y hora de Windows.\n'
-              '• Si estás en red corporativa, prueba otra red o hotspot.\n'
-              '• Intenta de nuevo en 1 minuto.',
+              '• Intenta de nuevo en 1 minuto.\n'
+              '• Si persiste, contacta soporte.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.80),
                 height: 1.35,

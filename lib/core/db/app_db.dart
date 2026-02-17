@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart';
@@ -5,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../backup/backup_zip.dart';
 import '../config/app_config.dart';
 import '../database/migrations/migration_safety.dart';
 import '../utils/color_utils.dart';
@@ -117,15 +119,21 @@ class AppDb {
     int? existingUserVersion;
 
     if (await dbFile.exists()) {
+      Database? ro;
       try {
-        final ro = await openDatabase(path, readOnly: true);
+        ro = await openDatabase(path, readOnly: true, singleInstance: false);
         final rows = await ro.rawQuery('PRAGMA user_version');
         existingUserVersion = rows.isNotEmpty
             ? (rows.first['user_version'] as int?)
             : null;
-        await ro.close();
       } catch (_) {
         // Ignorar: si falla lectura read-only, seguimos con el openDatabase normal.
+      } finally {
+        try {
+          await ro?.close();
+        } catch (_) {
+          // Ignorar.
+        }
       }
     }
 
@@ -143,19 +151,7 @@ class AppDb {
     }
 
     try {
-      return await openDatabase(
-        path,
-        version: _dbVersion,
-        onConfigure: _onConfigure,
-        onCreate: _onCreate,
-        onUpgrade: _onUpgrade,
-        onOpen: (db) async {
-          // Defensa: algunas instalaciones pueden tener la versión actual
-          // pero carecer de columnas por una migración fallida/interrumpida.
-          await _ensureSchemaIntegrity(db);
-          await _syncDemoCatalog(db);
-        },
-      );
+      return await _openMainDatabase(path);
     } catch (error) {
       if (_isReadOnlyError(error) && path == primaryPath) {
         final supportDir = await getApplicationSupportDirectory();
@@ -165,29 +161,239 @@ class AppDb {
           sourcePath: primaryPath,
           targetPath: fallbackPath,
         );
-        return await openDatabase(
-          fallbackPath,
-          version: _dbVersion,
-          onConfigure: _onConfigure,
-          onCreate: _onCreate,
-          onUpgrade: _onUpgrade,
-          onOpen: (db) async {
-            await _ensureSchemaIntegrity(db);
-            await _syncDemoCatalog(db);
-          },
-        );
+        return await _openMainDatabase(fallbackPath);
       }
+
+      // 1) Si tenemos backup pre-migración, intentar restaurar y REINTENTAR abrir.
       if (preMigrationBackupDir != null) {
         try {
+          await close();
           await MigrationSafety.restorePreMigrationBackup(
             backupDir: preMigrationBackupDir,
             dbPath: path,
           );
+          return await _openMainDatabase(
+            path,
+            singleInstance: false,
+            timeout: const Duration(seconds: 5),
+          );
+        } catch (_) {
+          // Si falla, seguimos con otras estrategias.
+        }
+      }
+
+      // 2) Auto-repair SOLO para errores que parecen corrupción.
+      if (_isCorruptionError(error)) {
+        try {
+          await close();
+        } catch (_) {}
+
+        // 2a) Intentar restaurar desde el backup ZIP más reciente.
+        final restored = await _tryRestoreFromLatestBackupZip(dbPath: path);
+        if (restored) {
+          try {
+            return await _openMainDatabase(
+              path,
+              singleInstance: false,
+              timeout: const Duration(seconds: 5),
+            );
+          } catch (_) {
+            // Si aún falla, caer a cuarentena.
+          }
+        }
+
+        // 2b) Si no hay backup, poner DB en cuarentena y recrear una nueva.
+        final quarantined = await _quarantineDbFiles(dbPath: path);
+        if (quarantined) {
+          try {
+            return await _openMainDatabase(
+              path,
+              singleInstance: false,
+              timeout: const Duration(seconds: 5),
+            );
+          } catch (_) {
+            // Si vuelve a fallar, dejamos que propague.
+          }
+        }
+      }
+
+      rethrow;
+    }
+  }
+
+  static bool _isCorruptionError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('database disk image is malformed') ||
+        message.contains('file is not a database') ||
+        message.contains('not a database') ||
+        message.contains('malformed');
+  }
+
+  static Future<Database> _openMainDatabase(
+    String path, {
+    bool singleInstance = true,
+    Duration? timeout,
+  }) async {
+    final future = openDatabase(
+      path,
+      version: _dbVersion,
+      singleInstance: singleInstance,
+      onConfigure: _onConfigure,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        // Defensa: algunas instalaciones pueden tener la versión actual
+        // pero carecer de columnas por una migración fallida/interrumpida.
+        await _ensureSchemaIntegrity(db);
+        await _syncDemoCatalog(db);
+      },
+    );
+    return timeout == null ? future : future.timeout(timeout);
+  }
+
+  static Future<bool> _tryRestoreFromLatestBackupZip({
+    required String dbPath,
+  }) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final baseDir = Directory(join(docsDir.path, 'FULLPOS_BACKUPS'));
+      if (!await baseDir.exists()) return false;
+
+      final zips = baseDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.zip'))
+          .toList(growable: false);
+      if (zips.isEmpty) return false;
+
+      zips.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      final zip = zips.first;
+
+      final tempDir = await getTemporaryDirectory();
+      final stamp = DateTime.now().microsecondsSinceEpoch;
+      final extractDir = Directory(
+        join(tempDir.path, 'fullpos_db_repair_$stamp'),
+      );
+      if (!await extractDir.exists()) await extractDir.create(recursive: true);
+
+      try {
+        await BackupZip.extractZip(
+          zipPath: zip.path,
+          outDirPath: extractDir.path,
+        );
+
+        final extractedDb = File(join(extractDir.path, 'db', dbFileName));
+        if (!await extractedDb.exists()) return false;
+
+        // Antes de sobrescribir, mover la DB actual a cuarentena.
+        await _quarantineDbFiles(dbPath: dbPath);
+
+        await _deleteIfExists(File(dbPath));
+        await extractedDb.copy(dbPath);
+
+        // Restaurar WAL/SHM si vienen en el backup, o borrar los destinos.
+        final extractedWal = File(
+          join(extractDir.path, 'db', '$dbFileName-wal'),
+        );
+        final extractedShm = File(
+          join(extractDir.path, 'db', '$dbFileName-shm'),
+        );
+        final destWal = File('$dbPath-wal');
+        final destShm = File('$dbPath-shm');
+
+        if (await extractedWal.exists()) {
+          await _deleteIfExists(destWal);
+          await extractedWal.copy(destWal.path);
+        } else {
+          await _deleteIfExists(destWal);
+        }
+
+        if (await extractedShm.exists()) {
+          await _deleteIfExists(destShm);
+          await extractedShm.copy(destShm.path);
+        } else {
+          await _deleteIfExists(destShm);
+        }
+
+        // Validar integridad del DB restaurado (best-effort).
+        final ok = await _verifyDbIntegrity(dbPath);
+        return ok ?? true;
+      } finally {
+        try {
+          if (await extractDir.exists()) {
+            await extractDir.delete(recursive: true);
+          }
         } catch (_) {
           // Ignorar.
         }
       }
-      rethrow;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> _quarantineDbFiles({required String dbPath}) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final qDir = Directory(
+        join(docsDir.path, 'FULLPOS_BACKUPS', 'quarantine', 'db_$stamp'),
+      );
+      if (!await qDir.exists()) await qDir.create(recursive: true);
+
+      Future<void> moveIfExists(String fromPath, String toName) async {
+        final from = File(fromPath);
+        if (!await from.exists()) return;
+        final to = File(join(qDir.path, toName));
+        try {
+          await from.rename(to.path);
+        } catch (_) {
+          try {
+            await from.copy(to.path);
+            await _deleteIfExists(from);
+          } catch (_) {
+            // Ignorar.
+          }
+        }
+      }
+
+      await moveIfExists(dbPath, dbFileName);
+      await moveIfExists('$dbPath-wal', '$dbFileName-wal');
+      await moveIfExists('$dbPath-shm', '$dbFileName-shm');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> _deleteIfExists(File file) async {
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Ignorar.
+    }
+  }
+
+  static Future<bool?> _verifyDbIntegrity(String dbPath) async {
+    try {
+      DbInit.ensureInitialized();
+      final db = await openDatabase(
+        dbPath,
+        readOnly: false,
+        singleInstance: false,
+      ).timeout(const Duration(seconds: 5));
+      final res = await db
+          .rawQuery('PRAGMA integrity_check;')
+          .timeout(const Duration(seconds: 5));
+      await db.close().timeout(const Duration(seconds: 2));
+      final msg = (res.isNotEmpty ? (res.first.values.first) : null)
+          ?.toString()
+          .toLowerCase();
+      return msg == 'ok';
+    } on TimeoutException {
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -245,10 +451,29 @@ class AppDb {
   }
 
   static bool _isReadOnlyError(Object error) {
-    final message = error.toString().toLowerCase();
-    return message.contains('readonly') ||
-        message.contains('read only') ||
-        message.contains('attempt to write a readonly database');
+    final message = error.toString();
+    final lower = message.toLowerCase();
+
+    // sqflite/sqflite_ffi incluye metadatos como "readOnly: false" en el error.
+    // Eso NO significa que sea un error de permisos; evitar falsos positivos.
+    if (lower.contains('readonly: true') || lower.contains('readonly: false')) {
+      // No retornamos true solo por aparecer este campo.
+    }
+
+    // Señales típicas de SQLite cuando el archivo realmente es solo lectura.
+    if (lower.contains('attempt to write a readonly database')) return true;
+    if (lower.contains('attempt to write a read-only database')) return true;
+    if (lower.contains('sqlite_readonly') || lower.contains('sqlitereadonly')) {
+      return true;
+    }
+    if (lower.contains('read-only file system')) return true;
+
+    // Match conservador: palabra "readonly" como token, pero NO "readOnly:".
+    if (lower.contains('readonly:')) return false;
+    if (RegExp(r'\breadonly\b').hasMatch(lower)) return true;
+    if (RegExp(r'\bread only\b').hasMatch(lower)) return true;
+
+    return false;
   }
 
   static Future<void> _onConfigure(Database db) async {
@@ -272,12 +497,20 @@ class AppDb {
   /// Solo para pruebas: cierra y elimina la base de datos para arrancar limpio
   static Future<void> resetForTests() async {
     await close();
+    _dbPathOverride = null;
     final docsDir = await getApplicationDocumentsDirectory();
     final path = join(docsDir.path, dbFileName);
+    final supportDir = await getApplicationSupportDirectory();
+    final fallbackPath = join(supportDir.path, dbFileName);
     try {
       await deleteDatabase(path);
     } catch (_) {
       // Ignorar fallos al borrar en entorno de prueba
+    }
+    try {
+      await deleteDatabase(fallbackPath);
+    } catch (_) {
+      // Ignorar
     }
   }
 

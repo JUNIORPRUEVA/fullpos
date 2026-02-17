@@ -6,8 +6,8 @@ import '../../core/config/app_config.dart';
 
 /// Base URL oficial para licencias/registro.
 ///
-/// Centralizada en [AppConfig.apiBaseUrl].
-String get kLicenseBackendBaseUrl => AppConfig.apiBaseUrl;
+/// Centralizada en [AppConfig.licenseApiBaseUrl].
+String get kLicenseBackendBaseUrl => AppConfig.licenseApiBaseUrl;
 
 const kFullposProjectCode = 'FULLPOS';
 

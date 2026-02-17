@@ -1,3 +1,7 @@
+import 'dart:math';
+
+import 'package:sqflite/sqflite.dart';
+
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
@@ -12,12 +16,18 @@ enum StockUpdateMode { deduct, reserve, none }
 class SalesRepository {
   SalesRepository._();
 
-  /// Genera código local único: V-YYYYMMDD-XXXX
+  static final Random _random = Random();
+
+  /// Genera código local único: V-YYYYMMDD-XXXXXXX (microsegundos + aleatorio).
   static String _generateLocalCode() {
     final now = DateTime.now();
-    final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-    final timestamp = now.millisecondsSinceEpoch.toString().substring(6, 10);
-    return 'V-$dateStr-$timestamp';
+    final dateStr =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final microSuffix = (now.microsecondsSinceEpoch % 1000000)
+        .toString()
+        .padLeft(6, '0');
+    final randomSuffix = _random.nextInt(1000).toString().padLeft(3, '0');
+    return 'V-$dateStr-$microSuffix$randomSuffix';
   }
 
   /// Genera el siguiente código local (compatible con versión anterior)
@@ -76,8 +86,12 @@ class SalesRepository {
         qty = item.qty.toDouble();
         unitPrice = item.unitPrice.toDouble();
         productId = item.productId;
-        productCode = (item.productCodeSnapshot.isNotEmpty ? item.productCodeSnapshot : 'N/A');
-        productName = (item.productNameSnapshot.isNotEmpty ? item.productNameSnapshot : 'Item');
+        productCode = (item.productCodeSnapshot.isNotEmpty
+            ? item.productCodeSnapshot
+            : 'N/A');
+        productName = (item.productNameSnapshot.isNotEmpty
+            ? item.productNameSnapshot
+            : 'Item');
         purchasePrice = item.purchasePriceSnapshot.toDouble();
         discountLine = item.discountLine.toDouble();
         subtotal = (qty * unitPrice) - discountLine;
@@ -94,10 +108,12 @@ class SalesRepository {
         qty = item.qty.toDouble();
         unitPrice = item.unitPrice.toDouble();
         productId = item.productId;
-        productCode =
-            (item.productCodeSnapshot.isNotEmpty ? item.productCodeSnapshot : 'N/A');
-        productName =
-            (item.productNameSnapshot.isNotEmpty ? item.productNameSnapshot : 'Item');
+        productCode = (item.productCodeSnapshot.isNotEmpty
+            ? item.productCodeSnapshot
+            : 'N/A');
+        productName = (item.productNameSnapshot.isNotEmpty
+            ? item.productNameSnapshot
+            : 'Item');
         purchasePrice = item.purchasePriceSnapshot.toDouble();
         discountLine = item.discountLine.toDouble();
         subtotal = (qty * unitPrice) - discountLine;
@@ -125,14 +141,37 @@ class SalesRepository {
 
         qty = readNum(item['qty'], fallback: 1.0);
         unitPrice = readNum(
-          item['unit_price'] ?? item['price'] ?? item['sale_price'] ?? item['unitPrice'],
+          item['unit_price'] ??
+              item['price'] ??
+              item['sale_price'] ??
+              item['unitPrice'],
           fallback: 0.0,
         );
         productId = item['product_id'] as int? ?? item['id'] as int?;
-        productCode = (item['product_code_snapshot'] ?? item['product_code'] ?? item['code'] ?? item['sku'] ?? 'N/A') as String;
-        productName = (item['product_name_snapshot'] ?? item['product_name'] ?? item['name'] ?? item['description'] ?? 'Item') as String;
-        purchasePrice = readNum(item['purchase_price_snapshot'] ?? item['purchase_price'] ?? item['cost'], fallback: 0.0);
-        discountLine = readNum(item['discount_line'] ?? item['discount'], fallback: 0.0);
+        productCode =
+            (item['product_code_snapshot'] ??
+                    item['product_code'] ??
+                    item['code'] ??
+                    item['sku'] ??
+                    'N/A')
+                as String;
+        productName =
+            (item['product_name_snapshot'] ??
+                    item['product_name'] ??
+                    item['name'] ??
+                    item['description'] ??
+                    'Item')
+                as String;
+        purchasePrice = readNum(
+          item['purchase_price_snapshot'] ??
+              item['purchase_price'] ??
+              item['cost'],
+          fallback: 0.0,
+        );
+        discountLine = readNum(
+          item['discount_line'] ?? item['discount'],
+          fallback: 0.0,
+        );
         totalLineOverride = readNumNullable(item['total_line']);
 
         if (productName.trim().isEmpty) productName = 'Item';
@@ -156,7 +195,12 @@ class SalesRepository {
       }
 
       // Refuerzo final: si aún faltan datos y hay product_id, traer snapshot directo de BD
-      if (productId != null && (unitPrice <= 0 || purchasePrice <= 0 || subtotal <= 0 || productName == 'Item' || productCode == 'N/A')) {
+      if (productId != null &&
+          (unitPrice <= 0 ||
+              purchasePrice <= 0 ||
+              subtotal <= 0 ||
+              productName == 'Item' ||
+              productCode == 'N/A')) {
         try {
           final db = await AppDb.database;
           final rows = await db.query(
@@ -173,11 +217,21 @@ class SalesRepository {
             final dbSale = (row['sale_price'] as num?)?.toDouble() ?? 0.0;
             final dbCost = (row['purchase_price'] as num?)?.toDouble() ?? 0.0;
 
-            if (productCode == 'N/A' || productCode.trim().isEmpty) productCode = dbCode;
-            if (productName == 'Item' || productName.trim().isEmpty) productName = dbName;
-            if (unitPrice <= 0 && dbSale > 0) unitPrice = dbSale;
-            if (purchasePrice <= 0 && dbCost > 0) purchasePrice = dbCost;
-            if (subtotal <= 0 && unitPrice > 0 && qty > 0) subtotal = (qty * unitPrice) - discountLine;
+            if (productCode == 'N/A' || productCode.trim().isEmpty) {
+              productCode = dbCode;
+            }
+            if (productName == 'Item' || productName.trim().isEmpty) {
+              productName = dbName;
+            }
+            if (unitPrice <= 0 && dbSale > 0) {
+              unitPrice = dbSale;
+            }
+            if (purchasePrice <= 0 && dbCost > 0) {
+              purchasePrice = dbCost;
+            }
+            if (subtotal <= 0 && unitPrice > 0 && qty > 0) {
+              subtotal = (qty * unitPrice) - discountLine;
+            }
           }
         } catch (_) {
           // fallback silencioso; no queremos fallar la venta por snapshot
@@ -227,39 +281,55 @@ class SalesRepository {
       subtotal = (tmp - discountTotal).clamp(0.0, double.infinity);
     }
 
-    final itbisAmount = itbisAmountOverride ?? (itbisEnabled ? (subtotal * itbisRate) : 0.0);
+    final itbisAmount =
+        itbisAmountOverride ?? (itbisEnabled ? (subtotal * itbisRate) : 0.0);
     final total = totalOverride ?? (subtotal + itbisAmount);
 
-    final saleId = await saveSaleWithItems(
-      localCode: localCode,
-      kind: kind,
-      customerId: customerId,
-      customerName: customerName,
-      customerPhone: customerPhone,
-      customerRnc: customerRnc,
-      itbisEnabled: itbisEnabled ? 1 : 0,
-      itbisRate: itbisRate,
-      discountTotal: discountTotal,
-      subtotal: subtotal,
-      itbisAmount: itbisAmount,
-      total: total,
-      paymentMethod: paymentMethod,
-      paidAmount: paidAmount ?? total,
-      changeAmount: changeAmount ?? 0.0,
-      creditInterestRate: creditInterestRate,
-      creditTermDays: creditTermDays,
-      creditDueDateMs: creditDueDateMs,
-      creditInstallments: creditInstallments,
-      creditNote: creditNote,
-      fiscalEnabled: fiscalEnabled ? 1 : 0,
-      ncfFull: ncfFull,
-      ncfType: ncfType,
-      sessionId: sessionId,
-      items: convertedItems,
-      allowNegativeStock: allowNegativeStock,
-      status: status,
-      stockUpdateMode: stockUpdateMode,
-    );
+    String currentLocalCode = localCode;
+    int? saleId;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        saleId = await saveSaleWithItems(
+          localCode: currentLocalCode,
+          kind: kind,
+          customerId: customerId,
+          customerName: customerName,
+          customerPhone: customerPhone,
+          customerRnc: customerRnc,
+          itbisEnabled: itbisEnabled ? 1 : 0,
+          itbisRate: itbisRate,
+          discountTotal: discountTotal,
+          subtotal: subtotal,
+          itbisAmount: itbisAmount,
+          total: total,
+          paymentMethod: paymentMethod,
+          paidAmount: paidAmount ?? total,
+          changeAmount: changeAmount ?? 0.0,
+          creditInterestRate: creditInterestRate,
+          creditTermDays: creditTermDays,
+          creditDueDateMs: creditDueDateMs,
+          creditInstallments: creditInstallments,
+          creditNote: creditNote,
+          fiscalEnabled: fiscalEnabled ? 1 : 0,
+          ncfFull: ncfFull,
+          ncfType: ncfType,
+          sessionId: sessionId,
+          items: convertedItems,
+          allowNegativeStock: allowNegativeStock,
+          status: status,
+          stockUpdateMode: stockUpdateMode,
+        );
+        break;
+      } on DatabaseException catch (e) {
+        if (!_isLocalCodeUniqueConstraint(e) || attempt == 5) {
+          rethrow;
+        }
+        currentLocalCode = await generateNextLocalCode(kind);
+      }
+    }
+    if (saleId == null) {
+      throw StateError('No se pudo crear la venta con un código local único.');
+    }
 
     // Usar la fecha real guardada en BD para que Reportes filtre por rango con precisión
     int createdAtMs = DateTime.now().millisecondsSinceEpoch;
@@ -279,7 +349,9 @@ class SalesRepository {
       // No bloquear emisión del evento
     }
 
-    AppEventBus.emit(SaleCompletedEvent(saleId: saleId, createdAtMs: createdAtMs));
+    AppEventBus.emit(
+      SaleCompletedEvent(saleId: saleId, createdAtMs: createdAtMs),
+    );
 
     return saleId;
   }
@@ -321,205 +393,209 @@ class SalesRepository {
       final db = await AppDb.database;
 
       return await db.transaction((txn) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
+        final now = DateTime.now().millisecondsSinceEpoch;
 
-      final saleId = await txn.insert(DbTables.sales, {
-        'local_code': localCode,
-        'kind': kind,
-        'status': status,
-        'customer_id': customerId,
-        'customer_name_snapshot': customerName,
-        'customer_phone_snapshot': customerPhone,
-        'customer_rnc_snapshot': customerRnc,
-        'itbis_enabled': itbisEnabled,
-        'itbis_rate': itbisRate,
-        'discount_total': discountTotal,
-        'subtotal': subtotal,
-        'itbis_amount': itbisAmount,
-        'total': total,
-        'payment_method': paymentMethod,
-        'paid_amount': paidAmount,
-        'change_amount': changeAmount,
-        'credit_interest_rate': creditInterestRate,
-        'credit_term_days': creditTermDays,
-        'credit_due_date_ms': creditDueDateMs,
-        'credit_installments': creditInstallments,
-        'credit_note': creditNote,
-        'fiscal_enabled': fiscalEnabled,
-        'ncf_full': ncfFull,
-        'ncf_type': ncfType,
-        'session_id': sessionId,
-        'created_at_ms': now,
-        'updated_at_ms': now,
-      });
-
-      if (paymentMethod == 'credit' && customerId != null) {
-        await txn.update(
-          DbTables.clients,
-          {'has_credit': 1, 'updated_at_ms': now},
-          where: 'id = ?',
-          whereArgs: [customerId],
-        );
-      }
-
-      // Insertar items de venta
-      for (final item in items) {
-        int? resolvedProductId = item['product_id'] as int?;
-        final codeSnapshotRaw = item['product_code_snapshot']?.toString();
-        final codeSnapshot = codeSnapshotRaw?.trim();
-
-        double resolvedPurchaseSnapshot;
-        final purchaseRaw = item['purchase_price_snapshot'];
-        if (purchaseRaw is num) {
-          resolvedPurchaseSnapshot = purchaseRaw.toDouble();
-        } else {
-          resolvedPurchaseSnapshot =
-              double.tryParse(purchaseRaw?.toString() ?? '') ?? 0.0;
-        }
-
-        // Si falta product_id o falta costo snapshot, intentar resolver desde products
-        // usando primero product_id y luego product_code_snapshot.
-        if ((resolvedProductId == null || resolvedPurchaseSnapshot <= 0) &&
-            codeSnapshot != null &&
-            codeSnapshot.isNotEmpty &&
-            codeSnapshot != 'N/A') {
-          final rows = await txn.query(
-            DbTables.products,
-            columns: ['id', 'purchase_price'],
-            where: 'TRIM(code) = TRIM(?) COLLATE NOCASE',
-            whereArgs: [codeSnapshot],
-            limit: 1,
-          );
-
-          if (rows.isNotEmpty) {
-            resolvedProductId = resolvedProductId ?? (rows.first['id'] as int?);
-            final cost =
-                (rows.first['purchase_price'] as num?)?.toDouble() ?? 0.0;
-            if (resolvedPurchaseSnapshot <= 0 && cost > 0) {
-              resolvedPurchaseSnapshot = cost;
-            }
-          }
-        }
-
-        if (resolvedProductId != null && resolvedPurchaseSnapshot <= 0) {
-          final rows = await txn.query(
-            DbTables.products,
-            columns: ['purchase_price'],
-            where: 'id = ?',
-            whereArgs: [resolvedProductId],
-            limit: 1,
-          );
-
-          if (rows.isNotEmpty) {
-            final cost =
-                (rows.first['purchase_price'] as num?)?.toDouble() ?? 0.0;
-            if (cost > 0) {
-              resolvedPurchaseSnapshot = cost;
-            }
-          }
-        }
-
-        await txn.insert(DbTables.saleItems, {
-          'sale_id': saleId,
-          'product_id': resolvedProductId,
-          'product_code_snapshot': item['product_code_snapshot'],
-          'product_name_snapshot': item['product_name_snapshot'],
-          'qty': item['qty'],
-          'unit_price': item['unit_price'],
-          'purchase_price_snapshot': resolvedPurchaseSnapshot,
-          'discount_line': item['discount_line'] ?? 0.0,
-          'total_line': item['total_line'],
+        final saleId = await txn.insert(DbTables.sales, {
+          'local_code': localCode,
+          'kind': kind,
+          'status': status,
+          'customer_id': customerId,
+          'customer_name_snapshot': customerName,
+          'customer_phone_snapshot': customerPhone,
+          'customer_rnc_snapshot': customerRnc,
+          'itbis_enabled': itbisEnabled,
+          'itbis_rate': itbisRate,
+          'discount_total': discountTotal,
+          'subtotal': subtotal,
+          'itbis_amount': itbisAmount,
+          'total': total,
+          'payment_method': paymentMethod,
+          'paid_amount': paidAmount,
+          'change_amount': changeAmount,
+          'credit_interest_rate': creditInterestRate,
+          'credit_term_days': creditTermDays,
+          'credit_due_date_ms': creditDueDateMs,
+          'credit_installments': creditInstallments,
+          'credit_note': creditNote,
+          'fiscal_enabled': fiscalEnabled,
+          'ncf_full': ncfFull,
+          'ncf_type': ncfType,
+          'session_id': sessionId,
           'created_at_ms': now,
+          'updated_at_ms': now,
         });
 
-        // Ajustar stock automáticamente si tiene product_id
-        if (resolvedProductId != null) {
-          final productId = resolvedProductId;
-          final qtyValue = item['qty'];
-          final qty = qtyValue is num
-              ? qtyValue.toDouble()
-              : double.tryParse(qtyValue.toString()) ?? 1.0;
-
-          if (qty <= 0) {
-            throw BusinessRuleException(
-              code: 'invalid_qty',
-              messageUser: 'Verifica las cantidades e intenta de nuevo.',
-              messageDev: 'Sale item qty must be > 0 (qty=$qty).',
-            );
-          }
-
-          // Validar stock antes de descontar (evita negativos y ventas incompletas).
-          final productRows = await txn.query(
-            DbTables.products,
-            columns: ['stock', 'reserved_stock', 'name', 'code'],
+        if (paymentMethod == 'credit' && customerId != null) {
+          await txn.update(
+            DbTables.clients,
+            {'has_credit': 1, 'updated_at_ms': now},
             where: 'id = ?',
-            whereArgs: [productId],
-            limit: 1,
+            whereArgs: [customerId],
           );
+        }
 
-          if (productRows.isEmpty) {
-            throw BusinessRuleException(
-              code: 'product_not_found',
-              messageUser: 'No se encontró un producto de la venta. Reintenta.',
-              messageDev:
-                  'Product not found while saving sale. productId=$productId',
-            );
+        // Insertar items de venta
+        for (final item in items) {
+          int? resolvedProductId = item['product_id'] as int?;
+          final codeSnapshotRaw = item['product_code_snapshot']?.toString();
+          final codeSnapshot = codeSnapshotRaw?.trim();
+
+          double resolvedPurchaseSnapshot;
+          final purchaseRaw = item['purchase_price_snapshot'];
+          if (purchaseRaw is num) {
+            resolvedPurchaseSnapshot = purchaseRaw.toDouble();
+          } else {
+            resolvedPurchaseSnapshot =
+                double.tryParse(purchaseRaw?.toString() ?? '') ?? 0.0;
           }
 
-          final currentStock =
-              (productRows.first['stock'] as num?)?.toDouble() ?? 0.0;
-          final reservedStock =
-              (productRows.first['reserved_stock'] as num?)?.toDouble() ?? 0.0;
-          final availableStock = currentStock - reservedStock;
-          final newStock = currentStock - qty;
-
-          if (stockUpdateMode != StockUpdateMode.none) {
-            final remaining = availableStock - qty;
-            if (!allowNegativeStock && remaining < 0) {
-            final code =
-                (productRows.first['code'] as String?)?.trim() ?? 'N/A';
-            final name =
-                (productRows.first['name'] as String?)?.trim() ?? 'Producto';
-            throw BusinessRuleException(
-              code: 'stock_negative',
-              messageUser:
-                  'Stock insuficiente para "$name" ($code). Ajusta la cantidad o confirma venta sin stock.',
-              messageDev:
-                  'Stock would go negative for productId=$productId code=$code name="$name": current=$currentStock reserved=$reservedStock qty=$qty remaining=$remaining.',
+          // Si falta product_id o falta costo snapshot, intentar resolver desde products
+          // usando primero product_id y luego product_code_snapshot.
+          if ((resolvedProductId == null || resolvedPurchaseSnapshot <= 0) &&
+              codeSnapshot != null &&
+              codeSnapshot.isNotEmpty &&
+              codeSnapshot != 'N/A') {
+            final rows = await txn.query(
+              DbTables.products,
+              columns: ['id', 'purchase_price'],
+              where: 'TRIM(code) = TRIM(?) COLLATE NOCASE',
+              whereArgs: [codeSnapshot],
+              limit: 1,
             );
+
+            if (rows.isNotEmpty) {
+              resolvedProductId =
+                  resolvedProductId ?? (rows.first['id'] as int?);
+              final cost =
+                  (rows.first['purchase_price'] as num?)?.toDouble() ?? 0.0;
+              if (resolvedPurchaseSnapshot <= 0 && cost > 0) {
+                resolvedPurchaseSnapshot = cost;
+              }
+            }
           }
+
+          if (resolvedProductId != null && resolvedPurchaseSnapshot <= 0) {
+            final rows = await txn.query(
+              DbTables.products,
+              columns: ['purchase_price'],
+              where: 'id = ?',
+              whereArgs: [resolvedProductId],
+              limit: 1,
+            );
+
+            if (rows.isNotEmpty) {
+              final cost =
+                  (rows.first['purchase_price'] as num?)?.toDouble() ?? 0.0;
+              if (cost > 0) {
+                resolvedPurchaseSnapshot = cost;
+              }
+            }
           }
 
-          if (stockUpdateMode == StockUpdateMode.deduct) {
-            // Restar stock del producto
-            await txn.rawUpdate(
-              'UPDATE ${DbTables.products} SET stock = stock - ? WHERE id = ?',
-              [qty, productId],
+          await txn.insert(DbTables.saleItems, {
+            'sale_id': saleId,
+            'product_id': resolvedProductId,
+            'product_code_snapshot': item['product_code_snapshot'],
+            'product_name_snapshot': item['product_name_snapshot'],
+            'qty': item['qty'],
+            'unit_price': item['unit_price'],
+            'purchase_price_snapshot': resolvedPurchaseSnapshot,
+            'discount_line': item['discount_line'] ?? 0.0,
+            'total_line': item['total_line'],
+            'created_at_ms': now,
+          });
+
+          // Ajustar stock automáticamente si tiene product_id
+          if (resolvedProductId != null) {
+            final productId = resolvedProductId;
+            final qtyValue = item['qty'];
+            final qty = qtyValue is num
+                ? qtyValue.toDouble()
+                : double.tryParse(qtyValue.toString()) ?? 1.0;
+
+            if (qty <= 0) {
+              throw BusinessRuleException(
+                code: 'invalid_qty',
+                messageUser: 'Verifica las cantidades e intenta de nuevo.',
+                messageDev: 'Sale item qty must be > 0 (qty=$qty).',
+              );
+            }
+
+            // Validar stock antes de descontar (evita negativos y ventas incompletas).
+            final productRows = await txn.query(
+              DbTables.products,
+              columns: ['stock', 'reserved_stock', 'name', 'code'],
+              where: 'id = ?',
+              whereArgs: [productId],
+              limit: 1,
             );
 
-            // Registrar movimiento de stock
-            await txn.insert(DbTables.stockMovements, {
-              'product_id': productId,
-              'type': 'SALE',
-              'quantity': -qty,
-              'note': allowNegativeStock && newStock < 0
-                  ? 'Venta #$saleId - $localCode (sin stock)'
-                  : 'Venta #$saleId - $localCode',
-              'created_at_ms': now,
-            });
-          } else if (stockUpdateMode == StockUpdateMode.reserve) {
-            await txn.rawUpdate(
-              'UPDATE ${DbTables.products} SET reserved_stock = reserved_stock + ? WHERE id = ?',
-              [qty, productId],
-            );
+            if (productRows.isEmpty) {
+              throw BusinessRuleException(
+                code: 'product_not_found',
+                messageUser:
+                    'No se encontró un producto de la venta. Reintenta.',
+                messageDev:
+                    'Product not found while saving sale. productId=$productId',
+              );
+            }
+
+            final currentStock =
+                (productRows.first['stock'] as num?)?.toDouble() ?? 0.0;
+            final reservedStock =
+                (productRows.first['reserved_stock'] as num?)?.toDouble() ??
+                0.0;
+            final availableStock = currentStock - reservedStock;
+            final newStock = currentStock - qty;
+
+            if (stockUpdateMode != StockUpdateMode.none) {
+              final remaining = availableStock - qty;
+              if (!allowNegativeStock && remaining < 0) {
+                final code =
+                    (productRows.first['code'] as String?)?.trim() ?? 'N/A';
+                final name =
+                    (productRows.first['name'] as String?)?.trim() ??
+                    'Producto';
+                throw BusinessRuleException(
+                  code: 'stock_negative',
+                  messageUser:
+                      'Stock insuficiente para "$name" ($code). Ajusta la cantidad o confirma venta sin stock.',
+                  messageDev:
+                      'Stock would go negative for productId=$productId code=$code name="$name": current=$currentStock reserved=$reservedStock qty=$qty remaining=$remaining.',
+                );
+              }
+            }
+
+            if (stockUpdateMode == StockUpdateMode.deduct) {
+              // Restar stock del producto
+              await txn.rawUpdate(
+                'UPDATE ${DbTables.products} SET stock = stock - ? WHERE id = ?',
+                [qty, productId],
+              );
+
+              // Registrar movimiento de stock
+              await txn.insert(DbTables.stockMovements, {
+                'product_id': productId,
+                'type': 'SALE',
+                'quantity': -qty,
+                'note': allowNegativeStock && newStock < 0
+                    ? 'Venta #$saleId - $localCode (sin stock)'
+                    : 'Venta #$saleId - $localCode',
+                'created_at_ms': now,
+              });
+            } else if (stockUpdateMode == StockUpdateMode.reserve) {
+              await txn.rawUpdate(
+                'UPDATE ${DbTables.products} SET reserved_stock = reserved_stock + ? WHERE id = ?',
+                [qty, productId],
+              );
+            }
           }
         }
-      }
 
-      return saleId;
-    });
-  }, stage: 'save_sale_with_items');
-}
+        return saleId;
+      });
+    }, stage: 'save_sale_with_items');
+  }
 
   /// Obtiene una venta con sus items
   static Future<Map<String, dynamic>?> getSaleWithItems(int saleId) async {
@@ -706,7 +782,11 @@ class SalesRepository {
   }) async {
     final db = await AppDb.database;
 
-    final whereClauses = <String>['customer_id = ?', 'kind = ?', 'deleted_at_ms IS NULL'];
+    final whereClauses = <String>[
+      'customer_id = ?',
+      'kind = ?',
+      'deleted_at_ms IS NULL',
+    ];
     final whereArgs = <dynamic>[customerId, kind];
 
     if (dateFrom != null) {
@@ -749,14 +829,13 @@ class SalesRepository {
     final db = await AppDb.database;
 
     // Total de clientes registrados (no depende del intervalo)
-    final clientRows = await db.rawQuery(
-      '''
+    final clientRows = await db.rawQuery('''
       SELECT COUNT(*) AS clients_total
       FROM ${DbTables.clients}
       WHERE deleted_at_ms IS NULL
-      ''',
-    );
-    final clientsTotal = (clientRows.isNotEmpty
+      ''');
+    final clientsTotal =
+        (clientRows.isNotEmpty
             ? (clientRows.first['clients_total'] as int?)
             : null) ??
         0;
@@ -780,17 +859,14 @@ class SalesRepository {
       args.add(dateTo.add(const Duration(days: 1)).millisecondsSinceEpoch);
     }
 
-    final rows = await db.rawQuery(
-      '''
+    final rows = await db.rawQuery('''
       SELECT
         COUNT(DISTINCT customer_id) AS clients_count,
         COUNT(*) AS visits_count,
         COALESCE(SUM(total), 0) AS total_purchased
       FROM ${DbTables.sales}
       WHERE ${where.join(' AND ')}
-      ''',
-      args,
-    );
+      ''', args);
 
     final row = rows.isNotEmpty ? rows.first : <String, Object?>{};
     return {
@@ -806,7 +882,8 @@ class SalesRepository {
 
     final result = await db.query(
       DbTables.sales,
-      where: 'local_code LIKE ? OR customer_name_snapshot LIKE ? OR customer_phone_snapshot LIKE ?',
+      where:
+          'local_code LIKE ? OR customer_name_snapshot LIKE ? OR customer_phone_snapshot LIKE ?',
       whereArgs: ['%$query%', '%$query%', '%$query%'],
       orderBy: 'created_at_ms DESC',
     );
@@ -892,25 +969,26 @@ class SalesRepository {
     DateTime? dateTo,
   }) async {
     final db = await AppDb.database;
-    
-    String where = "status IN ('completed', 'PARTIAL_REFUND') AND kind = 'invoice' AND deleted_at_ms IS NULL";
+
+    String where =
+        "status IN ('completed', 'PARTIAL_REFUND') AND kind = 'invoice' AND deleted_at_ms IS NULL";
     List<dynamic> args = [];
-    
+
     if (query != null && query.isNotEmpty) {
       where += ' AND (local_code LIKE ? OR customer_name_snapshot LIKE ?)';
       args.addAll(['%$query%', '%$query%']);
     }
-    
+
     if (dateFrom != null) {
       where += ' AND created_at_ms >= ?';
       args.add(dateFrom.millisecondsSinceEpoch);
     }
-    
+
     if (dateTo != null) {
       where += ' AND created_at_ms <= ?';
       args.add(dateTo.add(const Duration(days: 1)).millisecondsSinceEpoch);
     }
-    
+
     final maps = await db.query(
       DbTables.sales,
       where: where,
@@ -918,7 +996,7 @@ class SalesRepository {
       orderBy: 'created_at_ms DESC',
       limit: 100,
     );
-    
+
     return maps.map((m) => SaleModel.fromMap(m)).toList();
   }
 
@@ -938,10 +1016,7 @@ class SalesRepository {
   /// Obtiene todas las ventas (sin filtros)
   static Future<List<SaleModel>> getAllSales() async {
     final db = await AppDb.database;
-    final maps = await db.query(
-      DbTables.sales,
-      orderBy: 'created_at_ms DESC',
-    );
+    final maps = await db.query(DbTables.sales, orderBy: 'created_at_ms DESC');
     return maps.map((m) => SaleModel.fromMap(m)).toList();
   }
 
@@ -977,9 +1052,7 @@ class SalesRepository {
         final resolvedProductId = row['resolved_product_id'] as int?;
 
         if (itemId != null && cost > 0) {
-          final values = <String, Object?>{
-            'purchase_price_snapshot': cost,
-          };
+          final values = <String, Object?>{'purchase_price_snapshot': cost};
 
           if (row['product_id'] == null && resolvedProductId != null) {
             values['product_id'] = resolvedProductId;
@@ -1000,10 +1073,7 @@ class SalesRepository {
   }
 
   /// Cancela/Anula una venta y restaura el stock
-  static Future<bool> cancelSale(
-    int saleId, {
-    String? reason,
-  }) async {
+  static Future<bool> cancelSale(int saleId, {String? reason}) async {
     final db = await AppDb.database;
 
     return await db.transaction((txn) async {
@@ -1041,8 +1111,9 @@ class SalesRepository {
           );
 
           // Registrar movimiento de stock (cancelación)
-          final cancelNote =
-              reason != null && reason.trim().isNotEmpty ? reason.trim() : null;
+          final cancelNote = reason != null && reason.trim().isNotEmpty
+              ? reason.trim()
+              : null;
 
           await txn.insert(DbTables.stockMovements, {
             'product_id': productId,
@@ -1059,10 +1130,7 @@ class SalesRepository {
       // Actualizar estado de la venta
       await txn.update(
         DbTables.sales,
-        {
-          'status': 'cancelled',
-          'updated_at_ms': now,
-        },
+        {'status': 'cancelled', 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [saleId],
       );
@@ -1070,5 +1138,9 @@ class SalesRepository {
       return true;
     });
   }
-}
 
+  static bool _isLocalCodeUniqueConstraint(DatabaseException e) {
+    final message = e.toString().toLowerCase();
+    return message.contains('unique constraint failed: sales.local_code');
+  }
+}

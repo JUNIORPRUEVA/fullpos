@@ -50,6 +50,7 @@ dependencies:
   # Database
   sqflite: ^2.4.1
   sqflite_common_ffi: ^2.3.3
+  sqlite3: ^3.1.5
   http: ^1.2.1
   http_parser: ^4.0.2
   qr_flutter: ^4.1.0

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
@@ -244,8 +245,10 @@ class BackupOrchestrator {
   }
 
   Future<String> _sha256OfFile(String path) async {
-    final bytes = await File(path).readAsBytes();
-    return sha256.convert(bytes).toString();
+    return Isolate.run(() async {
+      final digest = await sha256.bind(File(path).openRead()).first;
+      return digest.toString();
+    });
   }
 
   Future<String> _ensureStableBackupPath(String path) async {

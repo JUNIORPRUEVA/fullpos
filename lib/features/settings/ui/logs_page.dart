@@ -244,7 +244,7 @@ class _LogsPageState extends State<LogsPage> {
       if (!mounted) return;
       setState(() {
         _companyInfoLoading = false;
-        _companyInfoError = 'No se pudo cargar la información desde internet.';
+        _companyInfoError = 'No se pudo cargar la información.';
       });
     }
   }
@@ -281,231 +281,280 @@ class _LogsPageState extends State<LogsPage> {
                     ? const Center(child: CircularProgressIndicator())
                     : ListView(
                         children: [
-                  const Text(
-                    'Manejo de errores',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                  ),
-                  const SizedBox(height: AppSizes.spaceS),
-                  Container(
-                    padding: const EdgeInsets.all(AppSizes.paddingM),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Que ve el cliente',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'El cliente solo ve un mensaje amigable. Los detalles tecnicos se guardan para soporte.',
-                          style: TextStyle(height: 1.25),
-                        ),
-                        if (showTechnical) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Modo debug: se muestran detalles tecnicos en pantalla.',
-                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          const Text(
+                            'Manejo de errores',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.spaceM),
-                  Container(
-                    padding: const EdgeInsets.all(AppSizes.paddingM),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Archivo de soporte',
-                                style: TextStyle(fontWeight: FontWeight.w700),
+                          const SizedBox(height: AppSizes.spaceS),
+                          Container(
+                            padding: const EdgeInsets.all(AppSizes.paddingM),
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(
+                                AppSizes.radiusM,
                               ),
+                              border: Border.all(color: scheme.outlineVariant),
                             ),
-                            if (showTechnical && logPath != null)
-                              TextButton.icon(
-                                onPressed: () =>
-                                    _copyToClipboard(logPath, label: 'Ruta'),
-                                icon: const Icon(Icons.copy, size: 18),
-                                label: const Text('Copiar ruta'),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          showTechnical
-                              ? (logPath ?? _error ?? '?')
-                              : 'Los detalles tecnicos estan ocultos en produccion.',
-                          style: const TextStyle(fontSize: 12, height: 1.25),
-                        ),
-                        const SizedBox(height: AppSizes.spaceM),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: logPath == null
-                                  ? null
-                                  : _exportForSupport,
-                              icon: const Icon(Icons.support_agent),
-                              label: const Text('Generar archivo para soporte'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Que ve el cliente',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'El cliente solo ve un mensaje amigable. Los detalles tecnicos se guardan para soporte.',
+                                  style: TextStyle(height: 1.25),
+                                ),
+                                if (showTechnical) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Modo debug: se muestran detalles tecnicos en pantalla.',
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            OutlinedButton.icon(
-                              onPressed:
-                                  (logPath == null ||
-                                      !(Platform.isWindows ||
-                                          Platform.isMacOS ||
-                                          Platform.isLinux))
-                                  ? null
-                                  : _openLogsFolder,
-                              icon: const Icon(Icons.folder_open),
-                              label: Text(
-                                showTechnical
-                                    ? 'Abrir carpeta'
-                                    : 'Abrir carpeta de soporte',
+                          ),
+                          const SizedBox(height: AppSizes.spaceM),
+                          Container(
+                            padding: const EdgeInsets.all(AppSizes.paddingM),
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(
+                                AppSizes.radiusM,
                               ),
+                              border: Border.all(color: scheme.outlineVariant),
                             ),
-                            if (showTechnical)
-                              OutlinedButton.icon(
-                                onPressed: tail == null
-                                    ? null
-                                    : () =>
-                                          _copyToClipboard(tail, label: 'Logs'),
-                                icon: const Icon(Icons.copy_all),
-                                label: const Text('Copiar ultimos logs'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'Archivo de soporte',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    if (showTechnical && logPath != null)
+                                      TextButton.icon(
+                                        onPressed: () => _copyToClipboard(
+                                          logPath,
+                                          label: 'Ruta',
+                                        ),
+                                        icon: const Icon(Icons.copy, size: 18),
+                                        label: const Text('Copiar ruta'),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  showTechnical
+                                      ? (logPath ?? _error ?? '?')
+                                      : 'Los detalles tecnicos estan ocultos en produccion.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    height: 1.25,
+                                  ),
+                                ),
+                                const SizedBox(height: AppSizes.spaceM),
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 10,
+                                  children: [
+                                    FilledButton.icon(
+                                      onPressed: logPath == null
+                                          ? null
+                                          : _exportForSupport,
+                                      icon: const Icon(Icons.support_agent),
+                                      label: const Text(
+                                        'Generar archivo para soporte',
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed:
+                                          (logPath == null ||
+                                              !(Platform.isWindows ||
+                                                  Platform.isMacOS ||
+                                                  Platform.isLinux))
+                                          ? null
+                                          : _openLogsFolder,
+                                      icon: const Icon(Icons.folder_open),
+                                      label: Text(
+                                        showTechnical
+                                            ? 'Abrir carpeta'
+                                            : 'Abrir carpeta de soporte',
+                                      ),
+                                    ),
+                                    if (showTechnical)
+                                      OutlinedButton.icon(
+                                        onPressed: tail == null
+                                            ? null
+                                            : () => _copyToClipboard(
+                                                tail,
+                                                label: 'Logs',
+                                              ),
+                                        icon: const Icon(Icons.copy_all),
+                                        label: const Text(
+                                          'Copiar ultimos logs',
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: AppSizes.spaceM),
+                          if (showTechnical)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(AppSizes.paddingM),
+                              decoration: BoxDecoration(
+                                color: scheme.surface,
+                                borderRadius: BorderRadius.circular(
+                                  AppSizes.radiusM,
+                                ),
+                                border: Border.all(
+                                  color: scheme.outlineVariant,
+                                ),
                               ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.spaceM),
-                  if (showTechnical)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSizes.paddingM),
-                      decoration: BoxDecoration(
-                        color: scheme.surface,
-                        borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                        border: Border.all(color: scheme.outlineVariant),
-                      ),
-                      child: tail == null
-                          ? Center(
-                              child: Text(
-                                _error ?? 'No hay contenido para mostrar.',
-                                style: TextStyle(color: scheme.onSurfaceVariant),
-                              ),
+                              child: tail == null
+                                  ? Center(
+                                      child: Text(
+                                        _error ??
+                                            'No hay contenido para mostrar.',
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    )
+                                  : SingleChildScrollView(
+                                      child: SelectableText(
+                                        tail,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          height: 1.25,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                    ),
                             )
-                          : SingleChildScrollView(
-                              child: SelectableText(
-                                tail,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  height: 1.25,
-                                  fontFamily: 'monospace',
+                          else
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(AppSizes.paddingM),
+                              decoration: BoxDecoration(
+                                color: scheme.surface,
+                                borderRadius: BorderRadius.circular(
+                                  AppSizes.radiusM,
+                                ),
+                                border: Border.all(
+                                  color: scheme.outlineVariant,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Para asistencia, presiona "Generar archivo para soporte" y compartelo con el tecnico.',
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
                             ),
-                    )
-                  else
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSizes.paddingM),
-                      decoration: BoxDecoration(
-                        color: scheme.surface,
-                        borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                        border: Border.all(color: scheme.outlineVariant),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'Para asistencia, presiona "Generar archivo para soporte" y compartelo con el tecnico.',
-                          style: TextStyle(color: scheme.onSurfaceVariant),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: AppSizes.spaceL),
-                  const Text(
-                    'Entrenamiento',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                  ),
-                  const SizedBox(height: AppSizes.spaceS),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    child: ListTile(
-                      leading: Icon(Icons.school, color: scheme.primary),
-                      title: const Text(
-                        'Abrir entrenamiento',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: const Text(
-                        'Instalación paso a paso, manual completo y capacitación por módulo con buscador.',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const TrainingPage(),
+                          const SizedBox(height: AppSizes.spaceL),
+                          const Text(
+                            'Entrenamiento',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.spaceL),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Informacion de la empresa',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
+                          const SizedBox(height: AppSizes.spaceS),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(
+                                AppSizes.radiusM,
+                              ),
+                              border: Border.all(color: scheme.outlineVariant),
+                            ),
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.school,
+                                color: scheme.primary,
+                              ),
+                              title: const Text(
+                                'Abrir entrenamiento',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: const Text(
+                                'Instalación paso a paso, manual completo y capacitación por módulo con buscador.',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const TrainingPage(),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Actualizar',
-                        onPressed: _companyInfoLoading
-                            ? null
-                            : _loadCompanyInfo,
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSizes.spaceS),
-                  Container(
-                    padding: const EdgeInsets.all(AppSizes.paddingM),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    child: _companyInfoLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _companyInfoError != null
-                        ? Text(
-                            _companyInfoError!,
-                            style: TextStyle(color: scheme.onSurfaceVariant),
-                          )
-                        : _buildCompanyInfoCard(),
-                  ),
+                          const SizedBox(height: AppSizes.spaceL),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Informacion de la empresa',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Actualizar',
+                                onPressed: _companyInfoLoading
+                                    ? null
+                                    : _loadCompanyInfo,
+                                icon: const Icon(Icons.refresh),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: AppSizes.spaceS),
+                          Container(
+                            padding: const EdgeInsets.all(AppSizes.paddingM),
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(
+                                AppSizes.radiusM,
+                              ),
+                              border: Border.all(color: scheme.outlineVariant),
+                            ),
+                            child: _companyInfoLoading
+                                ? const Center(
+                                    child: CircularProgressIndicator(),
+                                  )
+                                : _companyInfoError != null
+                                ? Text(
+                                    _companyInfoError!,
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  )
+                                : _buildCompanyInfoCard(),
+                          ),
                         ],
                       ),
               ),
@@ -535,7 +584,7 @@ class _LogsPageState extends State<LogsPage> {
         _buildInfoRow('Soporte', info['support']),
         const SizedBox(height: 8),
         Text(
-          'Esta informacion se actualiza desde el servidor cuando hay internet.',
+          'Esta información se actualiza desde el servidor cuando está disponible.',
           style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
         ),
       ],

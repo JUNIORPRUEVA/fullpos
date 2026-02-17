@@ -44,11 +44,6 @@ class BackupStatusCard extends StatelessWidget {
               color: status.isCloudEnabled ? scheme.primary : scheme.error,
             ),
             _StatusRow(
-              label: 'Internet',
-              value: status.isInternetAvailable ? 'Disponible' : 'No',
-              color: status.isInternetAvailable ? scheme.primary : scheme.error,
-            ),
-            _StatusRow(
               label: 'Destino actual',
               value: destination,
               color: scheme.secondary,

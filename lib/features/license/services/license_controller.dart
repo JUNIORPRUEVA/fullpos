@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../../core/session/session_manager.dart';
 import '../license_config.dart';
 import '../../registration/services/business_identity_storage.dart';
@@ -153,6 +155,22 @@ class LicenseController extends StateNotifier<LicenseState> {
       // en formato humano.
       error: err.message,
       errorCode: legacyErrorCode ?? state.errorCode,
+    );
+  }
+
+  bool _isConnectivityError(Object error) {
+    return error is TimeoutException ||
+        error is SocketException ||
+        error is HandshakeException ||
+        error is ApiException;
+  }
+
+  void _finishSilently() {
+    state = state.copyWith(
+      loading: false,
+      uiError: null,
+      error: null,
+      errorCode: null,
     );
   }
 
@@ -349,6 +367,10 @@ class LicenseController extends StateNotifier<LicenseState> {
         legacyErrorCode: e.code,
       );
     } catch (e) {
+      if (_isConnectivityError(e)) {
+        _finishSilently();
+        return;
+      }
       _setUiError(
         LicenseErrorMapper.map(
           e,
@@ -431,6 +453,10 @@ class LicenseController extends StateNotifier<LicenseState> {
         ),
       );
     } catch (e) {
+      if (_isConnectivityError(e)) {
+        _finishSilently();
+        return;
+      }
       _setUiError(
         LicenseErrorMapper.map(
           e,
@@ -489,6 +515,10 @@ class LicenseController extends StateNotifier<LicenseState> {
         legacyErrorCode: e.code,
       );
     } catch (e) {
+      if (_isConnectivityError(e)) {
+        _finishSilently();
+        return;
+      }
       _setUiError(
         LicenseErrorMapper.map(
           e,

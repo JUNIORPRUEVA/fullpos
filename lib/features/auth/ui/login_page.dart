@@ -12,7 +12,9 @@ import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/window/window_service.dart';
 import '../../settings/data/user_model.dart';
+import '../../settings/data/users_repository.dart';
 import '../data/auth_repository.dart';
+import '../services/password_reset_service.dart';
 import '../services/first_run_auth_flags.dart';
 
 /// Pantalla de inicio de sesión con soporte de contraseña o PIN.
@@ -171,6 +173,285 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (mounted) setState(() => _errorMessage = ex.messageUser);
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _openForgotPasswordDialog() async {
+    final usernameController = TextEditingController(
+      text: _usernameController.text.trim(),
+    );
+    final codeController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+
+    final service = PasswordResetService();
+
+    String? requestId;
+    bool codeSent = false;
+    bool loading = false;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    String? error;
+    String? info;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: !loading,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              Future<void> sendCode() async {
+                final username = usernameController.text.trim();
+                if (username.isEmpty) {
+                  setDialogState(() {
+                    error = 'Ingresa el usuario administrador';
+                  });
+                  return;
+                }
+
+                setDialogState(() {
+                  loading = true;
+                  error = null;
+                  info = null;
+                });
+
+                try {
+                  final result = await service.requestCode(username: username);
+                  requestId = result.requestId;
+
+                  setDialogState(() {
+                    codeSent = true;
+                    info = 'Código enviado al WhatsApp registrado del negocio.';
+                  });
+                } catch (e) {
+                  setDialogState(() {
+                    error = e.toString().replaceFirst('Exception: ', '');
+                  });
+                } finally {
+                  setDialogState(() {
+                    loading = false;
+                  });
+                }
+              }
+
+              Future<void> resetPassword() async {
+                final username = usernameController.text.trim();
+                final code = codeController.text.trim();
+                final newPassword = newPasswordController.text;
+                final confirmPassword = confirmPasswordController.text;
+
+                if (username.isEmpty || code.isEmpty) {
+                  setDialogState(() {
+                    error = 'Completa usuario y código';
+                  });
+                  return;
+                }
+                if (newPassword.length < 6) {
+                  setDialogState(() {
+                    error = 'La nueva contraseña debe tener al menos 6 caracteres';
+                  });
+                  return;
+                }
+                if (newPassword != confirmPassword) {
+                  setDialogState(() {
+                    error = 'Las contraseñas no coinciden';
+                  });
+                  return;
+                }
+                if (requestId == null || requestId!.isEmpty) {
+                  setDialogState(() {
+                    error = 'Primero solicita el código de reseteo';
+                  });
+                  return;
+                }
+
+                setDialogState(() {
+                  loading = true;
+                  error = null;
+                  info = null;
+                });
+
+                try {
+                  await service.confirmCode(
+                    username: username,
+                    requestId: requestId!,
+                    code: code,
+                  );
+
+                  final user = await UsersRepository.getByUsername(username);
+                  if (user == null || user.id == null) {
+                    throw Exception('Ese usuario no existe en esta computadora.');
+                  }
+
+                  if (!user.isAdmin) {
+                    throw Exception('Solo se permite resetear cuentas de administrador.');
+                  }
+
+                  await UsersRepository.changePassword(user.id!, newPassword);
+
+                  if (!mounted) return;
+
+                  _mode = _LoginMode.password;
+                  _passwordController.text = newPassword;
+
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Contraseña restablecida. Ya puedes iniciar sesión.'),
+                    ),
+                  );
+                } catch (e) {
+                  setDialogState(() {
+                    error = e.toString().replaceFirst('Exception: ', '');
+                  });
+                } finally {
+                  if (dialogContext.mounted) {
+                    setDialogState(() {
+                      loading = false;
+                    });
+                  }
+                }
+              }
+
+              return AlertDialog(
+                title: const Text('Recuperar contraseña'),
+                content: SizedBox(
+                  width: 460,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: usernameController,
+                        enabled: !loading,
+                        decoration: const InputDecoration(
+                          labelText: 'Usuario administrador',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (!codeSent)
+                        const Text(
+                          'Se enviará un código por WhatsApp al teléfono del negocio registrado.',
+                        )
+                      else ...[
+                        TextField(
+                          controller: codeController,
+                          enabled: !loading,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(6),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Código de 6 dígitos',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: newPasswordController,
+                          enabled: !loading,
+                          obscureText: obscureNew,
+                          decoration: InputDecoration(
+                            labelText: 'Nueva contraseña',
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                obscureNew
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                              onPressed: loading
+                                  ? null
+                                  : () {
+                                      setDialogState(() {
+                                        obscureNew = !obscureNew;
+                                      });
+                                    },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: confirmPasswordController,
+                          enabled: !loading,
+                          obscureText: obscureConfirm,
+                          decoration: InputDecoration(
+                            labelText: 'Confirmar nueva contraseña',
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                obscureConfirm
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                              ),
+                              onPressed: loading
+                                  ? null
+                                  : () {
+                                      setDialogState(() {
+                                        obscureConfirm = !obscureConfirm;
+                                      });
+                                    },
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (info != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          info!,
+                          style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                        ),
+                      ],
+                      if (error != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          error!,
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: loading ? null : () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                  if (!codeSent)
+                    FilledButton(
+                      onPressed: loading ? null : sendCode,
+                      child: loading
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Enviar código'),
+                    )
+                  else
+                    FilledButton(
+                      onPressed: loading ? null : resetPassword,
+                      child: loading
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Restablecer'),
+                    ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      usernameController.dispose();
+      codeController.dispose();
+      newPasswordController.dispose();
+      confirmPasswordController.dispose();
     }
   }
 
@@ -487,6 +768,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                     ),
                                   )
                                 : const Text('Iniciar sesión'),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _isLoading ? null : _openForgotPasswordDialog,
+                            child: const Text('Olvidé mi contraseña'),
                           ),
                         ),
                         const SizedBox(height: 10),

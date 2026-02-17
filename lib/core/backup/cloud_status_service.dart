@@ -27,10 +27,9 @@ class CloudStatusService {
 
   Future<CloudStatus> checkStatus() async {
     final settings = await BusinessSettingsRepository().loadSettings();
-    final baseUrl =
-        (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
-            ? settings.cloudEndpoint!.trim()
-            : backendBaseUrl;
+    final baseUrl = (settings.cloudEndpoint?.trim().isNotEmpty ?? false)
+        ? settings.cloudEndpoint!.trim()
+        : backendBaseUrl;
 
     if (!settings.cloudEnabled) {
       return CloudStatus(
@@ -49,7 +48,7 @@ class CloudStatusService {
         isInternetAvailable: false,
         canUseCloudBackup: false,
         baseUrl: baseUrl,
-        reason: 'Sin conexiÃ³n a Internet',
+        reason: null,
       );
     }
 
@@ -77,8 +76,9 @@ class CloudStatusService {
       final uri = Uri.parse(baseUrl);
       final host = uri.host;
       if (host.isEmpty) return false;
-      final result = await InternetAddress.lookup(host)
-          .timeout(const Duration(seconds: 3));
+      final result = await InternetAddress.lookup(
+        host,
+      ).timeout(const Duration(seconds: 3));
       return result.isNotEmpty && result.first.rawAddress.isNotEmpty;
     } catch (e) {
       await AppLogger.instance.logWarn(
