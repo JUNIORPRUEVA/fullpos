@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../settings/ui/training/training_page.dart';
 import 'authorizations_page.dart';
+import 'cash_drawer_settings_page.dart';
 import 'scanner_settings_page.dart';
 
 /// Página de Herramientas
@@ -49,6 +50,17 @@ class ToolsPage extends ConsumerWidget {
         onTap: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const ScannerSettingsPage())),
+      ),
+      _ToolItem(
+        icon: Icons.point_of_sale,
+        title: 'Caja registradora',
+        subtitle: 'Apertura automática al cobrar',
+        color: scheme.tertiary,
+        onTap: () => Navigator.of(
+          context,
+        ).push(
+          MaterialPageRoute(builder: (_) => const CashDrawerSettingsPage()),
+        ),
       ),
     ];
 

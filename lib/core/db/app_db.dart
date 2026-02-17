@@ -3937,6 +3937,12 @@ class AppDb {
       await _addColumnIfMissing(
         db,
         DbTables.printerSettings,
+        'auto_open_drawer_on_charge_without_ticket',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.printerSettings,
         'show_itbis',
         'INTEGER NOT NULL DEFAULT 1',
       );
@@ -4168,6 +4174,7 @@ class AppDb {
           'paper_width_mm': 80,
           'chars_per_line': 48,
           'auto_print_on_payment': 0,
+          'auto_open_drawer_on_charge_without_ticket': 0,
           'show_itbis': 1,
           'show_ncf': 1,
           'show_cashier': 1,
@@ -4210,6 +4217,7 @@ class AppDb {
         UPDATE ${DbTables.printerSettings}
         SET printer_name = COALESCE(printer_name, ''),
             copies = COALESCE(copies, 1),
+          auto_open_drawer_on_charge_without_ticket = COALESCE(auto_open_drawer_on_charge_without_ticket, 0),
             itbis_rate = COALESCE(itbis_rate, 0.18),
             warranty_policy = COALESCE(warranty_policy, ''),
             font_family = COALESCE(font_family, 'arialBlack'),

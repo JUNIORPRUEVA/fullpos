@@ -31,6 +31,7 @@ class PrinterSettingsRepository {
       'paper_width_mm': 80,
       'chars_per_line': 48,
       'auto_print_on_payment': 0,
+      'auto_open_drawer_on_charge_without_ticket': 0,
       'copies': 1,
       'show_itbis': 1,
       'show_ncf': 1,
@@ -128,6 +129,7 @@ class PrinterSettingsRepository {
       'paper_width_mm': 80,
       'chars_per_line': 48,
       'auto_print_on_payment': 0,
+      'auto_open_drawer_on_charge_without_ticket': 0,
       'copies': 1,
       'show_itbis': 1,
       'show_ncf': 1,
@@ -191,6 +193,7 @@ class PrinterSettingsRepository {
       'paper_width_mm': 80,
       'chars_per_line': 48,
       'auto_print_on_payment': 1, // Activar auto-impresión
+      'auto_open_drawer_on_charge_without_ticket': 0,
       'copies': 1,
       'show_itbis': 1,
       'show_ncf': 1,

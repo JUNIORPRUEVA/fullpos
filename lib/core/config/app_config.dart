@@ -90,23 +90,8 @@ class AppConfig {
   }
 
   static String _resolveLicenseApiBaseUrl() {
-    final explicit = const String.fromEnvironment(
-      'FULLPOS_LICENSE_API_URL',
-      defaultValue: '',
-    );
-    if (explicit.trim().isNotEmpty) {
-      return normalizeBaseUrl(explicit);
-    }
-
-    // Compatibilidad con builds existentes.
-    final legacy = const String.fromEnvironment(
-      'LICENSE_API_URL',
-      defaultValue: '',
-    );
-    if (legacy.trim().isNotEmpty) {
-      return normalizeBaseUrl(legacy);
-    }
-
+    // Importante: para evitar builds con URL equivocada, fijamos la URL
+    // oficial de licencias/recuperación en el cliente FULLPOS.
     return normalizeBaseUrl(defaultLicenseApiBaseUrl);
   }
 

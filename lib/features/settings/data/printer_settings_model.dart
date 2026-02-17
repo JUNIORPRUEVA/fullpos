@@ -10,6 +10,7 @@ class PrinterSettingsModel {
   final int paperWidthMm;
   final int charsPerLine;
   final int autoPrintOnPayment;
+  final int autoOpenDrawerOnChargeWithoutTicket;
   final int copies; // 0, 1 o 2 copias
   final int showItbis;
   final int showNcf;
@@ -74,6 +75,7 @@ class PrinterSettingsModel {
     this.paperWidthMm = 80,
     this.charsPerLine = 48,
     this.autoPrintOnPayment = 0,
+    this.autoOpenDrawerOnChargeWithoutTicket = 0,
     this.copies = 1,
     this.showItbis = 1,
     this.showNcf = 1,
@@ -149,6 +151,8 @@ class PrinterSettingsModel {
     'paper_width_mm': paperWidthMm,
     'chars_per_line': charsPerLine,
     'auto_print_on_payment': autoPrintOnPayment,
+    'auto_open_drawer_on_charge_without_ticket':
+      autoOpenDrawerOnChargeWithoutTicket,
     'copies': copies,
     'show_itbis': showItbis,
     'show_ncf': showNcf,
@@ -198,6 +202,8 @@ class PrinterSettingsModel {
     paperWidthMm: map['paper_width_mm'] as int? ?? 80,
     charsPerLine: map['chars_per_line'] as int? ?? 48,
     autoPrintOnPayment: map['auto_print_on_payment'] as int? ?? 0,
+    autoOpenDrawerOnChargeWithoutTicket:
+      map['auto_open_drawer_on_charge_without_ticket'] as int? ?? 0,
     copies: map['copies'] as int? ?? 1,
     showItbis: map['show_itbis'] as int? ?? 1,
     showNcf: map['show_ncf'] as int? ?? 1,
@@ -246,6 +252,7 @@ class PrinterSettingsModel {
     int? paperWidthMm,
     int? charsPerLine,
     int? autoPrintOnPayment,
+    int? autoOpenDrawerOnChargeWithoutTicket,
     int? copies,
     int? showItbis,
     int? showNcf,
@@ -291,6 +298,9 @@ class PrinterSettingsModel {
     paperWidthMm: paperWidthMm ?? this.paperWidthMm,
     charsPerLine: charsPerLine ?? this.charsPerLine,
     autoPrintOnPayment: autoPrintOnPayment ?? this.autoPrintOnPayment,
+    autoOpenDrawerOnChargeWithoutTicket:
+      autoOpenDrawerOnChargeWithoutTicket ??
+      this.autoOpenDrawerOnChargeWithoutTicket,
     copies: copies ?? this.copies,
     showItbis: showItbis ?? this.showItbis,
     showNcf: showNcf ?? this.showNcf,
@@ -340,6 +350,7 @@ class PrinterSettingsModel {
       paperWidthMm: 80,
       charsPerLine: 48,
       autoPrintOnPayment: 0,
+      autoOpenDrawerOnChargeWithoutTicket: 0,
       copies: 1,
       showItbis: 1,
       showNcf: 1,
@@ -384,6 +395,7 @@ class PrinterSettingsModel {
       paperWidthMm: 80,
       charsPerLine: 48,
       autoPrintOnPayment: 1,
+      autoOpenDrawerOnChargeWithoutTicket: 0,
       copies: 1,
       showItbis: 1,
       showNcf: 1,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/services/app_configuration_service.dart';
 import 'package:printing/printing.dart';
@@ -16,6 +17,9 @@ import 'cloud_settings_page.dart';
 import '../../license/data/license_models.dart';
 import '../../license/services/license_file_storage.dart';
 import '../../license/services/license_storage.dart';
+import '../../registration/services/business_identity_storage.dart';
+import '../../registration/services/business_registration_service.dart';
+import '../../registration/services/pending_registration_queue.dart';
 
 /// Pantalla de configuración con diseño de tarjetas
 class SettingsPage extends StatefulWidget {
@@ -655,6 +659,9 @@ class _LicenseSummaryDialogContentState
     extends State<_LicenseSummaryDialogContent> {
   final LicenseStorage _licenseStorage = LicenseStorage();
   final LicenseFileStorage _licenseFileStorage = LicenseFileStorage();
+  final BusinessIdentityStorage _identityStorage = BusinessIdentityStorage();
+  final BusinessRegistrationService _registrationService =
+      BusinessRegistrationService();
 
   bool _isLoading = true;
   LicenseInfo? _info;
@@ -683,6 +690,106 @@ class _LicenseSummaryDialogContentState
     } catch (_) {
       if (!mounted) return;
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _debugResetLicense() async {
+    if (!kDebugMode) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset licencia (debug)'),
+        content: const Text(
+          'Esto borrará la licencia y el estado de prueba local en esta PC.\n\nSolo disponible en debug.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Resetear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _licenseFileStorage.delete();
+    } catch (_) {}
+    try {
+      await _licenseStorage.clearAll();
+    } catch (_) {}
+    try {
+      await BusinessIdentityStorage().clearAll();
+    } catch (_) {}
+    try {
+      await PendingRegistrationQueue().clear();
+    } catch (_) {}
+
+    if (!mounted) return;
+    setState(() {
+      _info = null;
+      _source = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Licencia reseteada (debug).')),
+    );
+  }
+
+  Future<void> _debugResendRegistrationToCloud() async {
+    if (!kDebugMode) return;
+
+    final identity = await _identityStorage.getIdentity();
+    if (identity == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay identidad local para reenviar a nube.'),
+        ),
+      );
+      return;
+    }
+
+    const appVersion = String.fromEnvironment(
+      'FULLPOS_APP_VERSION',
+      defaultValue: '1.0.0+1',
+    );
+
+    final payload = await _registrationService.buildPayload(
+      businessName: identity.businessName,
+      role: identity.role,
+      ownerName: identity.ownerName,
+      phone: identity.phone,
+      email: identity.email,
+      trialStart: identity.trialStart,
+      appVersion: appVersion,
+    );
+
+    await _registrationService.registerNowOrQueue(payload);
+    await _registrationService.retryPendingOnce();
+
+    final pending = await PendingRegistrationQueue().load();
+    if (!mounted) return;
+    if (pending.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registro reenviado a nube (debug).')),
+      );
+    } else {
+      final lastError = (pending.last.lastError ?? '').trim();
+      final msg = lastError.isEmpty
+          ? 'No se pudo enviar ahora. Quedó en cola para reintento (debug).'
+          : 'No se pudo enviar ahora. Motivo: $lastError';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+        ),
+      );
     }
   }
 
@@ -761,6 +868,25 @@ class _LicenseSummaryDialogContentState
       default:
         return 'No disponible';
     }
+  }
+
+  String _devicesText(LicenseInfo? info) {
+    if (info == null) return 'No disponible';
+
+    final usados = info.usados;
+    final max = info.maxDispositivos;
+
+    if (usados == null && max == null) {
+      return 'No reportado por servidor';
+    }
+    if (usados == null && max != null) {
+      return 'No reportado de $max';
+    }
+    if (usados != null && max == null) {
+      return '$usados en uso';
+    }
+
+    return '$usados de $max';
   }
 
   Widget _infoRow({required String label, required String value}) {
@@ -872,9 +998,7 @@ class _LicenseSummaryDialogContentState
                   ),
                   _infoRow(
                     label: 'Dispositivos',
-                    value: _info == null
-                        ? 'No disponible'
-                        : '${_info?.usados ?? 0} de ${_info?.maxDispositivos ?? 0}',
+                    value: _devicesText(_info),
                   ),
                   _infoRow(
                     label: 'Origen',
@@ -888,6 +1012,20 @@ class _LicenseSummaryDialogContentState
                     label: 'Última revisión',
                     value: _formatDate(_info?.lastCheckedAt),
                   ),
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _debugResendRegistrationToCloud,
+                      icon: const Icon(Icons.cloud_upload_outlined),
+                      label: const Text('Reenviar registro nube (debug)'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _debugResetLicense,
+                      icon: const Icon(Icons.restart_alt),
+                      label: const Text('Reset licencia (debug)'),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Align(
                     alignment: Alignment.centerRight,

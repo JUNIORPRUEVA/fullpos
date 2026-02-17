@@ -567,9 +567,22 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     required int saleId,
     required bool shouldPrint,
     required bool shouldDownloadInvoicePdf,
+    required bool shouldAutoOpenDrawerWithoutTicket,
     required bool isLayaway,
     required double receivedAmount,
   }) async {
+    if (shouldAutoOpenDrawerWithoutTicket) {
+      try {
+        await UnifiedTicketPrinter.openCashDrawerPulse();
+      } catch (e) {
+        debugPrint('Error al abrir caja registradora automáticamente: $e');
+      }
+    }
+
+    if (!shouldPrint && !shouldDownloadInvoicePdf) {
+      return;
+    }
+
     legacy_sales.SaleModel? saleForOutput;
     List<legacy_sales.SaleItemModel> saleItemsForOutput =
         const <legacy_sales.SaleItemModel>[];
@@ -1449,6 +1462,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final shouldPrint = paymentResult['printTicket'] == true;
     final shouldDownloadInvoicePdf =
         paymentResult['downloadInvoicePdf'] == true;
+    final shouldAutoOpenDrawerWithoutTicket =
+      !shouldPrint && await _shouldAutoOpenDrawerWithoutTicket();
 
     if (method == payment.PaymentMethod.credit) {
       final canCredit = await _authorizeAction(
@@ -1699,16 +1714,31 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
 
     unawaited(_deleteTempCartFromDatabase(tempCartIdToDelete));
-    if (shouldPrint || shouldDownloadInvoicePdf) {
+    if (shouldPrint ||
+        shouldDownloadInvoicePdf ||
+        shouldAutoOpenDrawerWithoutTicket) {
       unawaited(
         _runSaleOutputs(
           saleId: saleId,
           shouldPrint: shouldPrint,
           shouldDownloadInvoicePdf: shouldDownloadInvoicePdf,
+          shouldAutoOpenDrawerWithoutTicket:
+              shouldAutoOpenDrawerWithoutTicket,
           isLayaway: isLayaway,
           receivedAmount: receivedAmount,
         ),
       );
+    }
+  }
+
+  Future<bool> _shouldAutoOpenDrawerWithoutTicket() async {
+    try {
+      final settings = await PrinterSettingsRepository.getOrCreate();
+      if (settings.autoOpenDrawerOnChargeWithoutTicket != 1) return false;
+      final printerName = (settings.selectedPrinterName ?? '').trim();
+      return printerName.isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 

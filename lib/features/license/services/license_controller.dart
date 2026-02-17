@@ -578,6 +578,25 @@ class LicenseController extends StateNotifier<LicenseState> {
       final existingStart = await identityStorage.getTrialStart();
       final nowUtc = DateTime.now().toUtc();
 
+      final demoConsumed = await identityStorage.isDemoConsumed();
+      if (demoConsumed && existingStart == null) {
+        _setUiError(
+          const LicenseUiError(
+            type: LicenseErrorType.notActivated,
+            title: 'Demo ya usada en este dispositivo',
+            message:
+                'Esta PC ya utilizó la prueba gratis. Para continuar, debes comprar una licencia.',
+            supportCode: 'LIC-DEMO-ALREADY-USED',
+            actions: [
+              LicenseAction.openWhatsapp,
+              LicenseAction.copySupportCode,
+            ],
+          ),
+          legacyErrorCode: 'DEMO_ALREADY_USED',
+        );
+        return false;
+      }
+
       // Si ya hay una identidad guardada, no permitir “re-registrar” el POS
       // con otro negocio (evita inconsistencias y abuso).
       final existingIdentity = await identityStorage.getIdentity();
@@ -628,6 +647,7 @@ class LicenseController extends StateNotifier<LicenseState> {
       }
 
       final trialStart = await identityStorage.ensureTrialStartNowIfMissing();
+      await identityStorage.markDemoConsumed();
 
       await identityStorage.saveBusinessProfile(
         businessName: negocio,

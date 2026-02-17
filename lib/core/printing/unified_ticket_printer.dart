@@ -267,6 +267,48 @@ class UnifiedTicketPrinter {
     return await printTicket(data: demoData, overrideCopies: 1);
   }
 
+  /// Intenta abrir la caja registradora enviando un trabajo mínimo a la
+  /// impresora de tickets configurada.
+  static Future<PrintTicketResult> openCashDrawerPulse() async {
+    try {
+      final company = await CompanyInfoRepository.getCurrentCompanyInfo();
+      final settings = await PrinterSettingsRepository.getOrCreate();
+
+      if (settings.selectedPrinterName == null ||
+          settings.selectedPrinterName!.isEmpty) {
+        return PrintTicketResult(
+          success: false,
+          message: 'No hay impresora configurada para abrir caja',
+          ticketNumber: 'DRAWER',
+        );
+      }
+
+      final layout = TicketLayoutConfig.fromPrinterSettings(settings);
+      final builder = TicketBuilder(layout: layout, company: company);
+      final pdf = builder.buildPdfFromLines(const <String>[' ', ' '], includeLogo: false);
+
+      final result = await ThermalPrinterService.printDocument(
+        document: pdf,
+        settings: settings,
+        overrideCopies: 1,
+      );
+
+      return PrintTicketResult(
+        success: result.success,
+        message: result.success
+            ? 'Pulso de apertura enviado a caja registradora'
+            : result.message,
+        ticketNumber: 'DRAWER',
+      );
+    } catch (e) {
+      return PrintTicketResult(
+        success: false,
+        message: 'Error al abrir caja: $e',
+        ticketNumber: 'DRAWER',
+      );
+    }
+  }
+
   /// Imprime una regla de ancho para verificar caracteres reales por línea.
   /// Recomendado para impresoras 80mm (576 dots): debe caber perfecto en 48.
   static Future<PrintTicketResult> printWidthRulerTest() async {

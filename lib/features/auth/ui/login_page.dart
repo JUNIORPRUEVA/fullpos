@@ -177,17 +177,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _openForgotPasswordDialog() async {
-    final usernameController = TextEditingController(
-      text: _usernameController.text.trim(),
-    );
-    final codeController = TextEditingController();
+    final tokenController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
 
     final service = PasswordResetService();
+    const recoveryUsername = 'admin';
 
-    String? requestId;
-    bool codeSent = false;
     bool loading = false;
     bool obscureNew = true;
     bool obscureConfirm = true;
@@ -201,49 +197,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (context, setDialogState) {
-              Future<void> sendCode() async {
-                final username = usernameController.text.trim();
-                if (username.isEmpty) {
-                  setDialogState(() {
-                    error = 'Ingresa el usuario administrador';
-                  });
-                  return;
-                }
-
-                setDialogState(() {
-                  loading = true;
-                  error = null;
-                  info = null;
-                });
-
-                try {
-                  final result = await service.requestCode(username: username);
-                  requestId = result.requestId;
-
-                  setDialogState(() {
-                    codeSent = true;
-                    info = 'Código enviado al WhatsApp registrado del negocio.';
-                  });
-                } catch (e) {
-                  setDialogState(() {
-                    error = e.toString().replaceFirst('Exception: ', '');
-                  });
-                } finally {
-                  setDialogState(() {
-                    loading = false;
-                  });
-                }
-              }
-
               Future<void> resetPassword() async {
-                final username = usernameController.text.trim();
-                final code = codeController.text.trim();
+                final token = tokenController.text.trim();
                 final newPassword = newPasswordController.text;
                 final confirmPassword = confirmPasswordController.text;
 
-                if (username.isEmpty || code.isEmpty) {
+                if (token.isEmpty) {
                   setDialogState(() {
-                    error = 'Completa usuario y código';
+                    error = 'Ingresa el token temporal de soporte';
                   });
                   return;
                 }
@@ -259,12 +220,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   });
                   return;
                 }
-                if (requestId == null || requestId!.isEmpty) {
-                  setDialogState(() {
-                    error = 'Primero solicita el código de reseteo';
-                  });
-                  return;
-                }
 
                 setDialogState(() {
                   loading = true;
@@ -273,19 +228,27 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 });
 
                 try {
-                  await service.confirmCode(
-                    username: username,
-                    requestId: requestId!,
-                    code: code,
+                  await service.confirmSupportToken(
+                    username: recoveryUsername,
+                    token: token,
                   );
 
-                  final user = await UsersRepository.getByUsername(username);
-                  if (user == null || user.id == null) {
-                    throw Exception('Ese usuario no existe en esta computadora.');
+                  var user = await UsersRepository.getByUsername(
+                    recoveryUsername,
+                  );
+
+                  if (user == null || user.id == null || !user.isAdmin) {
+                    final allUsers = await UsersRepository.getAll();
+                    for (final candidate in allUsers) {
+                      if (candidate.isAdmin && candidate.id != null) {
+                        user = candidate;
+                        break;
+                      }
+                    }
                   }
 
-                  if (!user.isAdmin) {
-                    throw Exception('Solo se permite resetear cuentas de administrador.');
+                  if (user == null || user.id == null || !user.isAdmin) {
+                    throw Exception('No se encontró una cuenta administrador en esta computadora.');
                   }
 
                   await UsersRepository.changePassword(user.id!, newPassword);
@@ -305,6 +268,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   );
                 } catch (e) {
+                  if (!dialogContext.mounted) return;
                   setDialogState(() {
                     error = e.toString().replaceFirst('Exception: ', '');
                   });
@@ -325,78 +289,70 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const Text(
+                        'Cuenta de recuperación: administrador local',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Solicita el token a soporte. Es válido por 15 minutos y de un solo uso.',
+                      ),
+                      const SizedBox(height: 10),
                       TextField(
-                        controller: usernameController,
+                        controller: tokenController,
                         enabled: !loading,
+                        textCapitalization: TextCapitalization.characters,
                         decoration: const InputDecoration(
-                          labelText: 'Usuario administrador',
+                          labelText: 'Token de soporte',
+                          hintText: 'ABCD-EF12-3456-7890',
                         ),
                       ),
                       const SizedBox(height: 10),
-                      if (!codeSent)
-                        const Text(
-                          'Se enviará un código por WhatsApp al teléfono del negocio registrado.',
-                        )
-                      else ...[
-                        TextField(
-                          controller: codeController,
-                          enabled: !loading,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(6),
-                          ],
-                          decoration: const InputDecoration(
-                            labelText: 'Código de 6 dígitos',
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: newPasswordController,
-                          enabled: !loading,
-                          obscureText: obscureNew,
-                          decoration: InputDecoration(
-                            labelText: 'Nueva contraseña',
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                obscureNew
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                              onPressed: loading
-                                  ? null
-                                  : () {
-                                      setDialogState(() {
-                                        obscureNew = !obscureNew;
-                                      });
-                                    },
+                      TextField(
+                        controller: newPasswordController,
+                        enabled: !loading,
+                        obscureText: obscureNew,
+                        decoration: InputDecoration(
+                          labelText: 'Nueva contraseña',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureNew
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
                             ),
+                            onPressed: loading
+                                ? null
+                                : () {
+                                    setDialogState(() {
+                                      obscureNew = !obscureNew;
+                                    });
+                                  },
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: confirmPasswordController,
-                          enabled: !loading,
-                          obscureText: obscureConfirm,
-                          decoration: InputDecoration(
-                            labelText: 'Confirmar nueva contraseña',
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                obscureConfirm
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                              onPressed: loading
-                                  ? null
-                                  : () {
-                                      setDialogState(() {
-                                        obscureConfirm = !obscureConfirm;
-                                      });
-                                    },
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: confirmPasswordController,
+                        enabled: !loading,
+                        obscureText: obscureConfirm,
+                        decoration: InputDecoration(
+                          labelText: 'Confirmar nueva contraseña',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureConfirm
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
                             ),
+                            onPressed: loading
+                                ? null
+                                : () {
+                                    setDialogState(() {
+                                      obscureConfirm = !obscureConfirm;
+                                    });
+                                  },
                           ),
                         ),
-                      ],
+                      ),
                       if (info != null) ...[
                         const SizedBox(height: 10),
                         Text(
@@ -419,28 +375,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     onPressed: loading ? null : () => Navigator.of(dialogContext).pop(),
                     child: const Text('Cerrar'),
                   ),
-                  if (!codeSent)
-                    FilledButton(
-                      onPressed: loading ? null : sendCode,
-                      child: loading
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Enviar código'),
-                    )
-                  else
-                    FilledButton(
-                      onPressed: loading ? null : resetPassword,
-                      child: loading
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Restablecer'),
-                    ),
+                  FilledButton(
+                    onPressed: loading ? null : resetPassword,
+                    child: loading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Validar token y restablecer'),
+                  ),
                 ],
               );
             },
@@ -448,8 +392,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         },
       );
     } finally {
-      usernameController.dispose();
-      codeController.dispose();
+      tokenController.dispose();
       newPasswordController.dispose();
       confirmPasswordController.dispose();
     }

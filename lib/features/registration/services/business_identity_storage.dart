@@ -30,6 +30,7 @@ class BusinessIdentityStorage {
   static const _kPhone = 'business.phone_v1';
   static const _kEmail = 'business.email_v1';
   static const _kTrialStartIso = 'business.trial_start_iso_v1';
+  static const _kDemoConsumed = 'business.demo_consumed_v1';
 
   Future<void> clearAll() async {
     final sp = await SharedPreferences.getInstance();
@@ -40,6 +41,17 @@ class BusinessIdentityStorage {
     await sp.remove(_kPhone);
     await sp.remove(_kEmail);
     await sp.remove(_kTrialStartIso);
+    await sp.remove(_kDemoConsumed);
+  }
+
+  Future<bool> isDemoConsumed() async {
+    final sp = await SharedPreferences.getInstance();
+    return sp.getBool(_kDemoConsumed) == true;
+  }
+
+  Future<void> markDemoConsumed() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool(_kDemoConsumed, true);
   }
 
   Future<String> ensureBusinessId() async {
