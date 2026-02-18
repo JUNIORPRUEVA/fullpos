@@ -511,9 +511,12 @@ class _PermissionsPageState extends State<PermissionsPage> {
   Widget build(BuildContext context) {
     final isAdmin = widget.user.isAdmin;
     final categories = _categories();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final border = scheme.outlineVariant.withOpacity(0.45);
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: scheme.surface,
       body: SafeArea(
         child: PermissionGate(
           permission: Permissions.settingsPermissions,
@@ -628,6 +631,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
     List<_PermissionCategory> categories, {
     required bool expandList,
   }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final border = scheme.outlineVariant.withOpacity(0.45);
+
     final activeModules = categories
         .where((cat) => _defsFor(cat.id).any((def) => def.read(_permissions)))
         .length;
@@ -664,11 +671,11 @@ class _PermissionsPageState extends State<PermissionsPage> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: Colors.grey.shade800,
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+            Expanded(child: Divider(color: border, thickness: 1)),
             const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -691,7 +698,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
         const SizedBox(height: 6),
         Text(
           'Visualiza y compara los módulos activos del rol.',
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          style: TextStyle(
+            color: scheme.onSurface.withOpacity(0.70),
+            fontSize: 12,
+          ),
         ),
         const SizedBox(height: 12),
         expandList
@@ -701,8 +711,12 @@ class _PermissionsPageState extends State<PermissionsPage> {
     );
 
     return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 0,
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: border),
+      ),
       child: Padding(padding: const EdgeInsets.all(18), child: content),
     );
   }
@@ -713,6 +727,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
     int total,
     int enabled,
   ) {
+    final scheme = Theme.of(context).colorScheme;
+    final border = scheme.outlineVariant.withOpacity(0.45);
     final progress = total == 0 ? 0.0 : enabled / total;
 
     return Material(
@@ -726,9 +742,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: selected
-                  ? category.color.withOpacity(0.6)
-                  : Colors.grey.shade200,
+              color: selected ? category.color.withOpacity(0.6) : border,
             ),
           ),
           child: Row(
@@ -753,7 +767,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                       category.label,
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Colors.black87,
+                        color: scheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -761,7 +775,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                       '$enabled de $total permisos activos',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade600,
+                        color: scheme.onSurface.withOpacity(0.70),
                       ),
                     ),
                   ],
@@ -788,7 +802,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                       child: LinearProgressIndicator(
                         value: progress,
                         color: category.color,
-                        backgroundColor: Colors.grey.shade200,
+                        backgroundColor: scheme.surfaceContainerHighest,
                       ),
                     ),
                   ),
@@ -802,17 +816,15 @@ class _PermissionsPageState extends State<PermissionsPage> {
   }
 
   Widget _buildHeader() {
+    final scheme = Theme.of(context).colorScheme;
+    final border = scheme.outlineVariant.withOpacity(0.45);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
       ),
       child: Row(
         children: [
@@ -848,7 +860,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
                 ),
                 Text(
                   widget.user.displayLabel,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  style: TextStyle(
+                    color: scheme.onSurface.withOpacity(0.70),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -893,6 +908,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
   }
 
   Widget _buildAdminMessage() {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -912,16 +928,20 @@ class _PermissionsPageState extends State<PermissionsPage> {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Usuario Administrador',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: scheme.onSurface,
+              ),
             ),
             const SizedBox(height: 12),
             Text(
               'Los administradores tienen acceso completo a todas las funciones del sistema.\nNo es posible restringir sus permisos.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.grey.shade600,
+                color: scheme.onSurface.withOpacity(0.70),
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -1063,13 +1083,20 @@ class _PermissionsPageState extends State<PermissionsPage> {
     List<_PermissionDef> defs, {
     required _UserPermissionCategory moduleId,
   }) {
+    final scheme = Theme.of(context).colorScheme;
+    final border = scheme.outlineVariant.withOpacity(0.45);
+
     final enabled = defs.where((d) => d.read(_permissions)).length;
     final screenHeight = MediaQuery.of(context).size.height;
     final listMaxHeight = (screenHeight * 0.55).clamp(280.0, 520.0);
 
     return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 0,
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1102,7 +1129,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
-                          color: Colors.grey.shade900,
+                          color: scheme.onSurface,
                         ),
                       ),
                     ),
@@ -1112,7 +1139,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.9),
+                        color: scheme.surface.withOpacity(0.95),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(color: color.withOpacity(0.5)),
                       ),
@@ -1130,7 +1157,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
                 const SizedBox(height: 10),
                 Text(
                   'Controla el acceso a operaciones clave del módulo.',
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  style: TextStyle(
+                    color: scheme.onSurface.withOpacity(0.75),
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 Wrap(
@@ -1171,17 +1201,19 @@ class _PermissionsPageState extends State<PermissionsPage> {
               child: defs.isEmpty
                   ? Text(
                       'No hay permisos definidos para este módulo.',
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(
+                        color: scheme.onSurface.withOpacity(0.70),
+                      ),
                     )
                   : ListView.separated(
                       padding: EdgeInsets.zero,
-                       physics: const BouncingScrollPhysics(),
-                       itemCount: defs.length,
-                       separatorBuilder: (_, _) => const SizedBox(height: 10),
-                       itemBuilder: (context, index) {
-                         final def = defs[index];
-                         return _buildPermissionTile(def, accentColor: color);
-                       },
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: defs.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final def = defs[index];
+                        return _buildPermissionTile(def, accentColor: color);
+                      },
                     ),
             ),
           ),
@@ -1194,17 +1226,18 @@ class _PermissionsPageState extends State<PermissionsPage> {
     _PermissionDef def, {
     required Color accentColor,
   }) {
+    final scheme = Theme.of(context).colorScheme;
     final value = def.read(_permissions);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      tileColor: Colors.white,
+      tileColor: scheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: Text(
         def.title,
         style: TextStyle(
           fontWeight: FontWeight.w600,
-          color: value ? Colors.black87 : Colors.grey.shade700,
+          color: value ? scheme.onSurface : scheme.onSurface.withOpacity(0.75),
         ),
       ),
       subtitle: Padding(
@@ -1214,7 +1247,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
           children: [
             Text(
               def.description,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurface.withOpacity(0.70),
+              ),
             ),
             const SizedBox(height: 6),
             _riskPill(def.riskLevel),

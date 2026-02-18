@@ -31,6 +31,7 @@ import '../features/purchases/ui/purchase_order_create_manual_page.dart';
 import '../features/purchases/ui/purchase_order_receive_page.dart';
 import '../features/purchases/ui/purchase_orders_list_page.dart';
 import '../features/reports/ui/reports_page.dart';
+import '../core/security/authz/blank_permission_gate.dart';
 import '../features/sales/ui/credits_page.dart';
 import '../features/sales/ui/quotes_page.dart';
 import '../features/sales/ui/returns_list_page.dart';
@@ -196,13 +197,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/login',
-        builder: (context, state) =>
-        FullposBrandScope(child: LoginPage()),
+        builder: (context, state) => FullposBrandScope(child: LoginPage()),
       ),
       GoRoute(
         path: '/force-change-password',
         builder: (context, state) =>
-        FullposBrandScope(child: ForceChangePasswordPage()),
+            FullposBrandScope(child: ForceChangePasswordPage()),
       ),
       GoRoute(
         path: '/operation-start',
@@ -240,10 +240,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/reports',
-            builder: (context, state) => PermissionGate(
+            builder: (context, state) => BlankPermissionGate(
               permission: Permissions.reportsView,
               autoPromptOnce: true,
               reason: 'Acceso a reportes',
+              resourceType: 'screen',
+              resourceId: 'reports',
               child: const ReportsPage(),
             ),
           ),
