@@ -130,6 +130,7 @@ class CloudSyncService {
       }
 
       final select = <String>['username'];
+      if (userCols.contains('cloud_username')) select.add('cloud_username');
       if (userCols.contains('email')) select.add('email');
       if (userCols.contains('role')) select.add('role');
       if (userCols.contains('is_active')) select.add('is_active');
@@ -147,8 +148,8 @@ class CloudSyncService {
 
       final users = <Map<String, dynamic>>[];
       for (final r in rows) {
-        final username = (r['username']?.toString() ?? '').trim();
-        if (username.isEmpty) continue;
+        final localUsername = (r['username']?.toString() ?? '').trim();
+        if (localUsername.isEmpty) continue;
 
         final isActive = userCols.contains('is_active')
             ? ((r['is_active'] as int?) ?? 1) == 1
@@ -156,6 +157,11 @@ class CloudSyncService {
         if (!isActive) continue;
 
         final role = (r['role']?.toString() ?? 'cashier').trim();
+        final cloudUsername = (r['cloud_username']?.toString() ?? '').trim();
+        final username =
+            (role.toLowerCase() == 'admin' && cloudUsername.isNotEmpty)
+            ? cloudUsername
+            : localUsername;
         final email = (r['email']?.toString() ?? '').trim();
         final displayName =
             (r['display_name']?.toString() ?? r['name']?.toString() ?? '')
@@ -219,6 +225,55 @@ class CloudSyncService {
         'Cloud users sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+    }
+  }
+
+  Future<bool> checkCloudUsernameAvailable({
+    required String cloudUsername,
+  }) async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return true;
+
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return false;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final payload = {
+        if (rnc.isNotEmpty) 'companyRnc': rnc,
+        if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+          'companyCloudId': cloudCompanyId,
+        'username': cloudUsername.trim(),
+      };
+
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/auth/username-available',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 6),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return false;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded['available'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -799,7 +854,7 @@ class CloudSyncService {
   }
 
   Future<bool> provisionAdminUser({
-    required String username,
+    required String cloudUsername,
     required String password,
   }) async {
     try {
@@ -823,14 +878,14 @@ class CloudSyncService {
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
         'companyName': settings.businessName,
-        'username': username.trim(),
+        'username': cloudUsername.trim(),
         'password': password,
         'role': 'admin',
       };
 
       final api = ApiClient(baseUrl: baseUrl);
       final response = await api.postJson(
-        provisionOwnerPath,
+        provisionUserPath,
         headers: headers,
         body: payload,
         timeout: const Duration(seconds: 8),

@@ -1097,6 +1097,7 @@ class AppDb {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           company_id INTEGER NOT NULL DEFAULT 1,
           username TEXT NOT NULL,
+          cloud_username TEXT,
           pin TEXT,
           role TEXT NOT NULL DEFAULT 'cashier',
           is_active INTEGER NOT NULL DEFAULT 1,
@@ -1957,7 +1958,12 @@ class AppDb {
         'cashbox_daily_id',
         'INTEGER REFERENCES ${DbTables.cashboxDaily}(id)',
       );
-      await _addColumnIfMissing(db, DbTables.cashSessions, 'business_date', 'TEXT');
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'business_date',
+        'TEXT',
+      );
       await _addColumnIfMissing(
         db,
         DbTables.cashSessions,
@@ -2622,6 +2628,7 @@ class AppDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_id INTEGER NOT NULL DEFAULT 1,
         username TEXT NOT NULL,
+        cloud_username TEXT,
         pin TEXT,
         role TEXT NOT NULL DEFAULT 'cashier',
         is_active INTEGER NOT NULL DEFAULT 1,
@@ -3374,6 +3381,7 @@ class AppDb {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company_id INTEGER NOT NULL DEFAULT 1,
             username TEXT NOT NULL,
+            cloud_username TEXT,
             pin TEXT,
             role TEXT NOT NULL DEFAULT 'cashier',
             is_active INTEGER NOT NULL DEFAULT 1,
@@ -3394,6 +3402,7 @@ class AppDb {
             id,
             company_id,
             username,
+            cloud_username,
             pin,
             role,
             is_active,
@@ -3408,6 +3417,7 @@ class AppDb {
             ${colOrDefault('id', 'NULL')},
             ${colOrDefault('company_id', '1')},
             ${colOrDefault('username', "''")},
+            ${colOrDefault('cloud_username', 'NULL')},
             ${colOrDefault('pin', 'NULL')},
             ${colOrDefault('role', "'cashier'")},
             ${colOrDefault('is_active', '1')},
@@ -4776,6 +4786,7 @@ class AppDb {
         'company_id',
         'INTEGER NOT NULL DEFAULT 1',
       );
+      await _addColumnIfMissing(db, DbTables.users, 'cloud_username', 'TEXT');
       await _addColumnIfMissing(db, DbTables.users, 'display_name', 'TEXT');
       await _addColumnIfMissing(db, DbTables.users, 'permissions', 'TEXT');
       await _addColumnIfMissing(db, DbTables.users, 'password_hash', 'TEXT');

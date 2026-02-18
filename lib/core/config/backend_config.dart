@@ -11,3 +11,6 @@ String get backendBaseUrl => AppConfig.apiBaseUrl;
 
 /// Endpoint para aprovisionar credenciales de acceso remoto (Owner).
 const String provisionOwnerPath = '/api/auth/provision-owner';
+
+/// Endpoint para aprovisionar/actualizar usuarios (admin) para FULLPOS Owner.
+const String provisionUserPath = '/api/auth/provision-user';

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -81,167 +83,170 @@ class _UsersPageState extends State<UsersPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-      backgroundColor: _scheme.surfaceVariant,
-      body: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _scheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: _scheme.shadow.withOpacity(0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Volver',
-                ),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _scheme.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
+        backgroundColor: _scheme.surfaceVariant,
+        body: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _scheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: _scheme.shadow.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
                   ),
-                  child: Icon(Icons.people, color: _scheme.primary, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'GESTIÓN DE USUARIOS',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      Text(
-                        'Administra los accesos al sistema',
-                        style: TextStyle(color: _scheme.onSurfaceVariant, fontSize: 12),
-                      ),
-                    ],
+                ],
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip: 'Volver',
                   ),
-                ),
-                // Buscador
-                SizedBox(
-                  width: 250,
-                  child: TextField(
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    decoration: InputDecoration(
-                      hintText: 'Buscar usuario...',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      filled: true,
-                      fillColor: _scheme.surfaceVariant,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _scheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: Icon(Icons.people, color: _scheme.primary, size: 24),
                   ),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: () => _showUserDialog(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('NUEVO USUARIO'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _scheme.primary,
-                    foregroundColor: _scheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Stats cards
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                _buildStatCard(
-                  'Total Usuarios',
-                  _users.length.toString(),
-                  Icons.people,
-                  _scheme.primary,
-                ),
-                const SizedBox(width: 12),
-                _buildStatCard(
-                  'Administradores',
-                  _users.where((u) => u.isAdmin).length.toString(),
-                  Icons.admin_panel_settings,
-                  _scheme.tertiary,
-                ),
-                const SizedBox(width: 12),
-                _buildStatCard(
-                  'Cajeros',
-                  _users.where((u) => u.isCashier).length.toString(),
-                  Icons.point_of_sale,
-                  _scheme.secondary,
-                ),
-                const SizedBox(width: 12),
-                _buildStatCard(
-                  'Activos',
-                  _users.where((u) => u.isActiveUser).length.toString(),
-                  Icons.check_circle,
-                  _scheme.tertiary,
-                ),
-              ],
-            ),
-          ),
-
-          // Lista de usuarios
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredUsers.isEmpty
-                ? Center(
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.person_off,
-                          size: 64,
-                          color: _scheme.outlineVariant,
-                        ),
-                        const SizedBox(height: 16),
                         Text(
-                          _searchQuery.isEmpty
-                              ? 'No hay usuarios registrados'
-                              : 'No se encontraron resultados',
-                          style: TextStyle(color: _scheme.onSurfaceVariant),
+                          'GESTIÓN DE USUARIOS',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Text(
+                          'Administra los accesos al sistema',
+                          style: TextStyle(
+                            color: _scheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredUsers.length,
-                    itemBuilder: (context, index) {
-                      final user = _filteredUsers[index];
-                      return _buildUserCard(user);
-                    },
                   ),
-          ),
-        ],
-      ),
+                  // Buscador
+                  SizedBox(
+                    width: 250,
+                    child: TextField(
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar usuario...',
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        filled: true,
+                        fillColor: _scheme.surfaceVariant,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _showUserDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('NUEVO USUARIO'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _scheme.primary,
+                      foregroundColor: _scheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Stats cards
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  _buildStatCard(
+                    'Total Usuarios',
+                    _users.length.toString(),
+                    Icons.people,
+                    _scheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildStatCard(
+                    'Administradores',
+                    _users.where((u) => u.isAdmin).length.toString(),
+                    Icons.admin_panel_settings,
+                    _scheme.tertiary,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildStatCard(
+                    'Cajeros',
+                    _users.where((u) => u.isCashier).length.toString(),
+                    Icons.point_of_sale,
+                    _scheme.secondary,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildStatCard(
+                    'Activos',
+                    _users.where((u) => u.isActiveUser).length.toString(),
+                    Icons.check_circle,
+                    _scheme.tertiary,
+                  ),
+                ],
+              ),
+            ),
+
+            // Lista de usuarios
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredUsers.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.person_off,
+                            size: 64,
+                            color: _scheme.outlineVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _searchQuery.isEmpty
+                                ? 'No hay usuarios registrados'
+                                : 'No se encontraron resultados',
+                            style: TextStyle(color: _scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filteredUsers.length,
+                      itemBuilder: (context, index) {
+                        final user = _filteredUsers[index];
+                        return _buildUserCard(user);
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -290,7 +295,10 @@ class _UsersPageState extends State<UsersPage> {
                 ),
                 Text(
                   title,
-                  style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -434,7 +442,9 @@ class _UsersPageState extends State<UsersPage> {
                     Icon(
                       user.pin != null ? Icons.lock : Icons.lock_open,
                       size: 14,
-                      color: user.pin != null ? _scheme.tertiary : _scheme.secondary,
+                      color: user.pin != null
+                          ? _scheme.tertiary
+                          : _scheme.secondary,
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -518,7 +528,10 @@ class _UsersPageState extends State<UsersPage> {
                         children: [
                           Icon(Icons.delete, size: 18, color: _scheme.error),
                           const SizedBox(width: 8),
-                          Text('Eliminar', style: TextStyle(color: _scheme.error)),
+                          Text(
+                            'Eliminar',
+                            style: TextStyle(color: _scheme.error),
+                          ),
                         ],
                       ),
                     ),
@@ -580,6 +593,9 @@ class _UsersPageState extends State<UsersPage> {
     final usernameController = TextEditingController(
       text: user?.username ?? '',
     );
+    final cloudUsernameController = TextEditingController(
+      text: user?.cloudUsername ?? '',
+    );
     final displayNameController = TextEditingController(
       text: user?.displayName ?? '',
     );
@@ -587,6 +603,11 @@ class _UsersPageState extends State<UsersPage> {
     final pinController = TextEditingController(text: user?.pin ?? '');
     String selectedRole = user?.role ?? 'cashier';
     bool obscurePassword = true;
+
+    bool cloudUsernameChecking = false;
+    bool? cloudUsernameAvailable;
+    String? cloudUsernameError;
+    Timer? cloudUsernameDebounce;
 
     final result = await showDialog<bool>(
       context: context,
@@ -636,6 +657,92 @@ class _UsersPageState extends State<UsersPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
+
+                  if (selectedRole == 'admin') ...[
+                    TextField(
+                      controller: cloudUsernameController,
+                      decoration: InputDecoration(
+                        labelText: 'Usuario de la nube *',
+                        hintText: 'ej: admin_101234567 o tu correo',
+                        prefixIcon: const Icon(Icons.cloud),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        helperText:
+                            'Este usuario es para iniciar sesión en FULLPOS Owner (nube).',
+                        errorText: cloudUsernameError,
+                        suffixIcon: cloudUsernameChecking
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : (cloudUsernameAvailable == null)
+                            ? null
+                            : Icon(
+                                cloudUsernameAvailable == true
+                                    ? Icons.check_circle
+                                    : Icons.error,
+                                color: cloudUsernameAvailable == true
+                                    ? _scheme.tertiary
+                                    : _scheme.error,
+                              ),
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[a-z0-9._@-]'),
+                        ),
+                        LengthLimitingTextInputFormatter(50),
+                      ],
+                      onChanged: (v) {
+                        final value = v.trim().toLowerCase();
+                        if (value != v) {
+                          cloudUsernameController.value =
+                              cloudUsernameController.value.copyWith(
+                                text: value,
+                                selection: TextSelection.collapsed(
+                                  offset: value.length,
+                                ),
+                              );
+                        }
+                        setDialogState(() {
+                          cloudUsernameError = null;
+                          cloudUsernameAvailable = null;
+                        });
+
+                        cloudUsernameDebounce?.cancel();
+                        if (value.length < 3) return;
+                        cloudUsernameDebounce = Timer(
+                          const Duration(milliseconds: 500),
+                          () async {
+                            setDialogState(() {
+                              cloudUsernameChecking = true;
+                              cloudUsernameError = null;
+                            });
+                            final ok = await CloudSyncService.instance
+                                .checkCloudUsernameAvailable(
+                                  cloudUsername: value,
+                                );
+                            if (!context.mounted) return;
+                            setDialogState(() {
+                              cloudUsernameChecking = false;
+                              cloudUsernameAvailable = ok;
+                              if (!ok) {
+                                cloudUsernameError =
+                                    'Ese usuario ya existe en la nube o no se pudo validar';
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   // Display Name
                   TextField(
@@ -733,8 +840,11 @@ class _UsersPageState extends State<UsersPage> {
                                 _scheme.tertiary,
                                 selectedRole,
                                 user?.username == 'admin',
-                                (role) =>
-                                    setDialogState(() => selectedRole = role),
+                                (role) => setDialogState(() {
+                                  selectedRole = role;
+                                  cloudUsernameError = null;
+                                  cloudUsernameAvailable = null;
+                                }),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -746,8 +856,11 @@ class _UsersPageState extends State<UsersPage> {
                                 _scheme.secondary,
                                 selectedRole,
                                 user?.username == 'admin',
-                                (role) =>
-                                    setDialogState(() => selectedRole = role),
+                                (role) => setDialogState(() {
+                                  selectedRole = role;
+                                  cloudUsernameError = null;
+                                  cloudUsernameAvailable = null;
+                                }),
                               ),
                             ),
                           ],
@@ -768,6 +881,7 @@ class _UsersPageState extends State<UsersPage> {
               onPressed: () async {
                 final username = usernameController.text.trim();
                 final pin = pinController.text.trim();
+                final cloudUsername = cloudUsernameController.text.trim();
 
                 if (username.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -842,6 +956,54 @@ class _UsersPageState extends State<UsersPage> {
                   return;
                 }
 
+                // Validación de usuario cloud para Admin
+                if (selectedRole == 'admin') {
+                  if (cloudUsername.isEmpty || cloudUsername.length < 3) {
+                    setDialogState(() {
+                      cloudUsernameError =
+                          'Usuario de la nube requerido (mínimo 3 caracteres)';
+                    });
+                    return;
+                  }
+
+                  // Validar disponibilidad en nube antes de guardar
+                  setDialogState(() {
+                    cloudUsernameChecking = true;
+                    cloudUsernameError = null;
+                  });
+                  final ok = await CloudSyncService.instance
+                      .checkCloudUsernameAvailable(
+                        cloudUsername: cloudUsername.toLowerCase(),
+                      );
+                  if (!context.mounted) return;
+                  setDialogState(() {
+                    cloudUsernameChecking = false;
+                    cloudUsernameAvailable = ok;
+                    if (!ok) {
+                      cloudUsernameError =
+                          'Ese usuario ya existe en la nube o no se pudo validar';
+                    }
+                  });
+                  if (!ok) return;
+
+                  // Si está editando y cambió el usuario cloud, debe indicar contraseña
+                  final prevCloud = (user?.cloudUsername ?? '')
+                      .trim()
+                      .toLowerCase();
+                  final nextCloud = cloudUsername.trim().toLowerCase();
+                  if (isEditing && prevCloud != nextCloud && password.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Para cambiar el usuario de la nube, indique una contraseña',
+                        ),
+                        backgroundColor: _scheme.secondary,
+                      ),
+                    );
+                    return;
+                  }
+                }
+
                 Navigator.pop(context, true);
               },
               style: ElevatedButton.styleFrom(
@@ -858,6 +1020,7 @@ class _UsersPageState extends State<UsersPage> {
     if (result == true) {
       final now = DateTime.now().millisecondsSinceEpoch;
       final username = usernameController.text.trim().toLowerCase();
+      final cloudUsername = cloudUsernameController.text.trim().toLowerCase();
       final displayName = displayNameController.text.trim();
       final password = passwordController.text;
       final pin = pinController.text.trim();
@@ -867,6 +1030,9 @@ class _UsersPageState extends State<UsersPage> {
           await UsersRepository.update(
             user.copyWith(
               username: username,
+              cloudUsername: selectedRole == 'admin'
+                  ? (cloudUsername.isEmpty ? null : cloudUsername)
+                  : null,
               displayName: displayName.isEmpty ? null : displayName,
               pin: pin.isEmpty ? null : pin,
               role: selectedRole,
@@ -877,9 +1043,11 @@ class _UsersPageState extends State<UsersPage> {
           if (password.isNotEmpty) {
             await UsersRepository.changePassword(user.id!, password);
           }
-          if (selectedRole == 'admin' && password.isNotEmpty) {
+          if (selectedRole == 'admin' &&
+              cloudUsername.isNotEmpty &&
+              password.isNotEmpty) {
             await CloudSyncService.instance.provisionAdminUser(
-              username: username,
+              cloudUsername: cloudUsername,
               password: password,
             );
           }
@@ -889,6 +1057,9 @@ class _UsersPageState extends State<UsersPage> {
           await UsersRepository.create(
             UserModel(
               username: username,
+              cloudUsername: selectedRole == 'admin'
+                  ? (cloudUsername.isEmpty ? null : cloudUsername)
+                  : null,
               displayName: displayName.isEmpty ? null : displayName,
               passwordHash: passwordHash,
               pin: pin.isEmpty ? null : pin,
@@ -899,7 +1070,7 @@ class _UsersPageState extends State<UsersPage> {
           );
           if (selectedRole == 'admin') {
             await CloudSyncService.instance.provisionAdminUser(
-              username: username,
+              cloudUsername: cloudUsername,
               password: password,
             );
           }
@@ -957,7 +1128,11 @@ class _UsersPageState extends State<UsersPage> {
         ),
         child: Column(
           children: [
-            Icon(icon, color: isSelected ? color : _scheme.onSurfaceVariant, size: 28),
+            Icon(
+              icon,
+              color: isSelected ? color : _scheme.onSurfaceVariant,
+              size: 28,
+            ),
             const SizedBox(height: 4),
             Text(
               label,

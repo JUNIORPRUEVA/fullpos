@@ -3,6 +3,7 @@ class UserModel {
   final int? id;
   final int companyId;
   final String username;
+  final String? cloudUsername;
   final String? displayName;
   final String? pin;
   final String? passwordHash;
@@ -17,6 +18,7 @@ class UserModel {
     this.id,
     this.companyId = 1,
     required this.username,
+    this.cloudUsername,
     this.displayName,
     this.pin,
     this.passwordHash,
@@ -34,14 +36,18 @@ class UserModel {
   bool get isActiveUser => isActive == 1;
   bool get hasPassword => passwordHash != null && passwordHash!.isNotEmpty;
 
-  String get roleLabel =>
-      isAdmin ? 'Administrador' : isSupervisor ? 'Supervisor' : 'Cajero';
+  String get roleLabel => isAdmin
+      ? 'Administrador'
+      : isSupervisor
+      ? 'Supervisor'
+      : 'Cajero';
   String get displayLabel => displayName ?? username;
 
   Map<String, dynamic> toMap() => {
     if (id != null) 'id': id,
     'company_id': companyId,
     'username': username,
+    'cloud_username': cloudUsername,
     'display_name': displayName,
     'pin': pin,
     'password_hash': passwordHash,
@@ -57,6 +63,7 @@ class UserModel {
     id: map['id'] as int?,
     companyId: map['company_id'] as int? ?? 1,
     username: map['username'] as String,
+    cloudUsername: map['cloud_username'] as String?,
     displayName: map['display_name'] as String?,
     pin: map['pin'] as String?,
     passwordHash: map['password_hash'] as String?,
@@ -72,6 +79,7 @@ class UserModel {
     int? id,
     int? companyId,
     String? username,
+    String? cloudUsername,
     String? displayName,
     String? pin,
     String? passwordHash,
@@ -85,6 +93,7 @@ class UserModel {
     id: id ?? this.id,
     companyId: companyId ?? this.companyId,
     username: username ?? this.username,
+    cloudUsername: cloudUsername ?? this.cloudUsername,
     displayName: displayName ?? this.displayName,
     pin: pin ?? this.pin,
     passwordHash: passwordHash ?? this.passwordHash,
@@ -104,7 +113,7 @@ class UserPermissions {
   final bool canVoidSale;
   final bool canApplyDiscount;
   final bool canViewSalesHistory;
-  
+
   // Productos
   final bool canViewProducts;
   final bool canEditProducts;
@@ -114,12 +123,12 @@ class UserPermissions {
   // Costos / Ganancias (finanzas de productos)
   final bool canViewPurchasePrice;
   final bool canViewProfit;
-  
+
   // Clientes
   final bool canViewClients;
   final bool canEditClients;
   final bool canDeleteClients;
-  
+
   // Caja
   final bool canOpenCash;
   final bool canCloseCash;
@@ -130,28 +139,28 @@ class UserPermissions {
   final bool canOpenShift;
   final bool canCloseShift;
   final bool canExitWithOpenShift;
-  
+
   // Reportes
   final bool canViewReports;
   final bool canExportReports;
-  
+
   // Cotizaciones
   final bool canCreateQuotes;
   final bool canViewQuotes;
-  
+
   // Herramientas
   final bool canAccessTools;
-  
+
   // Devoluciones
   final bool canProcessReturns;
-  
+
   // Créditos
   final bool canViewCredits;
   final bool canManageCredits;
-  
+
   // Usuarios (solo admin normalmente)
   final bool canManageUsers;
-  
+
   // Configuración
   final bool canAccessSettings;
 
@@ -192,39 +201,39 @@ class UserPermissions {
 
   /// Sin permisos (deny-all)
   factory UserPermissions.none() => const UserPermissions(
-        canSell: false,
-        canVoidSale: false,
-        canApplyDiscount: false,
-        canViewSalesHistory: false,
-        canViewProducts: false,
-        canEditProducts: false,
-        canDeleteProducts: false,
-        canAdjustStock: false,
-        canViewPurchasePrice: false,
-        canViewProfit: false,
-        canViewClients: false,
-        canEditClients: false,
-        canDeleteClients: false,
-        canOpenCash: false,
-        canCloseCash: false,
-        canViewCashHistory: false,
-        canMakeCashMovements: false,
-        canOpenCashbox: false,
-        canCloseCashbox: false,
-        canOpenShift: false,
-        canCloseShift: false,
-        canExitWithOpenShift: false,
-        canViewReports: false,
-        canExportReports: false,
-        canCreateQuotes: false,
-        canViewQuotes: false,
-        canAccessTools: false,
-        canProcessReturns: false,
-        canViewCredits: false,
-        canManageCredits: false,
-        canManageUsers: false,
-        canAccessSettings: false,
-      );
+    canSell: false,
+    canVoidSale: false,
+    canApplyDiscount: false,
+    canViewSalesHistory: false,
+    canViewProducts: false,
+    canEditProducts: false,
+    canDeleteProducts: false,
+    canAdjustStock: false,
+    canViewPurchasePrice: false,
+    canViewProfit: false,
+    canViewClients: false,
+    canEditClients: false,
+    canDeleteClients: false,
+    canOpenCash: false,
+    canCloseCash: false,
+    canViewCashHistory: false,
+    canMakeCashMovements: false,
+    canOpenCashbox: false,
+    canCloseCashbox: false,
+    canOpenShift: false,
+    canCloseShift: false,
+    canExitWithOpenShift: false,
+    canViewReports: false,
+    canExportReports: false,
+    canCreateQuotes: false,
+    canViewQuotes: false,
+    canAccessTools: false,
+    canProcessReturns: false,
+    canViewCredits: false,
+    canManageCredits: false,
+    canManageUsers: false,
+    canAccessSettings: false,
+  );
 
   /// Permisos completos para admin
   factory UserPermissions.admin() => const UserPermissions(
@@ -341,7 +350,8 @@ class UserPermissions {
       canVoidSale: map['can_void_sale'] as bool? ?? defaults.canVoidSale,
       canApplyDiscount:
           map['can_apply_discount'] as bool? ?? defaults.canApplyDiscount,
-      canViewSalesHistory: map['can_view_sales_history'] as bool? ??
+      canViewSalesHistory:
+          map['can_view_sales_history'] as bool? ??
           defaults.canViewSalesHistory,
       canViewProducts:
           map['can_view_products'] as bool? ?? defaults.canViewProducts,
@@ -351,37 +361,40 @@ class UserPermissions {
           map['can_delete_products'] as bool? ?? defaults.canDeleteProducts,
       canAdjustStock:
           map['can_adjust_stock'] as bool? ?? defaults.canAdjustStock,
-      canViewPurchasePrice: map['can_view_purchase_price'] as bool? ??
+      canViewPurchasePrice:
+          map['can_view_purchase_price'] as bool? ??
           defaults.canViewPurchasePrice,
-      canViewProfit:
-          map['can_view_profit'] as bool? ?? defaults.canViewProfit,
-      canViewClients: map['can_view_clients'] as bool? ?? defaults.canViewClients,
-      canEditClients: map['can_edit_clients'] as bool? ?? defaults.canEditClients,
+      canViewProfit: map['can_view_profit'] as bool? ?? defaults.canViewProfit,
+      canViewClients:
+          map['can_view_clients'] as bool? ?? defaults.canViewClients,
+      canEditClients:
+          map['can_edit_clients'] as bool? ?? defaults.canEditClients,
       canDeleteClients:
           map['can_delete_clients'] as bool? ?? defaults.canDeleteClients,
-        canOpenCash: map['can_open_cash'] as bool? ?? defaults.canOpenCash,
-        canCloseCash: map['can_close_cash'] as bool? ?? defaults.canCloseCash,
+      canOpenCash: map['can_open_cash'] as bool? ?? defaults.canOpenCash,
+      canCloseCash: map['can_close_cash'] as bool? ?? defaults.canCloseCash,
       canViewCashHistory:
           map['can_view_cash_history'] as bool? ?? defaults.canViewCashHistory,
-      canMakeCashMovements: map['can_make_cash_movements'] as bool? ??
+      canMakeCashMovements:
+          map['can_make_cash_movements'] as bool? ??
           defaults.canMakeCashMovements,
-        canOpenCashbox:
+      canOpenCashbox:
           map['can_open_cashbox'] as bool? ??
           map['can_open_cash'] as bool? ??
           defaults.canOpenCashbox,
-        canCloseCashbox:
+      canCloseCashbox:
           map['can_close_cashbox'] as bool? ??
           map['can_close_cash'] as bool? ??
           defaults.canCloseCashbox,
-        canOpenShift:
+      canOpenShift:
           map['can_open_shift'] as bool? ??
           map['can_open_cash'] as bool? ??
           defaults.canOpenShift,
-        canCloseShift:
+      canCloseShift:
           map['can_close_shift'] as bool? ??
           map['can_close_cash'] as bool? ??
           defaults.canCloseShift,
-        canExitWithOpenShift:
+      canExitWithOpenShift:
           map['can_exit_with_open_shift'] as bool? ??
           defaults.canExitWithOpenShift,
       canViewReports:
@@ -390,8 +403,7 @@ class UserPermissions {
           map['can_export_reports'] as bool? ?? defaults.canExportReports,
       canCreateQuotes:
           map['can_create_quotes'] as bool? ?? defaults.canCreateQuotes,
-      canViewQuotes:
-          map['can_view_quotes'] as bool? ?? defaults.canViewQuotes,
+      canViewQuotes: map['can_view_quotes'] as bool? ?? defaults.canViewQuotes,
       canAccessTools:
           map['can_access_tools'] as bool? ?? defaults.canAccessTools,
       canProcessReturns:
