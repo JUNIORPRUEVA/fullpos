@@ -7,6 +7,7 @@ import '../constants/app_sizes.dart';
 import '../theme/app_status_theme.dart';
 import '../theme/color_utils.dart';
 import '../session/session_manager.dart';
+import '../session/ui_preferences.dart';
 import '../window/window_service.dart';
 import '../../theme/app_colors.dart';
 import '../../features/auth/data/auth_repository.dart';
@@ -37,8 +38,10 @@ class Topbar extends ConsumerStatefulWidget {
 class _TopbarState extends ConsumerState<Topbar> {
   late Timer _cashTimer;
   StreamSubscription<void>? _sessionSub;
+  StreamSubscription<void>? _uiPrefsSub;
   String? _username;
   String? _displayName;
+  String? _profileImagePath;
 
   bool _canAccessCash = false;
   int? _openCashSessionId;
@@ -55,7 +58,9 @@ class _TopbarState extends ConsumerState<Topbar> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Turno abierto'),
-          content: Text('El turno #$_openCashSessionId está abierto. Debes cerrar turno antes de salir.'),
+          content: Text(
+            'El turno #$_openCashSessionId está abierto. Debes cerrar turno antes de salir.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, 'close_session'),
@@ -73,7 +78,10 @@ class _TopbarState extends ConsumerState<Topbar> {
         final sessionId = _openCashSessionId;
         if (sessionId == null || !context.mounted) return;
 
-        final closed = await CashCloseDialog.show(context, sessionId: sessionId);
+        final closed = await CashCloseDialog.show(
+          context,
+          sessionId: sessionId,
+        );
         await _loadOpenCashSessionId();
         if (!context.mounted) return;
 
@@ -93,7 +101,10 @@ class _TopbarState extends ConsumerState<Topbar> {
         title: const Text('Cerrar aplicación'),
         content: const Text('¿Estás seguro que deseas cerrar la aplicación?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
@@ -115,11 +126,18 @@ class _TopbarState extends ConsumerState<Topbar> {
   void initState() {
     super.initState();
     _loadUserSummary();
+    _loadProfileImage();
     _sessionSub = SessionManager.changes.listen((_) {
       if (!mounted) return;
       _loadUserSummary();
+      _loadProfileImage();
       _loadCashAccess();
       _loadOpenCashSessionId();
+    });
+
+    _uiPrefsSub = UiPreferences.changes.listen((_) {
+      if (!mounted) return;
+      _loadProfileImage();
     });
     _loadCashAccess();
     _loadOpenCashSessionId();
@@ -134,6 +152,7 @@ class _TopbarState extends ConsumerState<Topbar> {
   void dispose() {
     _cashTimer.cancel();
     _sessionSub?.cancel();
+    _uiPrefsSub?.cancel();
     super.dispose();
   }
 
@@ -148,6 +167,36 @@ class _TopbarState extends ConsumerState<Topbar> {
           ? displayName.trim()
           : null;
     });
+  }
+
+  String? _buildUserKey({required int? userId, required String? username}) {
+    if (userId != null) return 'id:$userId';
+    final u = username?.trim();
+    if (u == null || u.isEmpty) return null;
+    return 'u:$u';
+  }
+
+  Future<void> _loadProfileImage() async {
+    final userId = await SessionManager.userId();
+    final username = await SessionManager.username();
+    final userKey = _buildUserKey(userId: userId, username: username);
+    if (userKey == null) {
+      if (!mounted) return;
+      setState(() => _profileImagePath = null);
+      return;
+    }
+
+    String? path = await UiPreferences.getProfileImagePath(userKey);
+    if (path != null) {
+      final exists = await File(path).exists();
+      if (!exists) {
+        await UiPreferences.setProfileImagePath(userKey, null);
+        path = null;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _profileImagePath = path);
   }
 
   Future<void> _loadCashAccess() async {
@@ -215,9 +264,10 @@ class _TopbarState extends ConsumerState<Topbar> {
         final padL = AppSizes.paddingL * s;
         final spaceS = AppSizes.spaceS * s;
         final spaceM = AppSizes.spaceM * s;
-        final horizontalPad = ((isCompact ? padM : padL) * 0.75).clamp(10.0, 20.0);
-
-
+        final horizontalPad = ((isCompact ? padM : padL) * 0.75).clamp(
+          10.0,
+          20.0,
+        );
 
         Widget actionIconButton({
           required IconData icon,
@@ -236,7 +286,8 @@ class _TopbarState extends ConsumerState<Topbar> {
                 scheme.surface.withValues(alpha: 0.72),
                 appBarBg.withValues(alpha: 0.18),
               );
-          final border = borderColor ?? scheme.outlineVariant.withValues(alpha: 0.25);
+          final border =
+              borderColor ?? scheme.outlineVariant.withValues(alpha: 0.25);
           final fg = customFg ?? ColorUtils.ensureReadableColor(appBarFg, bg);
 
           final shadowAlpha = borderWidth > 0 ? 0.12 : 0.06;
@@ -257,7 +308,9 @@ class _TopbarState extends ConsumerState<Topbar> {
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(12),
-                    border: borderWidth > 0 ? Border.all(color: border, width: borderWidth) : null,
+                    border: borderWidth > 0
+                        ? Border.all(color: border, width: borderWidth)
+                        : null,
                     boxShadow: [
                       BoxShadow(
                         color: scheme.shadow.withValues(alpha: shadowAlpha),
@@ -272,8 +325,6 @@ class _TopbarState extends ConsumerState<Topbar> {
             ),
           );
         }
-
-
 
         Widget windowControls() {
           if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
@@ -365,137 +416,144 @@ class _TopbarState extends ConsumerState<Topbar> {
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.35,
                     height: 1.0,
-                    fontFamilyFallback: const ['Inter', 'Segoe UI', 'Roboto', 'Arial'],
+                    fontFamilyFallback: const [
+                      'Inter',
+                      'Segoe UI',
+                      'Roboto',
+                      'Arial',
+                    ],
                   ),
                 ),
               ),
               SizedBox(width: spaceS * 0.6),
 
               // Icono de estado de caja (caja de dinero realista) — colocado antes del perfil
-              Builder(builder: (context) {
-                final isOpen = _openCashSessionId != null;
-                final statusColor = isOpen
-                    ? (status?.success ?? scheme.tertiary)
-                    : (status?.error ?? scheme.error);
-                final tooltipBase = isOpen
-                    ? 'Caja abierta (turno #$_openCashSessionId)\nClic para ver panel'
-                    : 'Caja cerrada\nClic para abrir';
-                final tooltip = _canAccessCash
-                    ? tooltipBase
-                    : '$tooltipBase\nSi no tienes permiso, te pedirá autorización (PIN).';
+              Builder(
+                builder: (context) {
+                  final isOpen = _openCashSessionId != null;
+                  final statusColor = isOpen
+                      ? (status?.success ?? scheme.tertiary)
+                      : (status?.error ?? scheme.error);
+                  final tooltipBase = isOpen
+                      ? 'Caja abierta (turno #$_openCashSessionId)\nClic para ver panel'
+                      : 'Caja cerrada\nClic para abrir';
+                  final tooltip = _canAccessCash
+                      ? tooltipBase
+                      : '$tooltipBase\nSi no tienes permiso, te pedirá autorización (PIN).';
 
-                final boxBg = Color.alphaBlend(
-                  Colors.white.withValues(alpha: 0.10),
-                  appBarBg.withValues(alpha: 0.08),
-                );
-                final boxBorder = isOpen
-                    ? statusColor.withValues(alpha: 0.45)
-                    : appBarFg.withValues(alpha: 0.22);
-                final hoverBg = Color.alphaBlend(
-                  Colors.white.withValues(alpha: 0.16),
-                  appBarBg.withValues(alpha: 0.12),
-                );
-                final hoverBorder = Colors.white.withValues(alpha: 0.3);
+                  final boxBg = Color.alphaBlend(
+                    Colors.white.withValues(alpha: 0.10),
+                    appBarBg.withValues(alpha: 0.08),
+                  );
+                  final boxBorder = isOpen
+                      ? statusColor.withValues(alpha: 0.45)
+                      : appBarFg.withValues(alpha: 0.22);
+                  final hoverBg = Color.alphaBlend(
+                    Colors.white.withValues(alpha: 0.16),
+                    appBarBg.withValues(alpha: 0.12),
+                  );
+                  final hoverBorder = Colors.white.withValues(alpha: 0.3);
 
-                return Tooltip(
-                  message: tooltip,
-                  waitDuration: const Duration(milliseconds: 350),
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    onEnter: (_) => setState(() => _isCashHover = true),
-                    onExit: (_) => setState(() => _isCashHover = false),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InkWell(
-                        onTap: _onCashPressed,
+                  return Tooltip(
+                    message: tooltip,
+                    waitDuration: const Duration(milliseconds: 350),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      onEnter: (_) => setState(() => _isCashHover = true),
+                      onExit: (_) => setState(() => _isCashHover = false),
+                      child: Material(
+                        color: Colors.transparent,
                         borderRadius: BorderRadius.circular(10),
-                         child: AnimatedContainer(
-                           duration: const Duration(milliseconds: 140),
-                           padding: EdgeInsets.symmetric(
-                             horizontal: 6.0 * s,
-                             vertical: 4.0 * s,
-                           ),
-                           decoration: BoxDecoration(
-                             color: _isCashHover ? hoverBg : boxBg,
-                             borderRadius: BorderRadius.circular(9),
-                             border: Border.all(
-                               color: _isCashHover ? hoverBorder : boxBorder,
-                               width: 1.0,
-                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: scheme.shadow.withValues(
-                                  alpha: _isCashHover ? 0.12 : 0.06,
-                                ),
-                                blurRadius: _isCashHover ? 12 : 8,
-                                offset: const Offset(0, 3),
+                        child: InkWell(
+                          onTap: _onCashPressed,
+                          borderRadius: BorderRadius.circular(10),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 140),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6.0 * s,
+                              vertical: 4.0 * s,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _isCashHover ? hoverBg : boxBg,
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(
+                                color: _isCashHover ? hoverBorder : boxBorder,
+                                width: 1.0,
                               ),
-                            ],
-                          ),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                             Icon(
-                               isOpen
-                                   ? Icons.account_balance_wallet
-                                   : Icons.inventory_2_rounded,
-                               size: (18 * s).clamp(16.0, 22.0),
-                               color: appBarFg.withValues(
-                                 alpha: _isCashHover ? 1.0 : 0.92,
-                               ),
-                             ),
-                             if (isOpen)
-                               Positioned(
-                                 top: -5 * s,
-                                 right: -5 * s,
-                                 child: Container(
-                                   padding: EdgeInsets.all(3.0 * s),
-                                   decoration: BoxDecoration(
-                                     color: statusColor,
-                                     shape: BoxShape.circle,
-                                     boxShadow: [
-                                        BoxShadow(
-                                          color: statusColor.withValues(
-                                            alpha: 0.18,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: scheme.shadow.withValues(
+                                    alpha: _isCashHover ? 0.12 : 0.06,
+                                  ),
+                                  blurRadius: _isCashHover ? 12 : 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Icon(
+                                  isOpen
+                                      ? Icons.account_balance_wallet
+                                      : Icons.inventory_2_rounded,
+                                  size: (18 * s).clamp(16.0, 22.0),
+                                  color: appBarFg.withValues(
+                                    alpha: _isCashHover ? 1.0 : 0.92,
+                                  ),
+                                ),
+                                if (isOpen)
+                                  Positioned(
+                                    top: -5 * s,
+                                    right: -5 * s,
+                                    child: Container(
+                                      padding: EdgeInsets.all(3.0 * s),
+                                      decoration: BoxDecoration(
+                                        color: statusColor,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: statusColor.withValues(
+                                              alpha: 0.18,
+                                            ),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
                                           ),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
+                                      child: Icon(
+                                        Icons.attach_money,
+                                        size: (10 * s).clamp(9.0, 12.0),
+                                        color: scheme.onPrimary,
+                                      ),
                                     ),
-                                   child: Icon(
-                                     Icons.attach_money,
-                                     size: (10 * s).clamp(9.0, 12.0),
-                                     color: scheme.onPrimary,
-                                   ),
-                                 ),
-                               )
-                             else
-                               Positioned(
-                                 top: -5 * s,
-                                 right: -5 * s,
-                                 child: Container(
-                                   padding: EdgeInsets.all(3.0 * s),
-                                   decoration: BoxDecoration(
-                                     color: appBarFg.withValues(alpha: 0.10),
-                                     shape: BoxShape.circle,
-                                   ),
-                                   child: Icon(
-                                     Icons.lock_outline,
-                                     size: (10 * s).clamp(9.0, 12.0),
-                                     color: appBarFg.withValues(alpha: 0.70),
-                                   ),
-                                 ),
-                               ),
-                            ],
+                                  )
+                                else
+                                  Positioned(
+                                    top: -5 * s,
+                                    right: -5 * s,
+                                    child: Container(
+                                      padding: EdgeInsets.all(3.0 * s),
+                                      decoration: BoxDecoration(
+                                        color: appBarFg.withValues(alpha: 0.10),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.lock_outline,
+                                        size: (10 * s).clamp(9.0, 12.0),
+                                        color: appBarFg.withValues(alpha: 0.70),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                },
+              ),
 
               SizedBox(width: spaceS / 1.5),
               // Línea vertical elegante separando icono de caja y perfil/nombre
@@ -516,7 +574,9 @@ class _TopbarState extends ConsumerState<Topbar> {
                   onTap: () => context.go('/account'),
                   borderRadius: BorderRadius.circular(999),
                   child: Container(
-                    constraints: BoxConstraints(maxWidth: (isCompact ? 160.0 : 240.0) * s),
+                    constraints: BoxConstraints(
+                      maxWidth: (isCompact ? 160.0 : 240.0) * s,
+                    ),
                     padding: EdgeInsets.symmetric(
                       horizontal: (12 * s).clamp(10.0, 14.0),
                       vertical: (8 * s).clamp(7.0, 10.0),
@@ -534,11 +594,16 @@ class _TopbarState extends ConsumerState<Topbar> {
                         CircleAvatar(
                           radius: (14 * s).clamp(12.0, 14.0),
                           backgroundColor: AppColors.lightBlueHover,
-                          child: Icon(
-                            Icons.person,
-                            size: (14 * s).clamp(12.0, 14.0),
-                            color: AppColors.darkBlue,
-                          ),
+                          backgroundImage: (_profileImagePath != null)
+                              ? FileImage(File(_profileImagePath!))
+                              : null,
+                          child: (_profileImagePath == null)
+                              ? Icon(
+                                  Icons.person,
+                                  size: (14 * s).clamp(12.0, 14.0),
+                                  color: AppColors.darkBlue,
+                                )
+                              : null,
                         ),
                         SizedBox(width: (8 * s).clamp(6.0, 10.0)),
                         Flexible(

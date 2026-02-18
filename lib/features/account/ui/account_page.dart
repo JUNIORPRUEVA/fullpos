@@ -1,8 +1,14 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/session/ui_preferences.dart';
 import '../../../core/session/session_manager.dart';
+import '../../../core/window/window_service.dart';
 import '../../auth/services/logout_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../settings/data/user_model.dart';
@@ -23,6 +29,8 @@ class _AccountPageState extends State<AccountPage> {
   String? _sessionDisplayName;
   String? _sessionRole;
 
+  String? _profileImagePath;
+
   @override
   void initState() {
     super.initState();
@@ -38,14 +46,107 @@ class _AccountPageState extends State<AccountPage> {
 
     final user = await AuthRepository.getCurrentUser();
 
+    final userKey = _buildUserKey(user: user, username: username);
+    String? profileImagePath;
+    if (userKey != null) {
+      profileImagePath = await UiPreferences.getProfileImagePath(userKey);
+      if (profileImagePath != null) {
+        final exists = await File(profileImagePath).exists();
+        if (!exists) {
+          await UiPreferences.setProfileImagePath(userKey, null);
+          profileImagePath = null;
+        }
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _sessionUsername = username;
       _sessionDisplayName = displayName;
       _sessionRole = role;
       _user = user;
+      _profileImagePath = profileImagePath;
       _loading = false;
     });
+  }
+
+  String? _buildUserKey({required UserModel? user, required String? username}) {
+    final id = user?.id;
+    if (id != null) return 'id:$id';
+    final u = username?.trim();
+    if (u == null || u.isEmpty) return null;
+    return 'u:$u';
+  }
+
+  String _sanitizeForFileName(String input) {
+    final cleaned = input.replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_');
+    return cleaned.isEmpty ? 'user' : cleaned;
+  }
+
+  Future<Directory> _ensureProfileImagesDir() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(docsDir.path, 'profile_images'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  Future<String> _copyProfileImageToAppDir({
+    required String userKey,
+    required String sourcePath,
+  }) async {
+    final imagesDir = await _ensureProfileImagesDir();
+    final ext = p.extension(sourcePath);
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final safeKey = _sanitizeForFileName(userKey);
+    final fileName =
+        'avatar_${safeKey}_$ts${ext.isEmpty ? '.png' : ext.toLowerCase()}';
+    final destPath = p.join(imagesDir.path, fileName);
+    final copied = await File(sourcePath).copy(destPath);
+    return copied.path;
+  }
+
+  Future<void> _pickAndSaveProfileImage() async {
+    final user = _user;
+    final username = _sessionUsername;
+    final userKey = _buildUserKey(user: user, username: username);
+    if (userKey == null) return;
+    if (user == null) return;
+    if (!user.isActiveUser) return;
+
+    final result = await WindowService.runWithSystemDialog(
+      () => FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: false,
+      ),
+    );
+
+    final path = result?.files.single.path;
+    if (path == null || path.isEmpty) return;
+
+    try {
+      final copiedPath = await _copyProfileImageToAppDir(
+        userKey: userKey,
+        sourcePath: path,
+      );
+      await UiPreferences.setProfileImagePath(userKey, copiedPath);
+      if (!mounted) return;
+      setState(() => _profileImagePath = copiedPath);
+    } catch (_) {
+      if (!mounted) return;
+      final scheme = Theme.of(context).colorScheme;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No se pudo guardar la imagen de perfil',
+            style: TextStyle(color: scheme.onError),
+          ),
+          backgroundColor: scheme.error,
+        ),
+      );
+    }
   }
 
   Future<void> _openEditProfile() async {
@@ -92,6 +193,17 @@ class _AccountPageState extends State<AccountPage> {
                       }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Tip: Puedes subir una foto de perfil tocando tu ícono (avatar) en “Mi cuenta”.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurface.withOpacity(0.70),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: AppSizes.paddingM),
                   Row(
@@ -473,6 +585,10 @@ class _AccountPageState extends State<AccountPage> {
             );
             final avatarFg = scheme.primary;
 
+            final user = _user;
+            final canEditAvatar = user != null && user.isActiveUser;
+            final imagePath = _profileImagePath;
+
             return card(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,18 +596,46 @@ class _AccountPageState extends State<AccountPage> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
+                      SizedBox(
                         width: 72,
                         height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: avatarBg,
-                          border: Border.all(
-                            color: scheme.primary.withOpacity(0.35),
-                            width: 2,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: avatarBg,
+                            border: Border.all(
+                              color: scheme.primary.withOpacity(0.35),
+                              width: 2,
+                            ),
+                          ),
+                          child: ClipOval(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: canEditAvatar
+                                    ? _pickAndSaveProfileImage
+                                    : null,
+                                child: imagePath != null
+                                    ? Image.file(
+                                        File(imagePath),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stack) {
+                                          return Icon(
+                                            Icons.person,
+                                            size: 36,
+                                            color: avatarFg,
+                                          );
+                                        },
+                                      )
+                                    : Icon(
+                                        Icons.person,
+                                        size: 36,
+                                        color: avatarFg,
+                                      ),
+                              ),
+                            ),
                           ),
                         ),
-                        child: Icon(Icons.person, size: 36, color: avatarFg),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
