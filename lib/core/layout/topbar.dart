@@ -49,25 +49,17 @@ class _TopbarState extends ConsumerState<Topbar> {
   }
 
   Future<void> _closeApp() async {
-    // Si la caja está abierta, advertir y ofrecer ir a caja o salir de todos modos
+    // Flujo profesional: con turno abierto no se permite salir sin cierre.
     if (_openCashSessionId != null) {
       final action = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Caja abierta'),
-          content: Text('La caja está abierta (turno #$_openCashSessionId).\nDebes cerrar el turno antes de salir. ¿Qué deseas hacer?'),
+          title: const Text('Turno abierto'),
+          content: Text('El turno #$_openCashSessionId está abierto. Debes cerrar turno antes de salir.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, 'close_session'),
               child: const Text('Hacer corte'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, 'force'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError,
-              ),
-              child: const Text('Salir de todos modos'),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, null),
@@ -89,11 +81,6 @@ class _TopbarState extends ConsumerState<Topbar> {
         if (closed == true) {
           await WindowService.close();
         }
-        return;
-      }
-
-      if (action == 'force') {
-        await WindowService.close();
         return;
       }
 

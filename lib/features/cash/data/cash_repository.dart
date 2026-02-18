@@ -21,8 +21,11 @@ class CashRepository {
     return await SessionManager.userId();
   }
 
-  /// Obtener sesión abierta (global o por usuario)
-  static Future<CashSessionModel?> getOpenSession({int? userId}) async {
+  /// Obtener sesión abierta (por usuario actual por defecto).
+  static Future<CashSessionModel?> getOpenSession({
+    int? userId,
+    bool scopeToResolvedUser = true,
+  }) async {
     Future<CashSessionModel?> attempt() {
       return DbHardening.instance
           .runDbSafe<CashSessionModel?>(() async {
@@ -31,7 +34,9 @@ class CashRepository {
             String where = 'status = ?';
             List<dynamic> args = ['OPEN'];
 
-            final resolvedUserId = await _resolveUserId(userId: userId);
+            final resolvedUserId = scopeToResolvedUser
+                ? await _resolveUserId(userId: userId)
+                : userId;
             if (resolvedUserId != null) {
               where += ' AND opened_by_user_id = ?';
               args.add(resolvedUserId);
@@ -69,6 +74,9 @@ class CashRepository {
     required int userId,
     required String userName,
     required double openingAmount,
+    int? cashboxDailyId,
+    String? businessDate,
+    bool requiresClosure = false,
   }) {
     // FULLPOS DB HARDENING: proteger la apertura de sesiones ante errores SQLite.
     return DbHardening.instance.runDbSafe<int>(() async {
@@ -87,6 +95,9 @@ class CashRepository {
         userName: userName,
         openedAtMs: now,
         openingAmount: openingAmount,
+        cashboxDailyId: cashboxDailyId,
+        businessDate: businessDate,
+        requiresClosure: requiresClosure,
         status: CashSessionStatus.open,
       );
 

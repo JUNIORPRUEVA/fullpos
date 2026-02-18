@@ -42,7 +42,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 29;
+  static const int _dbVersion = 30;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -1125,16 +1125,42 @@ class AppDb {
 
       // === Sesiones de Caja ===
       await db.execute('''
+        CREATE TABLE ${DbTables.cashboxDaily} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_date TEXT NOT NULL,
+          opened_at_ms INTEGER NOT NULL,
+          opened_by_user_id INTEGER NOT NULL,
+          initial_amount REAL NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'OPEN',
+          closed_at_ms INTEGER,
+          closed_by_user_id INTEGER,
+          note TEXT,
+          UNIQUE(business_date),
+          FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
+          FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_cashbox_daily_status
+        ON ${DbTables.cashboxDaily}(status)
+      ''');
+
+      await db.execute('''
         CREATE TABLE ${DbTables.cashSessions} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           opened_by_user_id INTEGER NOT NULL,
           opened_at_ms INTEGER NOT NULL,
           initial_amount REAL NOT NULL DEFAULT 0,
+          cashbox_daily_id INTEGER,
+          business_date TEXT,
+          requires_closure INTEGER NOT NULL DEFAULT 0,
           closed_at_ms INTEGER,
           closed_by_user_id INTEGER,
           note TEXT,
           FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
-          FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+          FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id),
+          FOREIGN KEY (cashbox_daily_id) REFERENCES ${DbTables.cashboxDaily}(id)
         )
       ''');
 
@@ -1898,6 +1924,54 @@ class AppDb {
       );
     }
 
+    if (oldVersion < 30) {
+      // Migración v30:
+      // - Separar Caja (estado diario) vs Turno (cash_sessions por cajero).
+      // - Mantener compatibilidad: cash_sessions sigue existiendo y se backfillea.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${DbTables.cashboxDaily} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          business_date TEXT NOT NULL,
+          opened_at_ms INTEGER NOT NULL,
+          opened_by_user_id INTEGER NOT NULL,
+          initial_amount REAL NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'OPEN',
+          closed_at_ms INTEGER,
+          closed_by_user_id INTEGER,
+          note TEXT,
+          UNIQUE(business_date),
+          FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
+          FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+        )
+      ''');
+      await _createIndexIfMissing(
+        db,
+        'idx_cashbox_daily_status',
+        DbTables.cashboxDaily,
+        'status',
+      );
+
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'cashbox_daily_id',
+        'INTEGER REFERENCES ${DbTables.cashboxDaily}(id)',
+      );
+      await _addColumnIfMissing(db, DbTables.cashSessions, 'business_date', 'TEXT');
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'requires_closure',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+
+      await db.execute('''
+        UPDATE ${DbTables.cashSessions}
+        SET business_date = strftime('%Y-%m-%d', opened_at_ms / 1000, 'unixepoch', 'localtime')
+        WHERE business_date IS NULL OR TRIM(business_date) = ''
+      ''');
+    }
+
     // v17+: normalizar esquema siempre que haya upgrade
     if (oldVersion < newVersion) {
       await _ensureSchemaIntegrity(db);
@@ -2579,7 +2653,29 @@ class AppDb {
       'deleted_at_ms': null,
     });
 
-    // Sesiones de caja
+    // Caja diaria (estado del día por caja física)
+    await db.execute('''
+      CREATE TABLE ${DbTables.cashboxDaily} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_date TEXT NOT NULL,
+        opened_at_ms INTEGER NOT NULL,
+        opened_by_user_id INTEGER NOT NULL,
+        initial_amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        closed_at_ms INTEGER,
+        closed_by_user_id INTEGER,
+        note TEXT,
+        UNIQUE(business_date),
+        FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
+        FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_cashbox_daily_status
+      ON ${DbTables.cashboxDaily}(status)
+    ''');
+
+    // Sesiones de caja (usadas como TURNO por usuario)
     await db.execute('''
       CREATE TABLE ${DbTables.cashSessions} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2587,6 +2683,9 @@ class AppDb {
         user_name TEXT NOT NULL DEFAULT 'admin',
         opened_at_ms INTEGER NOT NULL,
         initial_amount REAL NOT NULL DEFAULT 0,
+        cashbox_daily_id INTEGER,
+        business_date TEXT,
+        requires_closure INTEGER NOT NULL DEFAULT 0,
         closing_amount REAL,
         expected_cash REAL,
         difference REAL,
@@ -2595,7 +2694,8 @@ class AppDb {
         note TEXT,
         status TEXT NOT NULL DEFAULT 'OPEN',
         FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
-        FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+        FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id),
+        FOREIGN KEY (cashbox_daily_id) REFERENCES ${DbTables.cashboxDaily}(id)
       )
     ''');
     await db.execute('''
@@ -3569,12 +3669,32 @@ class AppDb {
     ''');
 
     await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${DbTables.cashboxDaily} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_date TEXT NOT NULL,
+        opened_at_ms INTEGER NOT NULL,
+        opened_by_user_id INTEGER NOT NULL,
+        initial_amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        closed_at_ms INTEGER,
+        closed_by_user_id INTEGER,
+        note TEXT,
+        UNIQUE(business_date),
+        FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
+        FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE IF NOT EXISTS ${DbTables.cashSessions} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         opened_by_user_id INTEGER NOT NULL,
         user_name TEXT NOT NULL DEFAULT 'admin',
         opened_at_ms INTEGER NOT NULL,
         initial_amount REAL NOT NULL DEFAULT 0,
+        cashbox_daily_id INTEGER,
+        business_date TEXT,
+        requires_closure INTEGER NOT NULL DEFAULT 0,
         closing_amount REAL,
         expected_cash REAL,
         difference REAL,
@@ -3583,7 +3703,8 @@ class AppDb {
         note TEXT,
         status TEXT NOT NULL DEFAULT 'OPEN',
         FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
-        FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id)
+        FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id),
+        FOREIGN KEY (cashbox_daily_id) REFERENCES ${DbTables.cashboxDaily}(id)
       )
     ''');
 
@@ -3800,6 +3921,16 @@ class AppDb {
       'product_id',
     );
 
+    // cashbox_daily
+    if (await _tableExists(db, DbTables.cashboxDaily)) {
+      await _createIndexIfMissing(
+        db,
+        'idx_cashbox_daily_status',
+        DbTables.cashboxDaily,
+        'status',
+      );
+    }
+
     // cash_sessions
     if (await _tableExists(db, DbTables.cashSessions)) {
       await _addColumnIfMissing(
@@ -3829,6 +3960,24 @@ class AppDb {
       await _addColumnIfMissing(
         db,
         DbTables.cashSessions,
+        'cashbox_daily_id',
+        'INTEGER REFERENCES ${DbTables.cashboxDaily}(id)',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'business_date',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'requires_closure',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
         'status',
         "TEXT NOT NULL DEFAULT 'OPEN'",
       );
@@ -3848,6 +3997,11 @@ class AppDb {
         UPDATE ${DbTables.cashSessions}
         SET status = 'CLOSED'
         WHERE closed_at_ms IS NOT NULL AND (status IS NULL OR status = '')
+      ''');
+      await db.execute('''
+        UPDATE ${DbTables.cashSessions}
+        SET business_date = strftime('%Y-%m-%d', opened_at_ms / 1000, 'unixepoch', 'localtime')
+        WHERE business_date IS NULL OR TRIM(business_date) = ''
       ''');
     }
 

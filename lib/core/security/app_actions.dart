@@ -198,16 +198,48 @@ class AppActions {
   // Caja
   static const openCash = AppAction(
     code: 'cash.open_session',
-    name: 'Abrir caja',
-    description: 'Apertura de sesión de caja con monto inicial.',
+    name: 'Abrir sesión (legacy)',
+    description: 'Compatibilidad con flujo legacy de sesión/caja.',
     category: AppActionCategory.cash,
     risk: ActionRisk.medium,
     requiresOverrideByDefault: false,
   );
   static const closeCash = AppAction(
     code: 'cash.close_session',
-    name: 'Cerrar caja',
-    description: 'Cierre y corte de caja con totales.',
+    name: 'Cerrar sesión (legacy)',
+    description: 'Compatibilidad con flujo legacy de sesión/caja.',
+    category: AppActionCategory.cash,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+  static const openCashbox = AppAction(
+    code: 'cash.open_cashbox',
+    name: 'Abrir caja diaria',
+    description: 'Apertura de caja del día (estado diario de la caja física).',
+    category: AppActionCategory.cash,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+  static const closeCashbox = AppAction(
+    code: 'cash.close_cashbox',
+    name: 'Cerrar caja diaria',
+    description: 'Cierre de caja del día, solo sin turnos abiertos.',
+    category: AppActionCategory.cash,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+  static const openShift = AppAction(
+    code: 'cash.open_shift',
+    name: 'Abrir turno',
+    description: 'Apertura de turno de cajero sobre caja diaria abierta.',
+    category: AppActionCategory.cash,
+    risk: ActionRisk.medium,
+    requiresOverrideByDefault: false,
+  );
+  static const closeShift = AppAction(
+    code: 'cash.close_shift',
+    name: 'Cerrar turno',
+    description: 'Cierre obligatorio del turno del cajero.',
     category: AppActionCategory.cash,
     risk: ActionRisk.high,
     requiresOverrideByDefault: true,
@@ -310,6 +342,10 @@ class AppActions {
     createProduct,
     updateProduct,
     importProducts,
+    openCashbox,
+    closeCashbox,
+    openShift,
+    closeShift,
     openCash,
     closeCash,
     cashMovement,

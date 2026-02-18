@@ -331,6 +331,16 @@ class AuthzService {
         return perms.canOpenCash;
       case 'can_close_cash':
         return perms.canCloseCash;
+      case 'can_open_cashbox':
+        return perms.canOpenCashbox;
+      case 'can_close_cashbox':
+        return perms.canCloseCashbox;
+      case 'can_open_shift':
+        return perms.canOpenShift;
+      case 'can_close_shift':
+        return perms.canCloseShift;
+      case 'can_exit_with_open_shift':
+        return perms.canExitWithOpenShift;
       case 'can_view_cash_history':
         return perms.canViewCashHistory;
       case 'can_make_cash_movements':

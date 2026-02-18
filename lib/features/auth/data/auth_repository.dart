@@ -138,6 +138,16 @@ class AuthRepository {
         return permissions.canOpenCash;
       case 'can_close_cash':
         return permissions.canCloseCash;
+      case 'can_open_cashbox':
+        return permissions.canOpenCashbox;
+      case 'can_close_cashbox':
+        return permissions.canCloseCashbox;
+      case 'can_open_shift':
+        return permissions.canOpenShift;
+      case 'can_close_shift':
+        return permissions.canCloseShift;
+      case 'can_exit_with_open_shift':
+        return permissions.canExitWithOpenShift;
       case 'can_view_cash_history':
         return permissions.canViewCashHistory;
       case 'can_make_cash_movements':

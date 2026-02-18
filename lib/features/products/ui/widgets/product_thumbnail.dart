@@ -7,6 +7,10 @@ import '../../models/product_model.dart';
 
 /// Miniatura reusable para productos (imagen o placeholder por color).
 class ProductThumbnail extends StatelessWidget {
+  static const Set<String> _blockedRemoteImageUrls = {
+    'https://images.unsplash.com/photo-1454991727061-2868c0807f7f?auto=format&fit=crop&w=800&q=80&sig=7',
+  };
+
   final String name;
   final String? imagePath;
   final String? imageUrl;
@@ -70,7 +74,7 @@ class ProductThumbnail extends StatelessWidget {
     final normalizedType = placeholderType.toLowerCase();
     final prefersImage = normalizedType != 'color';
     final normalizedImagePath = imagePath?.trim() ?? '';
-    final normalizedImageUrl = imageUrl?.trim() ?? '';
+    final normalizedImageUrl = _normalizeRemoteImageUrl(imageUrl);
     final hasLocalImage =
         prefersImage &&
         normalizedImagePath.isNotEmpty &&
@@ -157,6 +161,17 @@ class ProductThumbnail extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _normalizeRemoteImageUrl(String? rawUrl) {
+    final normalized = rawUrl?.trim() ?? '';
+    if (normalized.isEmpty) {
+      return '';
+    }
+    if (_blockedRemoteImageUrls.contains(normalized)) {
+      return '';
+    }
+    return normalized;
   }
 
   Widget _buildPlaceholder(Color color) {

@@ -41,8 +41,8 @@ import '../../products/data/products_repository.dart';
 import '../../products/models/category_model.dart';
 import '../../products/models/product_model.dart';
 import '../../products/ui/widgets/product_thumbnail.dart';
+import '../../settings/data/business_settings_repository.dart';
 import '../../settings/data/printer_settings_repository.dart';
-import '../../settings/providers/business_settings_provider.dart';
 import '../data/app_settings_model.dart';
 import '../data/ncf_book_model.dart';
 import '../data/ncf_repository.dart';
@@ -1396,6 +1396,20 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }) async {
     if (_currentCart.items.isEmpty) return;
 
+    // Flujo profesional: no permitir ventas sin turno abierto.
+    final activeShiftId = _activeSessionId;
+    if (activeShiftId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Debes iniciar operación y abrir turno antes de vender.'),
+          backgroundColor: scheme.error,
+        ),
+      );
+      context.go('/operation-start');
+      return;
+    }
+
     if (!_canProceedWithFiscalOrNotify()) return;
 
     if (_currentCart.fiscalEnabled && _availableNcfs.isEmpty) {
@@ -1468,8 +1482,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final shouldPrint = paymentResult['printTicket'] == true;
     final shouldDownloadInvoicePdf =
         paymentResult['downloadInvoicePdf'] == true;
-    final shouldAutoOpenDrawerWithoutTicket =
-      !shouldPrint && await _shouldAutoOpenDrawerWithoutTicket();
+    final shouldAutoOpenDrawerOnCharge =
+      await _shouldAutoOpenDrawerWithoutTicket();
 
     if (method == payment.PaymentMethod.credit) {
       final canCredit = await _authorizeAction(
@@ -1587,7 +1601,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           fiscalEnabled: _currentCart.fiscalEnabled,
           ncfFull: ncfFull,
           ncfType: ncfType,
-          sessionId: _activeSessionId,
+          sessionId: activeShiftId,
           customerId: _currentCart.selectedClient?.id,
           customerName: _currentCart.selectedClient?.nombre,
           customerPhone: _currentCart.selectedClient?.telefono,
@@ -1606,7 +1620,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           itbisAmountOverride: itbisAmount,
           totalOverride: total,
           paymentMethod: paymentMethodStr,
-          sessionId: _activeSessionId,
+          sessionId: activeShiftId,
           customerId: _currentCart.selectedClient?.id,
           customerName: _currentCart.selectedClient?.nombre,
           customerPhone: _currentCart.selectedClient?.telefono,
@@ -1660,7 +1674,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           itbisAmountOverride: itbisAmount,
           totalOverride: total,
           paymentMethod: paymentMethodStr,
-          sessionId: _activeSessionId,
+          sessionId: activeShiftId,
           customerId: _currentCart.selectedClient?.id,
           customerName: _currentCart.selectedClient?.nombre,
           customerPhone: _currentCart.selectedClient?.telefono,
@@ -1722,14 +1736,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     unawaited(_deleteTempCartFromDatabase(tempCartIdToDelete));
     if (shouldPrint ||
         shouldDownloadInvoicePdf ||
-        shouldAutoOpenDrawerWithoutTicket) {
+        shouldAutoOpenDrawerOnCharge) {
       unawaited(
         _runSaleOutputs(
           saleId: saleId,
           shouldPrint: shouldPrint,
           shouldDownloadInvoicePdf: shouldDownloadInvoicePdf,
           shouldAutoOpenDrawerWithoutTicket:
-              shouldAutoOpenDrawerWithoutTicket,
+              shouldAutoOpenDrawerOnCharge,
           isLayaway: isLayaway,
           receivedAmount: receivedAmount,
         ),
@@ -1752,7 +1766,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     legacy_sales.SaleModel sale,
     List<legacy_sales.SaleItemModel> items,
   ) async {
-    final business = ref.read(businessSettingsProvider);
+    final business = await BusinessSettingsRepository().loadSettings();
+    final printerSettings = await PrinterSettingsRepository.getOrCreate();
+
     final cashierName = await SessionManager.displayName() ?? 'Cajero';
     final bytes = await InvoiceLetterPdf.generate(
       sale: sale,
@@ -1760,6 +1776,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       business: business,
       brandColorArgb: scheme.primary.value,
       cashierName: cashierName,
+      warrantyPolicy: printerSettings.warrantyPolicy,
+      footerMessage: printerSettings.footerMessage,
     );
 
     final clientName = (sale.customerNameSnapshot ?? '').trim();
@@ -2345,7 +2363,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'CAJA CERRADA',
+                  'TURNO NO INICIADO',
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontSize: 24,
@@ -2354,7 +2372,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Debe abrir la caja para iniciar el turno\ny poder realizar ventas.',
+                  'Debes completar "Iniciar operación"\nantes de poder realizar ventas.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: scheme.onSurface.withOpacity(0.45),
@@ -2366,8 +2384,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      final result = await CashOpenDialog.show(context);
-                      if (result == true) await _refreshCashSession();
+                      context.go('/operation-start');
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: scheme.secondary,
@@ -2379,7 +2396,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     ),
                     icon: const Icon(Icons.lock_open, size: 20),
                     label: const Text(
-                      'ABRIR CAJA',
+                      'INICIAR OPERACIÓN',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,

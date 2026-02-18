@@ -5,6 +5,9 @@ class CashSessionModel {
   final String userName;
   final int openedAtMs;
   final double openingAmount;
+  final int? cashboxDailyId;
+  final String? businessDate; // yyyy-MM-dd
+  final bool requiresClosure;
   final int? closedAtMs;
   final double? closingAmount;
   final double? expectedCash;
@@ -18,6 +21,9 @@ class CashSessionModel {
     required this.userName,
     required this.openedAtMs,
     required this.openingAmount,
+    this.cashboxDailyId,
+    this.businessDate,
+    this.requiresClosure = false,
     this.closedAtMs,
     this.closingAmount,
     this.expectedCash,
@@ -40,6 +46,9 @@ class CashSessionModel {
       'user_name': userName,
       'opened_at_ms': openedAtMs,
       'initial_amount': openingAmount,
+      'cashbox_daily_id': cashboxDailyId,
+      'business_date': businessDate,
+      'requires_closure': requiresClosure ? 1 : 0,
       'closed_at_ms': closedAtMs,
       'closing_amount': closingAmount,
       'expected_cash': expectedCash,
@@ -56,6 +65,9 @@ class CashSessionModel {
       userName: map['user_name'] as String? ?? 'admin',
       openedAtMs: map['opened_at_ms'] as int,
       openingAmount: (map['initial_amount'] as num?)?.toDouble() ?? 0.0,
+      cashboxDailyId: map['cashbox_daily_id'] as int?,
+      businessDate: map['business_date'] as String?,
+      requiresClosure: (map['requires_closure'] as int? ?? 0) == 1,
       closedAtMs: map['closed_at_ms'] as int?,
       closingAmount: (map['closing_amount'] as num?)?.toDouble(),
       expectedCash: (map['expected_cash'] as num?)?.toDouble(),
@@ -72,6 +84,9 @@ class CashSessionModel {
     String? userName,
     int? openedAtMs,
     double? openingAmount,
+    int? cashboxDailyId,
+    String? businessDate,
+    bool? requiresClosure,
     int? closedAtMs,
     double? closingAmount,
     double? expectedCash,
@@ -85,6 +100,9 @@ class CashSessionModel {
       userName: userName ?? this.userName,
       openedAtMs: openedAtMs ?? this.openedAtMs,
       openingAmount: openingAmount ?? this.openingAmount,
+      cashboxDailyId: cashboxDailyId ?? this.cashboxDailyId,
+      businessDate: businessDate ?? this.businessDate,
+      requiresClosure: requiresClosure ?? this.requiresClosure,
       closedAtMs: closedAtMs ?? this.closedAtMs,
       closingAmount: closingAmount ?? this.closingAmount,
       expectedCash: expectedCash ?? this.expectedCash,

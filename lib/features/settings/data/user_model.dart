@@ -125,6 +125,11 @@ class UserPermissions {
   final bool canCloseCash;
   final bool canViewCashHistory;
   final bool canMakeCashMovements;
+  final bool canOpenCashbox;
+  final bool canCloseCashbox;
+  final bool canOpenShift;
+  final bool canCloseShift;
+  final bool canExitWithOpenShift;
   
   // Reportes
   final bool canViewReports;
@@ -168,6 +173,11 @@ class UserPermissions {
     this.canCloseCash = false,
     this.canViewCashHistory = false,
     this.canMakeCashMovements = false,
+    this.canOpenCashbox = false,
+    this.canCloseCashbox = false,
+    this.canOpenShift = false,
+    this.canCloseShift = false,
+    this.canExitWithOpenShift = false,
     this.canViewReports = false,
     this.canExportReports = false,
     this.canCreateQuotes = false,
@@ -199,6 +209,11 @@ class UserPermissions {
         canCloseCash: false,
         canViewCashHistory: false,
         canMakeCashMovements: false,
+        canOpenCashbox: false,
+        canCloseCashbox: false,
+        canOpenShift: false,
+        canCloseShift: false,
+        canExitWithOpenShift: false,
         canViewReports: false,
         canExportReports: false,
         canCreateQuotes: false,
@@ -230,6 +245,11 @@ class UserPermissions {
     canCloseCash: true,
     canViewCashHistory: true,
     canMakeCashMovements: true,
+    canOpenCashbox: true,
+    canCloseCashbox: true,
+    canOpenShift: true,
+    canCloseShift: true,
+    canExitWithOpenShift: true,
     canViewReports: true,
     canExportReports: true,
     canCreateQuotes: true,
@@ -261,6 +281,11 @@ class UserPermissions {
     canCloseCash: true,
     canViewCashHistory: false,
     canMakeCashMovements: false,
+    canOpenCashbox: false,
+    canCloseCashbox: false,
+    canOpenShift: true,
+    canCloseShift: true,
+    canExitWithOpenShift: false,
     canViewReports: false,
     canExportReports: false,
     canCreateQuotes: true,
@@ -291,6 +316,11 @@ class UserPermissions {
     'can_close_cash': canCloseCash,
     'can_view_cash_history': canViewCashHistory,
     'can_make_cash_movements': canMakeCashMovements,
+    'can_open_cashbox': canOpenCashbox,
+    'can_close_cashbox': canCloseCashbox,
+    'can_open_shift': canOpenShift,
+    'can_close_shift': canCloseShift,
+    'can_exit_with_open_shift': canExitWithOpenShift,
     'can_view_reports': canViewReports,
     'can_export_reports': canExportReports,
     'can_create_quotes': canCreateQuotes,
@@ -329,12 +359,31 @@ class UserPermissions {
       canEditClients: map['can_edit_clients'] as bool? ?? defaults.canEditClients,
       canDeleteClients:
           map['can_delete_clients'] as bool? ?? defaults.canDeleteClients,
-      canOpenCash: map['can_open_cash'] as bool? ?? defaults.canOpenCash,
-      canCloseCash: map['can_close_cash'] as bool? ?? defaults.canCloseCash,
+        canOpenCash: map['can_open_cash'] as bool? ?? defaults.canOpenCash,
+        canCloseCash: map['can_close_cash'] as bool? ?? defaults.canCloseCash,
       canViewCashHistory:
           map['can_view_cash_history'] as bool? ?? defaults.canViewCashHistory,
       canMakeCashMovements: map['can_make_cash_movements'] as bool? ??
           defaults.canMakeCashMovements,
+        canOpenCashbox:
+          map['can_open_cashbox'] as bool? ??
+          map['can_open_cash'] as bool? ??
+          defaults.canOpenCashbox,
+        canCloseCashbox:
+          map['can_close_cashbox'] as bool? ??
+          map['can_close_cash'] as bool? ??
+          defaults.canCloseCashbox,
+        canOpenShift:
+          map['can_open_shift'] as bool? ??
+          map['can_open_cash'] as bool? ??
+          defaults.canOpenShift,
+        canCloseShift:
+          map['can_close_shift'] as bool? ??
+          map['can_close_cash'] as bool? ??
+          defaults.canCloseShift,
+        canExitWithOpenShift:
+          map['can_exit_with_open_shift'] as bool? ??
+          defaults.canExitWithOpenShift,
       canViewReports:
           map['can_view_reports'] as bool? ?? defaults.canViewReports,
       canExportReports:
@@ -376,6 +425,11 @@ class UserPermissions {
     bool? canCloseCash,
     bool? canViewCashHistory,
     bool? canMakeCashMovements,
+    bool? canOpenCashbox,
+    bool? canCloseCashbox,
+    bool? canOpenShift,
+    bool? canCloseShift,
+    bool? canExitWithOpenShift,
     bool? canViewReports,
     bool? canExportReports,
     bool? canCreateQuotes,
@@ -404,6 +458,11 @@ class UserPermissions {
     canCloseCash: canCloseCash ?? this.canCloseCash,
     canViewCashHistory: canViewCashHistory ?? this.canViewCashHistory,
     canMakeCashMovements: canMakeCashMovements ?? this.canMakeCashMovements,
+    canOpenCashbox: canOpenCashbox ?? this.canOpenCashbox,
+    canCloseCashbox: canCloseCashbox ?? this.canCloseCashbox,
+    canOpenShift: canOpenShift ?? this.canOpenShift,
+    canCloseShift: canCloseShift ?? this.canCloseShift,
+    canExitWithOpenShift: canExitWithOpenShift ?? this.canExitWithOpenShift,
     canViewReports: canViewReports ?? this.canViewReports,
     canExportReports: canExportReports ?? this.canExportReports,
     canCreateQuotes: canCreateQuotes ?? this.canCreateQuotes,

@@ -79,6 +79,14 @@ class ActionAccess {
 
   static bool _allowedByCashModule(AppAction action, UserPermissions permissions) {
     switch (action.code) {
+      case 'cash.open_cashbox':
+        return permissions.canOpenCashbox;
+      case 'cash.close_cashbox':
+        return permissions.canCloseCashbox;
+      case 'cash.open_shift':
+        return permissions.canOpenShift;
+      case 'cash.close_shift':
+        return permissions.canCloseShift;
       case 'cash.open_session':
         return permissions.canOpenCash;
       case 'cash.close_session':

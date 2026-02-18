@@ -17,6 +17,12 @@ class _FakePathProviderPlatform extends Fake
 
   @override
   Future<String?> getApplicationDocumentsPath() async => _docsDir.path;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => _docsDir.path;
+
+  @override
+  Future<String?> getLibraryPath() async => _docsDir.path;
 }
 
 void main() {

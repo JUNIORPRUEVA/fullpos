@@ -5,13 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
-import '../../../core/session/session_manager.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../data/operation_flow_service.dart';
 import '../providers/cash_providers.dart';
 
-/// Dialogo para abrir caja (inicio de turno).
+/// Diálogo para abrir turno (compatibilidad con flujo legacy de caja).
 class CashOpenDialog extends ConsumerStatefulWidget {
   const CashOpenDialog({super.key});
 
@@ -47,10 +47,10 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
 
     final authorized = await requireAuthorizationIfNeeded(
       context: context,
-      action: AppActions.openCash,
+      action: AppActions.openShift,
       resourceType: 'cash_session',
       resourceId: 'new',
-      reason: 'Abrir caja',
+      reason: 'Abrir turno',
     );
     if (!authorized || !mounted) return;
 
@@ -58,25 +58,14 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
 
     try {
       final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
-      final userId = await SessionManager.userId() ?? 1;
-      final userName =
-          await SessionManager.displayName() ??
-          await SessionManager.username() ??
-          'Usuario';
-
-      await ref
-          .read(cashSessionControllerProvider.notifier)
-          .openSession(
-            userId: userId,
-            userName: userName,
-            openingAmount: amount,
-          );
+      await OperationFlowService.openShiftForCurrentUser(openingAmount: amount);
+      await ref.read(cashSessionControllerProvider.notifier).refresh();
 
       if (mounted) {
         Navigator.of(context).pop(true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Caja abierta con \$${amount.toStringAsFixed(2)}'),
+            content: Text('Turno abierto con \$${amount.toStringAsFixed(2)}'),
             backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
@@ -193,7 +182,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Abrir caja',
+                              'Abrir turno',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: headerText,
                                 fontWeight: FontWeight.w800,
@@ -201,7 +190,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Iniciar turno para registrar ventas y movimientos',
+                              'Iniciar tu turno para registrar ventas y movimientos',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: headerText.withOpacity(0.82),
                                 height: 1.15,
@@ -233,7 +222,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Monto inicial',
+                              'Monto inicial turno',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/session/ui_preferences.dart';
 import '../../../core/session/session_manager.dart';
+import '../../auth/services/logout_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../settings/data/user_model.dart';
 import '../../settings/data/users_repository.dart';
@@ -443,33 +444,10 @@ class _AccountPageState extends State<AccountPage> {
     }
 
     Future<void> confirmLogout() async {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Cerrar sesión'),
-          content: const Text('¿Deseas cerrar sesión del sistema?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context, true),
-              icon: const Icon(Icons.logout),
-              label: const Text('Cerrar sesión'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: scheme.error,
-                foregroundColor: scheme.onError,
-              ),
-            ),
-          ],
-        ),
+      await LogoutFlowService.requestLogout(
+        context,
+        performLogout: () => LogoutFlowService.defaultPerformLogout(context),
       );
-
-      if (confirm == true && context.mounted) {
-        await SessionManager.logout();
-        if (context.mounted) context.go('/login');
-      }
     }
 
     final roleLabel =

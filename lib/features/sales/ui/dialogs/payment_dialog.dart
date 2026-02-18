@@ -117,6 +117,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
     });
   }
 
+  Future<void> _submitPaymentWithoutOutput() async {
+    if (_isSubmitting) return;
+    setState(() {
+      _printTicket = false;
+      _downloadInvoicePdf = false;
+    });
+    await _submitPayment();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1159,6 +1168,26 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               TextButton(
                                 onPressed: () => Navigator.of(context).pop(),
                                 child: const Text('CANCELAR'),
+                              ),
+                              const SizedBox(width: 12),
+                              OutlinedButton.icon(
+                                onPressed: _isSubmitting
+                                    ? null
+                                    : _submitPaymentWithoutOutput,
+                                icon: const Icon(Icons.check_circle_outline),
+                                label: const Text('COBRAR SIN IMPRIMIR'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: scheme.primary,
+                                  side: BorderSide(color: scheme.primary),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
                               const SizedBox(width: 12),
                               ElevatedButton.icon(

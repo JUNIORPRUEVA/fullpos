@@ -242,9 +242,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
     final ok = await AuthzService.runGuardedCurrent<bool>(
       context,
-      authz_perm.Permission.action(AppActions.closeCash),
+      authz_perm.Permission.action(AppActions.closeShift),
       () async => true,
-      reason: 'Cerrar caja',
+      reason: 'Cerrar turno',
       resourceType: 'cash_session',
       resourceId: widget.sessionId.toString(),
     );

@@ -17,6 +17,8 @@ import '../features/auth/services/first_run_auth_flags.dart';
 import '../features/cash/ui/cash_box_page.dart';
 import '../features/cash/ui/cash_history_page.dart';
 import '../features/cash/ui/expenses_overview_page.dart';
+import '../features/cash/ui/operation_start_page.dart';
+import '../features/cash/data/operation_flow_service.dart';
 import '../features/clients/ui/clients_page.dart';
 import '../features/products/ui/products_page.dart';
 import '../features/products/ui/stock_history_page.dart';
@@ -106,7 +108,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: ErrorHandler.navigatorKey,
     // Nota: La pantalla de arranque se maneja fuera del router (AppEntry).
     // Mantener una ruta inicial estable evita “rebotes” visuales.
-    initialLocation: isLoggedIn ? '/sales' : '/login',
+    initialLocation: isLoggedIn ? '/operation-start' : '/login',
     refreshListenable: refresh,
     redirect: (context, state) async {
       final path = state.uri.path;
@@ -115,6 +117,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnPublicLicense = path == '/license';
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
+      final isOnOperationStart = path == '/operation-start';
+      final isOnSales = path == '/sales';
 
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
       if (bootStatus != BootStatus.ready) return null;
@@ -140,13 +144,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
       if (isOnBlocked) {
-        return isLoggedIn ? '/sales' : '/login';
+        return isLoggedIn ? '/operation-start' : '/login';
       }
       if (isOnPublicLicense || isOnSettingsLicense) {
         // En debug permitimos abrir la pantalla de licencia desde Configuración
         // para poder resetear TRIAL/licencia en esta misma PC.
         if (kDebugMode) return null;
-        return isLoggedIn ? '/sales' : '/login';
+        return isLoggedIn ? '/operation-start' : '/login';
       }
 
       assert(() {
@@ -172,11 +176,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       } else {
-        if (isOnForceChangePassword) return '/sales';
+        if (isOnForceChangePassword) return '/operation-start';
       }
 
       // Mantener UI idéntica: no redirigir por permisos.
-      if (isOnLogin) return '/sales';
+      if (isOnLogin) return '/operation-start';
+
+      // Flujo profesional: Login -> Iniciar operación -> Ventas.
+      // Bloquea entrada a ventas sin turno abierto.
+      if (isOnSales) {
+        final gate = await OperationFlowService.loadGateState();
+        if (!gate.canOperate) return '/operation-start';
+      }
+
+      if (isOnOperationStart) return null;
 
       return null;
     },
@@ -190,6 +203,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/force-change-password',
         builder: (context, state) =>
         FullposBrandScope(child: ForceChangePasswordPage()),
+      ),
+      GoRoute(
+        path: '/operation-start',
+        builder: (context, state) =>
+            const FullposBrandScope(child: OperationStartPage()),
       ),
       GoRoute(
         path: '/license',

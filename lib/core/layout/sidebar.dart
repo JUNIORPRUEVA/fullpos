@@ -14,6 +14,7 @@ import '../theme/color_utils.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
 import '../../features/settings/providers/theme_provider.dart';
 import '../../features/products/utils/catalog_pdf_launcher.dart';
+import '../../features/auth/services/logout_flow_service.dart';
 import '../../theme/app_colors.dart';
 
 /// Sidebar del layout principal con navegacion (colapsable).
@@ -537,54 +538,28 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     title: 'Cerrar sesión',
                     route: null,
                     onTap: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Cerrar sesión'),
-                          content: const Text(
-                            '¿Deseas cerrar sesión del sistema?',
+                      try {
+                        await LogoutFlowService.requestLogout(
+                          context,
+                          performLogout: () async {
+                            ref.read(appBootstrapProvider).forceLoggedOut();
+                            await SessionManager.logout();
+                            await ref.read(appBootstrapProvider).refreshAuth();
+                            if (!context.mounted) return;
+                            final rootCtx =
+                                ErrorHandler.navigatorKey.currentContext ?? context;
+                            GoRouter.of(rootCtx).refresh();
+                            GoRouter.of(rootCtx).go('/login');
+                          },
+                        );
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('No se pudo cerrar sesión: $e'),
+                            backgroundColor: scheme.error,
                           ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            ElevatedButton.icon(
-                              onPressed: () => Navigator.pop(context, true),
-                              icon: const Icon(Icons.logout),
-                              label: const Text('Cerrar sesión'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: scheme.error,
-                                foregroundColor: scheme.onError,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-
-                      if (confirm == true) {
-                        try {
-                          ref.read(appBootstrapProvider).forceLoggedOut();
-                          await SessionManager.logout();
-                          await ref.read(appBootstrapProvider).refreshAuth();
-                          // Navegar usando el contexto root para evitar quedarse
-                          // atrapado dentro del ShellRoute.
-                          if (!context.mounted) return;
-                          final rootCtx =
-                              ErrorHandler.navigatorKey.currentContext ??
-                              context;
-                          GoRouter.of(rootCtx).refresh();
-                          GoRouter.of(rootCtx).go('/login');
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('No se pudo cerrar sesión: $e'),
-                                backgroundColor: scheme.error,
-                              ),
-                            );
-                          }
-                        }
+                        );
                       }
                     },
                     isCollapsed: effectiveCollapsed,

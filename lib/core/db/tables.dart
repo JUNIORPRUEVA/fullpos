@@ -26,6 +26,7 @@ class DbTables {
 
   // Usuarios y caja
   static const String users = 'users';
+  static const String cashboxDaily = 'cashbox_daily';
   static const String cashSessions = 'cash_sessions';
   static const String cashMovements = 'cash_movements';
 

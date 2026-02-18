@@ -27,7 +27,7 @@ class AppConfig {
     'https://images.unsplash.com/photo-1523419400524-fc1e0d787ab7?auto=format&fit=crop&w=800&q=80&sig=4',
     'https://images.unsplash.com/photo-1503389152951-9f343605f61e?auto=format&fit=crop&w=800&q=80&sig=5',
     'https://images.unsplash.com/photo-1503389152951-9f343605f61e?auto=format&fit=crop&w=800&q=80&sig=6',
-    'https://images.unsplash.com/photo-1454991727061-2868c0807f7f?auto=format&fit=crop&w=800&q=80&sig=7',
+    'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=800&q=80&sig=7',
     'https://images.unsplash.com/photo-1514996937319-344454492b37?auto=format&fit=crop&w=800&q=80&sig=8',
     'https://images.unsplash.com/photo-1454991924124-4c0796370749?auto=format&fit=crop&w=800&q=80&sig=9',
     'https://images.unsplash.com/photo-1507722407803-9ac805f252d2?auto=format&fit=crop&w=800&q=80&sig=10',

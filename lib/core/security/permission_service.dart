@@ -178,6 +178,10 @@ class PermissionService {
         AppActions.importProducts.code,
         AppActions.openCash.code,
         AppActions.closeCash.code,
+        AppActions.openCashbox.code,
+        AppActions.closeCashbox.code,
+        AppActions.openShift.code,
+        AppActions.closeShift.code,
         AppActions.cashMovement.code,
         AppActions.configureScanner.code,
       };
@@ -190,6 +194,8 @@ class PermissionService {
       AppActions.createQuote.code,
       AppActions.openCash.code,
       AppActions.closeCash.code,
+      AppActions.openShift.code,
+      AppActions.closeShift.code,
       AppActions.configureScanner.code,
     };
   }

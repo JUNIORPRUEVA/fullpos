@@ -360,6 +360,11 @@ class UsersRepository {
     
     // Admin tiene todos los permisos
     if (user.isAdmin) return UserPermissions.admin();
+
+    // Supervisor: permisos operativos altos, sin administración de usuarios.
+    if (user.isSupervisor) {
+      return UserPermissions.admin().copyWith(canManageUsers: false);
+    }
     
     // Si tiene permisos personalizados
     if (user.permissions != null && user.permissions!.isNotEmpty) {
