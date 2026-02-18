@@ -64,7 +64,9 @@ class CashRepository {
       );
       return await attempt();
     } on DatabaseException {
-      await AutoRepair.instance.ensureDbHealthy(reason: 'cash_get_open_session');
+      await AutoRepair.instance.ensureDbHealthy(
+        reason: 'cash_get_open_session',
+      );
       return await attempt();
     }
   }
@@ -117,28 +119,101 @@ class CashRepository {
     required double closingAmount,
     required String note,
     required CashSummaryModel summary,
+    int? expectedUserId,
+    int? expectedCashboxDailyId,
   }) {
     // FULLPOS DB HARDENING: asegurar el cierre de caja antes de comprometer cambios.
     return DbHardening.instance.runDbSafe<void>(() async {
       final db = await AppDb.database;
       final now = DateTime.now().millisecondsSinceEpoch;
+      final actorUserId = expectedUserId ?? await SessionManager.userId();
 
       final difference = summary.calculateDifference(closingAmount);
 
       await db.transaction((txn) async {
-        await txn.update(
+        final sessionRows = await txn.query(
+          DbTables.cashSessions,
+          columns: [
+            'id',
+            'opened_by_user_id',
+            'cashbox_daily_id',
+            'status',
+            'closed_at_ms',
+          ],
+          where: 'id = ?',
+          whereArgs: [sessionId],
+          limit: 1,
+        );
+
+        if (sessionRows.isEmpty) {
+          throw Exception('Turno no encontrado para cierre (id=$sessionId).');
+        }
+
+        final session = sessionRows.first;
+        final status = (session['status'] as String? ?? '').toUpperCase();
+        final closedAtMs = session['closed_at_ms'] as int?;
+        final ownerUserId = session['opened_by_user_id'] as int?;
+        final cashboxDailyId = session['cashbox_daily_id'] as int?;
+
+        if (status != CashSessionStatus.open || closedAtMs != null) {
+          throw Exception(
+            'El turno ya está cerrado o no está disponible para cierre.',
+          );
+        }
+        if (actorUserId != null && ownerUserId != actorUserId) {
+          throw Exception(
+            'Este turno pertenece a otro cajero y no puede cerrarse desde aquí.',
+          );
+        }
+        if (expectedCashboxDailyId != null &&
+            cashboxDailyId != expectedCashboxDailyId) {
+          throw Exception('El turno no corresponde a la caja diaria activa.');
+        }
+
+        final updated = await txn.update(
           DbTables.cashSessions,
           {
             'closed_at_ms': now,
             'closing_amount': closingAmount,
             'expected_cash': summary.expectedCash,
             'difference': difference,
-            'note': note,
+            'note': note.trim(),
             'status': CashSessionStatus.closed,
           },
-          where: 'id = ?',
-          whereArgs: [sessionId],
+          where: 'id = ? AND status = ? AND closed_at_ms IS NULL',
+          whereArgs: [sessionId, CashSessionStatus.open],
         );
+
+        if (updated != 1) {
+          throw Exception('No fue posible confirmar el cierre del turno.');
+        }
+
+        // UX / consistencia operativa:
+        // Si el cajero tiene tickets POS pendientes (carritos guardados),
+        // al cerrar el turno deben cerrarse automáticamente para evitar
+        // que queden “tickets abiertos” para el siguiente turno.
+        if (ownerUserId != null) {
+          try {
+            await txn.delete(
+              DbTables.posTickets,
+              where: 'user_id = ?',
+              whereArgs: [ownerUserId],
+            );
+          } catch (_) {
+            // No bloquear el cierre si el borrado falla.
+          }
+
+          // Carritos temporales (si se usan por usuario).
+          try {
+            await txn.delete(
+              DbTables.tempCarts,
+              where: 'user_id = ?',
+              whereArgs: [ownerUserId],
+            );
+          } catch (_) {
+            // No bloquear el cierre si el borrado falla.
+          }
+        }
       });
     }, stage: 'cash_close_session');
   }
@@ -265,6 +340,41 @@ class CashRepository {
     }, stage: 'cash_list_movements');
   }
 
+  /// Listar movimientos consolidados del día (todas las sesiones de una caja diaria).
+  static Future<List<CashMovementModel>> listMovementsForDailyCashbox({
+    required int cashboxDailyId,
+    required String businessDate,
+  }) {
+    return DbHardening.instance.runDbSafe<List<CashMovementModel>>(() async {
+      final db = await AppDb.database;
+
+      final sessionRows = await db.query(
+        DbTables.cashSessions,
+        columns: ['id'],
+        where: '''
+          (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+          AND business_date = ?
+        ''',
+        whereArgs: [cashboxDailyId, businessDate, businessDate],
+      );
+      final sessionIds = sessionRows
+          .map((r) => r['id'] as int?)
+          .whereType<int>()
+          .toList(growable: false);
+      if (sessionIds.isEmpty) return const [];
+
+      final inClause = _placeholders(sessionIds.length);
+      final rows = await db.rawQuery('''
+        SELECT *
+        FROM ${DbTables.cashMovements}
+        WHERE session_id IN $inClause
+        ORDER BY created_at_ms ASC
+      ''', sessionIds);
+
+      return rows.map(CashMovementModel.fromMap).toList(growable: false);
+    }, stage: 'cash_list_movements_daily');
+  }
+
   /// Listar movimientos por rango de fechas (opcionalmente por usuario)
   static Future<List<CashMovementModel>> listMovementsRange({
     int? userId,
@@ -314,6 +424,233 @@ class CashRepository {
     );
   }
 
+  /// Construir resumen consolidado del día (todas las sesiones de la caja diaria).
+  ///
+  /// Nota:
+  /// - Suma movimientos `cash_movements` por `session_id`.
+  /// - Suma ventas `sales` por `cash_session_id` o `session_id` (compatibilidad).
+  /// - Usa como apertura el `initial_amount` de la caja diaria.
+  static Future<CashSummaryModel> buildDailySummary({
+    required int cashboxDailyId,
+    required String businessDate,
+  }) {
+    return DbHardening.instance.runDbSafe<CashSummaryModel>(
+      () => _buildDailySummaryUnsafe(
+        cashboxDailyId: cashboxDailyId,
+        businessDate: businessDate,
+      ),
+      stage: 'cash_build_daily_summary',
+    );
+  }
+
+  static String _placeholders(int count) {
+    if (count <= 0) return '(NULL)';
+    return '(${List.filled(count, '?').join(', ')})';
+  }
+
+  static Future<CashSummaryModel> _buildDailySummaryUnsafe({
+    required int cashboxDailyId,
+    required String businessDate,
+  }) async {
+    final db = await AppDb.database;
+
+    final cashboxRows = await db.query(
+      DbTables.cashboxDaily,
+      columns: ['initial_amount'],
+      where: 'id = ? AND business_date = ?',
+      whereArgs: [cashboxDailyId, businessDate],
+      limit: 1,
+    );
+    if (cashboxRows.isEmpty) {
+      throw Exception('Caja diaria no encontrada: $cashboxDailyId');
+    }
+
+    final openingAmount =
+        (cashboxRows.first['initial_amount'] as num?)?.toDouble() ?? 0.0;
+
+    // Sesiones del día (compatibilidad: sesiones antiguas sin cashbox_daily_id)
+    final sessionRows = await db.query(
+      DbTables.cashSessions,
+      columns: ['id'],
+      where: '''
+        (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+        AND business_date = ?
+      ''',
+      whereArgs: [cashboxDailyId, businessDate, businessDate],
+    );
+    final sessionIds = sessionRows
+        .map((r) => r['id'] as int?)
+        .whereType<int>()
+        .toList(growable: false);
+
+    if (sessionIds.isEmpty) {
+      return CashSummaryModel(
+        openingAmount: openingAmount,
+        cashInManual: 0,
+        cashOutManual: 0,
+        creditAbonos: 0,
+        layawayAbonos: 0,
+        salesCashTotal: 0,
+        salesCardTotal: 0,
+        salesTransferTotal: 0,
+        salesCreditTotal: 0,
+        refundsCash: 0,
+        expectedCash: openingAmount,
+        totalTickets: 0,
+        totalRefunds: 0,
+      );
+    }
+
+    final inClause = _placeholders(sessionIds.length);
+    final doubleSessionArgs = [...sessionIds, ...sessionIds];
+
+    // Movimientos manuales IN (incluye abonos de crédito y apartado)
+    final inResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM ${DbTables.cashMovements}
+      WHERE session_id IN $inClause AND type = 'IN'
+    ''', sessionIds);
+    final cashInManual = (inResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Identificar abonos de crédito dentro de los IN
+    final creditAbonoResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM ${DbTables.cashMovements}
+      WHERE session_id IN $inClause
+        AND type = 'IN'
+        AND (
+          LOWER(reason) LIKE '%abono credito%'
+          OR LOWER(reason) LIKE '%abono cr%c%dito%'
+        )
+    ''', sessionIds);
+    final creditAbonos =
+        (creditAbonoResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final layawayAbonoResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM ${DbTables.cashMovements}
+      WHERE session_id IN $inClause
+        AND type = 'IN'
+        AND LOWER(reason) LIKE '%abono apartado%'
+    ''', sessionIds);
+    final layawayAbonos =
+        (layawayAbonoResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Movimientos manuales OUT
+    final outResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM ${DbTables.cashMovements}
+      WHERE session_id IN $inClause AND type = 'OUT'
+    ''', sessionIds);
+    final cashOutManual = (outResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Ventas en efectivo (usando cash_session_id o session_id)
+    final cashSalesResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(paid_amount), 0) as total
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'invoice'
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+        AND payment_method = 'cash'
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final salesCashTotal =
+        (cashSalesResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Ventas con tarjeta
+    final cardSalesResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(total), 0) as total
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'invoice'
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+        AND payment_method = 'card'
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final salesCardTotal =
+        (cardSalesResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Ventas por transferencia
+    final transferSalesResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(total), 0) as total
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'invoice'
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+        AND payment_method = 'transfer'
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final salesTransferTotal =
+        (transferSalesResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Ventas a crédito
+    final creditSalesResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(total), 0) as total
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'invoice'
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+        AND payment_method = 'credit'
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final salesCreditTotal =
+        (creditSalesResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    // Total de tickets
+    final ticketsResult = await db.rawQuery('''
+      SELECT COUNT(*) as count
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'invoice'
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final totalTickets = (ticketsResult.first['count'] as int?) ?? 0;
+
+    // Devoluciones en efectivo (ABS(total))
+    final refundsResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(ABS(total)), 0) as total
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'return'
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final refundsCash =
+        (refundsResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final refundsCountResult = await db.rawQuery('''
+      SELECT COUNT(*) as count
+      FROM ${DbTables.sales}
+      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
+        AND kind = 'return'
+        AND deleted_at_ms IS NULL
+    ''', doubleSessionArgs);
+    final totalRefunds = (refundsCountResult.first['count'] as int?) ?? 0;
+
+    final expectedCash =
+        openingAmount +
+        salesCashTotal +
+        cashInManual -
+        cashOutManual -
+        refundsCash;
+
+    return CashSummaryModel(
+      openingAmount: openingAmount,
+      cashInManual: cashInManual,
+      cashOutManual: cashOutManual,
+      creditAbonos: creditAbonos,
+      layawayAbonos: layawayAbonos,
+      salesCashTotal: salesCashTotal,
+      salesCardTotal: salesCardTotal,
+      salesTransferTotal: salesTransferTotal,
+      salesCreditTotal: salesCreditTotal,
+      refundsCash: refundsCash,
+      expectedCash: expectedCash,
+      totalTickets: totalTickets,
+      totalRefunds: totalRefunds,
+    );
+  }
+
   static Future<CashSummaryModel> _buildSummaryUnsafe(int sessionId) async {
     final db = await AppDb.database;
 
@@ -323,7 +660,62 @@ class CashRepository {
       throw Exception('Sesión no encontrada: $sessionId');
     }
 
-    final openingAmount = session.openingAmount;
+    var openingAmount = session.openingAmount;
+
+    // Compatibilidad operativa:
+    // Si el turno se abrió en 0 pero está ligado a una caja diaria,
+    // resolver el monto de apertura con continuidad:
+    // - Si hay un turno cerrado previo del día, usar su closing_amount (o expected_cash).
+    // - Si no existe, usar el fondo inicial de la caja diaria.
+    if (openingAmount.abs() < 1e-9 && session.cashboxDailyId != null) {
+      final businessDate = session.businessDate;
+
+      if (businessDate != null && businessDate.trim().isNotEmpty) {
+        final previousClosed = await db.query(
+          DbTables.cashSessions,
+          columns: ['closing_amount', 'expected_cash'],
+          where: '''
+            (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+            AND business_date = ?
+            AND id != ?
+            AND opened_at_ms < ?
+            AND (status = 'CLOSED' OR closed_at_ms IS NOT NULL)
+          ''',
+          whereArgs: [
+            session.cashboxDailyId,
+            businessDate,
+            businessDate,
+            sessionId,
+            session.openedAtMs,
+          ],
+          orderBy: 'closed_at_ms DESC, opened_at_ms DESC',
+          limit: 1,
+        );
+
+        if (previousClosed.isNotEmpty) {
+          final row = previousClosed.first;
+          final closing = (row['closing_amount'] as num?)?.toDouble();
+          final expected = (row['expected_cash'] as num?)?.toDouble();
+          if (closing != null || expected != null) {
+            openingAmount = closing ?? expected ?? openingAmount;
+          }
+        }
+      }
+
+      if (openingAmount.abs() < 1e-9) {
+        final cashboxRows = await db.query(
+          DbTables.cashboxDaily,
+          columns: ['initial_amount'],
+          where: 'id = ?',
+          whereArgs: [session.cashboxDailyId],
+          limit: 1,
+        );
+        if (cashboxRows.isNotEmpty) {
+          openingAmount =
+              (cashboxRows.first['initial_amount'] as num?)?.toDouble() ?? 0.0;
+        }
+      }
+    }
 
     // Calcular movimientos manuales IN (incluye abonos de crédito y apartado)
     final inResult = await db.rawQuery(
@@ -515,8 +907,7 @@ class CashRepository {
   static Future<List<Map<String, dynamic>>> listRefundsForSession(
     int sessionId,
   ) {
-    return DbHardening.instance
-        .runDbSafe<List<Map<String, dynamic>>>(() async {
+    return DbHardening.instance.runDbSafe<List<Map<String, dynamic>>>(() async {
       final db = await AppDb.database;
 
       return db.rawQuery(
@@ -641,14 +1032,10 @@ class CashRepository {
           .map(
             (row) => CategoryCashSummary(
               category: row['category'] as String? ?? 'Sin categoria',
-              salesTotal:
-                  (row['sales_total'] as num?)?.toDouble() ?? 0.0,
-              refundTotal:
-                  (row['refund_total'] as num?)?.toDouble() ?? 0.0,
-              itemsSold:
-                  (row['items_sold'] as num?)?.toDouble() ?? 0.0,
-              itemsRefunded:
-                  (row['items_refunded'] as num?)?.toDouble() ?? 0.0,
+              salesTotal: (row['sales_total'] as num?)?.toDouble() ?? 0.0,
+              refundTotal: (row['refund_total'] as num?)?.toDouble() ?? 0.0,
+              itemsSold: (row['items_sold'] as num?)?.toDouble() ?? 0.0,
+              itemsRefunded: (row['items_refunded'] as num?)?.toDouble() ?? 0.0,
             ),
           )
           .toList();

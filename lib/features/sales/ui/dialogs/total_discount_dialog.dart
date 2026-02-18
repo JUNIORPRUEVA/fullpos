@@ -129,21 +129,31 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
     return DialogKeyboardShortcuts(
       onSubmit: _isValidDiscount() ? _applyDiscount : null,
       child: AlertDialog(
+        backgroundColor: Colors.white,
         insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
         contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
+        titleTextStyle: const TextStyle(
+          color: Colors.black,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: const TextStyle(
+          color: Colors.black,
+          fontSize: 14,
+        ),
         title: Row(
           children: [
-            const Icon(Icons.discount, color: AppColors.gold),
+            const Icon(Icons.discount, color: Colors.black),
             const SizedBox(width: 8),
             const Text('Descuento total'),
             const Spacer(),
             IconButton(
               icon: const Icon(Icons.close),
               onPressed: () => Navigator.of(context).pop(),
-              color: AppColors.textDarkMuted,
+              color: Colors.black,
             ),
           ],
         ),
@@ -177,15 +187,15 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
                 style: ButtonStyle(
                   backgroundColor: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.selected)) {
-                      return AppColors.gold;
+                      return Colors.black;
                     }
-                    return AppColors.surfaceLight;
+                    return Colors.white;
                   }),
                   foregroundColor: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.selected)) {
-                      return AppColors.textDark;
+                      return Colors.white;
                     }
-                    return AppColors.textDarkSecondary;
+                    return Colors.black;
                   }),
                 ),
               ),
@@ -207,7 +217,7 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
                     _selectedType == DiscountType.percent
                         ? Icons.percent
                         : Icons.attach_money,
-                    color: AppColors.teal700,
+                    color: Colors.black,
                   ),
                   suffixText:
                       _selectedType == DiscountType.percent ? '%' : 'RD\$',
@@ -219,10 +229,10 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
               Container(
                 padding: const EdgeInsets.all(AppSizes.paddingM),
                 decoration: BoxDecoration(
-                  color: AppColors.bgLightAlt,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(AppSizes.radiusM),
                   border: Border.all(
-                    color: AppColors.surfaceLightBorder,
+                    color: Colors.grey.shade300,
                     width: 1,
                   ),
                 ),

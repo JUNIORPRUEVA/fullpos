@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../features/sales/data/sales_model.dart';
 import '../../features/settings/data/business_settings_model.dart';
+import '../../features/settings/data/printer_settings_repository.dart';
 
 class InvoiceLetterPdf {
   InvoiceLetterPdf._();
@@ -50,6 +51,22 @@ class InvoiceLetterPdf {
     String? warrantyPolicy,
     String? footerMessage,
   }) async {
+    String? resolvedWarrantyPolicy = warrantyPolicy;
+    String? resolvedFooterMessage = footerMessage;
+
+    if ((resolvedWarrantyPolicy == null ||
+            resolvedWarrantyPolicy.trim().isEmpty) ||
+        (resolvedFooterMessage == null ||
+            resolvedFooterMessage.trim().isEmpty)) {
+      try {
+        final printerSettings = await PrinterSettingsRepository.getOrCreate();
+        resolvedWarrantyPolicy ??= printerSettings.warrantyPolicy;
+        resolvedFooterMessage ??= printerSettings.footerMessage;
+      } catch (_) {
+        // fallback a valores de negocio si no se puede leer configuración de impresora
+      }
+    }
+
     final brand = _toPdfColor(brandColorArgb);
     final accent = brand;
     final softBorder = PdfColor(0.87, 0.90, 0.95);
@@ -165,8 +182,8 @@ class InvoiceLetterPdf {
             invoiceTitle = 'FACTURA DE VENTA';
           }
 
-          final warrantyText = (warrantyPolicy ?? '').trim();
-          final termsText = (footerMessage ?? '').trim();
+          final warrantyText = (resolvedWarrantyPolicy ?? '').trim();
+          final termsText = (resolvedFooterMessage ?? '').trim();
 
           return [
             pw.Container(

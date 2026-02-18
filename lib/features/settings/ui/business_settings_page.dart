@@ -286,6 +286,7 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
             : null,
         defaultTaxRate: _draft.defaultTaxRate,
         taxIncludedInPrices: _draft.taxIncludedInPrices,
+        defaultChargeOutputMode: _draft.defaultChargeOutputMode,
         defaultCurrency: _draft.defaultCurrency,
         currencySymbol: _draft.currencySymbol,
       );
@@ -638,6 +639,11 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
   }
 
   Widget _buildTaxesTab(BusinessSettings settings) {
+    final defaultChargeOutputMode =
+        const {'ticket', 'pdf', 'none'}.contains(settings.defaultChargeOutputMode)
+        ? settings.defaultChargeOutputMode
+        : 'ticket';
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(
         (MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0),
@@ -694,6 +700,41 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
             ),
             value: _appSettings?.fiscalEnabledDefault ?? false,
             onChanged: _appSettings == null ? null : _updateFiscalDefault,
+          ),
+
+          const SizedBox(height: 20),
+          _buildSectionTitle('CONFIGURACIONES GENERALES'),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: defaultChargeOutputMode,
+            decoration: InputDecoration(
+              labelText: 'Salida por defecto al cobrar',
+              prefixIcon: const Icon(Icons.point_of_sale),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'ticket',
+                child: Text('Ticket (Cobrar e imprimir)'),
+              ),
+              DropdownMenuItem(
+                value: 'pdf',
+                child: Text('PDF (Cobrar y descargar)'),
+              ),
+              DropdownMenuItem(
+                value: 'none',
+                child: Text('Sin imprimir (Solo cobrar)'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _draft = _draft.copyWith(defaultChargeOutputMode: value);
+                _hasChanges = true;
+              });
+            },
           ),
 
           const SizedBox(height: 32),

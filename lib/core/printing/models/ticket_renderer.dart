@@ -983,7 +983,7 @@ class TicketRenderer {
     // 7) Política de garantía/cambios (configurable)
     final policyText = config.warrantyPolicy.trim();
     if (policyText.isNotEmpty) {
-      addAlignedTextLine('POLITICAS DE CAMBIO', 'center');
+      addAlignedTextLine('POLITICA DE GARANTIA', 'center');
       addLine('');
 
       final rawLines = policyText.split('\n');

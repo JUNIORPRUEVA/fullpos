@@ -31,6 +31,7 @@ import '../../../theme/app_colors.dart';
 import '../../../core/widgets/branded_loading_view.dart';
 import '../../cash/providers/cash_providers.dart';
 import '../../cash/data/cash_movement_model.dart';
+import '../../cash/data/cash_repository.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
 import '../../cash/ui/cash_open_dialog.dart';
 import '../../clients/data/client_model.dart';
@@ -43,6 +44,7 @@ import '../../products/models/product_model.dart';
 import '../../products/ui/widgets/product_thumbnail.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../../settings/data/printer_settings_repository.dart';
+import '../../settings/providers/business_settings_provider.dart';
 import '../data/app_settings_model.dart';
 import '../data/ncf_book_model.dart';
 import '../data/ncf_repository.dart';
@@ -120,10 +122,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   ) {
     return gradientTheme?.backgroundGradient ??
         LinearGradient(
-          colors: [
-            scheme.surface,
-            AppColors.lightBlueHover.withOpacity(0.35),
-          ],
+          colors: [scheme.surface, AppColors.lightBlueHover.withOpacity(0.35)],
           stops: const [0.0, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -154,6 +153,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   int _initialLoadToken = 0;
   bool _loggedFirstBuild = false;
   final Set<int> _hoveredProductIndexes = <int>{};
+  final Set<String> _processedPaymentRequestIds = <String>{};
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> _searchResults = [];
@@ -369,7 +369,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         productsRepo.getAll(),
         categoriesRepo.getAll(),
         ClientsRepository.getAll(),
-        ticketsRepo.listTickets(),
+        ticketsRepo.listTickets(userId: await SessionManager.userId()),
         tempCartRepo.getAllCarts(),
         SettingsRepository.getAppSettings(),
       ]);
@@ -499,12 +499,33 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   int? get _activeSessionId =>
       ref.read(cashSessionControllerProvider).valueOrNull?.id;
 
+  Future<int?> _ensureActiveShiftOrRedirect({bool showMessage = true}) async {
+    await _refreshCashSession();
+    final liveSessionId = await CashRepository.getCurrentSessionId();
+    if (liveSessionId != null) {
+      return liveSessionId;
+    }
+    if (!mounted) return null;
+    if (showMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Turno/caja cerrado. Debes iniciar operación para continuar.',
+          ),
+          backgroundColor: scheme.error,
+        ),
+      );
+    }
+    context.go('/operation-start');
+    return null;
+  }
+
   Future<void> _openCashMovement(String type) async {
-    var sessionId = _activeSessionId;
+    var sessionId = await _ensureActiveShiftOrRedirect(showMessage: true);
     if (sessionId == null) {
       final opened = await CashOpenDialog.show(context);
       if (opened == true) await _refreshCashSession();
-      sessionId = _activeSessionId;
+      sessionId = await _ensureActiveShiftOrRedirect(showMessage: false);
     }
 
     if (!mounted) return;
@@ -1152,6 +1173,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           return _DialogHotkeys(
             onEnter: saveItemChanges,
             child: AlertDialog(
+              backgroundColor: Colors.white,
               insetPadding: const EdgeInsets.symmetric(
                 horizontal: 32,
                 vertical: 32,
@@ -1160,20 +1182,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
+              titleTextStyle: const TextStyle(
+                color: Colors.black,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+              contentTextStyle: const TextStyle(
+                color: Colors.black,
+                fontSize: 14,
+              ),
               title: Row(
                 children: [
-                  Icon(Icons.percent, color: scheme.primary),
+                  const Icon(Icons.percent, color: Colors.black),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       item.productNameSnapshot,
+                      style: const TextStyle(color: Colors.black),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close, color: Colors.black),
                   ),
                 ],
               ),
@@ -1186,16 +1218,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     children: [
                       Text(
                         'C?digo: ${item.productCodeSnapshot}',
-                        style: TextStyle(
-                          color: scheme.onSurface.withOpacity(0.6),
+                        style: const TextStyle(
+                          color: Colors.black54,
                           fontSize: 13,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Precio unitario: ${item.unitPrice.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: scheme.onSurface.withOpacity(0.6),
+                        style: const TextStyle(
+                          color: Colors.black54,
                           fontSize: 13,
                         ),
                       ),
@@ -1252,8 +1284,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: scheme.primary.withOpacity(0.08),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
                         ),
                         child: Column(
                           children: [
@@ -1305,10 +1338,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                                 Text(
                                   total.toStringAsFixed(2),
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: scheme.primary,
+                                    color: Colors.black,
                                   ),
                                 ),
                               ],
@@ -1397,16 +1430,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (_currentCart.items.isEmpty) return;
 
     // Flujo profesional: no permitir ventas sin turno abierto.
-    final activeShiftId = _activeSessionId;
+    final activeShiftId = await _ensureActiveShiftOrRedirect(showMessage: true);
     if (activeShiftId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Debes iniciar operación y abrir turno antes de vender.'),
-          backgroundColor: scheme.error,
-        ),
-      );
-      context.go('/operation-start');
       return;
     }
 
@@ -1447,17 +1472,38 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final subtotalAfterDiscount = _currentCart.calculateSubtotalAfterDiscount();
     final itbisAmount = _currentCart.calculateItbis();
     final total = _currentCart.calculateTotal();
+    final configuredChargeOutputMode = ref
+        .read(businessSettingsProvider)
+        .defaultChargeOutputMode;
     final paymentResult = await _presentDialog<Map<String, dynamic>>(
       builder: (context) => payment.PaymentDialog(
         total: total,
         initialPrintTicket: initialPrintTicket,
         allowInvoicePdfDownload: kind == SaleKind.invoice,
+        initialChargeOutputMode: configuredChargeOutputMode,
         selectedClient: _currentCart.selectedClient,
         onSelectClient: _showClientPicker,
       ),
     );
 
     if (!mounted || paymentResult == null) return;
+
+    final paymentRequestId =
+        (paymentResult['paymentRequestId'] as String?)?.trim();
+    if (paymentRequestId != null && paymentRequestId.isNotEmpty) {
+      if (_processedPaymentRequestIds.contains(paymentRequestId)) {
+        return;
+      }
+      _processedPaymentRequestIds.add(paymentRequestId);
+      if (_processedPaymentRequestIds.length > 120) {
+        _processedPaymentRequestIds.remove(_processedPaymentRequestIds.first);
+      }
+    }
+
+    final activeShiftIdAfterDialog = await _ensureActiveShiftOrRedirect(
+      showMessage: true,
+    );
+    if (activeShiftIdAfterDialog == null) return;
 
     // Permite que el cierre del dialogo se renderice antes de continuar con
     // operaciones pesadas (DB/PDF/impresion). Evita que se "congele" la UI con
@@ -1483,7 +1529,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final shouldDownloadInvoicePdf =
         paymentResult['downloadInvoicePdf'] == true;
     final shouldAutoOpenDrawerOnCharge =
-      await _shouldAutoOpenDrawerWithoutTicket();
+        await _shouldAutoOpenDrawerWithoutTicket();
 
     if (method == payment.PaymentMethod.credit) {
       final canCredit = await _authorizeAction(
@@ -1601,7 +1647,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           fiscalEnabled: _currentCart.fiscalEnabled,
           ncfFull: ncfFull,
           ncfType: ncfType,
-          sessionId: activeShiftId,
+          sessionId: activeShiftIdAfterDialog,
           customerId: _currentCart.selectedClient?.id,
           customerName: _currentCart.selectedClient?.nombre,
           customerPhone: _currentCart.selectedClient?.telefono,
@@ -1620,7 +1666,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           itbisAmountOverride: itbisAmount,
           totalOverride: total,
           paymentMethod: paymentMethodStr,
-          sessionId: activeShiftId,
+          sessionId: activeShiftIdAfterDialog,
           customerId: _currentCart.selectedClient?.id,
           customerName: _currentCart.selectedClient?.nombre,
           customerPhone: _currentCart.selectedClient?.telefono,
@@ -1674,7 +1720,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           itbisAmountOverride: itbisAmount,
           totalOverride: total,
           paymentMethod: paymentMethodStr,
-          sessionId: activeShiftId,
+          sessionId: activeShiftIdAfterDialog,
           customerId: _currentCart.selectedClient?.id,
           customerName: _currentCart.selectedClient?.nombre,
           customerPhone: _currentCart.selectedClient?.telefono,
@@ -1742,8 +1788,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           saleId: saleId,
           shouldPrint: shouldPrint,
           shouldDownloadInvoicePdf: shouldDownloadInvoicePdf,
-          shouldAutoOpenDrawerWithoutTicket:
-              shouldAutoOpenDrawerOnCharge,
+          shouldAutoOpenDrawerWithoutTicket: shouldAutoOpenDrawerOnCharge,
           isLayaway: isLayaway,
           receivedAmount: receivedAmount,
         ),
@@ -1888,6 +1933,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     } else if (_previousCashOpen == true && !cashIsOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        // Limpieza inmediata del panel/columna de detalle.
+        setState(() {
+          _selectedCartItemIndex = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
@@ -1897,6 +1946,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             duration: const Duration(seconds: 3),
           ),
         );
+
+        // Evitar permanecer en Ventas con un ticket abierto.
+        context.go('/operation-start');
       });
     }
     _previousCashOpen = cashIsOpen;
@@ -2212,7 +2264,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                               desiredMaxExtent:
                                                                   _productTileMaxExtent,
                                                               spacing:
-                                                                _gridCrossSpacing,
+                                                                  _gridCrossSpacing,
                                                               minExtent:
                                                                   _productTileMaxExtent,
                                                             );
@@ -2228,12 +2280,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                                 maxCrossAxisExtent:
                                                                     maxExtent,
                                                                 mainAxisExtent:
-                                                                cardSize *
-                                                                1.15,
+                                                                    cardSize *
+                                                                    1.15,
                                                                 crossAxisSpacing:
-                                                                  _gridCrossSpacing,
+                                                                    _gridCrossSpacing,
                                                                 mainAxisSpacing:
-                                                                  _gridMainSpacing,
+                                                                    _gridMainSpacing,
                                                               ),
                                                               itemCount:
                                                                   products
@@ -2493,243 +2545,249 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   width: _productCardSize,
                   height: _productCardSize * 1.15,
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                // Imagen del producto más compacta
-                Expanded(
-                  flex: 4,
-                  child: Stack(
-                    fit: StackFit.expand,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ProductThumbnail.fromProduct(
-                        product,
-                        width: double.infinity,
-                        height: double.infinity,
-                        borderRadius: BorderRadius.circular(12),
-                        showBorder: false,
-                      ),
-                      // Nombre flotante sobre la imagen
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, nameOverlayBg],
-                              stops: const [0.0, 1.0],
+                      // Imagen del producto más compacta
+                      Expanded(
+                        flex: 4,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ProductThumbnail.fromProduct(
+                              product,
+                              width: double.infinity,
+                              height: double.infinity,
+                              borderRadius: BorderRadius.circular(12),
+                              showBorder: false,
                             ),
-                          ),
-                          child: Align(
-                            alignment: Alignment.bottomLeft,
-                            child: Text(
-                              product.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                height: 1.1,
-                                color: nameOverlayText,
-                                letterSpacing: 0.1,
-                                shadows: [
-                                  Shadow(
-                                    color: Theme.of(
-                                      context,
-                                    ).shadowColor.withOpacity(0.35),
-                                    blurRadius: 8,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Badge de código en esquina superior derecha
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.cardBackground.withOpacity(0.92),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: AppColors.borderSoft,
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            product.code.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'monospace',
-                              color: AppColors.textSecondary,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Badge de cantidad en carrito
-                      if (qtyInCart > 0)
-                        Positioned(
-                          top: 6,
-                          left: 6,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.secondary,
-                              borderRadius: BorderRadius.circular(6),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Theme.of(
-                                    context,
-                                  ).shadowColor.withOpacity(0.2),
-                                  blurRadius: 4,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.shopping_cart,
-                                  size: 10,
-                                  color: scheme.onSecondary,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  qtyInCart.toInt().toString(),
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w900,
-                                    color: scheme.onSecondary,
+                            // Nombre flotante sobre la imagen
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [Colors.transparent, nameOverlayBg],
+                                    stops: const [0.0, 1.0],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                // Información del producto
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    // Slightly tighter padding to avoid RenderFlex overflow on
-                    // small tile heights (e.g. 144px).
-                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Precio y Stock en fila
-                        Flexible(
-                          fit: FlexFit.loose,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              // Precio
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'PRECIO',
-                                      style: TextStyle(
-                                        fontSize: 6.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: readableCardText.withOpacity(
-                                          0.62,
-                                        ),
-                                        letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        '\$$formattedPrice',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w900,
-                                          color: priceColor,
-                                          height: 1.0,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              // Stock badge (se adapta para no overflow)
-                              Flexible(
                                 child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerRight,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 4,
+                                  alignment: Alignment.bottomLeft,
+                                  child: Text(
+                                    product.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.1,
+                                      color: nameOverlayText,
+                                      letterSpacing: 0.1,
+                                      shadows: [
+                                        Shadow(
+                                          color: Theme.of(
+                                            context,
+                                          ).shadowColor.withOpacity(0.35),
+                                          blurRadius: 8,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Badge de código en esquina superior derecha
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBackground.withOpacity(
+                                    0.92,
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: AppColors.borderSoft,
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  product.code.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'monospace',
+                                    color: AppColors.textSecondary,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Badge de cantidad en carrito
+                            if (qtyInCart > 0)
+                              Positioned(
+                                top: 6,
+                                left: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.secondary,
+                                    borderRadius: BorderRadius.circular(6),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Theme.of(
+                                          context,
+                                        ).shadowColor.withOpacity(0.2),
+                                        blurRadius: 4,
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: stockColor,
-                                        borderRadius: BorderRadius.circular(6),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.shopping_cart,
+                                        size: 10,
+                                        color: scheme.onSecondary,
                                       ),
-                                      child: Row(
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        qtyInCart.toInt().toString(),
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w900,
+                                          color: scheme.onSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      // Información del producto
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          // Slightly tighter padding to avoid RenderFlex overflow on
+                          // small tile heights (e.g. 144px).
+                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Precio y Stock en fila
+                              Flexible(
+                                fit: FlexFit.loose,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    // Precio
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(
-                                            isOutOfStock
-                                                ? Icons.remove_circle_outline
-                                                : Icons.inventory_2,
-                                            size: 11,
-                                            color: readableOn(stockColor),
-                                          ),
-                                          const SizedBox(width: 3),
                                           Text(
-                                            isOutOfStock
-                                                ? 'Agot.'
-                                                : '${effectiveStock.toInt()}',
+                                            'PRECIO',
                                             style: TextStyle(
-                                              fontSize: 9.5,
-                                              fontWeight: FontWeight.w800,
-                                              color: readableOn(stockColor),
-                                              height: 1.0,
+                                              fontSize: 6.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: readableCardText
+                                                  .withOpacity(0.62),
+                                              letterSpacing: 0.2,
+                                            ),
+                                          ),
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              '\$$formattedPrice',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                                color: priceColor,
+                                                height: 1.0,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 4),
+                                    // Stock badge (se adapta para no overflow)
+                                    Flexible(
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          alignment: Alignment.centerRight,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: stockColor,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  isOutOfStock
+                                                      ? Icons
+                                                            .remove_circle_outline
+                                                      : Icons.inventory_2,
+                                                  size: 11,
+                                                  color: readableOn(stockColor),
+                                                ),
+                                                const SizedBox(width: 3),
+                                                Text(
+                                                  isOutOfStock
+                                                      ? 'Agot.'
+                                                      : '${effectiveStock.toInt()}',
+                                                  style: TextStyle(
+                                                    fontSize: 9.5,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: readableOn(
+                                                      stockColor,
+                                                    ),
+                                                    height: 1.0,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
                 ),
               ),
             ),
@@ -3413,9 +3471,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   color: transparent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: Colors.white.withOpacity(0.22),
-                    ),
+                    side: BorderSide(color: Colors.white.withOpacity(0.22)),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
@@ -3442,9 +3498,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   decoration: BoxDecoration(
                     color: transparent,
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.24),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.24)),
                   ),
                   child: Text(
                     '$itemCount',
@@ -3468,9 +3522,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       color: transparent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: Colors.white.withOpacity(0.22),
-                        ),
+                        side: BorderSide(color: Colors.white.withOpacity(0.22)),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
@@ -4139,10 +4191,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _currentCart.items.isEmpty
                           ? scheme.surface
-                        : AppColors.primaryBlue,
+                          : AppColors.primaryBlue,
                       foregroundColor: _currentCart.items.isEmpty
                           ? scheme.onSurface
-                        : Colors.white,
+                          : Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -4202,7 +4254,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       shadowColor: Theme.of(context).shadowColor.withOpacity(0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.outlineVariant.withOpacity(0.6), width: 1),
+        side: BorderSide(
+          color: scheme.outlineVariant.withOpacity(0.6),
+          width: 1,
+        ),
       ),
       color: transparent,
       child: Container(

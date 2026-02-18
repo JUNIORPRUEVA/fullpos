@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +24,8 @@ import '../data/cash_movement_model.dart';
 import '../data/cash_summary_model.dart';
 import '../data/cash_repository.dart';
 import '../data/cash_session_model.dart';
+import '../data/cashbox_daily_model.dart';
+import '../data/operation_flow_service.dart';
 import '../providers/cash_providers.dart';
 
 enum _SelectionKind { refund, movement }
@@ -52,6 +56,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   CashSummaryModel? _summary;
   bool _loadingSummary = true;
   CashSessionModel? _session;
+  CashboxDailyModel? _cashboxDaily;
   bool _loadingSession = true;
   List<Map<String, dynamic>> _refunds = [];
   bool _loadingRefunds = true;
@@ -78,9 +83,13 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   Future<void> _loadSession() async {
     try {
       final session = await CashRepository.getSessionById(widget.sessionId);
+      final cashboxDaily = await OperationFlowService.getDailyCashboxById(
+        session?.cashboxDailyId,
+      );
       if (!mounted) return;
       setState(() {
         _session = session;
+        _cashboxDaily = cashboxDaily;
         _loadingSession = false;
       });
     } catch (_) {
@@ -105,8 +114,11 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       setState(() {
         _summary = summary;
         _loadingSummary = false;
-        // Pre-llenar con el esperado
-        _closingAmountController.text = summary.expectedCash.toStringAsFixed(2);
+        // El efectivo contado es opcional: no prellenar para que el usuario
+        // pueda dejarlo vacío y usar el efectivo esperado.
+        if (_closingAmountController.text.trim().isEmpty) {
+          _closingAmountController.text = '';
+        }
       });
     } catch (e, st) {
       if (!mounted) return;
@@ -196,8 +208,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
   Future<void> _loadCategorySummary() async {
     try {
-      final summary =
-          await CashRepository.listCategorySummaryForSession(widget.sessionId);
+      final summary = await CashRepository.listCategorySummaryForSession(
+        widget.sessionId,
+      );
       final refundItems =
           await CashRepository.listRefundItemsByCategoryForSession(
             widget.sessionId,
@@ -229,8 +242,13 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     super.dispose();
   }
 
-  double get _closingAmount =>
-      double.tryParse(_closingAmountController.text) ?? 0.0;
+  double get _closingAmount {
+    final raw = _closingAmountController.text.trim();
+    final parsed = raw.isEmpty ? null : double.tryParse(raw);
+    if (parsed != null) return parsed;
+    // Si el usuario deja vacío (opcional), usar el efectivo esperado.
+    return _summary?.expectedCash ?? 0.0;
+  }
 
   double get _difference {
     if (_summary == null) return 0.0;
@@ -332,18 +350,14 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final refunds = await CashRepository.listRefundsForSession(
       widget.sessionId,
     );
-    final categorySummary =
-        _categorySummary.isNotEmpty
-            ? _categorySummary
-            : await CashRepository.listCategorySummaryForSession(
-              widget.sessionId,
-            );
-    final refundItemsByCategory =
-        _refundItemsByCategory.isNotEmpty
-            ? _refundItemsByCategory
-            : await CashRepository.listRefundItemsByCategoryForSession(
-              widget.sessionId,
-            );
+    final categorySummary = _categorySummary.isNotEmpty
+        ? _categorySummary
+        : await CashRepository.listCategorySummaryForSession(widget.sessionId);
+    final refundItemsByCategory = _refundItemsByCategory.isNotEmpty
+        ? _refundItemsByCategory
+        : await CashRepository.listRefundItemsByCategoryForSession(
+            widget.sessionId,
+          );
     final settings = await PrinterSettingsRepository.getOrCreate();
     final layout = TicketLayoutConfig.fromPrinterSettings(settings);
     final company = await CompanyInfoRepository.getCurrentCompanyInfo();
@@ -363,6 +377,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       refunds: refunds,
       categorySummary: categorySummary,
       refundItemsByCategory: refundItemsByCategory,
+      cashboxInitialAmount: _cashboxDaily?.initialAmount,
     );
 
     final result = await UnifiedTicketPrinter.printCustomLines(
@@ -397,6 +412,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     required List<Map<String, dynamic>> refunds,
     required List<CategoryCashSummary> categorySummary,
     required List<RefundItemByCategory> refundItemsByCategory,
+    double? cashboxInitialAmount,
   }) {
     final w = layout.maxCharsPerLine;
     final lines = <String>[];
@@ -462,7 +478,10 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
     lines.add(line());
 
-    lines.add('<BL>${twoCols('Saldo inicial', money(summary.openingAmount))}');
+    if (cashboxInitialAmount != null) {
+      lines.add('<BL>${twoCols('Apertura caja', money(cashboxInitialAmount))}');
+    }
+    lines.add('<BL>${twoCols('Apertura turno', money(summary.openingAmount))}');
     lines.add(
       '<BL>${twoCols('Ventas efectivo', money(summary.salesCashTotal))}',
     );
@@ -488,11 +507,10 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         '<BL>${twoCols('Abonos apartado', money(summary.layawayAbonos))}',
       );
     }
-    final manualNoAbonos = (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
-        .clamp(0.0, double.infinity);
-    lines.add(
-      '<BL>${twoCols('Entradas manuales', money(manualNoAbonos))}',
-    );
+    final manualNoAbonos =
+        (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
+            .clamp(0.0, double.infinity);
+    lines.add('<BL>${twoCols('Entradas manuales', money(manualNoAbonos))}');
     lines.add(
       '<BL>${twoCols('Retiros manuales', money(summary.cashOutManual))}',
     );
@@ -722,8 +740,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         if (refundItems != null && refundItems.isNotEmpty) {
           lines.add(fit('Reembolsos:'));
           for (final item in refundItems) {
-            final label =
-                '${item.productName} x${qtyText(item.qty)}';
+            final label = '${item.productName} x${qtyText(item.qty)}';
             lines.add(twoCols('  $label', money(item.total.abs())));
           }
         }
@@ -843,7 +860,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             decoration: BoxDecoration(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
+              border: Border.all(
+                color: scheme.outlineVariant.withOpacity(0.55),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: theme.shadowColor.withOpacity(0.22),
@@ -867,7 +886,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                         decoration: BoxDecoration(
                           color: headerText.withOpacity(0.14),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: headerText.withOpacity(0.18)),
+                          border: Border.all(
+                            color: headerText.withOpacity(0.18),
+                          ),
                         ),
                         child: Icon(
                           Icons.lock_outline,
@@ -901,7 +922,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                         ),
                       ),
                       IconButton(
-                        onPressed: _isLoading ? null : () => Navigator.pop(context),
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.pop(context),
                         icon: Icon(Icons.close, color: headerText),
                         tooltip: 'Cerrar',
                       ),
@@ -915,7 +938,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                     padding: EdgeInsets.all(outerPad),
                     child: _loadingSummary
                         ? Center(
-                            child: CircularProgressIndicator(color: scheme.error),
+                            child: CircularProgressIndicator(
+                              color: scheme.error,
+                            ),
                           )
                         : Form(
                             key: _formKey,
@@ -927,18 +952,23 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                   builder: (context) {
                                     if (_loadingSession) {
                                       return Padding(
-                                        padding: const EdgeInsets.only(bottom: 16),
+                                        padding: const EdgeInsets.only(
+                                          bottom: 16,
+                                        ),
                                         child: Text(
                                           'Cargando información del turno…',
-                                          style: theme.textTheme.bodySmall?.copyWith(
-                                            color: scheme.onSurface.withOpacity(0.65),
-                                          ),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: scheme.onSurface
+                                                    .withOpacity(0.65),
+                                              ),
                                         ),
                                       );
                                     }
 
                                     final s = _session;
-                                    if (s == null) return const SizedBox(height: 0);
+                                    if (s == null)
+                                      return const SizedBox(height: 0);
 
                                     final end = s.closedAt ?? DateTime.now();
                                     final duration = end.difference(s.openedAt);
@@ -952,30 +982,37 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                         color: scheme.surfaceContainerHighest,
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: scheme.outlineVariant.withOpacity(0.6),
+                                          color: scheme.outlineVariant
+                                              .withOpacity(0.6),
                                         ),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             'Cajero: ${s.userName}',
-                                            style: theme.textTheme.bodyMedium?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
                                             'Apertura: ${fmt.format(s.openedAt)}',
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              color: scheme.onSurface.withOpacity(0.7),
-                                            ),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: scheme.onSurface
+                                                      .withOpacity(0.7),
+                                                ),
                                           ),
                                           Text(
                                             'Tiempo con caja abierta: ${_formatDuration(duration)}',
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              color: scheme.onSurface.withOpacity(0.7),
-                                            ),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: scheme.onSurface
+                                                      .withOpacity(0.7),
+                                                ),
                                           ),
                                         ],
                                       ),
@@ -986,57 +1023,39 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                 Expanded(
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
-                                      final isWide = constraints.maxWidth >= 920;
-                                      final gap =
-                                          (outerPad * 0.65).clamp(12.0, 18.0);
-
-                                      final mainPane = SingleChildScrollView(
-                                        padding: EdgeInsets.only(bottom: gap),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            _buildSummarySection(
-                                              fontFamily: settings.fontFamily,
-                                            ),
-                                            SizedBox(height: gap),
-                                            _buildRefundsSection(
-                                              fontFamily: settings.fontFamily,
-                                            ),
-                                            SizedBox(height: gap),
-                                            _buildMovementsSection(
-                                              fontFamily: settings.fontFamily,
-                                            ),
-                                            if (!isWide) ...[
-                                              SizedBox(height: gap),
-                                              _buildSelectionDetailsPanel(
-                                                fontFamily: settings.fontFamily,
-                                              ),
-                                            ],
-                                            SizedBox(height: gap),
-                                            _buildCategorySummarySection(
-                                              fontFamily: settings.fontFamily,
-                                            ),
-                                            SizedBox(height: gap),
-                                            _buildClosingSection(
-                                              fontFamily: settings.fontFamily,
-                                            ),
-                                          ],
-                                        ),
+                                      final isWide =
+                                          constraints.maxWidth >= 860;
+                                      final gap = (outerPad * 0.65).clamp(
+                                        12.0,
+                                        18.0,
                                       );
 
-                                      if (!isWide) return mainPane;
+                                      final summary = _buildSummarySection(
+                                        fontFamily: settings.fontFamily,
+                                      );
+                                      final closing = _buildClosingSection(
+                                        fontFamily: settings.fontFamily,
+                                      );
+
+                                      if (!isWide) {
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            summary,
+                                            SizedBox(height: gap),
+                                            closing,
+                                          ],
+                                        );
+                                      }
 
                                       return Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Expanded(flex: 7, child: mainPane),
+                                          Expanded(flex: 6, child: summary),
                                           SizedBox(width: gap),
-                                          Expanded(
-                                            flex: 5,
-                                            child: _buildSelectionDetailsPanel(
-                                              fontFamily: settings.fontFamily,
-                                            ),
-                                          ),
+                                          Expanded(flex: 5, child: closing),
                                         ],
                                       );
                                     },
@@ -1054,14 +1073,18 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                   decoration: BoxDecoration(
                     color: scheme.surfaceVariant.withOpacity(0.25),
                     border: Border(
-                      top: BorderSide(color: scheme.outlineVariant.withOpacity(0.55)),
+                      top: BorderSide(
+                        color: scheme.outlineVariant.withOpacity(0.55),
+                      ),
                     ),
                   ),
                   child: Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _isLoading ? null : () => Navigator.pop(context),
+                          onPressed: _isLoading
+                              ? null
+                              : () => Navigator.pop(context),
                           icon: const Icon(Icons.close, size: 18),
                           label: const Text('Cancelar'),
                           style: OutlinedButton.styleFrom(
@@ -1122,99 +1145,95 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final summary = _summary!;
-    final items = [
-      _SummaryMetric('Apertura', summary.openingAmount, scheme.primary),
-      _SummaryMetric('Ventas efectivo', summary.salesCashTotal, scheme.primary),
-      _SummaryMetric(
-        'Ventas tarjeta',
-        summary.salesCardTotal,
-        scheme.secondary,
-      ),
-      _SummaryMetric(
-        'Ventas transferencia',
-        summary.salesTransferTotal,
-        scheme.tertiary,
-      ),
-      _SummaryMetric(
-        'Ventas credito',
-        summary.salesCreditTotal,
-        scheme.primary,
-      ),
-      _SummaryMetric('Entradas manuales', summary.cashInManual, scheme.primary),
-      _SummaryMetric('Retiros manuales', summary.cashOutManual, scheme.error),
-      if (summary.refundsCash > 0)
-        _SummaryMetric('Devoluciones', summary.refundsCash, scheme.error),
-      _SummaryMetric('Efectivo esperado', summary.expectedCash, scheme.primary),
-    ];
+    final bg = scheme.surfaceContainerHighest;
+    final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
+    final titleColor = ColorUtils.ensureReadableColor(scheme.primary, bg);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth;
-        final columns = maxWidth >= 520 ? 3 : (maxWidth >= 360 ? 2 : 1);
-        final spacing = 10.0;
-        final tileWidth = (maxWidth - (columns - 1) * spacing) / columns;
-
-        final bg = scheme.surfaceContainerHighest;
-        final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
-
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'RESUMEN DE LA JORNADA',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  letterSpacing: 1,
-                  fontWeight: FontWeight.w700,
-                  color: ColorUtils.ensureReadableColor(scheme.primary, bg),
+    Widget row(String label, double value, {Color? color}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: fg.withOpacity(0.72),
+                  fontWeight: FontWeight.w600,
                   fontFamily: fontFamily,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: items
-                    .map(
-                      (item) => _buildSummaryTile(
-                        item.label,
-                        item.amount,
-                        item.color,
-                        tileWidth,
-                      ),
-                    )
-                    .toList(),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'RD\$ ${value.toStringAsFixed(2)}',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: color ?? fg,
+                fontWeight: FontWeight.w800,
+                fontFamily: fontFamily,
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _buildStatChip(
-                    '${summary.totalTickets}',
-                    'Tickets',
-                    scheme.primary,
-                    fg: fg,
-                    fontFamily: fontFamily,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildStatChip(
-                    '\$${summary.totalSales.toStringAsFixed(2)}',
-                    'Total Ventas',
-                    scheme.secondary,
-                    fg: fg,
-                    fontFamily: fontFamily,
-                  ),
-                ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'RESUMEN',
+            style: theme.textTheme.labelLarge?.copyWith(
+              letterSpacing: 1,
+              fontWeight: FontWeight.w800,
+              color: titleColor,
+              fontFamily: fontFamily,
+            ),
+          ),
+          const SizedBox(height: 6),
+          row('Apertura turno', summary.openingAmount, color: fg),
+          row('Ventas efectivo', summary.salesCashTotal, color: fg),
+          row('Entradas manuales', summary.cashInManual, color: fg),
+          row('Retiros manuales', summary.cashOutManual, color: scheme.error),
+          if (summary.refundsCash > 0)
+            row('Devoluciones', summary.refundsCash, color: scheme.error),
+          const Divider(height: 14),
+          row(
+            'Efectivo esperado',
+            summary.expectedCash,
+            color: ColorUtils.ensureReadableColor(scheme.primary, bg),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildStatChip(
+                '${summary.totalTickets}',
+                'Tickets',
+                scheme.primary,
+                fg: fg,
+                fontFamily: fontFamily,
+              ),
+              const SizedBox(width: 8),
+              _buildStatChip(
+                'RD\$ ${summary.totalSales.toStringAsFixed(2)}',
+                'Total ventas',
+                scheme.secondary,
+                fg: fg,
+                fontFamily: fontFamily,
               ),
             ],
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -1393,10 +1412,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: accent,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2, color: accent),
             ),
           ],
         ),
@@ -1522,8 +1538,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                     const SizedBox(height: 4),
                     ...refunds.map(
                       (item) => _buildCategoryRow(
-                        label:
-                            '${item.productName} x${qtyText(item.qty)}',
+                        label: '${item.productName} x${qtyText(item.qty)}',
                         value: currency.format(item.total.abs()),
                         color: fg.withOpacity(0.9),
                         fontFamily: fontFamily,
@@ -1556,9 +1571,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Expanded(
-            child: Text(label, style: textStyle),
-          ),
+          Expanded(child: Text(label, style: textStyle)),
           Text(value, style: textStyle),
         ],
       ),
@@ -1658,7 +1671,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'CIERRE',
+          'CORTE',
           style: theme.textTheme.labelLarge?.copyWith(
             letterSpacing: 1,
             fontWeight: FontWeight.bold,
@@ -1666,34 +1679,36 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             fontFamily: fontFamily,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
-        // Efectivo contado
+        // Efectivo contado (opcional)
         Text(
-          'Efectivo contado',
+          'Efectivo contado (opcional)',
           style: theme.textTheme.bodySmall?.copyWith(
             color: scheme.onSurface.withOpacity(0.7),
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextFormField(
           controller: _closingAmountController,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
           ],
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
             color: scheme.onSurface,
           ),
           onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
             prefixText: '\$ ',
-            prefixStyle: theme.textTheme.titleLarge?.copyWith(
+            prefixStyle: theme.textTheme.titleMedium?.copyWith(
               color: scheme.primary,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w800,
             ),
+            hintText: 'Opcional',
+            helperText: null,
             filled: true,
             fillColor: scheme.surfaceContainerHighest,
             border: OutlineInputBorder(
@@ -1706,21 +1721,17 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             ),
           ),
           validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Ingrese el efectivo contado';
-            }
-            final amount = double.tryParse(value);
-            if (amount == null || amount < 0) {
-              return 'Monto inválido';
-            }
+            if (value == null || value.trim().isEmpty) return null;
+            final amount = double.tryParse(value.trim());
+            if (amount == null || amount < 0) return 'Monto inválido';
             return null;
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
         // Diferencia
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: diffBg,
             borderRadius: BorderRadius.circular(8),
@@ -1733,21 +1744,21 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                 'Diferencia:',
                 style: TextStyle(
                   color: scheme.onSurface.withOpacity(0.7),
-                  fontSize: 14,
+                  fontSize: 13,
                 ),
               ),
               Text(
                 '${_difference >= 0 ? '+' : ''}\$${_difference.toStringAsFixed(2)}',
                 style: TextStyle(
                   color: diffColor,
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Nota
         Text(
@@ -1757,7 +1768,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         TextFormField(
           controller: _noteController,
           maxLines: 2,
@@ -2138,10 +2149,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                       TextSpan(
                         children: [
                           TextSpan(
-                            text:
-                                (m.reason.trim().isEmpty
-                                    ? 'Movimiento'
-                                    : m.reason.trim()),
+                            text: (m.reason.trim().isEmpty
+                                ? 'Movimiento'
+                                : m.reason.trim()),
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: tileFg,
                               fontWeight: FontWeight.w800,

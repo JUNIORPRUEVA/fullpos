@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../data/cash_repository.dart';
 import '../data/cash_session_model.dart';
 import '../data/cashbox_daily_model.dart';
+import '../data/daily_cash_close_ticket_printer.dart';
 import '../data/operation_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
 import 'cash_close_dialog.dart';
@@ -27,6 +28,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
   bool _canCloseCashbox = false;
   bool _canOpenShift = false;
   bool _canCloseShift = false;
+  bool _isMutating = false;
 
   @override
   void initState() {
@@ -59,7 +61,8 @@ class _CashBoxPageState extends State<CashBoxPage> {
       context: context,
       canOpen: _canOpenCashbox,
       title: 'Abrir caja del día',
-      subtitle: 'Registra el fondo inicial para habilitar los turnos de trabajo.',
+      subtitle:
+          'Registra el fondo inicial para habilitar los turnos de trabajo.',
       confirmLabel: 'Abrir caja',
       deniedMessage: 'Requiere supervisor/admin para abrir caja.',
     );
@@ -73,18 +76,106 @@ class _CashBoxPageState extends State<CashBoxPage> {
       await _loadData();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
 
   Future<void> _closeDailyCashbox() async {
+    if (_isMutating) return;
+    if (!mounted) return;
+
+    if (!_canCloseCashbox) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No tienes permiso para cerrar caja del día.'),
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cerrar caja (fin del día)'),
+        content: const Text(
+          'Este proceso cierra la caja del día y bloquea operar hasta abrir una nueva caja. ¿Deseas continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cerrar caja'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    if (!mounted) return;
+
+    final shouldPrint = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Imprimir ticket'),
+        content: const Text(
+          '¿Deseas imprimir el ticket de cierre de caja del día?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No imprimir'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Imprimir'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    final businessDate = OperationFlowService.businessDateOf();
+    final cashboxBefore = await OperationFlowService.getDailyCashbox(
+      businessDate,
+    );
+    final cashboxId = cashboxBefore?.id;
+
+    setState(() => _isMutating = true);
     try {
       await OperationFlowService.closeDailyCashboxToday(
         note: 'Cierre diario desde módulo Caja',
       );
+
+      if (shouldPrint == true && cashboxId != null) {
+        try {
+          await DailyCashCloseTicketPrinter.printDailyCloseTicket(
+            cashboxDailyId: cashboxId,
+            businessDate: businessDate,
+            note: 'Cierre diario desde módulo Caja',
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Caja cerrada, pero no se pudo imprimir: $e'),
+              ),
+            );
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _session = null;
+          _cashboxToday = null;
+        });
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Caja diaria cerrada correctamente.')),
@@ -93,10 +184,12 @@ class _CashBoxPageState extends State<CashBoxPage> {
       await _loadData();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
+    } finally {
+      if (mounted) setState(() => _isMutating = false);
     }
   }
 
@@ -123,7 +216,8 @@ class _CashBoxPageState extends State<CashBoxPage> {
             ElevatedButton(
               onPressed: _canOpenShift
                   ? () async {
-                      final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                      final amount =
+                          double.tryParse(amountCtrl.text.trim()) ?? 0;
                       await OperationFlowService.openShiftForCurrentUser(
                         openingAmount: amount,
                       );
@@ -140,9 +234,9 @@ class _CashBoxPageState extends State<CashBoxPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       amountCtrl.dispose();
@@ -150,19 +244,59 @@ class _CashBoxPageState extends State<CashBoxPage> {
   }
 
   Future<void> _closeCashDialog() async {
+    if (_isMutating) return;
     final sessionId = _session?.id;
     if (sessionId == null) return;
     if (!_canCloseShift) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No tienes permiso para hacer corte de turno.')),
+          const SnackBar(
+            content: Text('No tienes permiso para hacer corte de turno.'),
+          ),
         );
       }
       return;
     }
-    final result = await CashCloseDialog.show(context, sessionId: sessionId);
-    if (result == true) {
-      await _loadData();
+    if (!mounted) return;
+    setState(() => _isMutating = true);
+    try {
+      final result = await CashCloseDialog.show(context, sessionId: sessionId);
+      if (result == true && mounted) {
+        setState(() => _session = null);
+        await _loadData();
+
+        final canOfferCashboxClose =
+            _canCloseCashbox &&
+            _cashboxToday?.isOpen == true &&
+            _session == null;
+        if (!canOfferCashboxClose || !mounted) return;
+
+        final closeCashboxNow = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Turno cerrado'),
+            content: const Text(
+              'Tu turno se cerró correctamente. ¿Deseas cerrar también la caja del día ahora?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Ahora no'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Cerrar caja ahora'),
+              ),
+            ],
+          ),
+        );
+
+        if (closeCashboxNow == true && mounted) {
+          await _closeDailyCashbox();
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isMutating = false);
     }
   }
 
@@ -230,8 +364,8 @@ class _CashBoxPageState extends State<CashBoxPage> {
                             : (diff > 0 ? scheme.tertiary : scheme.error);
                         final date = item.closedAt != null
                             ? DateFormat(
-                                'dd/MM/yyyy HH:mm',
-                              ).format(item.closedAt!)
+                                'dd/MM/yyyy hh:mm a',
+                              ).format(item.closedAt!).toUpperCase()
                             : 'N/D';
 
                         return Card(
@@ -289,7 +423,10 @@ class _CashBoxPageState extends State<CashBoxPage> {
                 color: scheme.outlineVariant,
               ),
               const SizedBox(height: 16),
-              Text('Paso 1: abrir caja diaria', style: theme.textTheme.titleMedium),
+              Text(
+                'Paso 1: abrir caja diaria',
+                style: theme.textTheme.titleMedium,
+              ),
               const SizedBox(height: 8),
               Text(
                 'Primero abre la caja del día para habilitar la apertura de turno y el corte.',
@@ -301,7 +438,9 @@ class _CashBoxPageState extends State<CashBoxPage> {
                 onPressed: _canOpenCashbox ? _openCashDialog : null,
                 icon: const Icon(Icons.add),
                 label: Text(
-                  _canOpenCashbox ? 'Abrir Caja del Día' : 'Requiere Supervisor/Admin',
+                  _canOpenCashbox
+                      ? 'Abrir Caja del Día'
+                      : 'Requiere Supervisor/Admin',
                 ),
               ),
               const SizedBox(height: 12),
@@ -322,7 +461,9 @@ class _CashBoxPageState extends State<CashBoxPage> {
     final scheme = theme.colorScheme;
     final session = _session;
     final cashbox = _cashboxToday!;
-    final openedAt = DateFormat('dd/MM/yyyy HH:mm').format(cashbox.openedAt);
+    final openedAt = DateFormat(
+      'dd/MM/yyyy hh:mm a',
+    ).format(cashbox.openedAt).toUpperCase();
 
     return Card(
       child: Padding(
@@ -349,8 +490,18 @@ class _CashBoxPageState extends State<CashBoxPage> {
               'Fondo inicial caja: RD\$ ${_formatAmount(cashbox.initialAmount)}',
               style: theme.textTheme.bodyLarge,
             ),
+            if (session != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Monto inicial turno: RD\$ ${_formatAmount(session.openingAmount)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ],
             const SizedBox(height: 6),
-            Text('Fecha operativa: ${cashbox.businessDate}', style: theme.textTheme.bodyMedium),
+            Text(
+              'Fecha operativa: ${cashbox.businessDate}',
+              style: theme.textTheme.bodyMedium,
+            ),
             if (session != null) ...[
               const SizedBox(height: 6),
               Text(
@@ -364,33 +515,69 @@ class _CashBoxPageState extends State<CashBoxPage> {
                 style: theme.textTheme.bodyMedium,
               ),
             ],
+            const SizedBox(height: 12),
+            Text(
+              'Turno (Corte cajero): abrir/cerrar turno del usuario actual.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.75),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Caja (Fin del día): solo supervisor/admin y únicamente sin turnos abiertos.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.75),
+              ),
+            ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
-                ElevatedButton.icon(
-                  onPressed: session == null
-                      ? (_canOpenShift ? _openShiftDialog : null)
-                      : _openPanel,
-                  icon: Icon(session == null ? Icons.play_arrow : Icons.point_of_sale),
-                  label: Text(
-                    session == null
-                        ? (_canOpenShift ? 'Abrir turno' : 'Sin permiso para abrir turno')
-                        : 'Panel de turno',
+                Tooltip(
+                  message: 'Turno: iniciar o gestionar corte del cajero actual',
+                  child: ElevatedButton.icon(
+                    onPressed: _isMutating
+                        ? null
+                        : session == null
+                        ? (_canOpenShift ? _openShiftDialog : null)
+                        : _openPanel,
+                    icon: Icon(
+                      session == null ? Icons.play_arrow : Icons.point_of_sale,
+                    ),
+                    label: Text(
+                      session == null
+                          ? (_canOpenShift
+                                ? 'Abrir turno'
+                                : 'Sin permiso para abrir turno')
+                          : 'Panel de turno',
+                    ),
                   ),
                 ),
-                OutlinedButton.icon(
-                  onPressed: (session == null || !_canCloseShift) ? null : _closeCashDialog,
-                  icon: const Icon(Icons.lock_outline),
-                  label: const Text('Hacer corte de turno'),
+                Tooltip(
+                  message: 'Turno: registrar cierre del turno del cajero',
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        (_isMutating || session == null || !_canCloseShift)
+                        ? null
+                        : _closeCashDialog,
+                    icon: const Icon(Icons.lock_outline),
+                    label: const Text('Hacer corte de turno'),
+                  ),
                 ),
-                OutlinedButton.icon(
-                  onPressed: (_canCloseCashbox && session == null)
-                      ? _closeDailyCashbox
-                      : null,
-                  icon: const Icon(Icons.lock_clock),
-                  label: const Text('Cerrar caja del día'),
+                Tooltip(
+                  message:
+                      'Caja diaria: cierre de fin de día (sin turnos abiertos)',
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        (_isMutating || !(_canCloseCashbox && session == null))
+                        ? null
+                        : _closeDailyCashbox,
+                    icon: const Icon(Icons.lock_clock),
+                    label: Text(
+                      _isMutating ? 'Procesando...' : 'Cerrar caja del día',
+                    ),
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => context.push('/cash/history'),

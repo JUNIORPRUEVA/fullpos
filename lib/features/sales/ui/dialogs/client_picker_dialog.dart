@@ -63,28 +63,41 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final listHeight =
-        math.min<double>(360, math.max<double>(180, _filteredClients.length * 64));
+    final viewport = MediaQuery.sizeOf(context);
+    final listHeight = math.min<double>(
+      viewport.height * 0.62,
+      math.max<double>(260, _filteredClients.length * 64),
+    );
 
     return DialogKeyboardShortcuts(
       child: AlertDialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
         contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        titleTextStyle: const TextStyle(
+          color: Colors.black,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: const TextStyle(
+          color: Colors.black,
+          fontSize: 14,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.person_search, color: scheme.primary),
+            const Icon(Icons.person_search, color: Colors.black),
             const SizedBox(width: 8),
             const Text('Clientes'),
             const Spacer(),
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
+              icon: const Icon(Icons.close, color: Colors.black),
             ),
           ],
         ),
         content: SizedBox(
-          width: 520,
+          width: 560,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,16 +107,28 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
                   Expanded(
                     child: TextField(
                       controller: _searchController,
-                      decoration: const InputDecoration(
+                      style: const TextStyle(color: Colors.black),
+                      decoration: InputDecoration(
                         hintText: 'Buscar cliente...',
-                        prefixIcon: Icon(Icons.search, size: 20),
+                        hintStyle: TextStyle(color: Colors.black54),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          size: 20,
+                          color: Colors.black,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(),
                         isDense: true,
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    icon: const Icon(
+                      Icons.person_add_alt_1_outlined,
+                      color: Colors.black,
+                    ),
                     tooltip: 'Agregar cliente',
                     onPressed: _createNewClient,
                   ),
@@ -120,14 +145,12 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
                             Icon(
                               Icons.person_off,
                               size: 48,
-                              color: scheme.onSurface.withOpacity(0.4),
+                              color: Colors.black38,
                             ),
                             const SizedBox(height: 12),
-                            Text(
+                            const Text(
                               'No se encontraron clientes',
-                              style: TextStyle(
-                                color: scheme.onSurface.withOpacity(0.6),
-                              ),
+                              style: TextStyle(color: Colors.black54),
                             ),
                           ],
                         ),
@@ -144,7 +167,12 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
                             final client = _filteredClients[index];
                             return Card(
                               margin: const EdgeInsets.only(bottom: 6),
-                              elevation: 1,
+                              color: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: Colors.grey.shade300),
+                              ),
                               child: ListTile(
                                 dense: true,
                                 contentPadding: const EdgeInsets.symmetric(
@@ -153,11 +181,11 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
                                 ),
                                 leading: CircleAvatar(
                                   radius: 18,
-                                  backgroundColor: scheme.primaryContainer,
+                                  backgroundColor: Colors.grey.shade200,
                                   child: Text(
                                     client.nombre[0].toUpperCase(),
-                                    style: TextStyle(
-                                      color: scheme.onPrimaryContainer,
+                                    style: const TextStyle(
+                                      color: Colors.black,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14,
                                     ),
@@ -168,20 +196,22 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
+                                    color: Colors.black,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 subtitle: Text(
                                   client.telefono ?? 'Sin telefono',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 12,
-                                    color: scheme.onSurface.withOpacity(0.6),
+                                    color: Colors.black54,
                                   ),
                                 ),
                                 trailing: const Icon(
                                   Icons.arrow_forward_ios,
                                   size: 14,
+                                  color: Colors.black54,
                                 ),
                                 onTap: () => Navigator.pop(context, client),
                               ),

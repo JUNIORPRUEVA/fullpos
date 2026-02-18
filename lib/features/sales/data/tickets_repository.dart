@@ -172,21 +172,41 @@ class TicketsRepository {
     final grouped = <int, List<PosTicketItemModel>>{};
     for (final row in results) {
       final ticketId = row['ticket_id'] as int? ?? 0;
-      grouped.putIfAbsent(ticketId, () => <PosTicketItemModel>[]).add(
-        PosTicketItemModel.fromMap(row),
-      );
+      grouped
+          .putIfAbsent(ticketId, () => <PosTicketItemModel>[])
+          .add(PosTicketItemModel.fromMap(row));
     }
     return grouped;
   }
 
   /// Lista todos los tickets guardados
-  Future<List<PosTicketModel>> listTickets() async {
+  Future<List<PosTicketModel>> listTickets({int? userId}) async {
     final database = await AppDb.database;
+    final where = <String>[];
+    final whereArgs = <dynamic>[];
+
+    if (userId != null) {
+      where.add('user_id = ?');
+      whereArgs.add(userId);
+    }
+
     final results = await database.query(
       DbTables.posTickets,
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: whereArgs.isEmpty ? null : whereArgs,
       orderBy: 'updated_at_ms DESC',
     );
     return results.map((map) => PosTicketModel.fromMap(map)).toList();
+  }
+
+  /// Elimina todos los tickets de un usuario (CASCADE eliminará items)
+  Future<void> deleteTicketsForUser(int userId) async {
+    final database = await AppDb.database;
+    await database.delete(
+      DbTables.posTickets,
+      where: 'user_id = ?',
+      whereArgs: [userId],
+    );
   }
 
   /// Elimina un ticket (CASCADE eliminará items)

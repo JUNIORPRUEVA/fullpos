@@ -36,6 +36,7 @@ class BusinessSettingsRepository {
     'receipt_footer': "TEXT DEFAULT '¡Gracias por su compra!'",
     'show_logo_on_receipt': 'INTEGER DEFAULT 1',
     'print_receipt_automatically': 'INTEGER DEFAULT 0',
+    'default_charge_output_mode': "TEXT DEFAULT 'ticket'",
     'enable_auto_backup': 'INTEGER DEFAULT 1',
     'enable_notifications': 'INTEGER DEFAULT 1',
     'enable_inventory_tracking': 'INTEGER DEFAULT 1',

@@ -13,9 +13,14 @@ import 'cashbox_daily_model.dart';
 // - `cash_sessions` se usaba como una sola "caja/turno" por usuario.
 // - Ventas dependían de la sesión abierta del usuario (overlay en Sales),
 //   sin una entidad diaria separada para la caja física.
-// Cambios requeridos:
+// Problemas encontrados:
+// - Riesgo de inconsistencias si se cierra caja con turnos abiertos.
+// - Posibilidad de discrepancia UI/DB si faltan validaciones de estado al cerrar.
+// - Necesidad de bloquear operación ante turno anterior sin cerrar.
+// Plan de corrección:
 // - Separar CAJA diaria (`cashbox_daily`) de TURNO (`cash_sessions`).
 // - Forzar validación post-login mediante "Iniciar operación".
+// - Endurecer validaciones transaccionales en apertura/cierre.
 // Compatibilidad y migración:
 // - Se mantiene `cash_sessions` y reportes existentes; se añaden columnas
 //   `business_date`/`cashbox_daily_id` con backfill gradual.
@@ -55,7 +60,10 @@ class OperationFlowService {
 
     final cashbox = await getDailyCashbox(today);
     final userShift = await CashRepository.getOpenSession(userId: userId);
-    final stale = await _getOpenShiftBeforeDate(userId: userId, businessDate: today);
+    final stale = await _getOpenShiftBeforeDate(
+      userId: userId,
+      businessDate: today,
+    );
 
     return OperationGateState(
       businessDate: today,
@@ -65,12 +73,42 @@ class OperationFlowService {
     );
   }
 
+  static Future<List<CashSessionModel>> listOpenShiftsForDailyCashbox({
+    required int cashboxDailyId,
+    required String businessDate,
+  }) async {
+    final db = await AppDb.database;
+    final rows = await db.query(
+      DbTables.cashSessions,
+      where: '''
+        status = 'OPEN'
+        AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+      ''',
+      whereArgs: [cashboxDailyId, businessDate],
+      orderBy: 'opened_at_ms ASC',
+    );
+    return rows.map(CashSessionModel.fromMap).toList(growable: false);
+  }
+
   static Future<CashboxDailyModel?> getDailyCashbox(String businessDate) async {
     final db = await AppDb.database;
     final rows = await db.query(
       DbTables.cashboxDaily,
       where: 'business_date = ?',
       whereArgs: [businessDate],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return CashboxDailyModel.fromMap(rows.first);
+  }
+
+  static Future<CashboxDailyModel?> getDailyCashboxById(int? id) async {
+    if (id == null) return null;
+    final db = await AppDb.database;
+    final rows = await db.query(
+      DbTables.cashboxDaily,
+      where: 'id = ?',
+      whereArgs: [id],
       limit: 1,
     );
     if (rows.isEmpty) return null;
@@ -94,24 +132,121 @@ class OperationFlowService {
 
     final existing = await getDailyCashbox(businessDate);
     if (existing != null && existing.isOpen) {
+      // Si ya existe una caja abierta para hoy, normalmente se devuelve tal cual.
+      // Pero si aún no hay turnos/sesiones para esta caja, permitir ajustar
+      // el fondo inicial (caso típico: caja creada en 0 por migración/flujo previo).
+      if ((openingAmount - existing.initialAmount).abs() > 1e-9) {
+        final countRows = await db.rawQuery(
+          '''
+          SELECT COUNT(*) AS total
+          FROM ${DbTables.cashSessions}
+          WHERE (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+            AND business_date = ?
+          ''',
+          [existing.id, businessDate, businessDate],
+        );
+        final total = (countRows.first['total'] as int?) ?? 0;
+
+        if (total == 0) {
+          final previousNote = (existing.note ?? '').trim();
+          final extraNote = (note ?? '').trim();
+          final newNote = [
+            if (previousNote.isNotEmpty) previousNote,
+            if (extraNote.isNotEmpty) extraNote,
+            'Ajuste fondo inicial: ${existing.initialAmount} -> $openingAmount (${DateTime.now().toLocal()})',
+          ].join('\n');
+
+          final updated = await db.update(
+            DbTables.cashboxDaily,
+            {
+              'initial_amount': openingAmount,
+              'opened_by_user_id': userId,
+              'note': newNote,
+            },
+            where: 'id = ? AND status = ?',
+            whereArgs: [existing.id, 'OPEN'],
+          );
+
+          if (updated == 1) {
+            final row = await db.query(
+              DbTables.cashboxDaily,
+              where: 'id = ?',
+              whereArgs: [existing.id],
+              limit: 1,
+            );
+            if (row.isNotEmpty) {
+              return CashboxDailyModel.fromMap(row.first);
+            }
+          }
+        }
+      }
+
       return existing;
     }
+
+    // Si la caja del día existe y está cerrada, permitir REABRIR la misma caja.
+    // Nota: la tabla tiene UNIQUE(business_date), así que no podemos insertar otra fila.
     if (existing != null && existing.isClosed) {
-      throw Exception('La caja de hoy ya fue cerrada y no puede reabrirse automáticamente.');
+      await db.transaction((txn) async {
+        final openRows = await txn.query(
+          DbTables.cashSessions,
+          columns: ['id'],
+          where:
+              "status = 'OPEN' AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))",
+          whereArgs: [existing.id, businessDate],
+          limit: 1,
+        );
+        if (openRows.isNotEmpty) {
+          throw Exception(
+            'No se puede reabrir la caja mientras existan turnos abiertos.',
+          );
+        }
+
+        final previousNote = (existing.note ?? '').trim();
+        final newNote = [
+          if (previousNote.isNotEmpty) previousNote,
+          if ((note ?? '').trim().isNotEmpty) note!.trim(),
+          'Reapertura: ${DateTime.now().toLocal()}',
+        ].join('\n');
+
+        final updated = await txn.update(
+          DbTables.cashboxDaily,
+          {
+            'opened_at_ms': now,
+            'opened_by_user_id': userId,
+            'initial_amount': openingAmount,
+            'status': 'OPEN',
+            'closed_at_ms': null,
+            'closed_by_user_id': null,
+            'note': newNote,
+          },
+          where: 'id = ? AND status = ?',
+          whereArgs: [existing.id, 'CLOSED'],
+        );
+        if (updated != 1) {
+          throw Exception(
+            'No fue posible reabrir la caja diaria. Intenta nuevamente.',
+          );
+        }
+      });
+
+      final row = await db.query(
+        DbTables.cashboxDaily,
+        where: 'business_date = ?',
+        whereArgs: [businessDate],
+        limit: 1,
+      );
+      return CashboxDailyModel.fromMap(row.first);
     }
 
-    final id = await db.insert(
-      DbTables.cashboxDaily,
-      {
-        'business_date': businessDate,
-        'opened_at_ms': now,
-        'opened_by_user_id': userId,
-        'initial_amount': openingAmount,
-        'status': 'OPEN',
-        'note': note,
-      },
-      conflictAlgorithm: ConflictAlgorithm.abort,
-    );
+    final id = await db.insert(DbTables.cashboxDaily, {
+      'business_date': businessDate,
+      'opened_at_ms': now,
+      'opened_by_user_id': userId,
+      'initial_amount': openingAmount,
+      'status': 'OPEN',
+      'note': note,
+    }, conflictAlgorithm: ConflictAlgorithm.abort);
 
     final row = await db.query(
       DbTables.cashboxDaily,
@@ -132,34 +267,48 @@ class OperationFlowService {
       throw Exception('No hay caja diaria abierta para hoy.');
     }
 
-    final openShiftCountRows = await db.rawQuery(
-      '''
-      SELECT COUNT(*) AS total
-      FROM ${DbTables.cashSessions}
-      WHERE status = 'OPEN'
-        AND (
-          cashbox_daily_id = ?
-          OR (cashbox_daily_id IS NULL AND business_date = ?)
-        )
-      ''',
-      [cashbox.id, today],
-    );
-    final openShiftCount = (openShiftCountRows.first['total'] as int?) ?? 0;
-    if (openShiftCount > 0) {
-      throw Exception('No se puede cerrar caja: existen turnos abiertos.');
-    }
+    await db.transaction((txn) async {
+      final openRows = await txn.query(
+        DbTables.cashSessions,
+        columns: ['id', 'opened_by_user_id', 'user_name', 'business_date'],
+        where: '''
+          status = 'OPEN'
+          AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+        ''',
+        whereArgs: [cashbox.id, today],
+        orderBy: 'opened_at_ms ASC',
+      );
 
-    await db.update(
-      DbTables.cashboxDaily,
-      {
-        'status': 'CLOSED',
-        'closed_at_ms': DateTime.now().millisecondsSinceEpoch,
-        'closed_by_user_id': userId,
-        'note': note,
-      },
-      where: 'id = ?',
-      whereArgs: [cashbox.id],
-    );
+      if (openRows.isNotEmpty) {
+        final details = openRows
+            .map(
+              (row) =>
+                  '#${row['id']} (${row['user_name'] ?? 'cajero'} / user ${row['opened_by_user_id']})',
+            )
+            .join(', ');
+        throw Exception(
+          'No se puede cerrar caja: existen turnos abiertos ($details).',
+        );
+      }
+
+      final updated = await txn.update(
+        DbTables.cashboxDaily,
+        {
+          'status': 'CLOSED',
+          'closed_at_ms': DateTime.now().millisecondsSinceEpoch,
+          'closed_by_user_id': userId,
+          'note': note,
+        },
+        where: 'id = ? AND status = ?',
+        whereArgs: [cashbox.id, 'OPEN'],
+      );
+
+      if (updated != 1) {
+        throw Exception(
+          'No fue posible cerrar la caja diaria. Intenta nuevamente.',
+        );
+      }
+    });
   }
 
   static Future<CashSessionModel?> _getOpenShiftBeforeDate({
@@ -185,17 +334,19 @@ class OperationFlowService {
   }) async {
     final userId = await SessionManager.userId() ?? 1;
     final userName =
-        await SessionManager.displayName() ?? await SessionManager.username() ?? 'Usuario';
+        await SessionManager.displayName() ??
+        await SessionManager.username() ??
+        'Usuario';
     final businessDate = businessDateOf();
 
-    final stale = await _getOpenShiftBeforeDate(userId: userId, businessDate: businessDate);
+    final stale = await _getOpenShiftBeforeDate(
+      userId: userId,
+      businessDate: businessDate,
+    );
     if (stale != null) {
-      throw Exception('Existe un turno anterior sin cerrar. Debe cerrarlo para continuar.');
-    }
-
-    final existingUserShift = await CashRepository.getOpenSession(userId: userId);
-    if (existingUserShift != null) {
-      return existingUserShift;
+      throw Exception(
+        'Existe un turno anterior sin cerrar. Debe cerrarlo para continuar.',
+      );
     }
 
     final cashbox = await getOpenDailyCashboxToday();
@@ -204,33 +355,65 @@ class OperationFlowService {
     }
 
     final db = await AppDb.database;
-    final anyOpenRows = await db.rawQuery(
-      '''
-      SELECT COUNT(*) AS total
-      FROM ${DbTables.cashSessions}
-      WHERE status = 'OPEN'
-        AND (
-          cashbox_daily_id = ?
-          OR (cashbox_daily_id IS NULL AND business_date = ?)
-        )
-      ''',
-      [cashbox.id, businessDate],
-    );
-    final anyOpen = (anyOpenRows.first['total'] as int?) ?? 0;
-    if (anyOpen > 0) {
-      throw Exception('Ya existe un turno abierto en esta caja.');
+    int? id;
+    await db.transaction((txn) async {
+      // Si el usuario no especifica monto de apertura:
+      // - Preferir el cierre del último turno cerrado del día (carry-forward).
+      // - Si no existe, usar el fondo inicial de la caja diaria.
+      var resolvedOpeningAmount = openingAmount;
+      if (resolvedOpeningAmount.abs() < 1e-9) {
+        final lastClosedRows = await txn.query(
+          DbTables.cashSessions,
+          columns: ['closing_amount', 'expected_cash'],
+          where: '''
+            (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+            AND business_date = ?
+            AND (status = 'CLOSED' OR closed_at_ms IS NOT NULL)
+          ''',
+          whereArgs: [cashbox.id, businessDate, businessDate],
+          orderBy: 'closed_at_ms DESC, opened_at_ms DESC',
+          limit: 1,
+        );
+
+        if (lastClosedRows.isNotEmpty) {
+          final row = lastClosedRows.first;
+          final closing = (row['closing_amount'] as num?)?.toDouble();
+          final expected = (row['expected_cash'] as num?)?.toDouble();
+          resolvedOpeningAmount = closing ?? expected ?? cashbox.initialAmount;
+        } else {
+          resolvedOpeningAmount = cashbox.initialAmount;
+        }
+      }
+
+      final existingUserRows = await txn.query(
+        DbTables.cashSessions,
+        where: 'status = ? AND opened_by_user_id = ?',
+        whereArgs: ['OPEN', userId],
+        orderBy: 'opened_at_ms DESC',
+        limit: 1,
+      );
+      if (existingUserRows.isNotEmpty) {
+        id = existingUserRows.first['id'] as int?;
+        return;
+      }
+
+      id = await txn.insert(DbTables.cashSessions, {
+        'opened_by_user_id': userId,
+        'user_name': userName,
+        'opened_at_ms': DateTime.now().millisecondsSinceEpoch,
+        'initial_amount': resolvedOpeningAmount,
+        'cashbox_daily_id': cashbox.id,
+        'business_date': businessDate,
+        'requires_closure': 0,
+        'status': 'OPEN',
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+    });
+
+    if (id == null) {
+      throw Exception('No se pudo abrir turno.');
     }
 
-    final id = await CashRepository.openSession(
-      userId: userId,
-      userName: userName,
-      openingAmount: openingAmount,
-      cashboxDailyId: cashbox.id,
-      businessDate: businessDate,
-      requiresClosure: false,
-    );
-
-    final shift = await CashRepository.getSessionById(id);
+    final shift = await CashRepository.getSessionById(id!);
     if (shift == null) throw Exception('No se pudo abrir turno.');
     return shift;
   }
@@ -251,6 +434,8 @@ class OperationFlowService {
       closingAmount: closingAmount,
       note: note,
       summary: summary,
+      expectedUserId: userId,
+      expectedCashboxDailyId: openShift.cashboxDailyId,
     );
   }
 

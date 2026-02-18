@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../clients/data/client_model.dart';
@@ -5,12 +7,14 @@ import '../../../../core/theme/app_status_theme.dart';
 import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
 
 enum PaymentMethod { cash, card, transfer, mixed, credit, layaway }
+enum PaymentOutputMode { ticket, pdf, none }
 
 /// Diálogo de pago profesional
 class PaymentDialog extends StatefulWidget {
   final double total;
   final bool initialPrintTicket;
   final bool allowInvoicePdfDownload;
+  final String? initialChargeOutputMode;
   final ClientModel? selectedClient;
   final Future<ClientModel?> Function() onSelectClient;
   final Future<ClientModel?> Function(ClientModel client)? onEditClient;
@@ -20,6 +24,7 @@ class PaymentDialog extends StatefulWidget {
     required this.total,
     this.initialPrintTicket = true,
     this.allowInvoicePdfDownload = true,
+    this.initialChargeOutputMode,
     this.selectedClient,
     required this.onSelectClient,
     this.onEditClient,
@@ -52,11 +57,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
   final _receivedController = TextEditingController();
   DateTime? _dueDate;
   double _change = 0.0;
-  bool _printTicket = true; // Por defecto imprimir
-  bool _downloadInvoicePdf = false;
+  PaymentOutputMode _outputMode = PaymentOutputMode.ticket;
   ClientModel? _selectedClient;
-  bool _isSubmitting = false;
+  bool _isProcessingPayment = false;
   bool _hasRequestedClose = false;
+  String? _activePaymentRequestId;
+
+  bool get _printTicket => _outputMode == PaymentOutputMode.ticket;
+  bool get _downloadInvoicePdf => _outputMode == PaymentOutputMode.pdf;
 
   bool _handleKeyEvent(KeyEvent event) {
     // En Windows, algunos Function keys no siempre pasan por Shortcuts cuando
@@ -69,13 +77,24 @@ class _PaymentDialogState extends State<PaymentDialog> {
       return true;
     }());
 
-    if (event.logicalKey == LogicalKeyboardKey.f9 ||
-        event.physicalKey == PhysicalKeyboardKey.f9) {
-      // Evitar que el autorepeat provoque cobros dobles.
+    final isConfirmKey =
+        event.logicalKey == LogicalKeyboardKey.f9 ||
+        event.physicalKey == PhysicalKeyboardKey.f9 ||
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+
+    if (isConfirmKey) {
       if (event is KeyRepeatEvent) return true;
       if (event is KeyDownEvent) {
-        // Ignorar clicks dobles: _submitPayment ya tiene guard.
         _submitPayment();
+      }
+      return true;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (event is KeyRepeatEvent) return true;
+      if (event is KeyDownEvent && mounted && !_isProcessingPayment) {
+        Navigator.of(context).pop();
       }
       return true;
     }
@@ -83,55 +102,78 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   Future<void> _submitPayment() async {
-    if (_isSubmitting) return;
+    if (_isProcessingPayment) return;
     if (!mounted) return;
+
+    final paymentRequestId = _buildPaymentRequestId();
+    if (_activePaymentRequestId == paymentRequestId) return;
+    _activePaymentRequestId = paymentRequestId;
 
     // En desktop, el primer click/tecla a veces solo cambia el foco.
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _isSubmitting = true);
+    setState(() => _isProcessingPayment = true);
     await Future<void>.delayed(Duration.zero);
     try {
-      await _processPayment();
+      await _processPayment(paymentRequestId);
     } catch (e) {
       if (!mounted) return;
       _showError('Error al cobrar: $e');
     } finally {
+      _activePaymentRequestId = null;
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        setState(() => _isProcessingPayment = false);
       }
     }
   }
 
+  String _buildPaymentRequestId() {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final random = Random().nextInt(1 << 32);
+    return 'pay-$now-$random';
+  }
+
   void _selectPrint() {
     setState(() {
-      _printTicket = true;
-      _downloadInvoicePdf = false;
+      _outputMode = PaymentOutputMode.ticket;
     });
   }
 
   void _selectDownloadInvoicePdf() {
     if (!widget.allowInvoicePdfDownload) return;
     setState(() {
-      _downloadInvoicePdf = true;
-      _printTicket = false;
+      _outputMode = PaymentOutputMode.pdf;
     });
   }
 
-  Future<void> _submitPaymentWithoutOutput() async {
-    if (_isSubmitting) return;
+  void _selectWithoutPrinting() {
     setState(() {
-      _printTicket = false;
-      _downloadInvoicePdf = false;
+      _outputMode = PaymentOutputMode.none;
     });
-    await _submitPayment();
+  }
+
+  PaymentOutputMode _resolveInitialOutputMode() {
+    final configured = (widget.initialChargeOutputMode ?? '').trim().toLowerCase();
+    if (configured == 'pdf' && widget.allowInvoicePdfDownload) {
+      return PaymentOutputMode.pdf;
+    }
+    if (configured == 'none') {
+      return PaymentOutputMode.none;
+    }
+    if (configured == 'ticket') {
+      return PaymentOutputMode.ticket;
+    }
+    return widget.initialPrintTicket
+        ? PaymentOutputMode.ticket
+        : (widget.allowInvoicePdfDownload
+              ? PaymentOutputMode.pdf
+              : PaymentOutputMode.none);
   }
 
   @override
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
-    _printTicket = true;
-    _downloadInvoicePdf = false;
+    _outputMode = _resolveInitialOutputMode();
     _selectedClient = widget.selectedClient;
     if (_selectedClient != null) {
       _syncLayawayFromClient(_selectedClient!);
@@ -269,7 +311,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
   }
 
-  Future<void> _processPayment() async {
+  Future<void> _processPayment(String paymentRequestId) async {
     // Si el usuario eligió descargar factura PDF, obligar a seleccionar cliente
     // para poder nombrar el archivo de forma profesional.
     if (_downloadInvoicePdf) {
@@ -347,6 +389,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
     // Retornar resultado (cerrar el diálogo que lo presentó)
     final result = {
+      'paymentRequestId': paymentRequestId,
       'method': _selectedMethod,
       'cash': double.tryParse(_cashController.text) ?? 0,
       'card': double.tryParse(_cardController.text) ?? 0,
@@ -384,12 +427,18 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.76).clamp(430.0, 620.0);
+    final dialogMaxHeight = (viewport.height * 0.93).clamp(700.0, 980.0);
+
     return DialogKeyboardShortcuts(
       onSubmit: _submitPayment,
+      enableSubmitShortcuts: false,
+      enableDismissShortcut: false,
       child: Dialog(
         child: Container(
-          width: 500,
-          constraints: const BoxConstraints(maxHeight: 700),
+          width: dialogWidth,
+          constraints: BoxConstraints(maxHeight: dialogMaxHeight),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -574,7 +623,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                               RegExp(r'^\d+\.?\d{0,2}'),
                                             ),
                                           ],
-                                          onSubmitted: (_) => _submitPayment(),
                                         ),
                                       ),
                                     ],
@@ -1073,134 +1121,75 @@ class _PaymentDialogState extends State<PaymentDialog> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Opción de imprimir ticket
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.surface,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: scheme.outlineVariant),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  _printTicket
-                                      ? Icons.print
-                                      : Icons.print_disabled,
-                                  color: _printTicket
-                                      ? scheme.primary
-                                      : scheme.onSurface.withAlpha(153),
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'IMPRIMIR TICKET',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Switch(
-                                  value: _printTicket,
-                                  onChanged: (value) {
-                                    _selectPrint();
-                                  },
-                                  activeThumbColor: scheme.primary,
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          if (widget.allowInvoicePdfDownload)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.surface,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: scheme.outlineVariant,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final tileWidth = constraints.maxWidth;
+                              return Column(
                                 children: [
-                                  Icon(
-                                    Icons.download,
-                                    color: _downloadInvoicePdf
-                                        ? scheme.primary
-                                        : scheme.onSurface.withAlpha(153),
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'DESCARGAR FACTURA (PDF)',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Switch(
-                                    value: _downloadInvoicePdf,
-                                    onChanged: (value) {
-                                      _selectDownloadInvoicePdf();
+                                  _buildOutputSwitchTile(
+                                    label: 'TICKET',
+                                    subtitle: 'Cobrar e imprimir',
+                                    icon: Icons.print,
+                                    value:
+                                        _outputMode == PaymentOutputMode.ticket,
+                                    onChanged: (enabled) {
+                                      if (enabled) _selectPrint();
                                     },
-                                    activeThumbColor: scheme.primary,
+                                    width: tileWidth,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildOutputSwitchTile(
+                                    label: 'PDF',
+                                    subtitle: 'Cobrar y descargar',
+                                    icon: Icons.download,
+                                    value: _outputMode == PaymentOutputMode.pdf,
+                                    enabled: widget.allowInvoicePdfDownload,
+                                    onChanged: (enabled) {
+                                      if (enabled) _selectDownloadInvoicePdf();
+                                    },
+                                    width: tileWidth,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildOutputSwitchTile(
+                                    label: 'SIN IMPRIMIR',
+                                    subtitle: 'Solo cobrar',
+                                    icon: Icons.block,
+                                    value: _outputMode == PaymentOutputMode.none,
+                                    onChanged: (enabled) {
+                                      if (enabled) _selectWithoutPrinting();
+                                    },
+                                    width: tileWidth,
                                   ),
                                 ],
-                              ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Atajos: Enter/F9 = Cobrar  ·  Esc = Salir',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: scheme.onSurface.withAlpha(170),
                             ),
-
-                          // Botones
+                          ),
+                          const SizedBox(height: 14),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
+                                onPressed: _isProcessingPayment
+                                    ? null
+                                    : () => Navigator.of(context).pop(),
                                 child: const Text('CANCELAR'),
                               ),
                               const SizedBox(width: 12),
-                              OutlinedButton.icon(
-                                onPressed: _isSubmitting
-                                    ? null
-                                    : _submitPaymentWithoutOutput,
-                                icon: const Icon(Icons.check_circle_outline),
-                                label: const Text('COBRAR SIN IMPRIMIR'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: scheme.primary,
-                                  side: BorderSide(color: scheme.primary),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
-                                  ),
-                                  textStyle: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
                               ElevatedButton.icon(
-                                onPressed:
-                                    _isSubmitting ? null : _submitPayment,
-                                icon: Icon(
-                                  _printTicket ? Icons.print : Icons.download,
-                                ),
-                                label: Text(
-                                  _printTicket
-                                      ? 'COBRAR E IMPRIMIR'
-                                      : 'COBRAR Y DESCARGAR',
-                                ),
+                                onPressed: _isProcessingPayment
+                                    ? null
+                                    : _submitPayment,
+                                icon: Icon(_chargeActionIcon()),
+                                label: Text(_chargeActionLabel()),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: scheme.primary,
                                   foregroundColor: scheme.onPrimary,
@@ -1223,6 +1212,94 @@ class _PaymentDialogState extends State<PaymentDialog> {
                 ),
               ),
             ),
+    );
+  }
+
+  String _chargeActionLabel() {
+    switch (_outputMode) {
+      case PaymentOutputMode.ticket:
+        return 'COBRAR E IMPRIMIR';
+      case PaymentOutputMode.pdf:
+        return 'COBRAR Y DESCARGAR';
+      case PaymentOutputMode.none:
+        return 'COBRAR SIN IMPRIMIR';
+    }
+  }
+
+  IconData _chargeActionIcon() {
+    switch (_outputMode) {
+      case PaymentOutputMode.ticket:
+        return Icons.print;
+      case PaymentOutputMode.pdf:
+        return Icons.download;
+      case PaymentOutputMode.none:
+        return Icons.check_circle_outline;
+    }
+  }
+
+  Widget _buildOutputSwitchTile({
+    required String label,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required double width,
+    bool enabled = true,
+  }) {
+    final textColor = enabled ? scheme.onSurface : scheme.onSurface.withAlpha(120);
+
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: value ? scheme.primary : scheme.outlineVariant,
+            width: value ? 1.6 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: value ? scheme.primary : textColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: textColor,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: textColor.withAlpha(210),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Transform.scale(
+              scale: 0.86,
+              child: Switch(
+                value: value,
+                onChanged: enabled ? onChanged : null,
+                activeThumbColor: scheme.primary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

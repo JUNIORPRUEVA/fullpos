@@ -13,6 +13,8 @@ class DialogKeyboardShortcuts extends StatelessWidget {
   final Widget child;
   final FutureOr<void> Function()? onSubmit;
   final VoidCallback? onCancel;
+  final bool enableSubmitShortcuts;
+  final bool enableDismissShortcut;
   final Map<ShortcutActivator, Intent>? extraShortcuts;
   final Map<Type, Action<Intent>>? extraActions;
 
@@ -21,6 +23,8 @@ class DialogKeyboardShortcuts extends StatelessWidget {
     required this.child,
     this.onSubmit,
     this.onCancel,
+    this.enableSubmitShortcuts = true,
+    this.enableDismissShortcut = true,
     this.extraShortcuts,
     this.extraActions,
   });
@@ -29,10 +33,13 @@ class DialogKeyboardShortcuts extends StatelessWidget {
   Widget build(BuildContext context) {
     final submitAction = onSubmit ?? () => Navigator.of(context).maybePop();
     final shortcuts = <ShortcutActivator, Intent>{
-      const SingleActivator(LogicalKeyboardKey.escape): const DismissIntent(),
-      const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
-      const SingleActivator(LogicalKeyboardKey.numpadEnter):
-          const ActivateIntent(),
+      if (enableDismissShortcut)
+        const SingleActivator(LogicalKeyboardKey.escape): const DismissIntent(),
+      if (enableSubmitShortcuts)
+        const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
+      if (enableSubmitShortcuts)
+        const SingleActivator(LogicalKeyboardKey.numpadEnter):
+            const ActivateIntent(),
       ...?extraShortcuts,
     };
 

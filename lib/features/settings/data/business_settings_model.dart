@@ -30,6 +30,7 @@ class BusinessSettings {
   final String receiptFooter; // Pie del recibo
   final bool showLogoOnReceipt; // Mostrar logo en recibos
   final bool printReceiptAutomatically; // Imprimir recibo automáticamente
+  final String defaultChargeOutputMode; // ticket | pdf | none
 
   // Configuraciones avanzadas y características
   final bool enableAutoBackup; // Habilitar backup automático
@@ -79,6 +80,7 @@ class BusinessSettings {
     this.receiptFooter = '¡Gracias por su compra!',
     this.showLogoOnReceipt = true,
     this.printReceiptAutomatically = false,
+    this.defaultChargeOutputMode = 'ticket',
     this.enableAutoBackup = true,
     this.enableNotifications = true,
     this.enableInventoryTracking = true,
@@ -131,6 +133,8 @@ class BusinessSettings {
       showLogoOnReceipt: (map['show_logo_on_receipt'] as int? ?? 1) == 1,
       printReceiptAutomatically:
           (map['print_receipt_automatically'] as int? ?? 0) == 1,
+        defaultChargeOutputMode:
+          (map['default_charge_output_mode'] as String? ?? 'ticket'),
       enableAutoBackup: (map['enable_auto_backup'] as int? ?? 1) == 1,
       enableNotifications: (map['enable_notifications'] as int? ?? 1) == 1,
       enableInventoryTracking:
@@ -195,6 +199,7 @@ class BusinessSettings {
       'receipt_footer': receiptFooter,
       'show_logo_on_receipt': showLogoOnReceipt ? 1 : 0,
       'print_receipt_automatically': printReceiptAutomatically ? 1 : 0,
+      'default_charge_output_mode': defaultChargeOutputMode,
       'enable_auto_backup': enableAutoBackup ? 1 : 0,
       'enable_notifications': enableNotifications ? 1 : 0,
       'enable_inventory_tracking': enableInventoryTracking ? 1 : 0,
@@ -248,6 +253,7 @@ class BusinessSettings {
     String? receiptFooter,
     bool? showLogoOnReceipt,
     bool? printReceiptAutomatically,
+    String? defaultChargeOutputMode,
     bool? enableAutoBackup,
     bool? enableNotifications,
     bool? enableInventoryTracking,
@@ -293,6 +299,8 @@ class BusinessSettings {
       showLogoOnReceipt: showLogoOnReceipt ?? this.showLogoOnReceipt,
       printReceiptAutomatically:
           printReceiptAutomatically ?? this.printReceiptAutomatically,
+        defaultChargeOutputMode:
+          defaultChargeOutputMode ?? this.defaultChargeOutputMode,
       enableAutoBackup: enableAutoBackup ?? this.enableAutoBackup,
       enableNotifications: enableNotifications ?? this.enableNotifications,
       enableInventoryTracking:
@@ -350,6 +358,7 @@ class BusinessSettings {
         other.receiptFooter == receiptFooter &&
         other.showLogoOnReceipt == showLogoOnReceipt &&
         other.printReceiptAutomatically == printReceiptAutomatically &&
+        other.defaultChargeOutputMode == defaultChargeOutputMode &&
         other.enableAutoBackup == enableAutoBackup &&
         other.enableNotifications == enableNotifications &&
         other.enableInventoryTracking == enableInventoryTracking &&
@@ -394,6 +403,7 @@ class BusinessSettings {
       receiptFooter,
       showLogoOnReceipt,
       printReceiptAutomatically,
+      defaultChargeOutputMode,
       enableAutoBackup,
       enableNotifications,
       enableInventoryTracking,

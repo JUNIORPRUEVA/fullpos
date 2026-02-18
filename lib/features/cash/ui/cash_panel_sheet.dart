@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../auth/data/auth_repository.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_session_model.dart';
 import '../data/cash_summary_model.dart';
 import '../data/cash_repository.dart';
-import 'cash_movement_dialog.dart';
+import '../data/daily_cash_close_ticket_printer.dart';
+import '../data/operation_flow_service.dart';
 import 'cash_close_dialog.dart';
 
 /// Panel lateral de caja con resumen y opciones
@@ -44,9 +46,13 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   bool _loadingSummary = true;
   bool _loadingMovements = true;
   bool _loadingSession = true;
+  bool _loadingPermissions = true;
   CashSummaryModel? _summary;
   List<CashMovementModel> _movements = [];
   CashSessionModel? _session;
+  bool _canCloseShift = false;
+  bool _canCloseCashbox = false;
+  bool _closingCashbox = false;
 
   Timer? _clockTimer;
 
@@ -68,7 +74,32 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   }
 
   Future<void> _loadData() async {
-    await Future.wait([_loadSession(), _loadSummary(), _loadMovements()]);
+    await Future.wait([
+      _loadSession(),
+      _loadSummary(),
+      _loadMovements(),
+      _loadPermissions(),
+    ]);
+  }
+
+  Future<void> _loadPermissions() async {
+    try {
+      final perms = await AuthRepository.getCurrentPermissions();
+      if (!mounted) return;
+      setState(() {
+        _canCloseShift = perms.canCloseShift || perms.canCloseCash;
+        _canCloseCashbox = perms.canCloseCashbox;
+        _loadingPermissions = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _canCloseShift = false;
+          _canCloseCashbox = false;
+          _loadingPermissions = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadSession() async {
@@ -225,39 +256,33 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               ),
             ),
 
-            // Acciones rápidas
+            // Acciones de cierre
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
                 children: [
                   Expanded(
                     child: _buildActionButton(
-                      icon: Icons.add_circle_outline,
-                      label: 'Entrada',
-                      color: status.success,
-                      onTap: () => _showMovementDialog(CashMovementType.income),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.remove_circle_outline,
-                      label: 'Retiro',
-                      color: status.warning,
-                      onTap: () =>
-                          _showMovementDialog(CashMovementType.outcome),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
                       icon: Icons.lock_outline,
-                      label: 'Corte',
+                      label: 'Hacer cortes de turno',
                       color: status.error,
+                      enabled:
+                          !_loadingPermissions &&
+                          (_session?.isOpen == true) &&
+                          _canCloseShift,
                       onTap: _showCloseDialog,
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+              child: Text(
+                'Este panel es informativo del usuario actual. Aquí haces cortes de turno.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.62),
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -296,26 +321,33 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     required IconData icon,
     required String label,
     required Color color,
+    required bool enabled,
     required VoidCallback onTap,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
+          color: (enabled ? color : scheme.outline).withOpacity(0.15),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(
+            color: (enabled ? color : scheme.outline).withOpacity(0.3),
+          ),
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 24),
+            Icon(
+              icon,
+              color: enabled ? color : scheme.onSurface.withOpacity(0.45),
+              size: 24,
+            ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: color,
+                color: enabled ? color : scheme.onSurface.withOpacity(0.45),
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -637,26 +669,167 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     );
   }
 
-  Future<void> _showMovementDialog(String type) async {
-    final result = await CashMovementDialog.show(
-      context,
-      type: type,
-      sessionId: widget.sessionId,
-    );
-
-    if (result == true) {
-      _loadData();
-    }
-  }
-
   Future<void> _showCloseDialog() async {
+    if (_session?.isOpen != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu turno ya está cerrado.')),
+      );
+      return;
+    }
+
+    if (!_canCloseShift) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No tienes permiso para hacer cortes de turno.'),
+        ),
+      );
+      return;
+    }
+
     final result = await CashCloseDialog.show(
       context,
       sessionId: widget.sessionId,
     );
 
     if (result == true && mounted) {
-      Navigator.pop(context); // Cerrar el panel también
+      await _loadData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Turno cerrado correctamente.')),
+      );
+
+      if (_canCloseCashbox) {
+        final gate = await OperationFlowService.loadGateState();
+        if (!mounted) return;
+        final canOfferCashboxClose =
+            gate.cashboxToday?.isOpen == true && gate.userOpenShift == null;
+        if (canOfferCashboxClose) {
+          final closeNow = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Turno cerrado'),
+              content: const Text(
+                'Tu turno se cerró correctamente. ¿Deseas cerrar también la caja del día ahora?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Ahora no'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Cerrar caja ahora'),
+                ),
+              ],
+            ),
+          );
+
+          if (closeNow == true && mounted) {
+            await _showCloseCashbox();
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _showCloseCashbox() async {
+    if (!_canCloseCashbox) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No tienes permiso para cerrar caja del día.'),
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cerrar caja (fin del día)'),
+        content: const Text(
+          'Este proceso cierra la caja del día y bloquea operar hasta abrir una nueva caja. ¿Deseas continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cerrar caja'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    if (!mounted) return;
+
+    final shouldPrint = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Imprimir ticket'),
+        content: const Text(
+          '¿Deseas imprimir el ticket de cierre de caja del día?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No imprimir'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Imprimir'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    final businessDate = OperationFlowService.businessDateOf();
+    final cashboxBefore = await OperationFlowService.getDailyCashbox(
+      businessDate,
+    );
+    final cashboxId = cashboxBefore?.id;
+
+    setState(() => _closingCashbox = true);
+    try {
+      await OperationFlowService.closeDailyCashboxToday(
+        note: 'Cierre diario ejecutado desde Panel de caja',
+      );
+
+      if (shouldPrint == true && cashboxId != null) {
+        try {
+          await DailyCashCloseTicketPrinter.printDailyCloseTicket(
+            cashboxDailyId: cashboxId,
+            businessDate: businessDate,
+            note: 'Cierre diario ejecutado desde Panel de caja',
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Caja cerrada, pero no se pudo imprimir: $e'),
+              ),
+            );
+          }
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Caja del día cerrada correctamente.')),
+      );
+      await _loadData();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _closingCashbox = false);
     }
   }
 }
