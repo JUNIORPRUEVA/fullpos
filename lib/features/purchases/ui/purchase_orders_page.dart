@@ -259,29 +259,34 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
               );
             }
 
-            return Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Registro de Órdenes',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 190,
+                    child: Text(
+                      'Registro de Órdenes',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: 360, child: search),
-                const SizedBox(width: 10),
-                SizedBox(width: 160, child: status),
-                const SizedBox(width: 10),
-                SizedBox(width: 240, child: supplier),
-                const SizedBox(width: 10),
-                SizedBox(width: 260, child: range),
-                clearRange,
-                const SizedBox(width: 10),
-                refresh,
-                const SizedBox(width: 10),
-                newOrder,
-              ],
+                  const SizedBox(width: 10),
+                  SizedBox(width: 360, child: search),
+                  const SizedBox(width: 10),
+                  SizedBox(width: 160, child: status),
+                  const SizedBox(width: 10),
+                  SizedBox(width: 240, child: supplier),
+                  const SizedBox(width: 10),
+                  SizedBox(width: 260, child: range),
+                  clearRange,
+                  const SizedBox(width: 10),
+                  refresh,
+                  const SizedBox(width: 10),
+                  newOrder,
+                ],
+              ),
             );
           },
         ),

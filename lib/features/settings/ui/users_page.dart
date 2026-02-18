@@ -8,6 +8,7 @@ import '../data/users_repository.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import 'dialogs/user_detail_dialog.dart';
 import 'permissions_page.dart';
+import 'settings_layout.dart';
 
 /// Página de gestión de usuarios
 class UsersPage extends StatefulWidget {
@@ -77,7 +78,9 @@ class _UsersPageState extends State<UsersPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       backgroundColor: _scheme.surfaceVariant,
       body: Column(
         children: [
@@ -238,6 +241,7 @@ class _UsersPageState extends State<UsersPage> {
                   ),
           ),
         ],
+      ),
       ),
     );
   }

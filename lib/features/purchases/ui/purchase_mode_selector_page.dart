@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/theme/app_gradient_theme.dart';
 
 class PurchaseModeSelectorPage extends StatelessWidget {
   const PurchaseModeSelectorPage({super.key});
@@ -10,27 +9,16 @@ class PurchaseModeSelectorPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final gradientTheme = theme.extension<AppGradientTheme>();
-
-    final headerGradient =
-        gradientTheme?.backgroundGradient ??
-        const LinearGradient(
-          colors: [Color(0xFFFFFFFF), Color(0xFFF3F7FF), Color(0xFFEAF2FF)],
-          stops: [0.0, 0.62, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-
-    const cardGradient = LinearGradient(
-      colors: [AppColors.brandBlueDark, AppColors.brandBlue],
-      stops: [0.0, 1.0],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+      backgroundColor: Colors.white,
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.textDark,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Compras',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -38,11 +26,11 @@ class PurchaseModeSelectorPage extends StatelessWidget {
         toolbarHeight: 48,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         child: LayoutBuilder(
           builder: (context, viewportConstraints) {
-            final contentWidth = viewportConstraints.maxWidth > 1160
-                ? 1160.0
+            final contentWidth = viewportConstraints.maxWidth > 1080
+                ? 1080.0
                 : viewportConstraints.maxWidth;
 
             return Center(
@@ -54,20 +42,20 @@ class PurchaseModeSelectorPage extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 22,
-                        vertical: 20,
+                        horizontal: 18,
+                        vertical: 16,
                       ),
                       decoration: BoxDecoration(
-                        gradient: headerGradient,
-                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: AppColors.surfaceLightBorder.withOpacity(0.75),
+                          color: AppColors.surfaceLightBorder.withOpacity(0.85),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: theme.shadowColor.withOpacity(0.10),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
+                            color: theme.shadowColor.withOpacity(0.05),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
@@ -79,76 +67,44 @@ class PurchaseModeSelectorPage extends StatelessWidget {
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w900,
                               color: AppColors.textDark,
+                              fontSize: 22,
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             'Manual (catálogo + ticket), Automática (sugerencias) o Registro de órdenes.',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textDarkSecondary.withOpacity(
-                                0.86,
-                              ),
-                              fontWeight: FontWeight.w600,
+                              color: AppColors.textDarkSecondary,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 22),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isWide = constraints.maxWidth >= 980;
-
-                        final cards = [
-                          _PurchaseModeActionCard(
-                            icon: Icons.playlist_add,
-                            title: 'Compra Manual',
-                            desc:
-                                'Elige productos del catálogo y arma tu orden con ticket fijo.',
-                            gradient: cardGradient,
-                            onTap: () => context.go('/purchases/manual'),
-                          ),
-                          _PurchaseModeActionCard(
-                            icon: Icons.auto_awesome,
-                            title: 'Compra Automática',
-                            desc:
-                                'Genera sugerencias por reposición y conviértelas en una orden.',
-                            gradient: cardGradient,
-                            onTap: () => context.go('/purchases/auto'),
-                          ),
-                          _PurchaseModeActionCard(
-                            icon: Icons.history,
-                            title: 'Registro de Órdenes',
-                            desc:
-                                'Consulta historial, abre PDF, recibe órdenes y duplica.',
-                            gradient: cardGradient,
-                            onTap: () => context.go('/purchases/orders'),
-                          ),
-                        ];
-
-                        if (!isWide) {
-                          return Column(
-                            children: [
-                              cards[0],
-                              const SizedBox(height: 14),
-                              cards[1],
-                              const SizedBox(height: 14),
-                              cards[2],
-                            ],
-                          );
-                        }
-
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: cards[0]),
-                            const SizedBox(width: 14),
-                            Expanded(child: cards[1]),
-                            const SizedBox(width: 14),
-                            Expanded(child: cards[2]),
-                          ],
-                        );
-                      },
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [
+                        _PurchaseModeActionButton(
+                          icon: Icons.playlist_add,
+                          title: 'Compra Manual',
+                          subtitle: 'Catálogo + ticket manual',
+                          onTap: () => context.go('/purchases/manual'),
+                        ),
+                        _PurchaseModeActionButton(
+                          icon: Icons.auto_awesome,
+                          title: 'Compra Automática',
+                          subtitle: 'Sugerencias por inventario',
+                          onTap: () => context.go('/purchases/auto'),
+                        ),
+                        _PurchaseModeActionButton(
+                          icon: Icons.history,
+                          title: 'Registro de Órdenes',
+                          subtitle: 'Listado y seguimiento',
+                          onTap: () => context.go('/purchases/orders'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -161,27 +117,25 @@ class PurchaseModeSelectorPage extends StatelessWidget {
   }
 }
 
-class _PurchaseModeActionCard extends StatefulWidget {
+class _PurchaseModeActionButton extends StatefulWidget {
   final IconData icon;
   final String title;
-  final String desc;
-  final Gradient gradient;
+  final String subtitle;
   final VoidCallback onTap;
 
-  const _PurchaseModeActionCard({
+  const _PurchaseModeActionButton({
     required this.icon,
     required this.title,
-    required this.desc,
-    required this.gradient,
+    required this.subtitle,
     required this.onTap,
   });
 
   @override
-  State<_PurchaseModeActionCard> createState() =>
-      _PurchaseModeActionCardState();
+  State<_PurchaseModeActionButton> createState() =>
+      _PurchaseModeActionButtonState();
 }
 
-class _PurchaseModeActionCardState extends State<_PurchaseModeActionCard> {
+class _PurchaseModeActionButtonState extends State<_PurchaseModeActionButton> {
   bool _hovered = false;
 
   @override
@@ -192,64 +146,73 @@ class _PurchaseModeActionCardState extends State<_PurchaseModeActionCard> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
-        constraints: const BoxConstraints(minHeight: 178),
+        width: 320,
+        constraints: const BoxConstraints(minHeight: 110),
         decoration: BoxDecoration(
-          gradient: widget.gradient,
-          borderRadius: BorderRadius.circular(20),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.surfaceLightBorder.withOpacity(0.95),
+          ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.brandBlueDark.withOpacity(
-                _hovered ? 0.28 : 0.20,
-              ),
-              blurRadius: _hovered ? 22 : 16,
-              offset: Offset(0, _hovered ? 10 : 7),
+              color: theme.shadowColor.withOpacity(_hovered ? 0.08 : 0.04),
+              blurRadius: _hovered ? 10 : 7,
+              offset: Offset(0, _hovered ? 4 : 2),
             ),
           ],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             onTap: widget.onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 58,
-                    height: 58,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(_hovered ? 0.24 : 0.18),
+                      color: AppColors.brandBlue.withOpacity(
+                        _hovered ? 0.16 : 0.10,
+                      ),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(widget.icon, color: Colors.white, size: 30),
+                    child: Icon(
+                      widget.icon,
+                      color: AppColors.brandBlueDark,
+                      size: 20,
+                    ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           widget.title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 19,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: AppColors.textDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
                         Text(
-                          widget.desc,
-                          maxLines: 3,
+                          widget.subtitle,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white.withOpacity(0.82),
-                            fontWeight: FontWeight.w500,
-                            height: 1.3,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.textDarkSecondary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
                           ),
                         ),
                       ],
@@ -258,8 +221,8 @@ class _PurchaseModeActionCardState extends State<_PurchaseModeActionCard> {
                   const SizedBox(width: 10),
                   Icon(
                     Icons.arrow_forward_ios_rounded,
-                    size: 17,
-                    color: Colors.white.withOpacity(0.72),
+                    size: 13,
+                    color: AppColors.textDarkSecondary,
                   ),
                 ],
               ),

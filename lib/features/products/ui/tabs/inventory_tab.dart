@@ -11,6 +11,7 @@ import '../../../auth/data/auth_repository.dart';
 import '../../../settings/data/user_model.dart';
 import '../../../../theme/app_colors.dart';
 import '../dialogs/product_details_dialog.dart';
+import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/kpi_card.dart';
 import '../widgets/compact_product_card.dart';
 
@@ -160,13 +161,7 @@ class _InventoryTabState extends State<InventoryTab> {
                     onAddStockTap: canAdjustStock
                         ? () async {
                             Navigator.pop(context);
-                            final result = await context.push(
-                              '/products/add-stock/${product.id}',
-                            );
-                            // Si retorna true, recargar datos
-                            if (result == true && mounted) {
-                              await _loadInventoryData();
-                            }
+                            await _openAdjustStockDialog(product);
                           }
                         : null,
                     showPurchasePrice: showPurchasePrice,
@@ -236,13 +231,7 @@ class _InventoryTabState extends State<InventoryTab> {
                     onAddStockTap: canAdjustStock
                         ? () async {
                             Navigator.pop(context);
-                            final result = await context.push(
-                              '/products/add-stock/${product.id}',
-                            );
-                            // Si retorna true, recargar datos
-                            if (result == true && mounted) {
-                              await _loadInventoryData();
-                            }
+                            await _openAdjustStockDialog(product);
                           }
                         : null,
                     showPurchasePrice: showPurchasePrice,
@@ -259,6 +248,40 @@ class _InventoryTabState extends State<InventoryTab> {
 
   void _openHistory() {
     context.push('/products/history');
+  }
+
+  Future<void> _openAdjustStockDialog(ProductModel product) async {
+    final fresh = await _productsRepo.getById(product.id!);
+    if (!mounted || fresh == null) return;
+
+    final result = await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => StockAdjustDialog(product: fresh),
+    );
+
+    if (!mounted) return;
+    if (result is Map && result['ok'] == true) {
+      final productId = result['productId'] as int?;
+      final updatedStockNum = result['updatedStock'] as num?;
+      if (productId != null && updatedStockNum != null) {
+        final updatedStock = updatedStockNum.toDouble();
+        setState(() {
+          _lowStockProducts = _lowStockProducts
+              .map((p) => p.id == productId ? p.copyWith(stock: updatedStock) : p)
+              .toList();
+          _outOfStockProducts = _outOfStockProducts
+              .map((p) => p.id == productId ? p.copyWith(stock: updatedStock) : p)
+              .toList();
+        });
+      }
+      await _loadInventoryData();
+      return;
+    }
+
+    if (result == true) {
+      await _loadInventoryData();
+    }
   }
 
   EdgeInsets _contentPadding(BoxConstraints constraints) {

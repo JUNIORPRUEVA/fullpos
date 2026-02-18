@@ -49,7 +49,9 @@ class InvoiceLetterPdf {
     String? cashierName,
   }) async {
     final brand = _toPdfColor(brandColorArgb);
-    final accent = PdfColors.grey800;
+    final accent = PdfColor(0.11, 0.18, 0.32);
+    final softBorder = PdfColor(0.87, 0.90, 0.95);
+    final softFill = PdfColor(0.97, 0.98, 1);
 
     final currencySymbol = (business.currencySymbol).trim().isNotEmpty
         ? business.currencySymbol.trim()
@@ -231,7 +233,7 @@ class InvoiceLetterPdf {
                 ],
               ),
             ),
-            pw.SizedBox(height: 14),
+            pw.SizedBox(height: 16),
 
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -240,7 +242,7 @@ class InvoiceLetterPdf {
                   child: pw.Container(
                     padding: const pw.EdgeInsets.all(12),
                     decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey300),
+                      border: pw.Border.all(color: softBorder),
                       borderRadius: pw.BorderRadius.circular(8),
                     ),
                     child: pw.Column(
@@ -270,7 +272,7 @@ class InvoiceLetterPdf {
                   child: pw.Container(
                     padding: const pw.EdgeInsets.all(12),
                     decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey300),
+                      border: pw.Border.all(color: softBorder),
                       borderRadius: pw.BorderRadius.circular(8),
                     ),
                     child: pw.Column(
@@ -303,7 +305,7 @@ class InvoiceLetterPdf {
                           pw.Container(
                             padding: const pw.EdgeInsets.all(8),
                             decoration: pw.BoxDecoration(
-                              color: PdfColors.grey100,
+                              color: softFill,
                               borderRadius: pw.BorderRadius.circular(6),
                             ),
                             child: pw.Row(
@@ -337,7 +339,7 @@ class InvoiceLetterPdf {
               ],
             ),
 
-            pw.SizedBox(height: 14),
+            pw.SizedBox(height: 18),
 
             pw.Text(
               'DETALLE',
@@ -349,11 +351,11 @@ class InvoiceLetterPdf {
             ),
             pw.SizedBox(height: 8),
             pw.TableHelper.fromTextArray(
-              headerDecoration: pw.BoxDecoration(color: PdfColors.grey200),
+              headerDecoration: pw.BoxDecoration(color: brand),
               headerStyle: pw.TextStyle(
                 fontSize: 9,
                 fontWeight: pw.FontWeight.bold,
-                color: accent,
+                color: PdfColors.white,
               ),
               cellStyle: const pw.TextStyle(fontSize: 9),
               cellAlignment: pw.Alignment.centerLeft,
@@ -365,10 +367,10 @@ class InvoiceLetterPdf {
               },
               headers: const ['Cant.', 'Descripción', 'Precio', 'Importe'],
               data: rows,
-              border: pw.TableBorder.all(color: PdfColors.grey300),
+              border: pw.TableBorder.all(color: softBorder),
             ),
 
-            pw.SizedBox(height: 14),
+            pw.SizedBox(height: 24),
 
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -377,7 +379,7 @@ class InvoiceLetterPdf {
                   child: pw.Container(
                     padding: const pw.EdgeInsets.all(12),
                     decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey300),
+                      border: pw.Border.all(color: softBorder),
                       borderRadius: pw.BorderRadius.circular(8),
                     ),
                     child: pw.Column(
@@ -406,10 +408,11 @@ class InvoiceLetterPdf {
                 ),
                 pw.SizedBox(width: 12),
                 pw.Container(
-                  width: 220,
-                  padding: const pw.EdgeInsets.all(12),
+                  width: 240,
+                  padding: const pw.EdgeInsets.all(13),
                   decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
+                    color: softFill,
+                    border: pw.Border.all(color: softBorder),
                     borderRadius: pw.BorderRadius.circular(8),
                   ),
                   child: pw.Column(
@@ -423,28 +426,29 @@ class InvoiceLetterPdf {
                         'Descuento',
                         _fmtMoney(currencySymbol, sale.discountTotal),
                       ),
-                      _totLine(
-                        'ITBIS',
-                        _fmtMoney(currencySymbol, sale.itbisAmount),
-                      ),
-                      pw.Divider(color: PdfColors.grey400),
+                      if (sale.itbisEnabled == 1)
+                        _totLine(
+                          'ITBIS',
+                          _fmtMoney(currencySymbol, sale.itbisAmount),
+                        ),
+                      pw.Divider(color: brand),
                       pw.Row(
                         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                         children: [
                           pw.Text(
                             'TOTAL',
                             style: pw.TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: pw.FontWeight.bold,
-                              color: accent,
+                              color: brand,
                             ),
                           ),
                           pw.Text(
                             _fmtMoney(currencySymbol, sale.total),
                             style: pw.TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: pw.FontWeight.bold,
-                              color: accent,
+                              color: brand,
                             ),
                           ),
                         ],
@@ -461,7 +465,7 @@ class InvoiceLetterPdf {
               pw.Container(
                 padding: const pw.EdgeInsets.all(10),
                 decoration: pw.BoxDecoration(
-                  color: PdfColors.grey100,
+                  color: softFill,
                   borderRadius: pw.BorderRadius.circular(8),
                 ),
                 child: pw.Column(

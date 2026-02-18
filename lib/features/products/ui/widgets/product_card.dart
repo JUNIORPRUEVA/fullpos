@@ -142,7 +142,7 @@ class ProductCard extends StatelessWidget {
               // Stock
               _buildCompactInfo(
                 'Stock',
-                '${numberFormat.format(product.stock)}/${numberFormat.format(product.stockMin)}',
+                numberFormat.format(product.stock),
                 statusColor,
                 mutedText,
               ),

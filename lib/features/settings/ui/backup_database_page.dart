@@ -14,6 +14,7 @@ import 'backup/backup_history_list.dart';
 import 'backup/backup_status_card.dart';
 import 'backup/confirm_phrase_dialog.dart';
 import 'backup/danger_zone_actions.dart';
+import 'settings_layout.dart';
 
 class BackupDatabasePage extends StatefulWidget {
   const BackupDatabasePage({super.key});
@@ -369,7 +370,9 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
   Widget build(BuildContext context) {
     final status = _status;
 
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       appBar: AppBar(
         title: GestureDetector(
           onLongPress: _runDiagnostics,
@@ -465,6 +468,7 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
                   ),
               ],
             ),
+      ),
     );
   }
 }

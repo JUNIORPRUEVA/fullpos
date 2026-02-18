@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
 import '../../../core/constants/app_sizes.dart';
 import 'theme_selector_widget.dart';
+import 'settings_layout.dart';
 
 /// Página de configuración completa del tema (paleta + tipografía + presets)
 class ThemeSettingsPage extends ConsumerWidget {
@@ -18,7 +19,9 @@ class ThemeSettingsPage extends ConsumerWidget {
       32.0,
     );
 
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       appBar: AppBar(title: const Text('TEMA DE LA APLICACIÓN'), elevation: 0),
       body: SingleChildScrollView(
         child: Column(
@@ -516,6 +519,7 @@ class ThemeSettingsPage extends ConsumerWidget {
             const SizedBox(height: 20),
           ],
         ),
+      ),
       ),
     );
   }

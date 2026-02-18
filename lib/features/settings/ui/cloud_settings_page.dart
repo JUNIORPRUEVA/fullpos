@@ -48,18 +48,31 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final scheme = Theme.of(context).colorScheme;
-
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Nube y Accesos'),
         actions: [
-          TextButton.icon(
+          OutlinedButton.icon(
             onPressed: _save,
-            style: TextButton.styleFrom(foregroundColor: scheme.onPrimary),
-            icon: const Icon(Icons.save),
-            label: const Text('Guardar'),
+            icon: const Icon(Icons.save, color: Colors.black),
+            label: const Text(
+              'Guardar',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black,
+              side: const BorderSide(color: Colors.black, width: 1.1),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Form(
@@ -136,6 +149,7 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
             );
           },
         ),
+      ),
       ),
     );
   }

@@ -12,6 +12,12 @@ import '../../features/purchases/data/purchase_order_models.dart';
 class PurchaseOrderPrinter {
   PurchaseOrderPrinter._();
 
+  static const PdfColor _brandBlue = PdfColor(0.11, 0.23, 0.54);
+  static const PdfColor _softBorder = PdfColor(0.87, 0.90, 0.95);
+  static const PdfColor _softFill = PdfColor(0.97, 0.98, 1);
+  static const PdfColor _noteFill = PdfColor(1, 0.98, 0.90);
+  static const PdfColor _noteBorder = PdfColor(0.96, 0.84, 0.45);
+
   static Future<Uint8List> generatePdf({
     required PurchaseOrderDetailDto detail,
     required BusinessInfoModel business,
@@ -24,6 +30,9 @@ class PurchaseOrderPrinter {
     final createdDate = DateTime.fromMillisecondsSinceEpoch(
       detail.order.createdAtMs,
     );
+    final purchaseDate = detail.order.purchaseDateMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(detail.order.purchaseDateMs!)
+        : null;
 
     pdf.addPage(
       pw.Page(
@@ -33,28 +42,22 @@ class PurchaseOrderPrinter {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              _buildHeader(business, detail),
-              pw.SizedBox(height: 14),
-              pw.Divider(thickness: 2, color: PdfColors.teal),
-              pw.SizedBox(height: 14),
-
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'Fecha: ${dateFormat.format(createdDate)}',
-                    style: const pw.TextStyle(fontSize: 10),
-                  ),
-                  _buildStatusChip(detail.order.status),
-                ],
+              _buildHeader(
+                business,
+                detail,
+                dateFormat: dateFormat,
+                createdDate: createdDate,
+                purchaseDate: purchaseDate,
               ),
+              pw.SizedBox(height: 14),
+              pw.Divider(thickness: 2, color: _brandBlue),
               pw.SizedBox(height: 14),
 
               _buildSupplierInfo(detail),
               pw.SizedBox(height: 16),
 
               _buildItemsTable(detail, currencyFormat),
-              pw.SizedBox(height: 16),
+              pw.SizedBox(height: 24),
 
               _buildTotals(detail.order, currencyFormat),
 
@@ -63,17 +66,19 @@ class PurchaseOrderPrinter {
                 pw.Container(
                   padding: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
-                    color: PdfColors.grey100,
+                    color: _noteFill,
+                    border: pw.Border.all(color: _noteBorder, width: 0.8),
                     borderRadius: pw.BorderRadius.circular(4),
                   ),
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        'NOTAS:',
+                        'NOTA IMPORTANTE PARA SUPLIDOR:',
                         style: pw.TextStyle(
                           fontSize: 10,
                           fontWeight: pw.FontWeight.bold,
+                          color: _brandBlue,
                         ),
                       ),
                       pw.SizedBox(height: 4),
@@ -87,7 +92,7 @@ class PurchaseOrderPrinter {
               ],
 
               pw.Spacer(),
-              pw.Divider(thickness: 1, color: PdfColors.grey400),
+              pw.Divider(thickness: 1, color: _softBorder),
               pw.SizedBox(height: 6),
               pw.Text(
                 'Documento generado por el sistema POS',
@@ -162,69 +167,85 @@ class PurchaseOrderPrinter {
   static pw.Widget _buildHeader(
     BusinessInfoModel business,
     PurchaseOrderDetailDto detail,
+    {
+    required DateFormat dateFormat,
+    required DateTime createdDate,
+    required DateTime? purchaseDate,
+  }
   ) {
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
-      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(
-              business.name,
-              style: pw.TextStyle(
-                fontSize: 18,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.teal,
-              ),
-            ),
-            if ((business.slogan ?? '').trim().isNotEmpty)
+        pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
               pw.Text(
-                business.slogan!.trim(),
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                business.name,
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _brandBlue,
+                ),
               ),
-            pw.SizedBox(height: 6),
-            if ((business.phone ?? '').trim().isNotEmpty)
-              pw.Text(
-                'Tel: ${business.phone}',
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
-              ),
-            if ((business.address ?? '').trim().isNotEmpty)
-              pw.Text(
-                business.address!,
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
-              ),
-            if ((business.rnc ?? '').trim().isNotEmpty)
-              pw.Text(
-                'RNC: ${business.rnc}',
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
-              ),
-          ],
+              if ((business.slogan ?? '').trim().isNotEmpty)
+                pw.Text(
+                  business.slogan!.trim(),
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+                ),
+              pw.SizedBox(height: 6),
+              if ((business.phone ?? '').trim().isNotEmpty)
+                pw.Text(
+                  'Tel: ${business.phone}',
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+                ),
+              if ((business.address ?? '').trim().isNotEmpty)
+                pw.Text(
+                  business.address!,
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+                ),
+              if ((business.rnc ?? '').trim().isNotEmpty)
+                pw.Text(
+                  'RNC: ${business.rnc}',
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
+                ),
+            ],
+          ),
         ),
+        pw.SizedBox(width: 14),
         pw.Container(
+          width: 250,
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: PdfColors.teal, width: 2),
+            color: _softFill,
+            border: pw.Border.all(color: _brandBlue, width: 1.6),
             borderRadius: pw.BorderRadius.circular(6),
           ),
           child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'ORDEN DE COMPRA',
+                'DATOS DE LA ORDEN',
                 style: pw.TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.teal,
+                  color: _brandBlue,
                 ),
               ),
-              pw.SizedBox(height: 4),
-              pw.Text(
-                '#${detail.order.id ?? '-'}',
-                style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                ),
+              pw.SizedBox(height: 6),
+              _headerOrderRow(
+                'No. Orden',
+                detail.order.id != null ? '#${detail.order.id}' : 'N/D',
+              ),
+              _headerOrderRow('Fecha emisión', dateFormat.format(createdDate)),
+              _headerOrderRow(
+                'Fecha compra',
+                _formatOptionalDate(dateFormat, purchaseDate),
+              ),
+              _headerOrderRow('Estado', detail.order.status.toUpperCase()),
+              _headerOrderRow(
+                'Tipo',
+                detail.order.isAuto == 1 ? 'AUTOMÁTICA' : 'MANUAL',
               ),
             ],
           ),
@@ -233,37 +254,46 @@ class PurchaseOrderPrinter {
     );
   }
 
-  static pw.Widget _buildStatusChip(String status) {
-    final normalized = status.trim().toUpperCase();
-    final bg = normalized == 'RECIBIDA'
-        ? PdfColors.green100
-        : PdfColors.amber100;
-    final fg = normalized == 'RECIBIDA'
-        ? PdfColors.green900
-        : PdfColors.orange900;
-
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: pw.BoxDecoration(
-        color: bg,
-        borderRadius: pw.BorderRadius.circular(4),
-      ),
-      child: pw.Text(
-        normalized,
-        style: pw.TextStyle(
-          fontSize: 9,
-          fontWeight: pw.FontWeight.bold,
-          color: fg,
-        ),
+  static pw.Widget _headerOrderRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 2),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 78,
+            child: pw.Text(
+              '$label:',
+              style: pw.TextStyle(
+                fontSize: 8.2,
+                color: PdfColors.grey800,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              value,
+              style: const pw.TextStyle(fontSize: 8.2),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  static String _formatOptionalDate(DateFormat dateFormat, DateTime? value) {
+    if (value == null) {
+      return 'N/D';
+    }
+    return dateFormat.format(value);
   }
 
   static pw.Widget _buildSupplierInfo(PurchaseOrderDetailDto detail) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
+        color: _softFill,
         borderRadius: pw.BorderRadius.circular(4),
       ),
       child: pw.Column(
@@ -307,7 +337,7 @@ class PurchaseOrderPrinter {
     }
 
     return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+      border: pw.TableBorder.all(color: _softBorder, width: 0.5),
       columnWidths: {
         0: const pw.FlexColumnWidth(2),
         1: const pw.FlexColumnWidth(6),
@@ -317,7 +347,7 @@ class PurchaseOrderPrinter {
       },
       children: [
         pw.TableRow(
-          decoration: const pw.BoxDecoration(color: PdfColors.teal),
+          decoration: const pw.BoxDecoration(color: _brandBlue),
           children: [
             pw.Padding(
               padding: const pw.EdgeInsets.all(6),
@@ -406,7 +436,7 @@ class PurchaseOrderPrinter {
         width: 240,
         padding: const pw.EdgeInsets.all(10),
         decoration: pw.BoxDecoration(
-          color: PdfColors.grey100,
+          color: _softFill,
           borderRadius: pw.BorderRadius.circular(4),
         ),
         child: pw.Column(

@@ -46,8 +46,8 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
     final categoriesAsync = ref.watch(purchaseCategoriesProvider);
 
     void commitSearch() {
-      ref.read(purchaseCatalogFiltersProvider.notifier).state =
-          filters.copyWith(query: _searchCtrl.text);
+      ref.read(purchaseCatalogFiltersProvider.notifier).state = filters
+          .copyWith(query: _searchCtrl.text);
     }
 
     if (_searchCtrl.text != filters.query) {
@@ -100,8 +100,8 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
             ),
           ),
           onChanged: (value) {
-            ref.read(purchaseCatalogFiltersProvider.notifier).state =
-                filters.copyWith(categoryId: value);
+            ref.read(purchaseCatalogFiltersProvider.notifier).state = filters
+                .copyWith(categoryId: value);
           },
         ),
       );
@@ -257,15 +257,15 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
                     children: [
                       search,
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(child: category),
-                          const SizedBox(width: 10),
-                          onlySupplier,
-                        ],
-                      ),
+                      category,
                       const SizedBox(height: 10),
-                      Align(alignment: Alignment.centerRight, child: addSupplier),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [onlySupplier, addSupplier],
+                      ),
                     ],
                   );
                 }

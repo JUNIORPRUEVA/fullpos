@@ -11,7 +11,9 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/printing/purchase_order_printer.dart';
 import '../../../core/window/window_service.dart';
-import '../../sales/data/settings_repository.dart';
+import '../../sales/data/business_info_model.dart';
+import '../../settings/data/business_settings_model.dart';
+import '../../settings/data/business_settings_repository.dart';
 import '../data/purchase_order_models.dart';
 
 class PurchaseOrderPdfLauncher {
@@ -21,7 +23,9 @@ class PurchaseOrderPdfLauncher {
     required BuildContext context,
     required PurchaseOrderDetailDto detail,
   }) async {
-    final business = await SettingsRepository.getBusinessInfo();
+    final settingsRepo = BusinessSettingsRepository();
+    final settings = await settingsRepo.loadSettings();
+    final business = _mapBusinessInfo(settings);
     final bytes = await PurchaseOrderPrinter.generatePdf(
       detail: detail,
       business: business,
@@ -183,5 +187,29 @@ class PurchaseOrderPdfLauncher {
     final file = File(outputFile);
     await file.writeAsBytes(bytes, flush: true);
     return file;
+  }
+
+  static BusinessInfoModel _mapBusinessInfo(BusinessSettings settings) {
+    String? normalize(String? value) {
+      final text = value?.trim() ?? '';
+      return text.isEmpty ? null : text;
+    }
+
+    final address = [
+      normalize(settings.address),
+      normalize(settings.city),
+    ].whereType<String>().join(', ');
+
+    return BusinessInfoModel(
+      id: settings.id,
+      name: settings.businessName.trim().isEmpty
+          ? 'FULLPOS'
+          : settings.businessName.trim(),
+      phone: normalize(settings.phone),
+      address: address.trim().isEmpty ? null : address,
+      rnc: normalize(settings.rnc),
+      slogan: normalize(settings.slogan),
+      updatedAtMs: settings.updatedAt.millisecondsSinceEpoch,
+    );
   }
 }

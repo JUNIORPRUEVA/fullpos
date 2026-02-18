@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_colors.dart';
@@ -35,6 +36,16 @@ class _AddStockPageState extends State<AddStockPage> {
   bool _saving = false;
   bool _error = false;
   String? _errorMessage;
+
+  String _normalizeDecimalInput(String raw) {
+    return raw.trim().replaceAll(' ', '').replaceAll(',', '.');
+  }
+
+  double? _tryParseQuantity(String raw) {
+    final normalized = _normalizeDecimalInput(raw);
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
 
   @override
   void initState() {
@@ -93,8 +104,17 @@ class _AddStockPageState extends State<AddStockPage> {
     );
     if (!canAdjust || !mounted) return;
 
-    final quantity = double.parse(_quantityController.text.trim());
+    final quantity = _tryParseQuantity(_quantityController.text);
+    if (quantity == null || quantity <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Cantidad inválida')));
+      }
+      return;
+    }
     final note = _noteController.text.trim();
+    final previousStock = _product?.stock ?? 0.0;
 
     setState(() => _saving = true);
     try {
@@ -107,27 +127,28 @@ class _AddStockPageState extends State<AddStockPage> {
         userId: currentUserId,
       );
 
+      final updatedProduct = await _productsRepo.getById(widget.productId);
+      final updatedStock = updatedProduct?.stock ?? (previousStock + quantity);
+
       if (!mounted) return;
 
-      // Recargar producto y movimientos
-      await _load();
-
-      if (mounted) {
-        _quantityController.clear();
-        _noteController.clear();
-
-        // Pop inmediatamente para que pantalla anterior se refresque
-        Navigator.of(context).pop(true);
-
-        // Mostrar snackbar sin delay
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Stock agregado correctamente'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      final messenger = ScaffoldMessenger.of(context);
+      _quantityController.clear();
+      _noteController.clear();
+      Navigator.of(context).pop({
+        'ok': true,
+        'productId': widget.productId,
+        'addedQty': quantity,
+        'previousStock': previousStock,
+        'updatedStock': updatedStock,
+      });
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✅ Stock agregado correctamente'),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e, st) {
       if (!mounted) return;
       await ErrorHandler.instance.handle(
@@ -280,6 +301,9 @@ class _AddStockPageState extends State<AddStockPage> {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9,\.]')),
+                      ],
                       onFieldSubmitted: (_) {
                         // Si presiona Enter en el campo cantidad, enfocar nota
                         FocusScope.of(context).nextFocus();
@@ -288,7 +312,7 @@ class _AddStockPageState extends State<AddStockPage> {
                         if (value == null || value.trim().isEmpty) {
                           return 'Ingrese una cantidad';
                         }
-                        final qty = double.tryParse(value.trim());
+                        final qty = _tryParseQuantity(value);
                         if (qty == null || qty <= 0) {
                           return 'La cantidad debe ser mayor que 0';
                         }

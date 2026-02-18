@@ -39,6 +39,7 @@ class _PurchaseOrderCreateAutoPageState
   final PurchaseOrderAutoService _autoService = PurchaseOrderAutoService();
   final PurchasesRepository _purchasesRepo = PurchasesRepository();
   final BusinessSettingsRepository _settingsRepo = BusinessSettingsRepository();
+  final TextEditingController _notesCtrl = TextEditingController();
 
   bool _loading = true;
   bool _building = false;
@@ -55,6 +56,12 @@ class _PurchaseOrderCreateAutoPageState
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _notesCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -167,6 +174,7 @@ class _PurchaseOrderCreateAutoPageState
         supplierId: _supplier!.id!,
         taxRatePercent: _taxRate,
         isAuto: true,
+        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         items: _lines
             .where((l) => l.qty > 0)
             .map(
@@ -235,73 +243,86 @@ class _PurchaseOrderCreateAutoPageState
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(AppSizes.paddingM),
-                      child: Row(
+                      child: Column(
                         children: [
-                          Expanded(
-                            child: DropdownButtonFormField<int>(
-                              initialValue: _supplier?.id,
-                              items: _suppliers
-                                  .map(
-                                    (s) => DropdownMenuItem(
-                                      value: s.id,
-                                      child: Text(s.name),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) {
-                                final s = _suppliers
-                                    .where((e) => e.id == v)
-                                    .cast<SupplierModel?>()
-                                    .firstOrNull;
-                                setState(() {
-                                  _supplier = s;
-                                  _lines.clear();
-                                });
-                              },
-                              decoration: const InputDecoration(
-                                labelText: 'Suplidor',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 180,
-                            child: TextFormField(
-                              initialValue: _taxRate.toStringAsFixed(2),
-                              decoration: const InputDecoration(
-                                labelText: 'Impuesto %',
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<int>(
+                                  initialValue: _supplier?.id,
+                                  items: _suppliers
+                                      .map(
+                                        (s) => DropdownMenuItem(
+                                          value: s.id,
+                                          child: Text(s.name),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) {
+                                    final s = _suppliers
+                                        .where((e) => e.id == v)
+                                        .cast<SupplierModel?>()
+                                        .firstOrNull;
+                                    setState(() {
+                                      _supplier = s;
+                                      _lines.clear();
+                                    });
+                                  },
+                                  decoration: const InputDecoration(
+                                    labelText: 'Suplidor',
                                   ),
-                              onChanged: (v) {
-                                final parsed = double.tryParse(
-                                  v.replaceAll(',', '.'),
-                                );
-                                if (parsed == null) return;
-                                setState(() => _taxRate = parsed);
-                              },
-                            ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 180,
+                                child: TextFormField(
+                                  initialValue: _taxRate.toStringAsFixed(2),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Impuesto %',
+                                  ),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  onChanged: (v) {
+                                    final parsed = double.tryParse(
+                                      v.replaceAll(',', '.'),
+                                    );
+                                    if (parsed == null) return;
+                                    setState(() => _taxRate = parsed);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton.icon(
+                                onPressed: _building || _saving
+                                    ? null
+                                    : _buildSuggestions,
+                                icon: _building
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.auto_awesome),
+                                label: Text(
+                                  _building ? 'Calculando...' : 'Generar',
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
-                            onPressed: _building || _saving
-                                ? null
-                                : _buildSuggestions,
-                            icon: _building
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.auto_awesome),
-                            label: Text(
-                              _building ? 'Calculando...' : 'Generar',
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _notesCtrl,
+                            decoration: const InputDecoration(
+                              labelText:
+                                  'Nota importante para suplidor (opcional)',
                             ),
+                            maxLines: 2,
                           ),
                         ],
                       ),

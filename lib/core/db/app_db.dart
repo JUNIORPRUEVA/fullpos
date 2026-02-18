@@ -1038,7 +1038,7 @@ class AppDb {
       await db.execute('''
         CREATE TABLE ${DbTables.appSettings} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          itbis_enabled_default INTEGER NOT NULL DEFAULT 1,
+          itbis_enabled_default INTEGER NOT NULL DEFAULT 0,
           fiscal_enabled_default INTEGER NOT NULL DEFAULT 0,
           itbis_rate REAL NOT NULL DEFAULT 0.18,
           ticket_size TEXT NOT NULL DEFAULT '80mm',
@@ -1048,7 +1048,7 @@ class AppDb {
 
       // Insertar configuración por defecto
       await db.insert(DbTables.appSettings, {
-        'itbis_enabled_default': 1,
+        'itbis_enabled_default': 0,
         'fiscal_enabled_default': 0,
         'itbis_rate': 0.18,
         'ticket_size': '80mm',
@@ -2505,7 +2505,7 @@ class AppDb {
     await db.execute('''
       CREATE TABLE ${DbTables.appSettings} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        itbis_enabled_default INTEGER NOT NULL DEFAULT 1,
+        itbis_enabled_default INTEGER NOT NULL DEFAULT 0,
         fiscal_enabled_default INTEGER NOT NULL DEFAULT 0,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
         ticket_size TEXT NOT NULL DEFAULT '80mm',
@@ -2513,7 +2513,7 @@ class AppDb {
       )
     ''');
     await db.insert(DbTables.appSettings, {
-      'itbis_enabled_default': 1,
+      'itbis_enabled_default': 0,
       'fiscal_enabled_default': 0,
       'itbis_rate': 0.18,
       'ticket_size': '80mm',

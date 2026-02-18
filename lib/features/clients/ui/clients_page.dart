@@ -11,6 +11,7 @@ import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
 import '../data/client_model.dart';
 import '../data/clients_repository.dart';
+import '../../sales/data/sale_model.dart' as legacy_sales;
 import '../../sales/data/sales_model.dart';
 import '../../sales/data/sales_repository.dart';
 import 'client_details_dialog.dart';
@@ -168,6 +169,51 @@ class _ClientsPageState extends State<ClientsPage> {
       dateFrom: _statsFromDate,
       dateTo: _statsToDate,
     );
+  }
+
+  List<SaleModel> _normalizeSalesList(Iterable<dynamic> rawSales) {
+    return rawSales
+        .map<SaleModel?>((rawSale) {
+          if (rawSale is SaleModel) {
+            return rawSale;
+          }
+          if (rawSale is legacy_sales.SaleModel) {
+            return SaleModel(
+              id: rawSale.id,
+              localCode: rawSale.localCode,
+              kind: rawSale.kind,
+              status: rawSale.status,
+              customerId: rawSale.customerId,
+              customerNameSnapshot: rawSale.customerNameSnapshot,
+              customerPhoneSnapshot: rawSale.customerPhoneSnapshot,
+              customerRncSnapshot: rawSale.customerRncSnapshot,
+              itbisEnabled: rawSale.itbisEnabled ? 1 : 0,
+              itbisRate: rawSale.itbisRate,
+              discountTotal: rawSale.discountTotal,
+              subtotal: rawSale.subtotal,
+              itbisAmount: rawSale.itbisAmount,
+              total: rawSale.total,
+              paymentMethod: rawSale.paymentMethod,
+              paidAmount: rawSale.paidAmount,
+              changeAmount: rawSale.changeAmount,
+              creditInterestRate: rawSale.creditInterestRate,
+              creditTermDays: rawSale.creditTermDays,
+              creditDueDateMs: rawSale.creditDueDateMs,
+              creditInstallments: rawSale.creditInstallments,
+              creditNote: rawSale.creditNote,
+              fiscalEnabled: rawSale.fiscalEnabled ? 1 : 0,
+              ncfFull: rawSale.ncfFull,
+              ncfType: rawSale.ncfType,
+              sessionId: rawSale.sessionId,
+              createdAtMs: rawSale.createdAtMs,
+              updatedAtMs: rawSale.updatedAtMs,
+              deletedAtMs: rawSale.deletedAtMs,
+            );
+          }
+          return null;
+        })
+        .whereType<SaleModel>()
+        .toList(growable: false);
   }
 
   Future<void> _selectStatsDate(bool isFrom) async {
@@ -922,10 +968,11 @@ class _ClientsPageState extends State<ClientsPage> {
 
     Future<Map<String, dynamic>> loadPurchasesData() async {
       final summary = await SalesRepository.getCustomerPurchaseSummary(client.id!);
-      final purchases = await SalesRepository.listCustomerPurchases(
+      final rawPurchases = await SalesRepository.listCustomerPurchases(
         client.id!,
         limit: 15,
       );
+      final purchases = _normalizeSalesList(rawPurchases);
       final creditAmount = purchases
           .where((sale) => (sale.paymentMethod ?? '').toLowerCase() == 'credit')
           .fold<double>(0.0, (sum, sale) => sum + sale.total);
@@ -1108,7 +1155,9 @@ class _ClientsPageState extends State<ClientsPage> {
                 final data = snapshot.data ?? const <String, dynamic>{};
                 final summary =
                     (data['summary'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
-                final purchases = (data['purchases'] as List<SaleModel>?) ?? <SaleModel>[];
+                final purchases = _normalizeSalesList(
+                  (data['purchases'] as List?) ?? const <dynamic>[],
+                );
                 final creditAmount = (data['creditAmount'] as num?)?.toDouble() ?? 0.0;
                 final purchasesCount = (summary['count'] as int?) ?? 0;
                 final totalPurchased = (summary['total'] as num?)?.toDouble() ?? 0.0;

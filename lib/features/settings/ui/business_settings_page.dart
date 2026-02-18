@@ -12,6 +12,7 @@ import '../../../core/errors/error_handler.dart';
 import '../../../core/window/window_service.dart';
 import '../../sales/data/app_settings_model.dart';
 import '../../sales/data/settings_repository.dart';
+import 'settings_layout.dart';
 
 /// Página de configuración del negocio
 class BusinessSettingsPage extends ConsumerStatefulWidget {
@@ -345,14 +346,9 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
     });
     final settings = _draft;
 
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final appBarBg = theme.appBarTheme.backgroundColor ?? scheme.surface;
-    final isDarkBg =
-        ThemeData.estimateBrightnessForColor(appBarBg) == Brightness.dark;
-    final tabFg = isDarkBg ? scheme.surface : scheme.onSurface;
-
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('CONFIGURACIÓN DEL NEGOCIO'),
         actions: [
@@ -380,27 +376,40 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
                 ),
               ),
             ),
-          TextButton.icon(
+          OutlinedButton.icon(
             onPressed: _isLoading ? null : _saveAll,
             icon: _isLoading
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                    ),
                   )
-                : Icon(Icons.save, color: _scheme.surface),
-            label: Text(
+                : const Icon(Icons.save, color: Colors.black),
+            label: const Text(
               'GUARDAR TODO',
-              style: TextStyle(color: _scheme.surface),
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black,
+              side: const BorderSide(color: Colors.black, width: 1.2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
           const SizedBox(width: 8),
         ],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: tabFg,
-          unselectedLabelColor: tabFg.withOpacity(0.88),
-          indicatorColor: tabFg,
+          labelColor: Colors.black,
+          unselectedLabelColor: Colors.black87,
+          indicatorColor: Colors.black,
           labelStyle: const TextStyle(fontWeight: FontWeight.w800),
           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
           tabs: const [
@@ -412,6 +421,7 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
       body: TabBarView(
         controller: _tabController,
         children: [_buildCompanyTab(settings), _buildTaxesTab(settings)],
+      ),
       ),
     );
   }
@@ -674,7 +684,7 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
             subtitle: const Text(
               'Define el estado inicial del switch de ITBIS en la pantalla de ventas.',
             ),
-            value: _appSettings?.itbisEnabledDefault ?? true,
+            value: _appSettings?.itbisEnabledDefault ?? false,
             onChanged: _appSettings == null ? null : _updateItbisDefault,
           ),
           SwitchListTile(

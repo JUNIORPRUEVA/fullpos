@@ -24,6 +24,7 @@ import '../../utils/catalog_pdf_launcher.dart';
 import '../dialogs/product_details_dialog.dart';
 import '../dialogs/product_filters_dialog.dart';
 import '../dialogs/product_form_dialog.dart';
+import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_thumbnail.dart';
 import '../../../../theme/app_colors.dart' as ui_colors;
@@ -681,7 +682,8 @@ class _CatalogTabState extends State<CatalogTab> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (product.categoryId != null || product.supplierId != null) ...[
+                if (product.categoryId != null ||
+                    product.supplierId != null) ...[
                   if (product.categoryId != null)
                     _buildInfoLine(
                       icon: Icons.category_outlined,
@@ -1046,7 +1048,42 @@ class _CatalogTabState extends State<CatalogTab> {
     );
     if (!canAdjust) return;
     if (!mounted) return;
-    final result = await context.push('/products/add-stock/${product.id}');
+    final freshProduct = await _productsRepo.getById(product.id!);
+    if (!mounted || freshProduct == null) return;
+
+    final result = await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => StockAdjustDialog(product: freshProduct),
+    );
+
+    if (result is Map) {
+      final ok = result['ok'] == true;
+      final productId = result['productId'] as int?;
+      final updatedStockNum = result['updatedStock'] as num?;
+      if (ok && productId != null && updatedStockNum != null) {
+        final updatedStock = updatedStockNum.toDouble();
+        if (mounted) {
+          setState(() {
+            _products = _products
+                .map(
+                  (item) => item.id == productId
+                      ? item.copyWith(stock: updatedStock)
+                      : item,
+                )
+                .toList();
+            if (_selectedProduct?.id == productId) {
+              _selectedProduct = _selectedProduct?.copyWith(
+                stock: updatedStock,
+              );
+            }
+          });
+        }
+        await _loadProducts();
+        return;
+      }
+    }
+
     if (result == true) {
       await _loadProducts();
     }

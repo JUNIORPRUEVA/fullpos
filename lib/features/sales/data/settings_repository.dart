@@ -76,7 +76,7 @@ class SettingsRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       return AppSettingsModel(
         id: null,
-        itbisEnabledDefault: true,
+        itbisEnabledDefault: false,
         fiscalEnabledDefault: false,
         itbisRate: 0.18,
         ticketSize: '80mm',

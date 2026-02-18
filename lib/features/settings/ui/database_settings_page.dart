@@ -11,6 +11,7 @@ import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/theme/app_status_theme.dart';
 import 'backup/confirm_phrase_dialog.dart';
+import 'settings_layout.dart';
 
 class DatabaseSettingsPage extends StatefulWidget {
   const DatabaseSettingsPage({super.key});
@@ -189,7 +190,9 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();
 
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Base de datos'),
         backgroundColor: scheme.surfaceVariant,
@@ -327,6 +330,7 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
                   ],
                 ),
               ),
+            ),
             ),
     );
   }

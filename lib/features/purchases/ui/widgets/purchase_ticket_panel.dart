@@ -50,88 +50,82 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
     required List<SupplierModel> suppliers,
     SupplierModel? selected,
   }) async {
-    final searchCtrl = TextEditingController();
+    return showDialog<SupplierModel>(
+      context: context,
+      builder: (c) {
+        SupplierModel? current = selected;
+        var query = '';
 
-    try {
-      return await showDialog<SupplierModel>(
-        context: context,
-        builder: (c) {
-          SupplierModel? current = selected;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final q = query.trim().toLowerCase();
+            final filtered = q.isEmpty
+                ? suppliers
+                : suppliers
+                      .where(
+                        (s) =>
+                            s.name.toLowerCase().contains(q) ||
+                            (s.phone ?? '').toLowerCase().contains(q),
+                      )
+                      .toList(growable: false);
 
-          return StatefulBuilder(
-            builder: (context, setState) {
-              final q = searchCtrl.text.trim().toLowerCase();
-              final filtered = q.isEmpty
-                  ? suppliers
-                  : suppliers
-                        .where(
-                          (s) =>
-                              s.name.toLowerCase().contains(q) ||
-                              (s.phone ?? '').toLowerCase().contains(q),
-                        )
-                        .toList(growable: false);
-
-              return AlertDialog(
-                title: const Text('Seleccionar proveedor'),
-                content: SizedBox(
-                  width: 520,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: searchCtrl,
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Buscar por nombre o teléfono',
-                        ),
-                        onChanged: (_) => setState(() {}),
+            return AlertDialog(
+              title: const Text('Seleccionar proveedor'),
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Buscar por nombre o teléfono',
                       ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: Material(
-                          color: Colors.transparent,
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, _) =>
-                                const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final s = filtered[index];
-                              final isSelected = current?.id == s.id;
-                              return ListTile(
-                                title: Text(s.name),
-                                subtitle: (s.phone ?? '').trim().isEmpty
-                                    ? null
-                                    : Text(s.phone!.trim()),
-                                trailing: isSelected
-                                    ? const Icon(Icons.check_circle)
-                                    : null,
-                                onTap: () {
-                                  current = s;
-                                  Navigator.of(c).pop(s);
-                                },
-                              );
-                            },
-                          ),
+                      onChanged: (value) => setState(() => query = value),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final s = filtered[index];
+                            final isSelected = current?.id == s.id;
+                            return ListTile(
+                              title: Text(s.name),
+                              subtitle: (s.phone ?? '').trim().isEmpty
+                                  ? null
+                                  : Text(s.phone!.trim()),
+                              trailing: isSelected
+                                  ? const Icon(Icons.check_circle)
+                                  : null,
+                              onTap: () {
+                                current = s;
+                                Navigator.of(c).pop(s);
+                              },
+                            );
+                          },
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(c).pop(null),
-                    child: const Text('Cancelar'),
-                  ),
-                ],
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      searchCtrl.dispose();
-    }
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(c).pop(null),
+                  child: const Text('Cancelar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   PurchaseOrderDetailDto _buildDraftDetail({

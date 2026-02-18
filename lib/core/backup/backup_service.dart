@@ -116,10 +116,12 @@ class BackupService {
 
       // 2) Preparar paths.
       final baseDir = outputDir ?? await BackupPaths.backupsBaseDir();
+      if (!await baseDir.exists()) {
+        await baseDir.create(recursive: true);
+      }
       final stamp = _formatStamp(startedAt);
       final fileName = 'backup_${stamp}_${trigger.name}.zip';
-      final tempDir = await BackupPaths.tempWorkDir();
-      final outZipTemp = p.join(tempDir.path, '$fileName.tmp');
+      final outZipTemp = p.join(baseDir.path, '$fileName.tmp');
       final outZipFinal = p.join(baseDir.path, fileName);
 
       final dbPath = await BackupPaths.databaseFilePath();
@@ -202,6 +204,15 @@ class BackupService {
 
       final outFile = File(outZipTemp);
       if (!await outFile.exists()) {
+        final legacyTempDir = await BackupPaths.tempWorkDir();
+        final legacyTempPath = p.join(legacyTempDir.path, '$fileName.tmp');
+        final legacyTempFile = File(legacyTempPath);
+        if (await legacyTempFile.exists()) {
+          await legacyTempFile.copy(outZipTemp);
+        }
+      }
+
+      if (!await outFile.exists()) {
         return BackupResult(
           ok: false,
           messageUser: 'No se pudo crear el archivo de backup.',
@@ -227,9 +238,6 @@ class BackupService {
       }
 
       // 4) Mover a destino final (atómico cuando sea posible).
-      if (!await baseDir.exists()) {
-        await baseDir.create(recursive: true);
-      }
       await outFile.copy(outZipFinal);
       try {
         await outFile.delete();

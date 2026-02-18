@@ -18,6 +18,10 @@ class AppShortcuts extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.escape): () {
           ErrorHandler.navigatorKey.currentState?.maybePop();
         },
+        // ENTER / NUMPAD ENTER: confirmar acción cuando el foco está dentro de un diálogo
+        const SingleActivator(LogicalKeyboardKey.enter): _activateDialogPrimary,
+        const SingleActivator(LogicalKeyboardKey.numpadEnter):
+            _activateDialogPrimary,
 
         // Ctrl+Q: Cerrar aplicación (con confirmación)
         const SingleActivator(LogicalKeyboardKey.keyQ, control: true): () {
@@ -26,6 +30,24 @@ class AppShortcuts extends StatelessWidget {
       },
       child: Focus(autofocus: true, child: child),
     );
+  }
+
+  void _activateDialogPrimary() {
+    final focusNode = FocusManager.instance.primaryFocus;
+    final focusContext = focusNode?.context;
+    if (focusContext == null) return;
+
+    final inDialog =
+        focusContext.findAncestorWidgetOfExactType<Dialog>() != null ||
+        focusContext.findAncestorWidgetOfExactType<AlertDialog>() != null;
+    if (!inDialog) return;
+
+    final editable = focusContext.findAncestorWidgetOfExactType<EditableText>();
+    if (editable != null && (editable.maxLines == null || editable.maxLines! > 1)) {
+      return;
+    }
+
+    Actions.maybeInvoke(focusContext, const ActivateIntent());
   }
 
   /// Mostrar confirmación antes de cerrar la aplicación

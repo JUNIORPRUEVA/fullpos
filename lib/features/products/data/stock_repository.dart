@@ -6,6 +6,14 @@ import '../models/stock_movement_model.dart';
 
 /// Repositorio para operaciones de movimientos de stock
 class StockRepository {
+  Future<Set<String>> _tableColumns(DatabaseExecutor db, String table) async {
+    final pragma = await db.rawQuery('PRAGMA table_info($table)');
+    return pragma
+        .map((row) => (row['name'] as String?)?.trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toSet();
+  }
+
   /// Obtiene todos los movimientos de un producto
   Future<List<StockMovementModel>> getByProductId(
     int productId, {
@@ -148,7 +156,15 @@ class StockRepository {
         createdAtMs: now,
       );
 
-      movementId = await txn.insert(DbTables.stockMovements, movement.toMap());
+      final movementMap = movement.toMap();
+
+      try {
+        final columns = await _tableColumns(txn, DbTables.stockMovements);
+        movementMap.removeWhere((key, _) => !columns.contains(key));
+        movementId = await txn.insert(DbTables.stockMovements, movementMap);
+      } catch (_) {
+        movementId = 0;
+      }
     });
 
     return movementId;

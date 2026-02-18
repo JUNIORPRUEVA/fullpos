@@ -353,20 +353,13 @@ class _SettingsPageState extends State<SettingsPage> {
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    final isDark = theme.brightness == Brightness.dark;
+    final scheme = theme.colorScheme;
 
-    final cardBg = Color.alphaBlend(
-      color.withOpacity(isDark ? 0.12 : 0.07),
-      scheme.surface,
-    );
-    final iconBg = Color.alphaBlend(
-      color.withOpacity(isDark ? 0.22 : 0.12),
-      scheme.surface,
-    );
+    final cardBg = AppColors.cardBackground;
+    final iconBg = AppColors.lightBlueHover;
     final borderColor = AppColors.borderSoft;
-    final shadowColor = scheme.shadow.withOpacity(isDark ? 0.14 : 0.06);
+    final shadowColor = scheme.shadow.withOpacity(0.06);
 
     return Card(
       color: cardBg,
@@ -387,7 +380,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Icon(
                 icon,
                 size: 56,
-                color: scheme.onSurface.withOpacity(isDark ? 0.06 : 0.04),
+                color: scheme.onSurface.withOpacity(0.04),
               ),
             ),
             Padding(
@@ -401,7 +394,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: borderColor.withOpacity(0.75)),
                     ),
-                    child: Icon(icon, color: color, size: 20),
+                    child: Icon(icon, color: AppColors.primaryBlue, size: 20),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -419,7 +412,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               style: textTheme.labelLarge?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.2,
-                                color: scheme.onSurface,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                             SizedBox(height: isTight ? 0 : 1),
@@ -450,7 +443,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   Icon(
                     Icons.chevron_right,
                     size: 18,
-                    color: scheme.onSurfaceVariant.withOpacity(0.7),
+                    color: AppColors.textSecondary,
                   ),
                 ],
               ),

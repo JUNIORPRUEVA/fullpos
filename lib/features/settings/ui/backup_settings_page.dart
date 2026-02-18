@@ -254,7 +254,9 @@ class _BackupSettingsPageState extends State<BackupSettingsPage> {
     final baseDir = _baseDirPath;
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
         title: const Text('Backups'),
@@ -467,6 +469,7 @@ class _BackupSettingsPageState extends State<BackupSettingsPage> {
                   ),
                 );
         },
+      ),
       ),
     );
   }

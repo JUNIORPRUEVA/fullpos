@@ -12,6 +12,7 @@ import '../../features/sales/data/business_info_model.dart';
 import '../../features/sales/data/quote_model.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/printer_settings_model.dart';
+import '../../features/settings/data/theme_settings_repository.dart';
 import '../layout/app_shell.dart';
 import '../services/empresa_service.dart';
 
@@ -44,6 +45,7 @@ class QuotePrinter {
       'website': '',
       'instagram': '',
       'facebook': '',
+      'logoPath': '',
     };
 
     if (business is BusinessSettings) {
@@ -58,6 +60,7 @@ class QuotePrinter {
       normalized['website'] = business.website ?? '';
       normalized['instagram'] = business.instagramUrl ?? '';
       normalized['facebook'] = business.facebookUrl ?? '';
+      normalized['logoPath'] = business.logoPath ?? '';
     } else if (business is BusinessInfoModel) {
       normalized['name'] = business.name;
       normalized['slogan'] = business.slogan ?? '';
@@ -85,6 +88,7 @@ class QuotePrinter {
         'website': config.website ?? '',
         'instagram': config.instagramUrl ?? '',
         'facebook': config.facebookUrl ?? '',
+        'logoPath': config.logoPath ?? '',
       };
     } catch (e) {
       debugPrint('Error en _getEmpresaDataFromConfig: $e');
@@ -100,6 +104,29 @@ class QuotePrinter {
         'website': '',
         'instagram': '',
         'facebook': '',
+        'logoPath': '',
+      };
+    }
+  }
+
+  static Future<Map<String, int>> _loadBrandPalette() async {
+    try {
+      final repo = ThemeSettingsRepository();
+      final theme = await repo.loadThemeSettings();
+      return {
+        'primary': theme.appBarColor.value,
+        'accent': theme.accentColor.value,
+        'surface': theme.surfaceColor.value,
+        'text': theme.textColor.value,
+        'muted': theme.footerTextColor.value,
+      };
+    } catch (_) {
+      return {
+        'primary': 0xFF1E3A8A,
+        'accent': 0xFF2563EB,
+        'surface': 0xFFFFFFFF,
+        'text': 0xFF111827,
+        'muted': 0xFF6B7280,
       };
     }
   }
@@ -136,6 +163,7 @@ class QuotePrinter {
     int validDays = 15,
   }) async {
     final businessData = await _resolveBusinessData(business);
+    final brandPalette = await _loadBrandPalette();
     final payload = <String, dynamic>{
       'quote': quote.toMap(),
       'items': items.map((item) => item.toMap()).toList(),
@@ -143,6 +171,7 @@ class QuotePrinter {
       'clientPhone': clientPhone,
       'clientRnc': clientRnc,
       'business': businessData,
+      'brand': brandPalette,
       'validDays': validDays,
     };
 
@@ -177,6 +206,7 @@ class QuotePrinter {
         )
         .toList();
     final businessData = Map<String, String>.from(payload['business'] as Map);
+      final brandData = Map<String, int>.from(payload['brand'] as Map);
     final clientName = payload['clientName'] as String? ?? '';
     final clientPhone = payload['clientPhone'] as String?;
     final clientRnc = payload['clientRnc'] as String?;
@@ -186,10 +216,14 @@ class QuotePrinter {
     final pdf = pw.Document(
       theme: pw.ThemeData.withFont(base: fonts.base, bold: fonts.bold),
     );
+    final brand = _QuotePdfBrand.fromMap(brandData);
 
-    final safeBusiness = businessData.map(
-      (k, v) => MapEntry(k, _sanitizePdfText(v)),
-    );
+    final safeBusiness = <String, String>{
+      for (final entry in businessData.entries)
+        entry.key: entry.key == 'logoPath'
+            ? entry.value.trim()
+            : _sanitizePdfText(entry.value),
+    };
     final safeClientName = _sanitizePdfText(clientName);
     final safeClientPhone = clientPhone == null
         ? null
@@ -200,33 +234,48 @@ class QuotePrinter {
 
     final createdDate = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
     final expirationDate = createdDate.add(Duration(days: validDays));
-    final issueDate = DateFormat('dd/MM/yyyy HH:mm').format(createdDate);
+    final issueDate = DateFormat('dd/MM/yyyy').format(createdDate);
+    final issueTime = DateFormat('HH:mm').format(createdDate);
     final validUntil = DateFormat('dd/MM/yyyy').format(expirationDate);
     final currencyFormat = NumberFormat('#,##0.00', 'en_US');
+    final logoProvider = await _loadCompanyLogo(safeBusiness['logoPath'] ?? '');
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.letter,
-        margin: const pw.EdgeInsets.fromLTRB(36, 36, 36, 40),
-        header: (context) =>
-            _buildHeader(safeBusiness, quote, issueDate, validUntil),
-        footer: (context) =>
-            _buildFooter(context, safeBusiness, quote, currencyFormat),
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(30, 28, 30, 28),
+        footer: (context) => _buildBottomDecorativeFooter(
+          context: context,
+          businessData: safeBusiness,
+          quote: quote,
+          validDays: validDays,
+          notes: quote.notes,
+          brand: brand,
+        ),
         build: (context) => [
-          _buildInfoBlocks(
+          _buildHeader(
             safeBusiness,
+            quote,
+            issueDate,
+            issueTime,
+            validUntil,
+            brand,
+            logoProvider,
+          ),
+          pw.SizedBox(height: 14),
+          _buildDocumentMetaSection(
+            quote,
+            issueDate,
+            validUntil,
             safeClientName.isEmpty ? 'Cliente' : safeClientName,
             safeClientPhone,
             safeClientRnc,
+            brand,
           ),
           pw.SizedBox(height: 14),
-          _buildProductsTable(items, currencyFormat),
-          if (quote.notes != null && quote.notes!.trim().isNotEmpty) ...[
-            pw.SizedBox(height: 14),
-            _buildNotes(_sanitizePdfText(quote.notes!)),
-          ],
-          pw.SizedBox(height: 14),
-          _buildTerms(validDays),
+          _buildProductsTable(items, currencyFormat, brand),
+          pw.SizedBox(height: 22),
+          _buildTotalsFooter(quote, currencyFormat, brand),
         ],
       ),
     );
@@ -264,11 +313,28 @@ class QuotePrinter {
     return _PdfFonts(base: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
   }
 
+  static Future<pw.ImageProvider?> _loadCompanyLogo(String logoPath) async {
+    final path = logoPath.trim();
+    if (path.isEmpty || kIsWeb) return null;
+    try {
+      final file = File(path);
+      if (!file.existsSync()) return null;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return null;
+      return pw.MemoryImage(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static pw.Widget _buildHeader(
     Map<String, String> businessData,
     QuoteModel quote,
     String issueDate,
+    String issueTime,
     String validUntil,
+    _QuotePdfBrand brand,
+    pw.ImageProvider? logoProvider,
   ) {
     final displayId = quote.id != null
         ? quote.id!.toString().padLeft(5, '0')
@@ -283,13 +349,39 @@ class QuotePrinter {
     ], separator: ', ');
 
     return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 12),
+      padding: const pw.EdgeInsets.only(bottom: 14),
       decoration: pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300)),
+        border: pw.Border(bottom: pw.BorderSide(color: brand.divider, width: 1.2)),
       ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
+          pw.Container(
+            width: 70,
+            height: 70,
+            decoration: pw.BoxDecoration(
+              color: brand.surfaceAlt,
+              borderRadius: pw.BorderRadius.circular(10),
+              border: pw.Border.all(color: brand.border),
+            ),
+            child: logoProvider != null
+                ? pw.ClipRRect(
+                    horizontalRadius: 10,
+                    verticalRadius: 10,
+                    child: pw.Image(logoProvider, fit: pw.BoxFit.cover),
+                  )
+                : pw.Center(
+                    child: pw.Text(
+                      _logoInitials(businessData['name'] ?? 'FP'),
+                      style: pw.TextStyle(
+                        color: brand.primary,
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+          ),
+          pw.SizedBox(width: 14),
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -299,79 +391,82 @@ class QuotePrinter {
                       ? businessData['name']!
                       : 'Empresa',
                   style: pw.TextStyle(
-                    fontSize: 18,
+                    fontSize: 17,
                     fontWeight: pw.FontWeight.bold,
+                    color: brand.text,
                   ),
                 ),
                 if (businessData['slogan']!.isNotEmpty)
                   pw.Text(
                     businessData['slogan']!,
-                    style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                    style: pw.TextStyle(fontSize: 9, color: brand.muted),
                   ),
+                pw.SizedBox(height: 3),
                 if (address.isNotEmpty)
-                  pw.Text(address, style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(address, style: pw.TextStyle(fontSize: 9, color: brand.text)),
                 if (phones.isNotEmpty)
                   pw.Text(
                     'Tel: $phones',
-                    style: const pw.TextStyle(fontSize: 9),
+                    style: pw.TextStyle(fontSize: 9, color: brand.text),
                   ),
                 if (businessData['email']!.isNotEmpty)
                   pw.Text(
                     businessData['email']!,
-                    style: const pw.TextStyle(fontSize: 9),
+                    style: pw.TextStyle(fontSize: 9, color: brand.text),
                   ),
                 if (businessData['rnc']!.isNotEmpty)
                   pw.Text(
                     'RNC: ${businessData['rnc']!}',
-                    style: const pw.TextStyle(fontSize: 9),
+                    style: pw.TextStyle(fontSize: 9, color: brand.text),
                   ),
               ],
             ),
           ),
-          pw.SizedBox(width: 16),
+          pw.SizedBox(width: 12),
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
+            width: 178,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             decoration: pw.BoxDecoration(
-              color: PdfColors.teal,
-              borderRadius: pw.BorderRadius.circular(6),
+              color: brand.primary,
+              borderRadius: pw.BorderRadius.circular(8),
             ),
             child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
                   'COTIZACION',
                   style: pw.TextStyle(
+                    color: PdfColors.white,
                     fontSize: 10,
                     fontWeight: pw.FontWeight.bold,
-                    letterSpacing: 1,
-                    color: PdfColors.white,
-                  ),
-                ),
-                pw.Text(
-                  '#COT-$displayId',
-                  style: pw.TextStyle(
-                    fontSize: 14,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.white,
+                    letterSpacing: 0.9,
                   ),
                 ),
                 pw.SizedBox(height: 6),
                 pw.Text(
-                  'Fecha: $issueDate',
-                  style: const pw.TextStyle(
-                    fontSize: 9,
+                  '#COT-$displayId',
+                  style: pw.TextStyle(
                     color: PdfColors.white,
+                    fontSize: 13,
+                    fontWeight: pw.FontWeight.bold,
                   ),
                 ),
+                pw.SizedBox(height: 5),
                 pw.Text(
-                  'Valida hasta: $validUntil',
-                  style: const pw.TextStyle(
-                    fontSize: 9,
-                    color: PdfColors.white,
-                  ),
+                  'Fecha: $issueDate',
+                  style: const pw.TextStyle(fontSize: 8.8, color: PdfColors.white),
+                ),
+                pw.Text(
+                  'Hora: $issueTime',
+                  style: const pw.TextStyle(fontSize: 8.8, color: PdfColors.white),
+                ),
+                pw.Text(
+                  'Valida: $validUntil',
+                  style: const pw.TextStyle(fontSize: 8.8, color: PdfColors.white),
+                ),
+                pw.Text(
+                  'Estado: ${quote.status}',
+                  style: const pw.TextStyle(fontSize: 8.8, color: PdfColors.white),
                 ),
               ],
             ),
@@ -381,38 +476,15 @@ class QuotePrinter {
     );
   }
 
-  static pw.Widget _buildInfoBlocks(
-    Map<String, String> businessData,
+  static pw.Widget _buildDocumentMetaSection(
+    QuoteModel quote,
+    String issueDate,
+    String validUntil,
     String clientName,
     String? clientPhone,
     String? clientRnc,
+    _QuotePdfBrand brand,
   ) {
-    final companyLines = <pw.Widget>[];
-    final address = _joinParts([
-      businessData['address'] ?? '',
-      businessData['city'] ?? '',
-    ], separator: ', ');
-    final phones = _joinParts([
-      businessData['phone'] ?? '',
-      businessData['phone2'] ?? '',
-    ], separator: ' / ');
-
-    if (address.isNotEmpty) {
-      companyLines.add(_infoLine('Direccion', address));
-    }
-    if (phones.isNotEmpty) {
-      companyLines.add(_infoLine('Telefono', phones));
-    }
-    if (businessData['email']!.isNotEmpty) {
-      companyLines.add(_infoLine('Correo', businessData['email']!));
-    }
-    if (businessData['website']!.isNotEmpty) {
-      companyLines.add(_infoLine('Web', businessData['website']!));
-    }
-    if (businessData['rnc']!.isNotEmpty) {
-      companyLines.add(_infoLine('RNC', businessData['rnc']!));
-    }
-
     final clientLines = <pw.Widget>[_infoLine('Nombre', clientName)];
     if (clientPhone != null && clientPhone.isNotEmpty) {
       clientLines.add(_infoLine('Telefono', clientPhone));
@@ -421,23 +493,25 @@ class QuotePrinter {
       clientLines.add(_infoLine('RNC', clientRnc));
     }
 
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Expanded(child: _buildInfoCard('Empresa', companyLines)),
-        pw.SizedBox(width: 12),
-        pw.Expanded(child: _buildInfoCard('Cliente', clientLines)),
+        _buildInfoCard('Informacion del cliente', clientLines, brand),
       ],
     );
   }
 
-  static pw.Widget _buildInfoCard(String title, List<pw.Widget> lines) {
+  static pw.Widget _buildInfoCard(
+    String title,
+    List<pw.Widget> lines,
+    _QuotePdfBrand brand,
+  ) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
+        color: brand.surfaceAlt,
         borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.grey300),
+        border: pw.Border.all(color: brand.border),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -447,7 +521,7 @@ class QuotePrinter {
             style: pw.TextStyle(
               fontSize: 10,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColors.grey700,
+              color: brand.primary,
             ),
           ),
           pw.SizedBox(height: 6),
@@ -486,6 +560,7 @@ class QuotePrinter {
   static pw.Widget _buildProductsTable(
     List<QuoteItemModel> items,
     NumberFormat currencyFormat,
+    _QuotePdfBrand brand,
   ) {
     final headerStyle = pw.TextStyle(
       fontSize: 9,
@@ -496,7 +571,7 @@ class QuotePrinter {
 
     final rows = <pw.TableRow>[
       pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColors.teal),
+        decoration: pw.BoxDecoration(color: brand.primary),
         children: [
           _tableCell('DESCRIPCION', headerStyle),
           _tableCell('CANT', headerStyle, align: pw.TextAlign.center),
@@ -513,7 +588,7 @@ class QuotePrinter {
       rows.add(
         pw.TableRow(
           decoration: pw.BoxDecoration(
-            color: isAlt ? PdfColors.grey100 : PdfColors.white,
+            color: isAlt ? brand.surfaceAlt : PdfColors.white,
           ),
           children: [
             _tableCell(_sanitizePdfText(item.description), bodyStyle),
@@ -536,7 +611,11 @@ class QuotePrinter {
             ),
             _tableCell(
               _formatMoney(currencyFormat, item.totalLine),
-              pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+              pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: brand.text,
+              ),
               align: pw.TextAlign.right,
             ),
           ],
@@ -545,7 +624,7 @@ class QuotePrinter {
     }
 
     return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.grey300),
+      border: pw.TableBorder.all(color: brand.border),
       columnWidths: {
         0: const pw.FlexColumnWidth(4),
         1: const pw.FlexColumnWidth(1),
@@ -568,116 +647,108 @@ class QuotePrinter {
     );
   }
 
-  static pw.Widget _buildNotes(String notes) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.grey300),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'Notas',
-            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 4),
-          pw.Text(notes, style: const pw.TextStyle(fontSize: 9)),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _buildTerms(int validDays) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColors.grey300),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            'Terminos',
-            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 6),
-          pw.Text(
-            '- Validez: $validDays dias.',
-            style: const pw.TextStyle(fontSize: 9),
-          ),
-          pw.Text(
-            '- Precios sujetos a cambios luego del vencimiento.',
-            style: const pw.TextStyle(fontSize: 9),
-          ),
-          pw.Text(
-            '- ITBIS incluido segun normativa local.',
-            style: const pw.TextStyle(fontSize: 9),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _buildFooter(
-    pw.Context context,
-    Map<String, String> businessData,
-    QuoteModel quote,
-    NumberFormat currencyFormat,
-  ) {
-    final showTotals = context.pageNumber == context.pagesCount;
-    final footerParts = <String>[];
+  static pw.Widget _buildBottomInfoSection({
+    required Map<String, String> businessData,
+    required QuoteModel quote,
+    required int validDays,
+    required String? notes,
+    required _QuotePdfBrand brand,
+  }) {
+    final socialParts = <String>[];
 
     if (businessData['website']!.isNotEmpty) {
-      footerParts.add(businessData['website']!);
-    }
-    if (businessData['email']!.isNotEmpty) {
-      footerParts.add(businessData['email']!);
+      socialParts.add('Web: ${businessData['website']!}');
     }
     if (businessData['instagram']!.isNotEmpty) {
-      footerParts.add('Instagram: ${businessData['instagram']!}');
+      socialParts.add('Instagram: ${businessData['instagram']!}');
     }
     if (businessData['facebook']!.isNotEmpty) {
-      footerParts.add('Facebook: ${businessData['facebook']!}');
+      socialParts.add('Facebook: ${businessData['facebook']!}');
     }
 
-    final footerText = footerParts.join(' | ');
+    final footerRightText = socialParts.join(' · ');
+    final leftParts = <String>[
+      'Politicas: validez de la cotizacion $validDays dias.',
+      'Precios sujetos a cambios luego del vencimiento.',
+      'Condiciones de pago y entrega segun acuerdo comercial.',
+    ];
+    final noteText = (notes ?? '').trim();
+    if (noteText.isNotEmpty) {
+      leftParts.add('Nota: ${_sanitizePdfText(noteText)}');
+    }
 
-    return pw.Column(
-      mainAxisSize: pw.MainAxisSize.min,
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        if (showTotals) _buildTotalsFooter(quote, currencyFormat),
-        pw.SizedBox(height: 8),
-        pw.Container(height: 1, color: PdfColors.grey400),
-        if (footerText.isNotEmpty) ...[
-          pw.SizedBox(height: 6),
-          pw.Text(
-            footerText,
-            textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+        pw.Expanded(
+          child: pw.Text(
+            leftParts.join(' '),
+            textAlign: pw.TextAlign.left,
+            style: pw.TextStyle(fontSize: 7.2, color: brand.muted),
+          ),
+        ),
+        pw.SizedBox(width: 10),
+        pw.Expanded(
+          child: pw.Text(
+            footerRightText.isEmpty ? 'Redes: no configuradas.' : footerRightText,
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(fontSize: 7.2, color: brand.muted),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _buildBottomDecorativeFooter({
+    required pw.Context context,
+    required Map<String, String> businessData,
+    required QuoteModel quote,
+    required int validDays,
+    required String? notes,
+    required _QuotePdfBrand brand,
+  }) {
+    const footerHeight = 34.0;
+    final isLastPage = context.pageNumber == context.pagesCount;
+    if (!isLastPage) {
+      return pw.SizedBox(height: footerHeight);
+    }
+
+    return pw.SizedBox(
+      height: footerHeight,
+      child: pw.Column(
+        mainAxisAlignment: pw.MainAxisAlignment.end,
+        children: [
+          pw.Container(
+            height: 0.7,
+            color: brand.divider,
+          ),
+          pw.SizedBox(height: 4),
+          _buildBottomInfoSection(
+            businessData: businessData,
+            quote: quote,
+            validDays: validDays,
+            notes: notes,
+            brand: brand,
           ),
         ],
-      ],
+      ),
     );
   }
 
   static pw.Widget _buildTotalsFooter(
     QuoteModel quote,
     NumberFormat currencyFormat,
+    _QuotePdfBrand brand,
   ) {
     return pw.Align(
       alignment: pw.Alignment.centerRight,
       child: pw.Container(
-        width: 260,
-        padding: const pw.EdgeInsets.all(10),
+        width: 280,
+        padding: const pw.EdgeInsets.all(12),
         decoration: pw.BoxDecoration(
-          color: PdfColors.teal50,
+          color: brand.surfaceAlt,
           borderRadius: pw.BorderRadius.circular(6),
-          border: pw.Border.all(color: PdfColors.teal200),
+          border: pw.Border.all(color: brand.border),
         ),
         child: pw.Column(
           children: [
@@ -695,12 +766,32 @@ class QuotePrinter {
                 quote.itbisAmount,
                 currencyFormat,
               ),
-            pw.Divider(color: PdfColors.teal, thickness: 1),
-            _totalsRow('TOTAL', quote.total, currencyFormat, isTotal: true),
+            pw.Divider(color: brand.primary, thickness: 1),
+            _totalsRow(
+              'TOTAL',
+              quote.total,
+              currencyFormat,
+              isTotal: true,
+              valueColor: brand.primary,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  static String _logoInitials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return 'FP';
+    if (parts.length == 1) {
+      final token = parts.first;
+      return token.substring(0, token.length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return '${parts.first[0]}${parts[1][0]}'.toUpperCase();
   }
 
   static pw.Widget _totalsRow(
@@ -820,6 +911,66 @@ class QuotePrinter {
       return false;
     }
   }
+}
+
+class _QuotePdfBrand {
+  final PdfColor primary;
+  final PdfColor accent;
+  final PdfColor text;
+  final PdfColor muted;
+  final PdfColor border;
+  final PdfColor divider;
+  final PdfColor surfaceAlt;
+
+  const _QuotePdfBrand({
+    required this.primary,
+    required this.accent,
+    required this.text,
+    required this.muted,
+    required this.border,
+    required this.divider,
+    required this.surfaceAlt,
+  });
+
+  factory _QuotePdfBrand.fromMap(Map<String, int> map) {
+    final primaryInt = map['primary'] ?? 0xFF1E3A8A;
+    final accentInt = map['accent'] ?? 0xFF2563EB;
+    final textInt = _ensureReadableOnWhite(map['text'] ?? 0xFF111827, 0xFF111827);
+    final mutedInt = _ensureReadableOnWhite(map['muted'] ?? 0xFF6B7280, 0xFF4B5563);
+
+    final primary = _pdfColorFromInt(primaryInt);
+    final accent = _pdfColorFromInt(accentInt);
+    final text = _pdfColorFromInt(textInt);
+    final muted = _pdfColorFromInt(mutedInt);
+
+    return _QuotePdfBrand(
+      primary: primary,
+      accent: accent,
+      text: text,
+      muted: muted,
+      border: _pdfColorFromInt(0xFFDDE4EE),
+      divider: accent,
+      surfaceAlt: _pdfColorFromInt(0xFFF7FAFC),
+    );
+  }
+}
+
+int _ensureReadableOnWhite(int color, int fallback) {
+  final r = (color >> 16) & 0xFF;
+  final g = (color >> 8) & 0xFF;
+  final b = color & 0xFF;
+  final luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+  if (luminance > 0.78) {
+    return fallback;
+  }
+  return color;
+}
+
+PdfColor _pdfColorFromInt(int value) {
+  final red = ((value >> 16) & 0xFF) / 255;
+  final green = ((value >> 8) & 0xFF) / 255;
+  final blue = (value & 0xFF) / 255;
+  return PdfColor(red, green, blue);
 }
 
 class _PdfFonts {
@@ -994,8 +1145,8 @@ class _QuotePdfPreviewPageState extends State<_QuotePdfPreviewPage> {
     final viewportH = constraints.maxHeight;
     if (viewportW <= 0 || viewportH <= 0) return 1.0;
 
-    // Quote PDFs are generated as Letter.
-    final aspect = PdfPageFormat.letter.width / PdfPageFormat.letter.height;
+    // Quote PDFs are generated as A4.
+    final aspect = PdfPageFormat.a4.width / PdfPageFormat.a4.height;
     final pageHeightAtFitWidth = viewportW / aspect;
     if (pageHeightAtFitWidth <= 0) return 1.0;
 

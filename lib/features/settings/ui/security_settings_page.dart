@@ -77,7 +77,9 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
     final config = _config!;
     final theme = Theme.of(context);
 
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       appBar: AppBar(title: const Text('Seguridad y permisos')),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -170,6 +172,7 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
             ),
           );
         },
+      ),
       ),
     );
   }

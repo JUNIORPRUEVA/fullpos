@@ -659,7 +659,8 @@ class _PurchaseOrderCreateManualPageState
                           TextField(
                             controller: _notesCtrl,
                             decoration: const InputDecoration(
-                              labelText: 'Notas (opcional)',
+                              labelText:
+                                  'Nota importante para suplidor (opcional)',
                             ),
                             maxLines: 2,
                           ),

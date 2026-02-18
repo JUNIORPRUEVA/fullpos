@@ -18,7 +18,6 @@ import '../features/cash/ui/cash_box_page.dart';
 import '../features/cash/ui/cash_history_page.dart';
 import '../features/cash/ui/expenses_overview_page.dart';
 import '../features/clients/ui/clients_page.dart';
-import '../features/products/ui/add_stock_page.dart';
 import '../features/products/ui/products_page.dart';
 import '../features/products/ui/stock_history_page.dart';
 import '../features/purchases/ui/purchase_auto_page.dart';
@@ -216,15 +215,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/products/history',
             builder: (context, state) => const StockHistoryPage(),
-          ),
-          GoRoute(
-            path: '/products/add-stock/:productId',
-            builder: (context, state) {
-              final productId = int.parse(
-                state.pathParameters['productId'] ?? '0',
-              );
-              return AddStockPage(productId: productId);
-            },
           ),
           GoRoute(
             path: '/clients',

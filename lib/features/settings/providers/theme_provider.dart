@@ -781,14 +781,20 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     // Dialogs
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSizes.radiusL),
+        side: BorderSide(color: scheme.outline.withAlpha(80), width: 1.0),
+      ),
       titleTextStyle: TextStyle(
         color: scheme.onSurface,
         fontSize: settings.fontSize + 2,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         fontFamily: settings.fontFamily,
       ),
       contentTextStyle: TextStyle(
-        color: scheme.onSurface.withAlpha(200),
+        color: scheme.onSurface.withAlpha(210),
         fontSize: settings.fontSize,
         fontFamily: settings.fontFamily,
       ),

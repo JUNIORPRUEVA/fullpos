@@ -24,6 +24,9 @@ class ReportsPrinter {
     required Map<String, dynamic> comparativeStats,
   }) async {
     final pdf = pw.Document();
+    const PdfColor brandBlue = PdfColor(0.11, 0.23, 0.54);
+    const PdfColor brandBlueSoft = PdfColor(0.92, 0.95, 1);
+    const PdfColor softBorder = PdfColor(0.87, 0.90, 0.95);
 
     final businessName = appConfigService.getBusinessName().trim();
     final website = appConfigService.getWebsite()?.trim();
@@ -37,7 +40,7 @@ class ReportsPrinter {
         margin: const pw.EdgeInsets.only(top: 12, bottom: 8),
         padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
         decoration: pw.BoxDecoration(
-          color: PdfColors.teal100,
+          color: brandBlueSoft,
           borderRadius: pw.BorderRadius.circular(6),
         ),
         child: pw.Text(
@@ -45,7 +48,7 @@ class ReportsPrinter {
           style: pw.TextStyle(
             fontSize: 12,
             fontWeight: pw.FontWeight.bold,
-            color: PdfColors.teal900,
+            color: brandBlue,
           ),
         ),
       );
@@ -82,14 +85,14 @@ class ReportsPrinter {
       required List<List<String>> rows,
     }) {
       return pw.Table(
-        border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+        border: pw.TableBorder.all(color: softBorder, width: 0.5),
         columnWidths: {
           for (var i = 0; i < headers.length; i++)
             i: const pw.FlexColumnWidth(),
         },
         children: [
           pw.TableRow(
-            decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+            decoration: const pw.BoxDecoration(color: brandBlueSoft),
             children: [
               for (final h in headers)
                 pw.Padding(
@@ -141,7 +144,7 @@ class ReportsPrinter {
                       style: pw.TextStyle(
                         fontSize: 16,
                         fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.teal900,
+                        color: brandBlue,
                       ),
                     ),
                     pw.SizedBox(height: 2),
@@ -179,7 +182,7 @@ class ReportsPrinter {
                     vertical: 6,
                   ),
                   decoration: pw.BoxDecoration(
-                    color: PdfColors.teal,
+                    color: brandBlue,
                     borderRadius: pw.BorderRadius.circular(6),
                   ),
                   child: pw.Text(

@@ -363,7 +363,9 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return LayoutBuilder(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: LayoutBuilder(
       builder: (context, constraints) {
         final padding = SettingsLayout.contentPadding(constraints);
         final sectionGap = SettingsLayout.sectionGap(constraints);
@@ -409,6 +411,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
           ),
         );
       },
+      ),
     );
   }
 

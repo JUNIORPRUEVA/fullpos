@@ -256,7 +256,9 @@ class _LogsPageState extends State<LogsPage> {
     final logPath = _logPath;
     final showTechnical = _showTechnicalDetails;
 
-    return Scaffold(
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
         title: const Text('Logs y soporte'),
@@ -561,6 +563,7 @@ class _LogsPageState extends State<LogsPage> {
             ),
           );
         },
+      ),
       ),
     );
   }
