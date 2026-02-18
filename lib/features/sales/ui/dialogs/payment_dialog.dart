@@ -15,6 +15,7 @@ class PaymentDialog extends StatefulWidget {
   final bool initialPrintTicket;
   final bool allowInvoicePdfDownload;
   final String? initialChargeOutputMode;
+  final String? cartFingerprint;
   final ClientModel? selectedClient;
   final Future<ClientModel?> Function() onSelectClient;
   final Future<ClientModel?> Function(ClientModel client)? onEditClient;
@@ -25,6 +26,7 @@ class PaymentDialog extends StatefulWidget {
     this.initialPrintTicket = true,
     this.allowInvoicePdfDownload = true,
     this.initialChargeOutputMode,
+    this.cartFingerprint,
     this.selectedClient,
     required this.onSelectClient,
     this.onEditClient,
@@ -62,6 +64,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
   bool _isProcessingPayment = false;
   bool _hasRequestedClose = false;
   String? _activePaymentRequestId;
+  late final String _paymentAttemptId;
+  String _lastTriggerSource = 'unknown';
+  int _lastSubmitAtMs = 0;
 
   bool get _printTicket => _outputMode == PaymentOutputMode.ticket;
   bool get _downloadInvoicePdf => _outputMode == PaymentOutputMode.pdf;
@@ -78,15 +83,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }());
 
     final isConfirmKey =
-        event.logicalKey == LogicalKeyboardKey.f9 ||
-        event.physicalKey == PhysicalKeyboardKey.f9 ||
-        event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+      event.logicalKey == LogicalKeyboardKey.f9 ||
+      event.physicalKey == PhysicalKeyboardKey.f9;
 
     if (isConfirmKey) {
       if (event is KeyRepeatEvent) return true;
       if (event is KeyDownEvent) {
-        _submitPayment();
+        _submitPayment(source: 'keyboard_f9');
       }
       return true;
     }
@@ -94,20 +97,29 @@ class _PaymentDialogState extends State<PaymentDialog> {
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       if (event is KeyRepeatEvent) return true;
       if (event is KeyDownEvent && mounted && !_isProcessingPayment) {
-        Navigator.of(context).pop();
+        Navigator.of(context).maybePop();
       }
       return true;
     }
     return false;
   }
 
-  Future<void> _submitPayment() async {
+  Future<void> _submitPayment({required String source}) async {
     if (_isProcessingPayment) return;
     if (!mounted) return;
 
-    final paymentRequestId = _buildPaymentRequestId();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if ((nowMs - _lastSubmitAtMs) < 450) return;
+    _lastSubmitAtMs = nowMs;
+    _lastTriggerSource = source;
+
+    final paymentRequestId = _paymentAttemptId;
     if (_activePaymentRequestId == paymentRequestId) return;
     _activePaymentRequestId = paymentRequestId;
+
+    debugPrint(
+      'PAYMENT_TRIGGER source=$source time=$nowMs cart=${widget.cartFingerprint ?? 'na'} request=$paymentRequestId stack=${StackTrace.current.toString().split('\n').take(3).join(' | ')}',
+    );
 
     // En desktop, el primer click/tecla a veces solo cambia el foco.
     FocusManager.instance.primaryFocus?.unfocus();
@@ -173,6 +185,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    _paymentAttemptId = _buildPaymentRequestId();
     _outputMode = _resolveInitialOutputMode();
     _selectedClient = widget.selectedClient;
     if (_selectedClient != null) {
@@ -312,6 +325,10 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   Future<void> _processPayment(String paymentRequestId) async {
+    debugPrint(
+      'PAYMENT_EXECUTE source=$_lastTriggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=${widget.cartFingerprint ?? 'na'} request=$paymentRequestId',
+    );
+
     // Si el usuario eligió descargar factura PDF, obligar a seleccionar cliente
     // para poder nombrar el archivo de forma profesional.
     if (_downloadInvoicePdf) {
@@ -390,6 +407,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     // Retornar resultado (cerrar el diálogo que lo presentó)
     final result = {
       'paymentRequestId': paymentRequestId,
+      'triggerSource': _lastTriggerSource,
       'method': _selectedMethod,
       'cash': double.tryParse(_cashController.text) ?? 0,
       'card': double.tryParse(_cardController.text) ?? 0,
@@ -415,7 +433,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
     _hasRequestedClose = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      Navigator.of(context).pop(result);
+      final navigator = Navigator.of(context);
+      if (!navigator.canPop()) return;
+      navigator.pop(result);
     });
   }
 
@@ -432,8 +452,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
     final dialogMaxHeight = (viewport.height * 0.93).clamp(700.0, 980.0);
 
     return DialogKeyboardShortcuts(
-      onSubmit: _submitPayment,
-      enableSubmitShortcuts: false,
+      onSubmit: () => _submitPayment(source: 'keyboard_enter'),
+      enableSubmitShortcuts: true,
       enableDismissShortcut: false,
       child: Dialog(
         child: Container(
@@ -482,7 +502,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             ),
                           ),
                           IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: () => Navigator.of(context).maybePop(),
                             icon: Icon(Icons.close, color: scheme.onPrimary),
                           ),
                         ],
@@ -1180,14 +1200,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               TextButton(
                                 onPressed: _isProcessingPayment
                                     ? null
-                                    : () => Navigator.of(context).pop(),
+                                    : () => Navigator.of(context).maybePop(),
                                 child: const Text('CANCELAR'),
                               ),
                               const SizedBox(width: 12),
                               ElevatedButton.icon(
                                 onPressed: _isProcessingPayment
                                     ? null
-                                    : _submitPayment,
+                                    : () => _submitPayment(source: 'mouse_click'),
                                 icon: Icon(_chargeActionIcon()),
                                 label: Text(_chargeActionLabel()),
                                 style: ElevatedButton.styleFrom(

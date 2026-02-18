@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
@@ -60,6 +61,7 @@ class SalesRepository {
     double? paidAmount,
     double? changeAmount,
     StockUpdateMode stockUpdateMode = StockUpdateMode.deduct,
+    bool enforceLocalCodeIdempotency = false,
     double creditInterestRate = 0.0,
     int? creditTermDays,
     int? creditDueDateMs,
@@ -321,7 +323,20 @@ class SalesRepository {
         );
         break;
       } on DatabaseException catch (e) {
-        if (!_isLocalCodeUniqueConstraint(e) || attempt == 5) {
+        if (!_isLocalCodeUniqueConstraint(e)) {
+          rethrow;
+        }
+        if (enforceLocalCodeIdempotency) {
+          final existingSaleId = await _findSaleIdByLocalCode(currentLocalCode);
+          if (existingSaleId != null) {
+            debugPrint(
+              'PAYMENT_IDEMPOTENCY_HIT localCode=$currentLocalCode saleId=$existingSaleId',
+            );
+            return existingSaleId;
+          }
+          rethrow;
+        }
+        if (attempt == 5) {
           rethrow;
         }
         currentLocalCode = await generateNextLocalCode(kind);
@@ -595,6 +610,19 @@ class SalesRepository {
         return saleId;
       });
     }, stage: 'save_sale_with_items');
+  }
+
+  static Future<int?> _findSaleIdByLocalCode(String localCode) async {
+    final db = await AppDb.database;
+    final rows = await db.query(
+      DbTables.sales,
+      columns: ['id'],
+      where: 'local_code = ? AND deleted_at_ms IS NULL',
+      whereArgs: [localCode],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['id'] as int?;
   }
 
   /// Obtiene una venta con sus items

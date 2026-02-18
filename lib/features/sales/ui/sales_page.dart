@@ -154,6 +154,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   bool _loggedFirstBuild = false;
   final Set<int> _hoveredProductIndexes = <int>{};
   final Set<String> _processedPaymentRequestIds = <String>{};
+  bool _isProcessingSaleExecution = false;
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> _searchResults = [];
@@ -1427,7 +1428,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     String kind, {
     bool initialPrintTicket = false,
   }) async {
+    if (_isProcessingSaleExecution) {
+      debugPrint(
+        'PAYMENT_EXECUTION_SKIPPED reason=locked time=${DateTime.now().millisecondsSinceEpoch}',
+      );
+      return;
+    }
     if (_currentCart.items.isEmpty) return;
+
+    _isProcessingSaleExecution = true;
+    try {
 
     // Flujo profesional: no permitir ventas sin turno abierto.
     final activeShiftId = await _ensureActiveShiftOrRedirect(showMessage: true);
@@ -1472,6 +1482,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final subtotalAfterDiscount = _currentCart.calculateSubtotalAfterDiscount();
     final itbisAmount = _currentCart.calculateItbis();
     final total = _currentCart.calculateTotal();
+    final cartFingerprint = _buildCurrentCartFingerprint(total);
     final configuredChargeOutputMode = ref
         .read(businessSettingsProvider)
         .defaultChargeOutputMode;
@@ -1481,6 +1492,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         initialPrintTicket: initialPrintTicket,
         allowInvoicePdfDownload: kind == SaleKind.invoice,
         initialChargeOutputMode: configuredChargeOutputMode,
+        cartFingerprint: cartFingerprint,
         selectedClient: _currentCart.selectedClient,
         onSelectClient: _showClientPicker,
       ),
@@ -1490,8 +1502,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     final paymentRequestId =
         (paymentResult['paymentRequestId'] as String?)?.trim();
+    final triggerSource =
+        (paymentResult['triggerSource'] as String?)?.trim() ?? 'unknown';
+    debugPrint(
+      'PAYMENT_TRIGGER source=$triggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=$cartFingerprint request=${paymentRequestId ?? 'na'}',
+    );
+
     if (paymentRequestId != null && paymentRequestId.isNotEmpty) {
       if (_processedPaymentRequestIds.contains(paymentRequestId)) {
+        debugPrint(
+          'PAYMENT_EXECUTION_SKIPPED reason=duplicate_request request=$paymentRequestId cart=$cartFingerprint',
+        );
         return;
       }
       _processedPaymentRequestIds.add(paymentRequestId);
@@ -1559,7 +1580,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       }
     }
 
-    final localCode = await SalesRepository.generateNextLocalCode(kind);
+    final localCode =
+      (paymentRequestId != null && paymentRequestId.isNotEmpty)
+      ? _buildIdempotentLocalCode(kind, paymentRequestId)
+      : await SalesRepository.generateNextLocalCode(kind);
     String? ncfFull;
     String? ncfType;
     if (_currentCart.fiscalEnabled && _currentCart.selectedNcf != null) {
@@ -1653,6 +1677,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           customerPhone: _currentCart.selectedClient?.telefono,
           initialPayment: receivedAmount,
           note: paymentResult['note'] as String?,
+          enforceLocalCodeIdempotency:
+              paymentRequestId != null && paymentRequestId.isNotEmpty,
         );
       } else {
         saleId = await SalesRepository.createSale(
@@ -1675,6 +1701,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           fiscalEnabled: _currentCart.fiscalEnabled,
           paidAmount: receivedAmount,
           changeAmount: changeAmount > 0 ? changeAmount : 0,
+          enforceLocalCodeIdempotency:
+              paymentRequestId != null && paymentRequestId.isNotEmpty,
         );
       }
     } on AppException catch (e, st) {
@@ -1729,6 +1757,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           fiscalEnabled: _currentCart.fiscalEnabled,
           paidAmount: receivedAmount,
           changeAmount: changeAmount > 0 ? changeAmount : 0,
+          enforceLocalCodeIdempotency:
+              paymentRequestId != null && paymentRequestId.isNotEmpty,
         ),
         context: context,
         module: 'sales',
@@ -1794,6 +1824,33 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ),
       );
     }
+    } finally {
+      _isProcessingSaleExecution = false;
+    }
+  }
+
+  String _buildCurrentCartFingerprint(double total) {
+    final itemTokens = _currentCart.items
+        .map(
+          (item) =>
+              '${item.productId ?? item.productCodeSnapshot}|${item.qty.toStringAsFixed(3)}|${item.unitPrice.toStringAsFixed(2)}|${item.discountLine.toStringAsFixed(2)}',
+        )
+        .join(';');
+    return 'ticket:${_currentCart.ticketId ?? 'na'}|items:${_currentCart.items.length}|total:${total.toStringAsFixed(2)}|hash:${itemTokens.hashCode.abs()}';
+  }
+
+  String _buildIdempotentLocalCode(String kind, String paymentRequestId) {
+    final normalized = paymentRequestId
+        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+        .toUpperCase();
+    final token = normalized.isEmpty
+        ? DateTime.now().millisecondsSinceEpoch.toString()
+        : normalized;
+    final shortToken = token.length > 22
+        ? token.substring(token.length - 22)
+        : token;
+    final prefix = kind == SaleKind.invoice ? 'V' : 'S';
+    return '$prefix-IDEM-$shortToken';
   }
 
   Future<bool> _shouldAutoOpenDrawerWithoutTicket() async {
@@ -1934,21 +1991,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         // Limpieza inmediata del panel/columna de detalle.
+        // No redirigir automáticamente desde build para evitar saltos de ruta
+        // inesperados mientras el usuario está en pantalla.
         setState(() {
           _selectedCartItemIndex = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Caja cerrada automáticamente. Abre caja para continuar.',
-            ),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-
-        // Evitar permanecer en Ventas con un ticket abierto.
-        context.go('/operation-start');
       });
     }
     _previousCashOpen = cashIsOpen;

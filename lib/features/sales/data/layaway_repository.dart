@@ -43,6 +43,7 @@ class LayawayRepository {
     String? customerPhone,
     double initialPayment = 0.0,
     String? note,
+    bool enforceLocalCodeIdempotency = false,
   }) async {
     // Validar abono inicial mínimo 30%
     final effectiveTotal = totalOverride ??
@@ -95,6 +96,7 @@ class LayawayRepository {
       changeAmount: 0.0,
       status: 'LAYAWAY',
       stockUpdateMode: StockUpdateMode.reserve,
+      enforceLocalCodeIdempotency: enforceLocalCodeIdempotency,
     );
 
     if (initialPayment > 0) {
