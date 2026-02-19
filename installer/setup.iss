@@ -1,5 +1,14 @@
 #define MyAppName "FULLPOS"
-#define MyAppVersion "1.0.0"
+
+; Permite override desde línea de comandos:
+;   ISCC setup.iss /DMyAppVersion=1.2.3+4
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
+
+; Para el nombre del instalador, evitamos caracteres problemáticos como '+'
+#define MyAppVersionFile StringChange(MyAppVersion, "+", "_")
+
 #define MyAppPublisher "FULLTECH SRL"
 #define MyAppExeName "fullpos.exe"
 
@@ -33,7 +42,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 ; Generar el instalador dentro de installer/output (evita la carpeta dist)
 OutputDir=output
-OutputBaseFilename={#MyAppName}_Setup
+OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersionFile}
 Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
