@@ -66,7 +66,10 @@ import 'dialogs/total_discount_dialog.dart';
 
 /// Pantalla principal de POS con múltiples carritos
 class SalesPage extends ConsumerStatefulWidget {
-  const SalesPage({super.key});
+  const SalesPage({super.key, this.initialTicketId});
+
+  /// Si viene seteado, al abrir Ventas intentará seleccionar ese ticket.
+  final int? initialTicketId;
 
   @override
   ConsumerState<SalesPage> createState() => _SalesPageState();
@@ -401,6 +404,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ..itbisRate = ticketModel.itbisRate
           ..discount = ticketModel.discountTotal;
 
+        final clientId = ticketModel.clientId;
+        if (clientId != null) {
+          final client = clients.where((c) => c.id == clientId).firstOrNull;
+          if (client != null) cart.selectedClient = client;
+        }
+
         final cartItems = ticketItemsById[id] ?? const <PosTicketItemModel>[];
         for (final itemModel in cartItems) {
           cart.items.add(
@@ -458,6 +467,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
       if (!mounted || token != _initialLoadToken) return;
 
+      var initialCartIndex = 0;
+      final openTicketId = widget.initialTicketId;
+      if (openTicketId != null && loadedCarts.isNotEmpty) {
+        final idx = loadedCarts.indexWhere((c) => c.ticketId == openTicketId);
+        if (idx >= 0) initialCartIndex = idx;
+      }
+
       setState(() {
         _allProducts = products;
         _searchResults = products;
@@ -467,7 +483,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         if (loadedCarts.isNotEmpty) {
           _carts.clear();
           _carts.addAll(loadedCarts);
-          _currentCartIndex = 0;
+          _currentCartIndex = initialCartIndex;
         } else {
           // Si no hay carritos cargados, aplicar defaults al carrito inicial.
           if (_carts.isNotEmpty) {
@@ -1438,275 +1454,336 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     _isProcessingSaleExecution = true;
     try {
-
-    // Flujo profesional: no permitir ventas sin turno abierto.
-    final activeShiftId = await _ensureActiveShiftOrRedirect(showMessage: true);
-    if (activeShiftId == null) {
-      return;
-    }
-
-    if (!_canProceedWithFiscalOrNotify()) return;
-
-    if (_currentCart.fiscalEnabled && _availableNcfs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'No hay NCF disponibles. Hable con Administración para agregarlo.',
-          ),
-          backgroundColor: scheme.error,
-        ),
+      // Flujo profesional: no permitir ventas sin turno abierto.
+      final activeShiftId = await _ensureActiveShiftOrRedirect(
+        showMessage: true,
       );
-      return;
-    }
-
-    if (_currentCart.fiscalEnabled && _currentCart.selectedNcf == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Seleccione un Comprobante Fiscal (NCF)'),
-          backgroundColor: scheme.error,
-        ),
-      );
-      return;
-    }
-
-    final canCharge = await _authorizeAction(
-      AppActions.chargeSale,
-      resourceType: 'sale',
-      resourceId: _currentCart.ticketId?.toString(),
-    );
-    if (!canCharge) return;
-
-    // Importante: usar las funciones del carrito como fuente única.
-    // Evita doble descuento (bug: totales guardados/impresos en 0).
-    final totalDiscount = _currentCart.calculateTotalDiscountsCombined();
-    final subtotalAfterDiscount = _currentCart.calculateSubtotalAfterDiscount();
-    final itbisAmount = _currentCart.calculateItbis();
-    final total = _currentCart.calculateTotal();
-    final cartFingerprint = _buildCurrentCartFingerprint(total);
-    final configuredChargeOutputMode = ref
-        .read(businessSettingsProvider)
-        .defaultChargeOutputMode;
-    final paymentResult = await _presentDialog<Map<String, dynamic>>(
-      builder: (context) => payment.PaymentDialog(
-        total: total,
-        initialPrintTicket: initialPrintTicket,
-        allowInvoicePdfDownload: kind == SaleKind.invoice,
-        initialChargeOutputMode: configuredChargeOutputMode,
-        cartFingerprint: cartFingerprint,
-        selectedClient: _currentCart.selectedClient,
-        onSelectClient: _showClientPicker,
-      ),
-    );
-
-    if (!mounted || paymentResult == null) return;
-
-    final paymentRequestId =
-        (paymentResult['paymentRequestId'] as String?)?.trim();
-    final triggerSource =
-        (paymentResult['triggerSource'] as String?)?.trim() ?? 'unknown';
-    debugPrint(
-      'PAYMENT_TRIGGER source=$triggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=$cartFingerprint request=${paymentRequestId ?? 'na'}',
-    );
-
-    if (paymentRequestId != null && paymentRequestId.isNotEmpty) {
-      if (_processedPaymentRequestIds.contains(paymentRequestId)) {
-        debugPrint(
-          'PAYMENT_EXECUTION_SKIPPED reason=duplicate_request request=$paymentRequestId cart=$cartFingerprint',
-        );
+      if (activeShiftId == null) {
         return;
       }
-      _processedPaymentRequestIds.add(paymentRequestId);
-      if (_processedPaymentRequestIds.length > 120) {
-        _processedPaymentRequestIds.remove(_processedPaymentRequestIds.first);
-      }
-    }
 
-    final activeShiftIdAfterDialog = await _ensureActiveShiftOrRedirect(
-      showMessage: true,
-    );
-    if (activeShiftIdAfterDialog == null) return;
+      if (!_canProceedWithFiscalOrNotify()) return;
 
-    // Permite que el cierre del dialogo se renderice antes de continuar con
-    // operaciones pesadas (DB/PDF/impresion). Evita que se "congele" la UI con
-    // el dialogo aun visible.
-    await WidgetsBinding.instance.endOfFrame;
-    // En desktop (Windows/Linux/macOS) el cierre del dialog puede quedar visualmente
-    // “pegado” si arrancamos trabajo pesado inmediatamente, y parece que hay que
-    // presionar Cobrar dos veces. Dar un pequeño margen para completar la animación.
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      await Future<void>.delayed(const Duration(milliseconds: 220));
-    }
-    if (!mounted) return;
-
-    final method = paymentResult['method'] as payment.PaymentMethod;
-    final receivedAmountRaw =
-        (paymentResult['received'] as num?)?.toDouble() ?? total;
-    final changeAmountRaw =
-        (paymentResult['change'] as num?)?.toDouble() ?? 0.0;
-    final bool isCreditPayment = method == payment.PaymentMethod.credit;
-    final receivedAmount = isCreditPayment ? 0.0 : receivedAmountRaw;
-    final changeAmount = isCreditPayment ? 0.0 : changeAmountRaw;
-    final shouldPrint = paymentResult['printTicket'] == true;
-    final shouldDownloadInvoicePdf =
-        paymentResult['downloadInvoicePdf'] == true;
-    final shouldAutoOpenDrawerOnCharge =
-        await _shouldAutoOpenDrawerWithoutTicket();
-
-    if (method == payment.PaymentMethod.credit) {
-      final canCredit = await _authorizeAction(
-        AppActions.grantCredit,
-        resourceType: 'sale',
-        resourceId: _currentCart.ticketId?.toString(),
-      );
-      if (!canCredit) return;
-    }
-
-    if (method == payment.PaymentMethod.layaway) {
-      final canLayaway = await _authorizeAction(
-        AppActions.createLayaway,
-        resourceType: 'sale',
-        resourceId: _currentCart.ticketId?.toString(),
-      );
-      if (!canLayaway) return;
-
-      if (_activeSessionId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Debe abrir caja para crear un apartado'),
-            backgroundColor: scheme.error,
-          ),
-        );
-        return;
-      }
-    }
-
-    final localCode =
-      (paymentRequestId != null && paymentRequestId.isNotEmpty)
-      ? _buildIdempotentLocalCode(kind, paymentRequestId)
-      : await SalesRepository.generateNextLocalCode(kind);
-    String? ncfFull;
-    String? ncfType;
-    if (_currentCart.fiscalEnabled && _currentCart.selectedNcf != null) {
-      final selected = _currentCart.selectedNcf!;
-      ncfType = selected.type;
-
-      // Consumir el NCF del talonario seleccionado (evita consumir otro libro del mismo tipo)
-      if (selected.id != null) {
-        ncfFull = await NcfRepository.consumeNextForBook(selected.id!);
-      } else {
-        ncfFull = await NcfRepository.consumeNext(selected.type);
-      }
-
-      if (ncfFull == null) {
+      if (_currentCart.fiscalEnabled && _availableNcfs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'No hay NCF disponibles para el talonario seleccionado',
+              'No hay NCF disponibles. Hable con Administración para agregarlo.',
             ),
             backgroundColor: scheme.error,
           ),
         );
         return;
       }
-    }
 
-    final paymentMethodStr = switch (method) {
-      payment.PaymentMethod.cash => PaymentMethod.cash,
-      payment.PaymentMethod.card => PaymentMethod.card,
-      payment.PaymentMethod.transfer => PaymentMethod.transfer,
-      payment.PaymentMethod.mixed => PaymentMethod.mixed,
-      payment.PaymentMethod.credit => PaymentMethod.credit,
-      payment.PaymentMethod.layaway => PaymentMethod.layaway,
-    };
+      if (_currentCart.fiscalEnabled && _currentCart.selectedNcf == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Seleccione un Comprobante Fiscal (NCF)'),
+            backgroundColor: scheme.error,
+          ),
+        );
+        return;
+      }
 
-    final bool isLayaway = method == payment.PaymentMethod.layaway;
+      final canCharge = await _authorizeAction(
+        AppActions.chargeSale,
+        resourceType: 'sale',
+        resourceId: _currentCart.ticketId?.toString(),
+      );
+      if (!canCharge) return;
 
-    final productsRepo = ProductsRepository();
-    final List<SaleItemModel> itemsPayload = [];
+      // Importante: usar las funciones del carrito como fuente única.
+      // Evita doble descuento (bug: totales guardados/impresos en 0).
+      final totalDiscount = _currentCart.calculateTotalDiscountsCombined();
+      final subtotalAfterDiscount = _currentCart
+          .calculateSubtotalAfterDiscount();
+      final itbisAmount = _currentCart.calculateItbis();
+      final total = _currentCart.calculateTotal();
+      final cartFingerprint = _buildCurrentCartFingerprint(total);
+      final configuredChargeOutputMode = ref
+          .read(businessSettingsProvider)
+          .defaultChargeOutputMode;
+      final paymentResult = await _presentDialog<Map<String, dynamic>>(
+        builder: (context) => payment.PaymentDialog(
+          total: total,
+          initialPrintTicket: initialPrintTicket,
+          allowInvoicePdfDownload: kind == SaleKind.invoice,
+          initialChargeOutputMode: configuredChargeOutputMode,
+          cartFingerprint: cartFingerprint,
+          selectedClient: _currentCart.selectedClient,
+          onSelectClient: _showClientPicker,
+        ),
+      );
 
-    for (final item in _currentCart.items) {
-      var enriched = item;
+      if (!mounted || paymentResult == null) return;
 
-      // Refresca datos del producto para guardar código, nombre, precio y costo actuales
-      if (item.productId != null) {
-        final product = await productsRepo.getById(item.productId!);
-        if (product != null) {
-          enriched = enriched.copyWith(
-            productCodeSnapshot: enriched.productCodeSnapshot.isNotEmpty
-                ? enriched.productCodeSnapshot
-                : product.code,
-            productNameSnapshot: enriched.productNameSnapshot.isNotEmpty
-                ? enriched.productNameSnapshot
-                : product.name,
-            unitPrice: enriched.unitPrice > 0
-                ? enriched.unitPrice
-                : product.salePrice,
-            purchasePriceSnapshot: enriched.purchasePriceSnapshot > 0
-                ? enriched.purchasePriceSnapshot
-                : product.purchasePrice,
+      final paymentRequestId = (paymentResult['paymentRequestId'] as String?)
+          ?.trim();
+      final triggerSource =
+          (paymentResult['triggerSource'] as String?)?.trim() ?? 'unknown';
+      debugPrint(
+        'PAYMENT_TRIGGER source=$triggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=$cartFingerprint request=${paymentRequestId ?? 'na'}',
+      );
+
+      if (paymentRequestId != null && paymentRequestId.isNotEmpty) {
+        if (_processedPaymentRequestIds.contains(paymentRequestId)) {
+          debugPrint(
+            'PAYMENT_EXECUTION_SKIPPED reason=duplicate_request request=$paymentRequestId cart=$cartFingerprint',
           );
+          return;
+        }
+        _processedPaymentRequestIds.add(paymentRequestId);
+        if (_processedPaymentRequestIds.length > 120) {
+          _processedPaymentRequestIds.remove(_processedPaymentRequestIds.first);
         }
       }
 
-      final totalLine =
-          (enriched.qty * enriched.unitPrice) - enriched.discountLine;
-      itemsPayload.add(enriched.copyWith(totalLine: totalLine));
-    }
+      final activeShiftIdAfterDialog = await _ensureActiveShiftOrRedirect(
+        showMessage: true,
+      );
+      if (activeShiftIdAfterDialog == null) return;
 
-    int saleId;
-    final int? tempCartIdToDelete = _currentCart.tempCartId;
-    final int cartIndexToRemove = _currentCartIndex;
-    try {
-      if (isLayaway) {
-        saleId = await LayawayRepository.createLayawaySale(
-          localCode: localCode,
-          kind: kind,
-          items: itemsPayload,
-          itbisEnabled: _currentCart.itbisEnabled,
-          itbisRate: _currentCart.itbisRate,
-          discountTotal: totalDiscount,
-          subtotalOverride: subtotalAfterDiscount,
-          itbisAmountOverride: itbisAmount,
-          totalOverride: total,
-          fiscalEnabled: _currentCart.fiscalEnabled,
-          ncfFull: ncfFull,
-          ncfType: ncfType,
-          sessionId: activeShiftIdAfterDialog,
-          customerId: _currentCart.selectedClient?.id,
-          customerName: _currentCart.selectedClient?.nombre,
-          customerPhone: _currentCart.selectedClient?.telefono,
-          initialPayment: receivedAmount,
-          note: paymentResult['note'] as String?,
-          enforceLocalCodeIdempotency:
-              paymentRequestId != null && paymentRequestId.isNotEmpty,
-        );
-      } else {
-        saleId = await SalesRepository.createSale(
-          localCode: localCode,
-          kind: kind,
-          items: itemsPayload,
-          itbisEnabled: _currentCart.itbisEnabled,
-          itbisRate: _currentCart.itbisRate,
-          discountTotal: totalDiscount,
-          subtotalOverride: subtotalAfterDiscount,
-          itbisAmountOverride: itbisAmount,
-          totalOverride: total,
-          paymentMethod: paymentMethodStr,
-          sessionId: activeShiftIdAfterDialog,
-          customerId: _currentCart.selectedClient?.id,
-          customerName: _currentCart.selectedClient?.nombre,
-          customerPhone: _currentCart.selectedClient?.telefono,
-          ncfFull: ncfFull,
-          ncfType: ncfType,
-          fiscalEnabled: _currentCart.fiscalEnabled,
-          paidAmount: receivedAmount,
-          changeAmount: changeAmount > 0 ? changeAmount : 0,
-          enforceLocalCodeIdempotency:
-              paymentRequestId != null && paymentRequestId.isNotEmpty,
-        );
+      // Permite que el cierre del dialogo se renderice antes de continuar con
+      // operaciones pesadas (DB/PDF/impresion). Evita que se "congele" la UI con
+      // el dialogo aun visible.
+      await WidgetsBinding.instance.endOfFrame;
+      // En desktop (Windows/Linux/macOS) el cierre del dialog puede quedar visualmente
+      // “pegado” si arrancamos trabajo pesado inmediatamente, y parece que hay que
+      // presionar Cobrar dos veces. Dar un pequeño margen para completar la animación.
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        await Future<void>.delayed(const Duration(milliseconds: 220));
       }
-    } on AppException catch (e, st) {
-      if (e.code != 'stock_negative') {
+      if (!mounted) return;
+
+      final method = paymentResult['method'] as payment.PaymentMethod;
+      final receivedAmountRaw =
+          (paymentResult['received'] as num?)?.toDouble() ?? total;
+      final changeAmountRaw =
+          (paymentResult['change'] as num?)?.toDouble() ?? 0.0;
+      final bool isCreditPayment = method == payment.PaymentMethod.credit;
+      final receivedAmount = isCreditPayment ? 0.0 : receivedAmountRaw;
+      final changeAmount = isCreditPayment ? 0.0 : changeAmountRaw;
+      final shouldPrint = paymentResult['printTicket'] == true;
+      final shouldDownloadInvoicePdf =
+          paymentResult['downloadInvoicePdf'] == true;
+      final shouldAutoOpenDrawerOnCharge =
+          await _shouldAutoOpenDrawerWithoutTicket();
+
+      if (method == payment.PaymentMethod.credit) {
+        final canCredit = await _authorizeAction(
+          AppActions.grantCredit,
+          resourceType: 'sale',
+          resourceId: _currentCart.ticketId?.toString(),
+        );
+        if (!canCredit) return;
+      }
+
+      if (method == payment.PaymentMethod.layaway) {
+        final canLayaway = await _authorizeAction(
+          AppActions.createLayaway,
+          resourceType: 'sale',
+          resourceId: _currentCart.ticketId?.toString(),
+        );
+        if (!canLayaway) return;
+
+        if (_activeSessionId == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Debe abrir caja para crear un apartado'),
+              backgroundColor: scheme.error,
+            ),
+          );
+          return;
+        }
+      }
+
+      final localCode =
+          (paymentRequestId != null && paymentRequestId.isNotEmpty)
+          ? _buildIdempotentLocalCode(kind, paymentRequestId)
+          : await SalesRepository.generateNextLocalCode(kind);
+      String? ncfFull;
+      String? ncfType;
+      if (_currentCart.fiscalEnabled && _currentCart.selectedNcf != null) {
+        final selected = _currentCart.selectedNcf!;
+        ncfType = selected.type;
+
+        // Consumir el NCF del talonario seleccionado (evita consumir otro libro del mismo tipo)
+        if (selected.id != null) {
+          ncfFull = await NcfRepository.consumeNextForBook(selected.id!);
+        } else {
+          ncfFull = await NcfRepository.consumeNext(selected.type);
+        }
+
+        if (ncfFull == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'No hay NCF disponibles para el talonario seleccionado',
+              ),
+              backgroundColor: scheme.error,
+            ),
+          );
+          return;
+        }
+      }
+
+      final paymentMethodStr = switch (method) {
+        payment.PaymentMethod.cash => PaymentMethod.cash,
+        payment.PaymentMethod.card => PaymentMethod.card,
+        payment.PaymentMethod.transfer => PaymentMethod.transfer,
+        payment.PaymentMethod.mixed => PaymentMethod.mixed,
+        payment.PaymentMethod.credit => PaymentMethod.credit,
+        payment.PaymentMethod.layaway => PaymentMethod.layaway,
+      };
+
+      final bool isLayaway = method == payment.PaymentMethod.layaway;
+
+      final productsRepo = ProductsRepository();
+      final List<SaleItemModel> itemsPayload = [];
+
+      for (final item in _currentCart.items) {
+        var enriched = item;
+
+        // Refresca datos del producto para guardar código, nombre, precio y costo actuales
+        if (item.productId != null) {
+          final product = await productsRepo.getById(item.productId!);
+          if (product != null) {
+            enriched = enriched.copyWith(
+              productCodeSnapshot: enriched.productCodeSnapshot.isNotEmpty
+                  ? enriched.productCodeSnapshot
+                  : product.code,
+              productNameSnapshot: enriched.productNameSnapshot.isNotEmpty
+                  ? enriched.productNameSnapshot
+                  : product.name,
+              unitPrice: enriched.unitPrice > 0
+                  ? enriched.unitPrice
+                  : product.salePrice,
+              purchasePriceSnapshot: enriched.purchasePriceSnapshot > 0
+                  ? enriched.purchasePriceSnapshot
+                  : product.purchasePrice,
+            );
+          }
+        }
+
+        final totalLine =
+            (enriched.qty * enriched.unitPrice) - enriched.discountLine;
+        itemsPayload.add(enriched.copyWith(totalLine: totalLine));
+      }
+
+      int saleId;
+      final int? tempCartIdToDelete = _currentCart.tempCartId;
+      final int cartIndexToRemove = _currentCartIndex;
+      try {
+        if (isLayaway) {
+          saleId = await LayawayRepository.createLayawaySale(
+            localCode: localCode,
+            kind: kind,
+            items: itemsPayload,
+            itbisEnabled: _currentCart.itbisEnabled,
+            itbisRate: _currentCart.itbisRate,
+            discountTotal: totalDiscount,
+            subtotalOverride: subtotalAfterDiscount,
+            itbisAmountOverride: itbisAmount,
+            totalOverride: total,
+            fiscalEnabled: _currentCart.fiscalEnabled,
+            ncfFull: ncfFull,
+            ncfType: ncfType,
+            sessionId: activeShiftIdAfterDialog,
+            customerId: _currentCart.selectedClient?.id,
+            customerName: _currentCart.selectedClient?.nombre,
+            customerPhone: _currentCart.selectedClient?.telefono,
+            initialPayment: receivedAmount,
+            note: paymentResult['note'] as String?,
+            enforceLocalCodeIdempotency:
+                paymentRequestId != null && paymentRequestId.isNotEmpty,
+          );
+        } else {
+          saleId = await SalesRepository.createSale(
+            localCode: localCode,
+            kind: kind,
+            items: itemsPayload,
+            itbisEnabled: _currentCart.itbisEnabled,
+            itbisRate: _currentCart.itbisRate,
+            discountTotal: totalDiscount,
+            subtotalOverride: subtotalAfterDiscount,
+            itbisAmountOverride: itbisAmount,
+            totalOverride: total,
+            paymentMethod: paymentMethodStr,
+            sessionId: activeShiftIdAfterDialog,
+            customerId: _currentCart.selectedClient?.id,
+            customerName: _currentCart.selectedClient?.nombre,
+            customerPhone: _currentCart.selectedClient?.telefono,
+            ncfFull: ncfFull,
+            ncfType: ncfType,
+            fiscalEnabled: _currentCart.fiscalEnabled,
+            paidAmount: receivedAmount,
+            changeAmount: changeAmount > 0 ? changeAmount : 0,
+            enforceLocalCodeIdempotency:
+                paymentRequestId != null && paymentRequestId.isNotEmpty,
+          );
+        }
+      } on AppException catch (e, st) {
+        if (e.code != 'stock_negative') {
+          await ErrorHandler.instance.handle(
+            e,
+            stackTrace: st,
+            context: context,
+            module: 'sales',
+          );
+          return;
+        }
+
+        final proceed = await _presentDialog<bool>(
+          builder: (context) => AlertDialog(
+            title: const Text('Stock insuficiente'),
+            content: Text(e.messageUser),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('CANCELAR'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('CONTINUAR'),
+              ),
+            ],
+          ),
+        );
+
+        if (!mounted || proceed != true) return;
+
+        final retry = await ErrorHandler.instance.runSafe<int>(
+          () => SalesRepository.createSale(
+            localCode: localCode,
+            kind: kind,
+            items: itemsPayload,
+            allowNegativeStock: true,
+            itbisEnabled: _currentCart.itbisEnabled,
+            itbisRate: _currentCart.itbisRate,
+            discountTotal: totalDiscount,
+            subtotalOverride: subtotalAfterDiscount,
+            itbisAmountOverride: itbisAmount,
+            totalOverride: total,
+            paymentMethod: paymentMethodStr,
+            sessionId: activeShiftIdAfterDialog,
+            customerId: _currentCart.selectedClient?.id,
+            customerName: _currentCart.selectedClient?.nombre,
+            customerPhone: _currentCart.selectedClient?.telefono,
+            ncfFull: ncfFull,
+            ncfType: ncfType,
+            fiscalEnabled: _currentCart.fiscalEnabled,
+            paidAmount: receivedAmount,
+            changeAmount: changeAmount > 0 ? changeAmount : 0,
+            enforceLocalCodeIdempotency:
+                paymentRequestId != null && paymentRequestId.isNotEmpty,
+          ),
+          context: context,
+          module: 'sales',
+        );
+        if (retry == null) return;
+        saleId = retry;
+      } catch (e, st) {
         await ErrorHandler.instance.handle(
           e,
           stackTrace: st,
@@ -1716,114 +1793,55 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         return;
       }
 
-      final proceed = await _presentDialog<bool>(
-        builder: (context) => AlertDialog(
-          title: const Text('Stock insuficiente'),
-          content: Text(e.messageUser),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCELAR'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('CONTINUAR'),
-            ),
-          ],
-        ),
-      );
-
-      if (!mounted || proceed != true) return;
-
-      final retry = await ErrorHandler.instance.runSafe<int>(
-        () => SalesRepository.createSale(
-          localCode: localCode,
-          kind: kind,
-          items: itemsPayload,
-          allowNegativeStock: true,
-          itbisEnabled: _currentCart.itbisEnabled,
-          itbisRate: _currentCart.itbisRate,
-          discountTotal: totalDiscount,
-          subtotalOverride: subtotalAfterDiscount,
-          itbisAmountOverride: itbisAmount,
-          totalOverride: total,
-          paymentMethod: paymentMethodStr,
-          sessionId: activeShiftIdAfterDialog,
-          customerId: _currentCart.selectedClient?.id,
-          customerName: _currentCart.selectedClient?.nombre,
-          customerPhone: _currentCart.selectedClient?.telefono,
-          ncfFull: ncfFull,
-          ncfType: ncfType,
-          fiscalEnabled: _currentCart.fiscalEnabled,
-          paidAmount: receivedAmount,
-          changeAmount: changeAmount > 0 ? changeAmount : 0,
-          enforceLocalCodeIdempotency:
-              paymentRequestId != null && paymentRequestId.isNotEmpty,
-        ),
-        context: context,
-        module: 'sales',
-      );
-      if (retry == null) return;
-      saleId = retry;
-    } catch (e, st) {
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
-        context: context,
-        module: 'sales',
-      );
-      return;
-    }
-
-    if (!isLayaway) {
-      _applyStockAdjustments(itemsPayload);
-    }
-
-    // ✅ LIMPIEZA INMEDIATA (UX): cerrar/limpiar detalles sin esperar impresión/descarga/DB.
-    if (!mounted) return;
-    setState(() {
-      if (cartIndexToRemove >= 0 && cartIndexToRemove < _carts.length) {
-        _carts[cartIndexToRemove].isCompleted = true;
-        _carts.removeAt(cartIndexToRemove);
+      if (!isLayaway) {
+        _applyStockAdjustments(itemsPayload);
       }
 
-      if (_carts.isNotEmpty) {
-        _currentCartIndex = 0;
-      } else {
-        final cart = _Cart(name: 'Ticket 1');
-        _applySalesDefaultsToCart(cart);
-        _carts.add(cart);
-        _currentCartIndex = 0;
-      }
-      _selectedCartItemIndex = null;
-    });
+      // ✅ LIMPIEZA INMEDIATA (UX): cerrar/limpiar detalles sin esperar impresión/descarga/DB.
+      if (!mounted) return;
+      setState(() {
+        if (cartIndexToRemove >= 0 && cartIndexToRemove < _carts.length) {
+          _carts[cartIndexToRemove].isCompleted = true;
+          _carts.removeAt(cartIndexToRemove);
+        }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '✔ Venta completada correctamente',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-        ),
-        backgroundColor: status.success,
-        duration: Duration(seconds: 2),
-      ),
-    );
+        if (_carts.isNotEmpty) {
+          _currentCartIndex = 0;
+        } else {
+          final cart = _Cart(name: 'Ticket 1');
+          _applySalesDefaultsToCart(cart);
+          _carts.add(cart);
+          _currentCartIndex = 0;
+        }
+        _selectedCartItemIndex = null;
+      });
 
-    unawaited(_deleteTempCartFromDatabase(tempCartIdToDelete));
-    if (shouldPrint ||
-        shouldDownloadInvoicePdf ||
-        shouldAutoOpenDrawerOnCharge) {
-      unawaited(
-        _runSaleOutputs(
-          saleId: saleId,
-          shouldPrint: shouldPrint,
-          shouldDownloadInvoicePdf: shouldDownloadInvoicePdf,
-          shouldAutoOpenDrawerWithoutTicket: shouldAutoOpenDrawerOnCharge,
-          isLayaway: isLayaway,
-          receivedAmount: receivedAmount,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✔ Venta completada correctamente',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+          backgroundColor: status.success,
+          duration: Duration(seconds: 2),
         ),
       );
-    }
+
+      unawaited(_deleteTempCartFromDatabase(tempCartIdToDelete));
+      if (shouldPrint ||
+          shouldDownloadInvoicePdf ||
+          shouldAutoOpenDrawerOnCharge) {
+        unawaited(
+          _runSaleOutputs(
+            saleId: saleId,
+            shouldPrint: shouldPrint,
+            shouldDownloadInvoicePdf: shouldDownloadInvoicePdf,
+            shouldAutoOpenDrawerWithoutTicket: shouldAutoOpenDrawerOnCharge,
+            isLayaway: isLayaway,
+            receivedAmount: receivedAmount,
+          ),
+        );
+      }
     } finally {
       _isProcessingSaleExecution = false;
     }

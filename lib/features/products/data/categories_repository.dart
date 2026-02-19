@@ -6,6 +6,98 @@ import '../models/category_model.dart';
 
 /// Repositorio para operaciones CRUD de Categorías
 class CategoriesRepository {
+  static String _normalizeForMatch(String value) {
+    var s = value.toLowerCase().trim();
+    s = s
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ñ', 'n');
+    s = s.replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s;
+  }
+
+  /// Upsert defensivo por nombre para importación.
+  ///
+  /// - Si existe (incluso soft-deleted), lo restaura y actualiza `is_active`.
+  /// - Si no existe, lo inserta.
+  Future<int> upsertFromImport({
+    required String name,
+    bool isActive = true,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('El nombre de la categoría es obligatorio');
+    }
+
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Normalizar por nombre (case-insensitive).
+    final existing = await db.query(
+      DbTables.categories,
+      columns: ['id'],
+      where: 'LOWER(TRIM(name)) = LOWER(TRIM(?))',
+      whereArgs: [trimmed],
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty && existing.first['id'] != null) {
+      final id = existing.first['id'] as int;
+      await db.update(
+        DbTables.categories,
+        {
+          'name': trimmed,
+          'is_active': isActive ? 1 : 0,
+          'deleted_at_ms': null,
+          'updated_at_ms': now,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      return id;
+    }
+
+    // Fallback tolerante: evitar duplicados por acentos/guiones/puntos.
+    final wanted = _normalizeForMatch(trimmed);
+    if (wanted.isNotEmpty) {
+      final rows = await db.query(
+        DbTables.categories,
+        columns: ['id', 'name'],
+      );
+      for (final row in rows) {
+        final id = row['id'] as int?;
+        final name = row['name'] as String?;
+        if (id == null || name == null) continue;
+        if (_normalizeForMatch(name) == wanted) {
+          await db.update(
+            DbTables.categories,
+            {
+              'name': trimmed,
+              'is_active': isActive ? 1 : 0,
+              'deleted_at_ms': null,
+              'updated_at_ms': now,
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+          return id;
+        }
+      }
+    }
+
+    return await db.insert(DbTables.categories, {
+      'name': trimmed,
+      'is_active': isActive ? 1 : 0,
+      'deleted_at_ms': null,
+      'created_at_ms': now,
+      'updated_at_ms': now,
+    }, conflictAlgorithm: ConflictAlgorithm.abort);
+  }
+
   /// Obtiene todas las categorías activas
   Future<List<CategoryModel>> getAll({
     bool includeInactive = false,

@@ -240,7 +240,11 @@ class _QuotesPageState extends State<QuotesPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.summarize_outlined, size: 16, color: ui_colors.AppColors.primaryBlue),
+          const Icon(
+            Icons.summarize_outlined,
+            size: 16,
+            color: ui_colors.AppColors.primaryBlue,
+          ),
           const SizedBox(width: 8),
           Text(
             'Cotizaciones: $count',
@@ -610,7 +614,9 @@ class _QuotesPageState extends State<QuotesPage> {
                         decoration: BoxDecoration(
                           color: scheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: ui_colors.AppColors.borderSoft),
+                          border: Border.all(
+                            color: ui_colors.AppColors.borderSoft,
+                          ),
                         ),
                         padding: const EdgeInsets.all(12),
                         child: Column(
@@ -683,14 +689,17 @@ class _QuotesPageState extends State<QuotesPage> {
                                   controller: _quoteItemsScrollController,
                                   primary: false,
                                   itemCount: quoteDetail.items.length,
-                                  separatorBuilder: (_, __) => const SizedBox(height: 4),
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 4),
                                   itemBuilder: (context, index) {
                                     final item = quoteDetail.items[index];
                                     final qtyLabel = item.qty.toStringAsFixed(
                                       item.qty % 1 == 0 ? 0 : 2,
                                     );
                                     return Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                      ),
                                       child: Row(
                                         children: [
                                           SizedBox(
@@ -698,11 +707,12 @@ class _QuotesPageState extends State<QuotesPage> {
                                             child: Text(
                                               qtyLabel,
                                               textAlign: TextAlign.center,
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                fontWeight: FontWeight.w500,
-                                                fontFamily: 'Inter',
-                                                fontSize: 14,
-                                              ),
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w500,
+                                                    fontFamily: 'Inter',
+                                                    fontSize: 14,
+                                                  ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -711,11 +721,12 @@ class _QuotesPageState extends State<QuotesPage> {
                                           Expanded(
                                             child: Text(
                                               item.description,
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                fontWeight: FontWeight.w500,
-                                                fontFamily: 'Inter',
-                                                fontSize: 14,
-                                              ),
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w500,
+                                                    fontFamily: 'Inter',
+                                                    fontSize: 14,
+                                                  ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -730,12 +741,13 @@ class _QuotesPageState extends State<QuotesPage> {
                                                 decimalDigits: 2,
                                               ).format(item.totalLine),
                                               textAlign: TextAlign.right,
-                                              style: theme.textTheme.bodySmall?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                                fontFamily: 'Inter',
-                                                fontSize: 14,
-                                                color: scheme.primary,
-                                              ),
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                    fontFamily: 'Inter',
+                                                    fontSize: 14,
+                                                    color: scheme.primary,
+                                                  ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -953,7 +965,9 @@ class _QuotesPageState extends State<QuotesPage> {
                       : theme.textTheme.bodySmall)
                   ?.copyWith(
                     fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
-                    color: isTotal ? ui_colors.AppColors.primaryBlue : valueColor,
+                    color: isTotal
+                        ? ui_colors.AppColors.primaryBlue
+                        : valueColor,
                     fontFamily: 'Inter',
                     fontSize: isTotal ? 23 : 14,
                     letterSpacing: isTotal ? 0.2 : 0.0,
@@ -1616,9 +1630,12 @@ class _QuotesPageState extends State<QuotesPage> {
       }
 
       // Usar el nuevo conversor transaccional
+      final currentUserId = await SessionManager.userId();
       final ticketId = await QuoteToTicketConverter.convertQuoteToTicket(
         quoteId: quote.id!,
-        userId: quote.userId,
+        // Importante: Ventas lista tickets por el usuario en sesión.
+        // Si usamos quote.userId (dueño original), el ticket puede no aparecer.
+        userId: currentUserId ?? quote.userId,
       );
 
       if (!mounted) return;
@@ -1646,7 +1663,7 @@ class _QuotesPageState extends State<QuotesPage> {
       // Navegar a Ventas después de 1 segundo para que vea el mensaje
       await Future.delayed(const Duration(seconds: 1));
       if (!mounted) return;
-      context.go('/sales');
+      context.go('/sales?ticketId=$ticketId');
     } catch (e, stack) {
       debugPrint('❌ [UI] Error al convertir a ticket: $e');
       debugPrint('Stack: $stack');

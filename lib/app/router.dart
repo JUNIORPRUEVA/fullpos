@@ -224,7 +224,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: '/sales',
-            builder: (context, state) => const SalesPage(),
+            builder: (context, state) {
+              int? ticketId;
+              final extra = state.extra;
+              if (extra is int) {
+                ticketId = extra;
+              } else if (extra is String) {
+                ticketId = int.tryParse(extra);
+              }
+
+              ticketId ??= int.tryParse(
+                state.uri.queryParameters['ticketId'] ?? '',
+              );
+
+              return SalesPage(initialTicketId: ticketId);
+            },
           ),
           GoRoute(
             path: '/products',

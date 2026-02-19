@@ -56,9 +56,19 @@ class _CatalogTabState extends State<CatalogTab> {
 
   Future<void> _exportProductsToExcel() async {
     try {
-      final products = await _productsRepo.getAll();
+      final results = await Future.wait([
+        _productsRepo.getAll(),
+        _categoriesRepo.getAll(includeInactive: true),
+        _suppliersRepo.getAll(includeInactive: true),
+      ]);
+
+      final products = results[0] as List<ProductModel>;
+      final categories = results[1] as List<CategoryModel>;
+      final suppliers = results[2] as List<SupplierModel>;
       final file = await ProductsExporter.exportProductsToExcel(
         products: products,
+        categories: categories,
+        suppliers: suppliers,
         includePurchasePrice: _isAdmin || _permissions.canViewPurchasePrice,
       );
 
@@ -116,7 +126,7 @@ class _CatalogTabState extends State<CatalogTab> {
       if (!mounted) return;
 
       final message =
-          'Importados: ${importResult.inserted}, actualizados: ${importResult.updated}, omitidos: ${importResult.skipped}';
+          'Importados: ${importResult.inserted}, actualizados: ${importResult.updated}, omitidos: ${importResult.skipped}, categorías: ${importResult.categoriesUpserted}, suplidores: ${importResult.suppliersUpserted}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: AppColors.success),
       );
