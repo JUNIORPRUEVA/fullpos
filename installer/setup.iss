@@ -23,8 +23,8 @@
 #define BrandWizardImage "..\assets\imagen\lonchericon.png"
 #define BrandWizardSmallImage "..\assets\imagen\lonchericon.png"
 
-#define SupportPhone "8295319442"
-#define SupportWhatsAppURL "https://wa.me/18295319442?text=Hola%20FULLTECH%20SRL,%20necesito%20soporte%20o%20instalacion%20de%20FULLPOS."
+#define SupportPhone "8295344286"
+#define SupportWhatsAppURL "https://wa.me/18295344286?text=Hola%20FULLTECH%20SRL,%20necesito%20soporte%20o%20instalacion%20de%20FULLPOS."
 
 [Setup]
 ; ⚠️ AppId NUEVO para FULLPOS

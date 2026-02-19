@@ -20,12 +20,20 @@ import '../../features/sales/data/sales_model.dart';
 import '../config/backend_config.dart';
 import '../config/app_config.dart';
 import '../logging/app_logger.dart';
+import '../storage/prefs_safe.dart';
 import '../theme/app_themes.dart';
 
 class CloudSyncService {
   CloudSyncService._();
 
   static final CloudSyncService instance = CloudSyncService._();
+
+  /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
+  ///
+  /// Útil para diagnóstico en UI.
+  String debugResolveCloudBaseUrl(BusinessSettings settings) {
+    return _resolveBaseUrl(settings);
+  }
 
   static const int _historyDaysToSync = 90;
   static const int _chunkSize = 200;
@@ -98,7 +106,8 @@ class CloudSyncService {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
+        final prefs = await PrefsSafe.getInstance();
+        if (prefs == null) return;
       final key = _syncKeyForCompany(rnc: rnc, cloudCompanyId: cloudCompanyId);
       final now = DateTime.now().millisecondsSinceEpoch;
       final last = prefs.getInt(key);
@@ -323,10 +332,15 @@ class CloudSyncService {
       }
 
       if (response.statusCode == 404) {
+        String hint = baseUrl;
+        try {
+          final uri = Uri.parse(baseUrl);
+          final port = uri.hasPort ? ':${uri.port}' : '';
+          hint = '${uri.scheme}://${uri.host}$port';
+        } catch (_) {}
         return (
           available: false,
-          error:
-              'La URL de nube no parece ser un FULLPOS Backend (verifica que no termine en /api).',
+          error: 'Nube: endpoint no encontrado (404). URL: $hint',
         );
       }
 
@@ -1070,7 +1084,8 @@ class CloudSyncService {
 
   Future<String?> _loadThemeKey() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await PrefsSafe.getInstance();
+      if (prefs == null) return AppThemeEnum.proPos.key;
       final key = prefs.getString('app_theme') ?? AppThemeEnum.proPos.key;
       return AppThemes.getThemeEnumByKey(key).key;
     } catch (_) {

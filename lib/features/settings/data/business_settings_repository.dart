@@ -171,7 +171,14 @@ class BusinessSettingsRepository {
         return BusinessSettings.defaultSettings;
       }
 
-      final settings = BusinessSettings.fromMap(results.first);
+      late final BusinessSettings settings;
+      try {
+        settings = BusinessSettings.fromMap(results.first);
+      } catch (_) {
+        // No romper el arranque por datos puntualmente corruptos.
+        // Importante: NO reescribir aquí para no tocar la BD del cliente.
+        return BusinessSettings.defaultSettings;
+      }
       final hasCustomData =
           (settings.logoPath ?? '').trim().isNotEmpty ||
           (settings.phone ?? '').trim().isNotEmpty ||

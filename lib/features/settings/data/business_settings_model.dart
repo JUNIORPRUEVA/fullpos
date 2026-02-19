@@ -109,6 +109,22 @@ class BusinessSettings {
 
   /// Crear desde Map (base de datos)
   factory BusinessSettings.fromMap(Map<String, dynamic> map) {
+    DateTime safeDateTime(dynamic raw) {
+      try {
+        if (raw == null) return DateTime.now();
+        if (raw is DateTime) return raw;
+        if (raw is int) {
+          // Soporta timestamps (ms) en instalaciones antiguas/raras.
+          return DateTime.fromMillisecondsSinceEpoch(raw);
+        }
+        final s = raw.toString().trim();
+        if (s.isEmpty) return DateTime.now();
+        return DateTime.parse(s);
+      } catch (_) {
+        return DateTime.now();
+      }
+    }
+
     return BusinessSettings(
       id: map['id'] as int? ?? 1,
       businessName: map['business_name'] as String? ?? 'FULLPOS',
@@ -166,12 +182,8 @@ class BusinessSettings {
       cloudOwnerAppIosUrl: map['cloud_owner_app_ios_url'] as String?,
       cloudOwnerUsername: map['cloud_owner_username'] as String?,
       cloudCompanyId: map['cloud_company_id'] as String?,
-      createdAt: map['created_at'] != null
-          ? DateTime.parse(map['created_at'] as String)
-          : DateTime.now(),
-      updatedAt: map['updated_at'] != null
-          ? DateTime.parse(map['updated_at'] as String)
-          : DateTime.now(),
+        createdAt: safeDateTime(map['created_at']),
+        updatedAt: safeDateTime(map['updated_at']),
     );
   }
 

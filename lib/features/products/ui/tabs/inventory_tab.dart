@@ -268,10 +268,14 @@ class _InventoryTabState extends State<InventoryTab> {
         final updatedStock = updatedStockNum.toDouble();
         setState(() {
           _lowStockProducts = _lowStockProducts
-              .map((p) => p.id == productId ? p.copyWith(stock: updatedStock) : p)
+              .map(
+                (p) => p.id == productId ? p.copyWith(stock: updatedStock) : p,
+              )
               .toList();
           _outOfStockProducts = _outOfStockProducts
-              .map((p) => p.id == productId ? p.copyWith(stock: updatedStock) : p)
+              .map(
+                (p) => p.id == productId ? p.copyWith(stock: updatedStock) : p,
+              )
               .toList();
         });
       }
@@ -560,19 +564,25 @@ class _InventoryTabState extends State<InventoryTab> {
         final mainConstraints = BoxConstraints(maxWidth: mainWidth);
 
         final padding = _contentPadding(mainConstraints);
-        final isWide = mainWidth >= 1100;
+        final usableWidth = math.max(
+          0,
+          mainWidth - padding.left - padding.right,
+        );
+
+        final isWide = usableWidth >= 1100;
 
         const kpiTargetWidth = 260.0;
         const kpiSpacing = 8.0;
         final computedColumns =
-            ((mainWidth + kpiSpacing) / (kpiTargetWidth + kpiSpacing))
+            ((usableWidth + kpiSpacing) / (kpiTargetWidth + kpiSpacing))
                 .floor()
                 .clamp(1, 5);
         final kpiCrossAxisCount = computedColumns;
-        final kpiAspectRatio = mainWidth >= 1400
+        final kpiAspectRatio = usableWidth >= 1400
             ? 2.45
-            : (mainWidth >= 1100 ? 2.2 : (mainWidth >= 780 ? 2.0 : 1.85));
-        final compactAlerts = mainWidth < 780;
+            : (usableWidth >= 1100 ? 2.2 : (usableWidth >= 780 ? 2.0 : 1.85));
+
+        final compactAlerts = usableWidth < 780;
         final mainContent = RefreshIndicator(
           onRefresh: _loadInventoryData,
           child: _isLoading

@@ -20,6 +20,17 @@ class AppConfig {
   /// Base para enlaces externos de WhatsApp (soporte).
   static const String whatsappBaseUrl = 'https://wa.me';
 
+  /// Número de WhatsApp de soporte.
+  ///
+  /// Se configura por build con:
+  /// `--dart-define=FULLPOS_SUPPORT_WHATSAPP=1809XXXXXXX`
+  /// (solo dígitos, con código de país; sin + ni espacios).
+  static String get supportWhatsappNumber => const String.fromEnvironment(
+    'FULLPOS_SUPPORT_WHATSAPP',
+    // Default: Rep. Dominicana (+1) / 829 534 4286
+    defaultValue: '18295344286',
+  );
+
   /// URLs de imágenes demo (semillas).
   ///
   /// Mantener aquí para evitar URLs hardcoded repartidas por el código.

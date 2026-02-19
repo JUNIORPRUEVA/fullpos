@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
+import '../../../core/bootstrap/bootstrap_recovery_dialog.dart';
 import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -99,10 +100,33 @@ class SplashPage extends ConsumerWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: AppSizes.spaceL),
-                    FilledButton.icon(
-                      onPressed: () => ref.read(appBootstrapProvider).retry(),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reintentar'),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () =>
+                              ref.read(appBootstrapProvider).retry(),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reintentar'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            final msg =
+                                boot.errorMessage ??
+                                'No se pudo iniciar la aplicación.';
+                            BootstrapRecoveryDialog.show(
+                              context,
+                              errorMessage: msg,
+                              onRetry: () =>
+                                  ref.read(appBootstrapProvider).retry(),
+                            );
+                          },
+                          icon: const Icon(Icons.tune),
+                          label: const Text('Opciones'),
+                        ),
+                      ],
                     ),
                   ] else ...[
                     const CircularProgressIndicator(color: AppColors.gold),

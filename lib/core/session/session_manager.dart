@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
+import '../storage/prefs_safe.dart';
+
 /// Maneja la sesión del usuario usando SharedPreferences
 class SessionManager {
   SessionManager._();
@@ -29,40 +31,44 @@ class SessionManager {
   static const String _keyCompanyId = 'logged_company_id';
   static const String _keyTerminalId = 'terminal_id';
 
+  static Future<SharedPreferences?> _prefs({bool attemptRepair = true}) {
+    return PrefsSafe.getInstance(attemptRepair: attemptRepair);
+  }
+
   /// Verifica si hay un usuario logueado
   static Future<bool> isLoggedIn() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyLoggedIn) ?? false;
+    final prefs = await _prefs();
+    return prefs?.getBool(_keyLoggedIn) ?? false;
   }
 
   /// Obtiene el ID del usuario logueado
   static Future<int?> userId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyUserId);
+    final prefs = await _prefs();
+    return prefs?.getInt(_keyUserId);
   }
 
   /// Obtiene el nombre de usuario logueado
   static Future<String?> username() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyUsername);
+    final prefs = await _prefs();
+    return prefs?.getString(_keyUsername);
   }
 
   /// Obtiene el nombre para mostrar del usuario
   static Future<String?> displayName() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyDisplayName);
+    final prefs = await _prefs();
+    return prefs?.getString(_keyDisplayName);
   }
 
   /// Obtiene el rol del usuario
   static Future<String?> role() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyRole);
+    final prefs = await _prefs();
+    return prefs?.getString(_keyRole);
   }
 
   /// Obtiene los permisos del usuario (JSON string)
   static Future<String?> permissions() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyPermissions);
+    final prefs = await _prefs();
+    return prefs?.getString(_keyPermissions);
   }
 
   /// Actualiza el JSON de permisos cacheado en sesión.
@@ -70,7 +76,8 @@ class SessionManager {
   /// Importante: se usa para evitar inconsistencias cuando un admin cambia
   /// permisos y el cliente tenía un cache viejo.
   static Future<void> setPermissions(String? permissionsJson) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
+    if (prefs == null) return;
     final existing = prefs.getString(_keyPermissions);
     if (permissionsJson != null) {
       // Evitar loops: si el valor no cambia, no escribimos ni notificamos.
@@ -87,23 +94,25 @@ class SessionManager {
   }
 
   static Future<int?> companyId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyCompanyId);
+    final prefs = await _prefs();
+    return prefs?.getInt(_keyCompanyId);
   }
 
   static Future<void> setCompanyId(int companyId) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
+    if (prefs == null) return;
     await prefs.setInt(_keyCompanyId, companyId);
     _notifyChanged();
   }
 
   static Future<String?> terminalId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyTerminalId);
+    final prefs = await _prefs();
+    return prefs?.getString(_keyTerminalId);
   }
 
   static Future<String> ensureTerminalId() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
+    if (prefs == null) return 'terminal-${_randomToken(6)}';
     final existing = prefs.getString(_keyTerminalId);
     if (existing != null && existing.isNotEmpty) return existing;
     final generated = 'terminal-${_randomToken(6)}';
@@ -127,7 +136,11 @@ class SessionManager {
     int companyId = 1,
     String? terminalId,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    // En caso de prefs corrupto, intentar reparación una vez.
+    final prefs = await _prefs(attemptRepair: true);
+    if (prefs == null) {
+      throw StateError('No se pudo inicializar almacenamiento local');
+    }
     await prefs.setBool(_keyLoggedIn, true);
     await prefs.setInt(_keyUserId, userId);
     await prefs.setString(_keyUsername, username);
@@ -157,14 +170,19 @@ class SessionManager {
 
   /// Actualiza solo el nombre para mostrar del usuario actual
   static Future<void> setDisplayName(String displayName) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
+    if (prefs == null) return;
     await prefs.setString(_keyDisplayName, displayName);
     _notifyChanged();
   }
 
   /// Cierra la sesión
   static Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
+    if (prefs == null) {
+      _notifyChanged();
+      return;
+    }
     final beforeLoggedIn = prefs.getBool(_keyLoggedIn);
     final beforeUserId = prefs.getInt(_keyUserId);
     await prefs.remove(_keyLoggedIn);

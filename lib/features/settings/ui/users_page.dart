@@ -7,6 +7,7 @@ import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/errors/error_handler.dart';
 import '../data/user_model.dart';
 import '../data/users_repository.dart';
+import '../data/business_settings_repository.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import 'dialogs/user_detail_dialog.dart';
 import 'permissions_page.dart';
@@ -960,51 +961,60 @@ class _UsersPageState extends State<UsersPage> {
 
                 // Validación de usuario cloud para Admin
                 if (selectedRole == 'admin') {
-                  if (cloudUsername.isEmpty || cloudUsername.length < 3) {
-                    setDialogState(() {
-                      cloudUsernameError =
-                          'Usuario de la nube requerido (mínimo 3 caracteres)';
-                    });
-                    return;
-                  }
+                  final settings = await BusinessSettingsRepository()
+                      .loadSettings();
+                  final cloudEnabled = settings.cloudEnabled;
 
-                  // Validar disponibilidad en nube antes de guardar
-                  setDialogState(() {
-                    cloudUsernameChecking = true;
-                    cloudUsernameError = null;
-                  });
-                  final result = await CloudSyncService.instance
-                      .checkCloudUsernameAvailableDetailed(
-                        cloudUsername: cloudUsername.toLowerCase(),
-                      );
-                  final ok = result.available;
-                  if (!context.mounted) return;
-                  setDialogState(() {
-                    cloudUsernameChecking = false;
-                    cloudUsernameAvailable = ok;
-                    if (!ok) {
-                      cloudUsernameError =
-                          result.error ??
-                          'No se pudo validar en la nube. Revisa URL y API Key.';
+                  // Si la nube está desactivada, no bloqueamos la creación/edición.
+                  if (cloudEnabled) {
+                    if (cloudUsername.isEmpty || cloudUsername.length < 3) {
+                      setDialogState(() {
+                        cloudUsernameError =
+                            'Usuario de la nube requerido (mínimo 3 caracteres)';
+                      });
+                      return;
                     }
-                  });
-                  if (!ok) return;
 
-                  // Si está editando y cambió el usuario cloud, debe indicar contraseña
-                  final prevCloud = (user?.cloudUsername ?? '')
-                      .trim()
-                      .toLowerCase();
-                  final nextCloud = cloudUsername.trim().toLowerCase();
-                  if (isEditing && prevCloud != nextCloud && password.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Para cambiar el usuario de la nube, indique una contraseña',
+                    // Validar disponibilidad en nube antes de guardar
+                    setDialogState(() {
+                      cloudUsernameChecking = true;
+                      cloudUsernameError = null;
+                    });
+                    final result = await CloudSyncService.instance
+                        .checkCloudUsernameAvailableDetailed(
+                          cloudUsername: cloudUsername.toLowerCase(),
+                        );
+                    final ok = result.available;
+                    if (!context.mounted) return;
+                    setDialogState(() {
+                      cloudUsernameChecking = false;
+                      cloudUsernameAvailable = ok;
+                      if (!ok) {
+                        cloudUsernameError =
+                            result.error ??
+                            'No se pudo validar en la nube. Revisa URL y API Key.';
+                      }
+                    });
+                    if (!ok) return;
+
+                    // Si está editando y cambió el usuario cloud, debe indicar contraseña
+                    final prevCloud = (user?.cloudUsername ?? '')
+                        .trim()
+                        .toLowerCase();
+                    final nextCloud = cloudUsername.trim().toLowerCase();
+                    if (isEditing &&
+                        prevCloud != nextCloud &&
+                        password.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Para cambiar el usuario de la nube, indique una contraseña',
+                          ),
+                          backgroundColor: _scheme.secondary,
                         ),
-                        backgroundColor: _scheme.secondary,
-                      ),
-                    );
-                    return;
+                      );
+                      return;
+                    }
                   }
                 }
 

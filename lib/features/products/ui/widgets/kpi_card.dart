@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fullpos/theme/app_colors.dart';
+import 'dart:math' as math;
 
 /// Widget reutilizable para mostrar tarjetas de KPIs - Diseño Corporativo
 class KpiCard extends StatelessWidget {
@@ -40,13 +41,43 @@ class KpiCard extends StatelessWidget {
         hoverColor: AppColors.lightBlueHover.withOpacity(0.6),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxHeight < 112;
+            final boundedHeight =
+                constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+            final h = boundedHeight ? constraints.maxHeight : 120.0;
+
+            // Ajustes para evitar overflow vertical por redondeo de pixels
+            // cuando el Grid asigna alturas "justas".
+            final compact = h < 112;
             final horizontalPadding = compact ? 12.0 : 14.0;
-            final verticalPadding = compact ? 8.0 : 12.0;
+            final verticalPadding = compact ? 7.0 : 11.0;
             final iconSize = compact ? 16.0 : 18.0;
             final iconPadding = compact ? 6.0 : 8.0;
             final valueFont = compact ? 20.0 : 22.0;
             final titleFont = compact ? 10.0 : 11.0;
+            final gap1 = compact ? 4.0 : 7.0;
+            final gap2 = compact ? 1.0 : 2.0;
+
+            final valueText = Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: double.infinity,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: valueFont,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                      fontFamily: 'Inter',
+                      letterSpacing: -0.4,
+                    ),
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+            );
 
             return Padding(
               padding: EdgeInsets.symmetric(
@@ -76,34 +107,19 @@ class KpiCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  SizedBox(height: compact ? 4 : 8),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: compact ? 24 : 28,
+                  SizedBox(height: gap1),
+
+                  // En Grid (altura acotada) dejamos que el valor se adapte al
+                  // espacio restante para evitar overflow vertical.
+                  if (boundedHeight)
+                    Flexible(child: valueText)
+                  else
+                    ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: compact ? 24 : 28),
+                      child: valueText,
                     ),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            value,
-                            style: TextStyle(
-                              fontSize: valueFont,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                              fontFamily: 'Inter',
-                              letterSpacing: -0.4,
-                            ),
-                            maxLines: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: compact ? 1 : 2),
+
+                  SizedBox(height: gap2),
                   Text(
                     title,
                     style: TextStyle(
