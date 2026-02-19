@@ -45,6 +45,7 @@ OutputDir=output
 OutputBaseFilename={#MyAppName}_Setup_{#MyAppVersionFile}
 Compression=lzma
 SolidCompression=yes
+ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
@@ -143,11 +144,21 @@ begin
   end;
 end;
 
+function FileExistsInSystemDirs(const FileName: string): Boolean; forward;
+function VcRuntimeFilesPresent(): Boolean; forward;
+
 function NeedsVCRedist(): Boolean;
 var
   Installed: Cardinal;
 begin
-  { Método robusto: clave oficial de VC++ runtime x64 }
+  { Verificación directa de DLLs: evita falsos positivos (p.ej. runtime viejo instalado sin VCRUNTIME140_1.dll) }
+  if not VcRuntimeFilesPresent() then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  { Clave oficial de VC++ runtime x64 (útil como señal adicional) }
   if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
   begin
     Result := Installed <> 1;
@@ -156,6 +167,31 @@ begin
 
   { Fallback por nombre en desinstalador }
   Result := not IsInstalledByDisplayName('Microsoft Visual C++ 2015-2022 Redistributable (x64)');
+end;
+
+function FileExistsInSystemDirs(const FileName: string): Boolean;
+var
+  P: string;
+begin
+  P := ExpandConstant('{sys}\' + FileName);
+  Result := FileExists(P);
+
+  // En instalador 32-bit en Windows 64-bit, la constante sys puede apuntar a SysWOW64;
+  // revisamos también System32 vía sysnative.
+  if (not Result) and IsWin64 then
+  begin
+    P := ExpandConstant('{sysnative}\' + FileName);
+    Result := FileExists(P);
+  end;
+end;
+
+function VcRuntimeFilesPresent(): Boolean;
+begin
+  { FULLPOS (Flutter Windows x64) típicamente requiere estas DLLs del VC++ Runtime }
+  Result :=
+    FileExistsInSystemDirs('VCRUNTIME140.dll') and
+    FileExistsInSystemDirs('VCRUNTIME140_1.dll') and
+    FileExistsInSystemDirs('MSVCP140.dll');
 end;
 
 function NeedsWebView2(): Boolean;

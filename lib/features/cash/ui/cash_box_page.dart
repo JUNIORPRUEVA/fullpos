@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -13,7 +15,11 @@ import 'cash_panel_sheet.dart';
 
 /// Pagina principal de gestion de Caja
 class CashBoxPage extends StatefulWidget {
-  const CashBoxPage({super.key});
+  const CashBoxPage({super.key, this.autoOpenShiftCut = false});
+
+  /// Si es true, al entrar a la pantalla intentará abrir automáticamente
+  /// el diálogo de "Corte" (cierre de turno) cuando exista un turno abierto.
+  final bool autoOpenShiftCut;
 
   @override
   State<CashBoxPage> createState() => _CashBoxPageState();
@@ -54,6 +60,23 @@ class _CashBoxPageState extends State<CashBoxPage> {
       _canCloseShift = perms.canCloseShift || perms.canCloseCash;
       _isLoading = false;
     });
+
+    // Si esta pantalla fue abierta específicamente para hacer el corte,
+    // abrir el diálogo automáticamente (post-frame) para llevar al usuario
+    // directo al flujo correcto.
+    if (!mounted) return;
+    if (widget.autoOpenShiftCut && !_isMutating) {
+      final sessionId = _session?.id;
+      if (sessionId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_isMutating) return;
+          // Solo si todavía hay sesión abierta.
+          if (_session?.id != sessionId) return;
+          unawaited(_closeCashDialog());
+        });
+      }
+    }
   }
 
   Future<void> _openCashDialog() async {
@@ -264,6 +287,13 @@ class _CashBoxPageState extends State<CashBoxPage> {
       if (result == true && mounted) {
         setState(() => _session = null);
         await _loadData();
+
+        // Si el usuario llegó aquí desde "Iniciar operación" por un corte forzado,
+        // al completar el corte regresamos automáticamente a esa pantalla.
+        if (widget.autoOpenShiftCut && mounted) {
+          context.go('/operation-start');
+          return;
+        }
 
         final canOfferCashboxClose =
             _canCloseCashbox &&

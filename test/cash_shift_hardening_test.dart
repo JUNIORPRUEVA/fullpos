@@ -105,11 +105,12 @@ Future<int> _insertOpenShift(
   required String userName,
   required int cashboxId,
   String? businessDate,
+  int? openedAtMs,
 }) async {
   return db.insert(DbTables.cashSessions, {
     'opened_by_user_id': userId,
     'user_name': userName,
-    'opened_at_ms': DateTime.now().millisecondsSinceEpoch,
+    'opened_at_ms': openedAtMs ?? DateTime.now().millisecondsSinceEpoch,
     'initial_amount': 0.0,
     'cashbox_daily_id': cashboxId,
     'business_date': businessDate ?? OperationFlowService.businessDateOf(),
@@ -156,6 +157,47 @@ void main() {
   });
 
   group('Cash/Shift hardening', () {
+    test('gate only forces cut after 48 hours', () async {
+      final db = await AppDb.database;
+      final cashboxId = await _insertCashboxToday(db);
+
+      await SessionManager.login(
+        userId: 1,
+        username: 'admin',
+        displayName: 'Admin',
+        role: 'admin',
+      );
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      // Caso 1: turno abierto hace 47h -> debe permitir operar.
+      await _insertOpenShift(
+        db,
+        userId: 1,
+        userName: 'Admin',
+        cashboxId: cashboxId,
+        openedAtMs: nowMs - const Duration(hours: 47).inMilliseconds,
+      );
+      var gate = await OperationFlowService.loadGateState();
+      expect(gate.hasUserShiftOpen, isTrue);
+      expect(gate.hasStaleShift, isFalse);
+      expect(gate.canOperate, isTrue);
+
+      // Caso 2: turno abierto hace 49h -> debe forzar corte antes de operar.
+      await db.delete(DbTables.cashSessions);
+      await _insertOpenShift(
+        db,
+        userId: 1,
+        userName: 'Admin',
+        cashboxId: cashboxId,
+        openedAtMs: nowMs - const Duration(hours: 49).inMilliseconds,
+      );
+      gate = await OperationFlowService.loadGateState();
+      expect(gate.hasUserShiftOpen, isTrue);
+      expect(gate.hasStaleShift, isTrue);
+      expect(gate.canOperate, isFalse);
+    });
+
     test(
       'openShiftForCurrentUser carries forward last closed shift closing amount when openingAmount=0',
       () async {
@@ -495,34 +537,38 @@ void main() {
       },
     );
 
-    test('loadGateState detects stale open shift before today', () async {
-      final db = await AppDb.database;
-      final cashboxId = await _insertCashboxToday(db);
+    test(
+      'loadGateState does not force cut just because business_date is yesterday (within 48h)',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxToday(db);
 
-      await SessionManager.login(
-        userId: 1,
-        username: 'admin',
-        displayName: 'Admin',
-        role: 'admin',
-      );
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
 
-      // Insertar un turno abierto con business_date de ayer.
-      final yesterday = await _yesterdayBusinessDate();
-      await db.insert(DbTables.cashSessions, {
-        'opened_by_user_id': 1,
-        'user_name': 'Admin',
-        'opened_at_ms': DateTime.now().millisecondsSinceEpoch,
-        'initial_amount': 0.0,
-        'cashbox_daily_id': cashboxId,
-        'business_date': yesterday,
-        'requires_closure': 0,
-        'status': 'OPEN',
-      }, conflictAlgorithm: ConflictAlgorithm.abort);
+        // Insertar un turno abierto con business_date de ayer.
+        final yesterday = await _yesterdayBusinessDate();
+        await db.insert(DbTables.cashSessions, {
+          'opened_by_user_id': 1,
+          'user_name': 'Admin',
+          'opened_at_ms': DateTime.now().millisecondsSinceEpoch,
+          'initial_amount': 0.0,
+          'cashbox_daily_id': cashboxId,
+          'business_date': yesterday,
+          'requires_closure': 0,
+          'status': 'OPEN',
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
 
-      final gate = await OperationFlowService.loadGateState();
-      expect(gate.hasStaleShift, isTrue);
-      expect(gate.canOperate, isFalse);
-    });
+        final gate = await OperationFlowService.loadGateState();
+        expect(gate.hasUserShiftOpen, isTrue);
+        expect(gate.hasStaleShift, isFalse);
+        expect(gate.canOperate, isTrue);
+      },
+    );
 
     test(
       'openShiftForCurrentUser allows another user open shift in same cashbox',

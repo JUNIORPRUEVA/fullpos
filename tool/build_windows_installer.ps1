@@ -1,5 +1,14 @@
 $ErrorActionPreference = 'Stop'
 
+function Assert-LastExitCode {
+  param(
+    [Parameter(Mandatory=$true)][string]$StepName
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "$StepName falló (exit code: $LASTEXITCODE)."
+  }
+}
+
 function Find-Iscc {
   $cmd = Get-Command -Name iscc.exe -ErrorAction SilentlyContinue
   if ($cmd) { return $cmd.Source }
@@ -37,9 +46,24 @@ Push-Location $projectRoot
 try {
   Write-Host 'flutter pub get...' -ForegroundColor Cyan
   flutter pub get
+  Assert-LastExitCode 'flutter pub get'
 
   Write-Host 'flutter build windows --release...' -ForegroundColor Cyan
   flutter build windows --release
+  Assert-LastExitCode 'flutter build windows --release'
+
+  $releaseDir = Join-Path $projectRoot 'build\windows\x64\runner\Release'
+  $required = @(
+    (Join-Path $releaseDir 'fullpos.exe'),
+    (Join-Path $releaseDir 'flutter_windows.dll'),
+    (Join-Path $releaseDir 'flutter_assets'),
+    (Join-Path $releaseDir 'data')
+  )
+  foreach ($p in $required) {
+    if (!(Test-Path $p)) {
+      throw "Build incompleto: falta '$p'."
+    }
+  }
 
   $iscc = Find-Iscc
   Write-Host "Compilando instalador con ISCC: $iscc" -ForegroundColor Cyan

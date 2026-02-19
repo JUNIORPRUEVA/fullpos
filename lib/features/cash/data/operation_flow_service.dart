@@ -43,27 +43,39 @@ class OperationGateState {
   bool get hasStaleShift => staleOpenShift != null;
   // Regla operativa:
   // - Puede operar si tiene turno abierto vigente.
-  // - Si el turno abierto es pendiente de días anteriores, debe cerrarlo primero.
+  // - Si el turno abierto excede 48 horas, debe hacer el corte antes de operar.
   bool get canOperate => hasUserShiftOpen && !hasStaleShift;
 }
 
 class OperationFlowService {
   OperationFlowService._();
 
+  // Regla: un turno puede permanecer abierto hasta 48 horas.
+  // Solo cuando excede ese tiempo se fuerza a hacer el corte antes de operar.
+  static const Duration maxShiftOpenDuration = Duration(hours: 48);
+  static final int _maxShiftOpenMs = maxShiftOpenDuration.inMilliseconds;
+
   static String businessDateOf([DateTime? date]) {
     return DateFormat('yyyy-MM-dd').format((date ?? DateTime.now()).toLocal());
+  }
+
+  static bool _isShiftOverMaxAge(CashSessionModel shift, int nowMs) {
+    final diff = nowMs - shift.openedAtMs;
+    if (diff <= 0) return false;
+    return diff > _maxShiftOpenMs;
   }
 
   static Future<OperationGateState> loadGateState() async {
     final today = businessDateOf();
     final userId = await SessionManager.userId();
 
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
     final cashbox = await getDailyCashbox(today);
     final userShift = await CashRepository.getOpenSession(userId: userId);
-    final stale = await _getOpenShiftBeforeDate(
-      userId: userId,
-      businessDate: today,
-    );
+    final stale = (userShift != null && _isShiftOverMaxAge(userShift, nowMs))
+        ? userShift
+        : null;
 
     return OperationGateState(
       businessDate: today,
@@ -311,24 +323,6 @@ class OperationFlowService {
     });
   }
 
-  static Future<CashSessionModel?> _getOpenShiftBeforeDate({
-    required int? userId,
-    required String businessDate,
-  }) async {
-    if (userId == null) return null;
-    final db = await AppDb.database;
-    final rows = await db.query(
-      DbTables.cashSessions,
-      where: "status = 'OPEN' AND opened_by_user_id = ? AND business_date < ?",
-      whereArgs: [userId, businessDate],
-      orderBy: 'opened_at_ms ASC',
-      limit: 1,
-    );
-
-    if (rows.isEmpty) return null;
-    return CashSessionModel.fromMap(rows.first);
-  }
-
   static Future<CashSessionModel> openShiftForCurrentUser({
     double openingAmount = 0,
   }) async {
@@ -338,16 +332,6 @@ class OperationFlowService {
         await SessionManager.username() ??
         'Usuario';
     final businessDate = businessDateOf();
-
-    final stale = await _getOpenShiftBeforeDate(
-      userId: userId,
-      businessDate: businessDate,
-    );
-    if (stale != null) {
-      throw Exception(
-        'Existe un turno anterior sin cerrar. Debe cerrarlo para continuar.',
-      );
-    }
 
     final cashbox = await getOpenDailyCashboxToday();
     if (cashbox == null) {

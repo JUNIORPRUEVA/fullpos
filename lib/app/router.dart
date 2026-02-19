@@ -346,7 +346,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/cash',
-            builder: (context, state) => const CashBoxPage(),
+            builder: (context, state) {
+              final qp = state.uri.queryParameters;
+              final autoCut = qp['closeShift'] == '1' || qp['action'] == 'cut';
+              return CashBoxPage(autoOpenShiftCut: autoCut);
+            },
           ),
           GoRoute(
             path: '/cash/history',

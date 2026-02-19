@@ -65,17 +65,17 @@ class _OperationStartPageState extends State<OperationStartPage> {
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: const Text('Turno pendiente de cierre detectado'),
+            title: const Text('Turno abierto por más de 48 horas'),
             content: const Text(
-              'Turno pendiente de cierre detectado. Debes cerrarlo para continuar.',
+              'Este turno tiene más de 48 horas abierto. Debes hacer el corte para continuar.',
             ),
             actions: [
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  context.go('/cash');
+                  context.go('/cash?closeShift=1');
                 },
-                child: const Text('Ir a cierre'),
+                child: const Text('Hacer corte'),
               ),
             ],
           ),
