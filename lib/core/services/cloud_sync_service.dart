@@ -1024,12 +1024,21 @@ class CloudSyncService {
         ? endpoint
         : backendBaseUrl;
 
-    // Normalizar para evitar errores comunes (ej: pegar URL terminando en /api).
+    // Normalizar para evitar errores comunes (ej: pegar URL terminando en /api
+    // o pegar una URL con ruta /api/xxx en vez de la raíz del backend).
     final normalized = AppConfig.normalizeBaseUrl(raw);
     try {
       final uri = Uri.parse(normalized);
-      if (uri.path.trim() == '/api') {
-        return AppConfig.normalizeBaseUrl(uri.replace(path: '').toString());
+      final path = uri.path.trim();
+      if (path.isNotEmpty && path != '/' && path != '/api') {
+        return AppConfig.normalizeBaseUrl(
+          uri.replace(path: '', query: '', fragment: '').toString(),
+        );
+      }
+      if (path == '/api') {
+        return AppConfig.normalizeBaseUrl(
+          uri.replace(path: '', query: '', fragment: '').toString(),
+        );
       }
     } catch (_) {}
 
