@@ -724,17 +724,19 @@ class _UsersPageState extends State<UsersPage> {
                               cloudUsernameChecking = true;
                               cloudUsernameError = null;
                             });
-                            final ok = await CloudSyncService.instance
-                                .checkCloudUsernameAvailable(
+                            final result = await CloudSyncService.instance
+                                .checkCloudUsernameAvailableDetailed(
                                   cloudUsername: value,
                                 );
+                            final ok = result.available;
                             if (!context.mounted) return;
                             setDialogState(() {
                               cloudUsernameChecking = false;
                               cloudUsernameAvailable = ok;
                               if (!ok) {
                                 cloudUsernameError =
-                                    'Ese usuario ya existe en la nube o no se pudo validar';
+                                    result.error ??
+                                    'No se pudo validar en la nube. Revisa URL y API Key.';
                               }
                             });
                           },
@@ -971,17 +973,19 @@ class _UsersPageState extends State<UsersPage> {
                     cloudUsernameChecking = true;
                     cloudUsernameError = null;
                   });
-                  final ok = await CloudSyncService.instance
-                      .checkCloudUsernameAvailable(
+                  final result = await CloudSyncService.instance
+                      .checkCloudUsernameAvailableDetailed(
                         cloudUsername: cloudUsername.toLowerCase(),
                       );
+                  final ok = result.available;
                   if (!context.mounted) return;
                   setDialogState(() {
                     cloudUsernameChecking = false;
                     cloudUsernameAvailable = ok;
                     if (!ok) {
                       cloudUsernameError =
-                          'Ese usuario ya existe en la nube o no se pudo validar';
+                          result.error ??
+                          'No se pudo validar en la nube. Revisa URL y API Key.';
                     }
                   });
                   if (!ok) return;

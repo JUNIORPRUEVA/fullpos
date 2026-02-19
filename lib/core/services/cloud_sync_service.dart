@@ -18,6 +18,7 @@ import '../../features/products/models/product_model.dart';
 import '../../features/sales/data/sales_repository.dart';
 import '../../features/sales/data/sales_model.dart';
 import '../config/backend_config.dart';
+import '../config/app_config.dart';
 import '../logging/app_logger.dart';
 import '../theme/app_themes.dart';
 
@@ -231,19 +232,49 @@ class CloudSyncService {
   Future<bool> checkCloudUsernameAvailable({
     required String cloudUsername,
   }) async {
+    final result = await checkCloudUsernameAvailableDetailed(
+      cloudUsername: cloudUsername,
+    );
+    return result.available;
+  }
+
+  Future<({bool available, String? error})>
+  checkCloudUsernameAvailableDetailed({required String cloudUsername}) async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return true;
+      if (!settings.cloudEnabled) {
+        return (available: true, error: null);
+      }
+
+      final normalized = cloudUsername.trim().toLowerCase();
+      if (normalized.length < 3) {
+        return (
+          available: false,
+          error: 'Usuario de la nube requerido (mínimo 3 caracteres)',
+        );
+      }
 
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return false;
+        return (
+          available: false,
+          error: 'Configura el RNC de la empresa para validar en la nube.',
+        );
       }
 
-      final baseUrl = _resolveBaseUrl(settings);
-      final headers = <String, String>{'Content-Type': 'application/json'};
+      final baseUrl = _resolveBaseUrl(settings).trim();
+      if (baseUrl.isEmpty) {
+        return (
+          available: false,
+          error: 'Configura la URL de nube en Ajustes.',
+        );
+      }
+
+      // La API key puede ser opcional si el backend permite nube pública.
+      // Solo se requiere si el servidor responde 401/403.
       final cloudKey = settings.cloudApiKey?.trim();
+      final headers = <String, String>{'Content-Type': 'application/json'};
       if (cloudKey != null && cloudKey.isNotEmpty) {
         headers['x-cloud-key'] = cloudKey;
       }
@@ -252,7 +283,7 @@ class CloudSyncService {
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
-        'username': cloudUsername.trim(),
+        'username': normalized,
       };
 
       final api = ApiClient(baseUrl: baseUrl);
@@ -263,17 +294,69 @@ class CloudSyncService {
         timeout: const Duration(seconds: 6),
       );
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return false;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final isAvailable = decoded['available'] == true;
+          return (
+            available: isAvailable,
+            error: isAvailable ? null : 'Ese usuario ya existe en la nube.',
+          );
+        }
+
+        await AppLogger.instance.logWarn(
+          'Cloud username-available invalid JSON baseUrl=$baseUrl',
+          module: 'cloud_sync',
+        );
+        return (
+          available: false,
+          error: 'Respuesta inválida del servidor de nube.',
+        );
       }
 
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        return decoded['available'] == true;
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        return (
+          available: false,
+          error:
+              'API Key requerida o inválida. Verifica la API Key en Ajustes > Nube.',
+        );
       }
-      return false;
-    } catch (_) {
-      return false;
+
+      if (response.statusCode == 404) {
+        return (
+          available: false,
+          error:
+              'La URL de nube no parece ser un FULLPOS Backend (verifica que no termine en /api).',
+        );
+      }
+
+      await AppLogger.instance.logWarn(
+        'Cloud username-available failed status=${response.statusCode} baseUrl=$baseUrl',
+        module: 'cloud_sync',
+      );
+      return (
+        available: false,
+        error: 'No se pudo validar en la nube (HTTP ${response.statusCode}).',
+      );
+    } on SocketException {
+      return (
+        available: false,
+        error: 'No se pudo conectar a la nube. Verifica la URL de nube.',
+      );
+    } on HttpException {
+      return (
+        available: false,
+        error: 'No se pudo conectar a la nube. Verifica la URL de nube.',
+      );
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud username-available exception: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+      return (
+        available: false,
+        error: 'No se pudo validar en la nube. Revisa URL y API Key.',
+      );
     }
   }
 
@@ -937,8 +1020,23 @@ class CloudSyncService {
 
   String _resolveBaseUrl(BusinessSettings settings) {
     final endpoint = settings.cloudEndpoint?.trim();
-    if (endpoint != null && endpoint.isNotEmpty) return endpoint;
-    return backendBaseUrl;
+    final raw = (endpoint != null && endpoint.isNotEmpty)
+        ? endpoint
+        : backendBaseUrl;
+
+    // Normalizar para evitar errores comunes (ej: pegar URL terminando en /api).
+    final normalized = AppConfig.normalizeBaseUrl(raw);
+    try {
+      final uri = Uri.parse(normalized);
+      if (uri.path.trim() == '/api') {
+        return AppConfig.normalizeBaseUrl(uri.replace(path: '').toString());
+      }
+    } catch (_) {}
+
+    if (normalized.endsWith('/api')) {
+      return normalized.substring(0, normalized.length - 4);
+    }
+    return normalized;
   }
 
   String? _normalizeText(String? value) {

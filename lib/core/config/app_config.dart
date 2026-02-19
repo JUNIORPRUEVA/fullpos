@@ -6,7 +6,10 @@ import 'dart:io' show Platform;
 class AppConfig {
   AppConfig._();
 
-  static const String defaultApiBaseUrl = 'https://api.fulltechrd.com/';
+  // Base URL por defecto del backend FULLPOS (nube).
+  // Puede ser sobreescrita en build con FULLPOS_API_URL / BACKEND_BASE_URL.
+  static const String defaultApiBaseUrl =
+      'https://fullpos-backend-fullpos-backend.onqyr1.easypanel.host/';
 
   /// Backend dedicado para licencias (FULLPOS license service).
   ///
