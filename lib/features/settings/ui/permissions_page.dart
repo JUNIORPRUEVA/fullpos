@@ -513,7 +513,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final categories = _categories();
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final border = scheme.outlineVariant.withOpacity(0.45);
 
     return Scaffold(
       backgroundColor: scheme.surface,

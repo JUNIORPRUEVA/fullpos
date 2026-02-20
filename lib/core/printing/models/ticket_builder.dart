@@ -192,7 +192,7 @@ class TicketBuilder {
     final double pageHeight = 2000 * PdfPageFormat.mm;
 
     // Márgenes (mm). En térmicas, márgenes grandes destruyen el ancho útil.
-    // Además, algunos sliders guardan valores en “px”; por seguridad, clamp a un rango pequeño.
+    // Por estabilidad (alineación/columnas), limitamos el rango.
     final double marginLeftPts =
         (layout.leftMarginMm.clamp(0, 4)) * PdfPageFormat.mm;
     final double marginRightPts =
@@ -201,23 +201,32 @@ class TicketBuilder {
         .clamp(10.0, pageWidth);
 
     // Fuente monoespaciada: aproximación Courier => ancho de carácter ~0.60 * fontSize.
-    // Elegimos fontSize para que entren EXACTAMENTE `maxCharsPerLine` sin escalar.
+    // Usamos un factor conservador para evitar desalineación por wraps.
     const double courierCharWidthFactor = 0.60;
     final double fittedFontSize =
         contentWidthPts / (layout.maxCharsPerLine * courierCharWidthFactor);
 
-    // Mantener tamaño legible sin romper el ancho.
-    // Importante: NO exceder `fittedFontSize` para evitar wraps que rompan columnas.
-    final double maxReadableFont = 12.0;
-    final double minReadableFont = 8.0;
-    final double fontSize = math.min(
-      fittedFontSize < minReadableFont ? minReadableFont : fittedFontSize,
-      maxReadableFont,
-    );
+    // Tamaño de fuente:
+    // - `layout.adjustedFontSize` refleja el ajuste del usuario (niveles 1-10)
+    // - `fittedFontSize` es el máximo que cabe sin romper columnas
+    // Importante: nunca exceder el fitted; si no, el driver hace wrap y se desalinean columnas.
+    const double safety = 0.98;
+    // Permitir letra más grande por defecto (siempre limitado por fittedFontSize).
+    final double maxReadableFont = 16.0;
+    final double desiredFontSize = layout.adjustedFontSize;
+    final double fontSize = math
+        .min(
+          math.min(desiredFontSize, fittedFontSize * safety),
+          maxReadableFont,
+        )
+        .clamp(5.5, maxReadableFont);
 
     final content = <pw.Widget>[];
 
-    if (includeLogo && layout.showLogo && company.logoBytes != null) {
+    final bool hasLogo =
+        includeLogo && layout.showLogo && company.logoBytes != null;
+
+    if (hasLogo) {
       final image = pw.MemoryImage(company.logoBytes!);
       content.add(
         pw.Center(
@@ -229,7 +238,8 @@ class TicketBuilder {
           ),
         ),
       );
-      content.add(pw.SizedBox(height: 2.0));
+      // Evitar “aire” extra debajo del logo.
+      content.add(pw.SizedBox(height: 0.2));
     }
 
     // Render por líneas para poder resaltar encabezados/totales.
@@ -258,6 +268,28 @@ class TicketBuilder {
       return (tag: '', text: s);
     }
 
+    bool isSeparatorLine(String text) {
+      final t = text.trim();
+      if (t.isEmpty) return false;
+      // Considerar separadores típicos: ---- o ====.
+      final first = t.codeUnitAt(0);
+      for (final c in t.codeUnits) {
+        if (c != first) return false;
+      }
+      return t.length >= 6 && (t[0] == '-' || t[0] == '=');
+    }
+
+    // Detectar bloque de encabezado: desde el inicio hasta el primer separador.
+    // Esto nos permite imprimir el header (empresa/dirección/RNC) más grande y elegante,
+    // sin romper columnas del cuerpo.
+    int firstSeparatorIndex = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (isSeparatorLine(lines[i])) {
+        firstSeparatorIndex = i;
+        break;
+      }
+    }
+
     pw.TextStyle styleFromTag(String tag) {
       final t = tag.toUpperCase();
       final bool bold = t.startsWith('B') || t.startsWith('H') || forceBoldBody;
@@ -275,32 +307,74 @@ class TicketBuilder {
       );
     }
 
+    pw.TextStyle styleForLine(String tag, String text, int index) {
+      // Si ya hay tag explícito, respetarlo.
+      if (tag.isNotEmpty) return styleFromTag(tag);
+
+      final isInHeaderBlock =
+          firstSeparatorIndex != -1 && index < firstSeparatorIndex;
+      if (!isInHeaderBlock) return styleFromTag(tag);
+
+      // Encabezado más grande: primera línea (nombre) más grande; resto ligeramente menor.
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) return styleFromTag(tag);
+
+      final multiplier = index == 0 ? 1.35 : 1.15;
+      // Intentar agrandar el header, pero sin exceder el tamaño que cabe.
+      // (El body usa padding/columnas; el header va sin padding y centrado.)
+      final maxToFit =
+          contentWidthPts /
+          (math.max(1, trimmed.length) * courierCharWidthFactor) *
+          safety;
+      final size = math
+          .min(math.min(fontSize * multiplier, maxToFit), 18.0)
+          .clamp(fontSize, 18.0);
+      return pw.TextStyle(
+        font: boldFont,
+        fontSize: size,
+        lineSpacing: 1.0 * layout.lineSpacingFactor,
+      );
+    }
+
+    pw.Widget buildLineWidget(int index) {
+      final raw = lines[index];
+      final parsed = parseTag(raw);
+      final tag = parsed.tag;
+      final text = parsed.text;
+
+      // Si la línea es “grande”, no conviene respetar pads/espacios a la derecha.
+      final isHeader = tag.toUpperCase().startsWith('H');
+      final display = isHeader ? text.trimRight() : text;
+
+      final isHeaderBlock =
+          tag.isEmpty &&
+          firstSeparatorIndex != -1 &&
+          index < firstSeparatorIndex;
+
+      final headerText = display.trim();
+      final widget = pw.Text(
+        (isHeaderBlock ? headerText : display).isEmpty
+            ? ' '
+            : (isHeaderBlock ? headerText : display),
+        style: styleForLine(tag, display, index),
+        textAlign: isHeaderBlock ? pw.TextAlign.center : pw.TextAlign.left,
+      );
+
+      if (tag.isEmpty) {
+        if (isHeaderBlock) {
+          return pw.Align(alignment: pw.Alignment.center, child: widget);
+        }
+        return widget;
+      }
+
+      return pw.Align(alignment: alignmentFromTag(tag), child: widget);
+    }
+
     content.add(
       pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         mainAxisSize: pw.MainAxisSize.min,
-        children: [
-          for (final raw in lines)
-            () {
-              final parsed = parseTag(raw);
-              final tag = parsed.tag;
-              final text = parsed.text;
-
-              // Si la línea es “grande”, no conviene respetar pads/espacios a la derecha.
-              final isHeader = tag.toUpperCase().startsWith('H');
-              final display = isHeader ? text.trimRight() : text;
-
-              final widget = pw.Text(
-                display.isEmpty ? ' ' : display,
-                style: styleFromTag(tag),
-                textAlign: pw.TextAlign.left,
-              );
-
-              if (tag.isEmpty) return widget;
-
-              return pw.Align(alignment: alignmentFromTag(tag), child: widget);
-            }(),
-        ],
+        children: [for (var i = 0; i < lines.length; i++) buildLineWidget(i)],
       ),
     );
 
@@ -311,8 +385,11 @@ class TicketBuilder {
           pageHeight,
           marginLeft: marginLeftPts,
           marginRight: marginRightPts,
-          marginTop: layout.topMarginPx.toDouble(),
-          marginBottom: layout.bottomMarginPx.toDouble(),
+          marginTop:
+              (layout.topMarginPx.toDouble().clamp(0.0, 120.0) -
+                      (hasLogo ? 6.0 : 0.0))
+                  .clamp(0.0, 120.0),
+          marginBottom: layout.bottomMarginPx.toDouble().clamp(0.0, 120.0),
         ),
         build: (context) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,

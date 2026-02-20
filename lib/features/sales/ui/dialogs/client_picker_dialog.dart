@@ -61,8 +61,6 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final viewport = MediaQuery.sizeOf(context);
     final listHeight = math.min<double>(
       viewport.height * 0.62,
@@ -79,10 +77,7 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
           fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
-        contentTextStyle: const TextStyle(
-          color: Colors.black,
-          fontSize: 14,
-        ),
+        contentTextStyle: const TextStyle(color: Colors.black, fontSize: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [

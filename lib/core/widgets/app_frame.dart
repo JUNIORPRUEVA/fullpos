@@ -23,7 +23,7 @@ class AppFrame extends ConsumerStatefulWidget {
 }
 
 class _AppFrameState extends ConsumerState<AppFrame>
-  with WidgetsBindingObserver, WindowListener {
+    with WidgetsBindingObserver, WindowListener {
   late final RenderDiagnostics _diagnostics;
   late final RenderWatchdog _watchdog;
   bool _firstFrameSeen = false;
@@ -87,7 +87,8 @@ class _AppFrameState extends ConsumerState<AppFrame>
   Future<void> _recoverAfterResume() async {
     final now = DateTime.now();
     final last = _lastResumeRecoveryAt;
-    if (last != null && now.difference(last) < const Duration(milliseconds: 800)) {
+    if (last != null &&
+        now.difference(last) < const Duration(milliseconds: 800)) {
       return;
     }
     _lastResumeRecoveryAt = now;
@@ -110,11 +111,11 @@ class _AppFrameState extends ConsumerState<AppFrame>
     }
 
     WidgetsBinding.instance.scheduleFrame();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
       if (!mounted) return;
       _onFirstFramePainted();
       WidgetsBinding.instance.scheduleFrame();
-      WidgetsBinding.instance.addPostFrameCallback((__) {
+      WidgetsBinding.instance.addPostFrameCallback((nextTimeStamp) {
         if (!mounted) return;
         _onFirstFramePainted();
       });
@@ -192,7 +193,9 @@ class _AppFrameState extends ConsumerState<AppFrame>
       }
       await windowManager.focus();
       WidgetsBinding.instance.scheduleFrame();
-      WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _onFirstFramePainted(),
+      );
     } catch (_) {}
   }
 
@@ -223,11 +226,7 @@ class _AppFrameState extends ConsumerState<AppFrame>
     );
     return DecoratedBox(
       decoration: BoxDecoration(gradient: backgroundGradient),
-      child: Stack(
-        children: [
-          Positioned.fill(child: framedChild),
-        ],
-      ),
+      child: Stack(children: [Positioned.fill(child: framedChild)]),
     );
   }
 }

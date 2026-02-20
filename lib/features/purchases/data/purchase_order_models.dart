@@ -105,7 +105,9 @@ class PurchaseOrderModel {
 class PurchaseOrderItemModel {
   final int? id;
   final int orderId;
-  final int productId;
+  final int? productId;
+  final String productCodeSnapshot;
+  final String productNameSnapshot;
   final double qty;
   final double unitCost;
   final double totalLine;
@@ -115,6 +117,8 @@ class PurchaseOrderItemModel {
     this.id,
     required this.orderId,
     required this.productId,
+    required this.productCodeSnapshot,
+    required this.productNameSnapshot,
     required this.qty,
     required this.unitCost,
     required this.totalLine,
@@ -125,7 +129,9 @@ class PurchaseOrderItemModel {
     return PurchaseOrderItemModel(
       id: map['id'] as int?,
       orderId: map['order_id'] as int,
-      productId: map['product_id'] as int,
+      productId: map['product_id'] as int?,
+      productCodeSnapshot: (map['product_code_snapshot'] as String?) ?? '',
+      productNameSnapshot: (map['product_name_snapshot'] as String?) ?? '',
       qty: (map['qty'] as num?)?.toDouble() ?? 0.0,
       unitCost: (map['unit_cost'] as num?)?.toDouble() ?? 0.0,
       totalLine: (map['total_line'] as num?)?.toDouble() ?? 0.0,
@@ -138,6 +144,8 @@ class PurchaseOrderItemModel {
       if (id != null) 'id': id,
       'order_id': orderId,
       'product_id': productId,
+      'product_code_snapshot': productCodeSnapshot,
+      'product_name_snapshot': productNameSnapshot,
       'qty': qty,
       'unit_cost': unitCost,
       'total_line': totalLine,

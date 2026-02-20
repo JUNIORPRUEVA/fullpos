@@ -55,10 +55,11 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
     try {
       await action();
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
     }
   }
 

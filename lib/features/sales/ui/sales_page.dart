@@ -79,19 +79,24 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   // Productos: tarjetas pequeñas y consistentes (no se inflan por resolución).
   // Ajustes visuales qudel grid de productos (tamaño fijo premium)
   static const double _productCardSize = 104;
-  static const double _productTileMaxExtent = 116;
+  // Más ancho por tile = menos columnas = catálogo menos apretado.
+  static const double _productTileMaxExtent = 132;
   static const double _minProductCardSize = 72.0;
   static const double _ticketsFooterHeight = 60.0;
-  static const double _gridCrossSpacing = 3.0;
-  static const double _gridMainSpacing = 6.0;
+  static const double _gridCrossSpacing = 8.0;
+  static const double _gridMainSpacing = 10.0;
 
   double _productCardSizeFor(double availableWidth) {
     if (!availableWidth.isFinite || availableWidth <= 0) {
       return _minProductCardSize;
     }
-    final relativeWidth = (availableWidth / 1200).clamp(0.6, 1.0);
-    final scale = relativeWidth < 0.85 ? 0.85 : relativeWidth;
-    final size = (_productCardSize * scale).clamp(_minProductCardSize, 130.0);
+    // Mantener el tamaño como está hoy: no crecer con resoluciones grandes.
+    // Solo reducimos en pantallas más estrechas.
+    final scale = (availableWidth / 1200).clamp(0.6, 1.0);
+    final size = (_productCardSize * scale).clamp(
+      _minProductCardSize,
+      _productCardSize,
+    );
     return size.isFinite && size > 0 ? size : _minProductCardSize;
   }
 
@@ -2369,6 +2374,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                                       product,
                                                                       index:
                                                                           index,
+                                                                      cardSize:
+                                                                          cardSize,
                                                                     ),
                                                                   ),
                                                                 );
@@ -2529,7 +2536,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
-  Widget _buildProductCard(ProductModel product, {required int index}) {
+  Widget _buildProductCard(
+    ProductModel product, {
+    required int index,
+    required double cardSize,
+  }) {
     final qtyInCart = _currentCart.getQuantityForProduct(product.id ?? -1);
     final effectiveStock = product.stock - qtyInCart;
     final isLowStock = effectiveStock > 0 && effectiveStock <= 10;
@@ -2541,29 +2552,32 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final productsTheme = theme.extension<SalesProductsTheme>();
     final isAlt = index.isOdd;
 
+    // Azul de marca: el mismo que usa el AppBar (si está definido).
+    final brandBlue =
+        (theme.appBarTheme.backgroundColor != null &&
+            (theme.appBarTheme.backgroundColor?.opacity ?? 0) > 0)
+        ? theme.appBarTheme.backgroundColor!
+        : scheme.primary;
+
     Color resolve(Color? c, Color fallback) {
       if (c == null) return fallback;
       return c.opacity == 0 ? fallback : c;
     }
 
-    final cardBg = resolve(
-      isAlt
-          ? productsTheme?.cardAltBackgroundColor
-          : productsTheme?.cardBackgroundColor,
-      scheme.surface,
-    );
+    // Forzar fondo azul en todas las tarjetas para consistencia con la marca.
+    final cardBg = brandBlue;
     final cardBorder = resolve(
       isAlt
           ? productsTheme?.cardAltBorderColor
           : productsTheme?.cardBorderColor,
-      scheme.onSurface.withOpacity(0.10),
+      scheme.onPrimary.withOpacity(0.18),
     );
     final cardText = resolve(
       isAlt ? productsTheme?.cardAltTextColor : productsTheme?.cardTextColor,
-      scheme.onSurface,
+      scheme.onPrimary,
     );
     final readableCardText = ColorUtils.ensureReadableColor(cardText, cardBg);
-    final priceColor = resolve(productsTheme?.priceColor, scheme.primary);
+    final priceColor = resolve(productsTheme?.priceColor, scheme.onPrimary);
 
     final nameOverlayBg = scheme.onSurface.withOpacity(0.70);
     final nameOverlayText = ColorUtils.ensureReadableColor(
@@ -2576,6 +2590,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ? rawPrice.toStringAsFixed(0)
         : rawPrice.toStringAsFixed(2);
     final isHovered = _hoveredProductIndexes.contains(index);
+
+    final uiScale = (cardSize / _productCardSize).clamp(0.72, 1.0);
+    final nameFontSize = 11.5 * uiScale;
+    final codeFontSize = 8.5 * uiScale;
+    final priceFontSize = 16.0 * uiScale;
+    final badgeIconSize = 11.0 * uiScale;
+    final badgeFontSize = 9.5 * uiScale;
+    final contentHPad = (8.0 * uiScale).clamp(6.0, 8.0);
+    final contentVPad = (6.0 * uiScale).clamp(4.0, 6.0);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hoveredProductIndexes.add(index)),
@@ -2607,8 +2630,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.center,
                 child: SizedBox(
-                  width: _productCardSize,
-                  height: _productCardSize * 1.15,
+                  width: cardSize,
+                  height: cardSize * 1.15,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -2631,7 +2654,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               right: 0,
                               bottom: 0,
                               child: Container(
-                                padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                                padding: EdgeInsets.fromLTRB(
+                                  contentHPad,
+                                  (10.0 * uiScale).clamp(8.0, 10.0),
+                                  contentHPad,
+                                  (4.0 * uiScale).clamp(3.0, 4.0),
+                                ),
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     begin: Alignment.topCenter,
@@ -2647,7 +2675,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontSize: 11.5,
+                                      fontSize: nameFontSize,
                                       fontWeight: FontWeight.w700,
                                       height: 1.1,
                                       color: nameOverlayText,
@@ -2687,7 +2715,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 child: Text(
                                   product.code.toUpperCase(),
                                   style: TextStyle(
-                                    fontSize: 8.5,
+                                    fontSize: codeFontSize,
                                     fontWeight: FontWeight.w700,
                                     fontFamily: 'monospace',
                                     color: AppColors.textSecondary,
@@ -2702,9 +2730,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 top: 6,
                                 left: 6,
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 3,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: (6.0 * uiScale).clamp(4.0, 6.0),
+                                    vertical: (3.0 * uiScale).clamp(2.0, 3.0),
                                   ),
                                   decoration: BoxDecoration(
                                     color: scheme.secondary,
@@ -2723,14 +2751,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                     children: [
                                       Icon(
                                         Icons.shopping_cart,
-                                        size: 10,
+                                        size: (10.0 * uiScale).clamp(8.0, 10.0),
                                         color: scheme.onSecondary,
                                       ),
                                       const SizedBox(width: 3),
                                       Text(
                                         qtyInCart.toInt().toString(),
                                         style: TextStyle(
-                                          fontSize: 8,
+                                          fontSize: (8.0 * uiScale).clamp(
+                                            6.5,
+                                            8.0,
+                                          ),
                                           fontWeight: FontWeight.w900,
                                           color: scheme.onSecondary,
                                         ),
@@ -2748,7 +2779,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                         child: Container(
                           // Slightly tighter padding to avoid RenderFlex overflow on
                           // small tile heights (e.g. 144px).
-                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                          padding: EdgeInsets.fromLTRB(
+                            contentHPad,
+                            contentVPad,
+                            contentHPad,
+                            contentVPad,
+                          ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2770,7 +2806,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                           Text(
                                             'PRECIO',
                                             style: TextStyle(
-                                              fontSize: 6.5,
+                                              fontSize: 6.5 * uiScale,
                                               fontWeight: FontWeight.w600,
                                               color: readableCardText
                                                   .withOpacity(0.62),
@@ -2783,7 +2819,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                             child: Text(
                                               '\$$formattedPrice',
                                               style: TextStyle(
-                                                fontSize: 16,
+                                                fontSize: priceFontSize,
                                                 fontWeight: FontWeight.w900,
                                                 color: priceColor,
                                                 height: 1.0,
@@ -2804,9 +2840,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                           fit: BoxFit.scaleDown,
                                           alignment: Alignment.centerRight,
                                           child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 4,
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: (6.0 * uiScale).clamp(
+                                                4.0,
+                                                6.0,
+                                              ),
+                                              vertical: (4.0 * uiScale).clamp(
+                                                3.0,
+                                                4.0,
+                                              ),
                                             ),
                                             decoration: BoxDecoration(
                                               color: stockColor,
@@ -2821,7 +2863,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                       ? Icons
                                                             .remove_circle_outline
                                                       : Icons.inventory_2,
-                                                  size: 11,
+                                                  size: badgeIconSize,
                                                   color: readableOn(stockColor),
                                                 ),
                                                 const SizedBox(width: 3),
@@ -2830,7 +2872,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                       ? 'Agot.'
                                                       : '${effectiveStock.toInt()}',
                                                   style: TextStyle(
-                                                    fontSize: 9.5,
+                                                    fontSize: badgeFontSize,
                                                     fontWeight: FontWeight.w800,
                                                     color: readableOn(
                                                       stockColor,

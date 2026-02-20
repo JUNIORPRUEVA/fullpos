@@ -153,12 +153,16 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
 
     final items = draft.lines
         .where((l) => l.product.id != null)
-        .map(
-          (l) => PurchaseOrderItemDetailDto(
+        .map((l) {
+          final rawId = l.product.id;
+          final productId = (rawId != null && rawId > 0) ? rawId : null;
+          return PurchaseOrderItemDetailDto(
             item: PurchaseOrderItemModel(
               id: null,
               orderId: 0,
-              productId: l.product.id!,
+              productId: productId,
+              productCodeSnapshot: l.product.code,
+              productNameSnapshot: l.product.name,
               qty: l.qty,
               unitCost: l.unitCost,
               totalLine: l.subtotal,
@@ -166,8 +170,8 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
             ),
             productCode: l.product.code,
             productName: l.product.name,
-          ),
-        )
+          );
+        })
         .toList(growable: false);
 
     return PurchaseOrderDetailDto(
@@ -244,11 +248,17 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       final items = draft.lines
           .where((l) => l.product.id != null)
           .map(
-            (l) => repo.itemInput(
-              productId: l.product.id!,
-              qty: l.qty,
-              unitCost: l.unitCost,
-            ),
+            (l) {
+              final rawId = l.product.id;
+              final productId = (rawId != null && rawId > 0) ? rawId : null;
+              return repo.itemInput(
+                productId: productId,
+                productCodeSnapshot: l.product.code,
+                productNameSnapshot: l.product.name,
+                qty: l.qty,
+                unitCost: l.unitCost,
+              );
+            },
           )
           .toList(growable: false);
 
@@ -325,6 +335,137 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
         );
       }
     }
+  }
+
+  Future<void> _addCustomProductDialog(BuildContext context) async {
+    final codeCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: '1');
+    final costCtrl = TextEditingController(text: '0');
+
+    final added = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) {
+        return AlertDialog(
+          title: const Text('Producto no inventario'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: codeCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Código (opcional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: qtyCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Cantidad',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*[\.,]?[0-9]{0,4}'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: costCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Costo',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^[0-9]*[\.,]?[0-9]{0,4}'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(c).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final qty =
+                    double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0;
+                final cost =
+                    double.tryParse(costCtrl.text.replaceAll(',', '.')) ?? 0;
+
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Nombre requerido'),
+                      backgroundColor: AppColors.warning,
+                    ),
+                  );
+                  return;
+                }
+                if (qty <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cantidad debe ser mayor a 0'),
+                      backgroundColor: AppColors.warning,
+                    ),
+                  );
+                  return;
+                }
+
+                ref.read(purchaseDraftProvider.notifier).addCustomProduct(
+                  code: codeCtrl.text,
+                  name: name,
+                  qty: qty,
+                  unitCost: cost,
+                );
+                Navigator.of(c).pop(true);
+              },
+              child: const Text('Agregar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (added != true || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Producto agregado al ticket'),
+        backgroundColor: AppColors.success,
+      ),
+    );
   }
 
   @override
@@ -635,6 +776,17 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 38,
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            _saving ? null : () => _addCustomProductDialog(context),
+                        icon: const Icon(Icons.playlist_add),
+                        label: const Text('Producto no inventario'),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Row(

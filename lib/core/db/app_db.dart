@@ -42,7 +42,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 30;
+  static const int _dbVersion = 31;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -1982,6 +1982,105 @@ class AppDb {
     if (oldVersion < newVersion) {
       await _ensureSchemaIntegrity(db);
     }
+
+    if (oldVersion < 31) {
+      // Migración v31:
+      // - Permitir líneas de orden de compra sin producto en inventario.
+      // - Guardar snapshots (código/nombre) en el detalle.
+      await _migratePurchaseOrderItemsToSnapshots(db);
+    }
+  }
+
+  static Future<void> _migratePurchaseOrderItemsToSnapshots(
+    DatabaseExecutor db,
+  ) async {
+    if (!await _tableExists(db, DbTables.purchaseOrderItems)) return;
+
+    // Si ya existe la columna snapshot, asumimos migrado.
+    final cols = await _getTableColumns(db, DbTables.purchaseOrderItems);
+    if (cols.contains('product_code_snapshot') &&
+        cols.contains('product_name_snapshot')) {
+      return;
+    }
+
+    try {
+      await db.execute('PRAGMA foreign_keys = OFF;');
+    } catch (_) {
+      // Ignorar
+    }
+
+    // Limpiar índices (si existen) antes de reconstruir.
+    try {
+      await db.execute('DROP INDEX IF EXISTS idx_compras_detalle_order');
+    } catch (_) {}
+    try {
+      await db.execute('DROP INDEX IF EXISTS idx_compras_detalle_product');
+    } catch (_) {}
+
+    const legacyTable = 'compras_detalle__legacy_v31';
+    await db.execute(
+      'ALTER TABLE ${DbTables.purchaseOrderItems} RENAME TO $legacyTable',
+    );
+
+    await db.execute('''
+      CREATE TABLE ${DbTables.purchaseOrderItems} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        product_id INTEGER,
+        product_code_snapshot TEXT NOT NULL DEFAULT '',
+        product_name_snapshot TEXT NOT NULL,
+        qty REAL NOT NULL,
+        unit_cost REAL NOT NULL,
+        total_line REAL NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES ${DbTables.purchaseOrders}(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES ${DbTables.products}(id)
+      )
+    ''');
+
+    // Backfill snapshots desde products.
+    await db.execute('''
+      INSERT INTO ${DbTables.purchaseOrderItems} (
+        id,
+        order_id,
+        product_id,
+        product_code_snapshot,
+        product_name_snapshot,
+        qty,
+        unit_cost,
+        total_line,
+        created_at_ms
+      )
+      SELECT
+        i.id,
+        i.order_id,
+        i.product_id,
+        COALESCE(p.code, ''),
+        COALESCE(p.name, ''),
+        i.qty,
+        i.unit_cost,
+        i.total_line,
+        i.created_at_ms
+      FROM $legacyTable i
+      LEFT JOIN ${DbTables.products} p ON p.id = i.product_id
+    ''');
+
+    await db.execute('DROP TABLE $legacyTable');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_compras_detalle_order
+      ON ${DbTables.purchaseOrderItems}(order_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_compras_detalle_product
+      ON ${DbTables.purchaseOrderItems}(product_id)
+    ''');
+
+    try {
+      await db.execute('PRAGMA foreign_keys = ON;');
+    } catch (_) {
+      // Ignorar
+    }
   }
 
   /// Sincroniza catálogo demo:
@@ -2542,7 +2641,9 @@ class AppDb {
       CREATE TABLE ${DbTables.purchaseOrderItems} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_id INTEGER NOT NULL,
-        product_id INTEGER NOT NULL,
+        product_id INTEGER,
+        product_code_snapshot TEXT NOT NULL DEFAULT '',
+        product_name_snapshot TEXT NOT NULL,
         qty REAL NOT NULL,
         unit_cost REAL NOT NULL,
         total_line REAL NOT NULL,
@@ -3891,7 +3992,9 @@ class AppDb {
       CREATE TABLE IF NOT EXISTS ${DbTables.purchaseOrderItems} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_id INTEGER NOT NULL,
-        product_id INTEGER NOT NULL,
+        product_id INTEGER,
+        product_code_snapshot TEXT NOT NULL DEFAULT '',
+        product_name_snapshot TEXT NOT NULL,
         qty REAL NOT NULL,
         unit_cost REAL NOT NULL,
         total_line REAL NOT NULL,

@@ -5,7 +5,6 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_db.dart';
@@ -106,8 +105,8 @@ class CloudSyncService {
         return;
       }
 
-        final prefs = await PrefsSafe.getInstance();
-        if (prefs == null) return;
+      final prefs = await PrefsSafe.getInstance();
+      if (prefs == null) return;
       final key = _syncKeyForCompany(rnc: rnc, cloudCompanyId: cloudCompanyId);
       final now = DateTime.now().millisecondsSinceEpoch;
       final last = prefs.getInt(key);

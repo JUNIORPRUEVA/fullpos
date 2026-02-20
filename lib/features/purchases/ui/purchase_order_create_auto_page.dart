@@ -180,6 +180,8 @@ class _PurchaseOrderCreateAutoPageState
             .map(
               (l) => _purchasesRepo.itemInput(
                 productId: l.suggestion.productId,
+                productCodeSnapshot: l.suggestion.productCode,
+                productNameSnapshot: l.suggestion.productName,
                 qty: l.qty,
                 unitCost: l.unitCost,
               ),

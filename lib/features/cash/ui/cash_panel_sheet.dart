@@ -733,6 +733,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   }
 
   Future<void> _showCloseCashbox() async {
+    if (_closingCashbox) return;
     if (!_canCloseCashbox) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

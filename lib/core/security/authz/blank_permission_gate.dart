@@ -37,7 +37,6 @@ class BlankPermissionGate extends StatefulWidget {
 
 class _BlankPermissionGateState extends State<BlankPermissionGate> {
   bool _authorized = false;
-  bool _checking = true;
   bool _prompted = false;
 
   @override
@@ -53,7 +52,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
         oldWidget.resourceId != widget.resourceId ||
         oldWidget.resourceType != widget.resourceType) {
       _authorized = false;
-      _checking = true;
       _prompted = false;
       unawaited(_checkAndPromptIfNeeded());
     }
@@ -61,7 +59,7 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
 
   Future<void> _checkAndPromptIfNeeded() async {
     if (!mounted) return;
-    setState(() => _checking = true);
+    setState(() {});
 
     try {
       final user = await AuthzService.currentUser();
@@ -70,7 +68,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
       if (user == null) {
         setState(() {
           _authorized = false;
-          _checking = false;
         });
         return;
       }
@@ -79,7 +76,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
       if (can) {
         setState(() {
           _authorized = true;
-          _checking = false;
         });
         return;
       }
@@ -88,7 +84,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
       if (!canPrompt) {
         setState(() {
           _authorized = false;
-          _checking = false;
         });
         return;
       }
@@ -108,7 +103,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
       if (!mounted) return;
       setState(() {
         _authorized = ok;
-        _checking = false;
       });
     } catch (e, st) {
       debugPrint(
@@ -117,7 +111,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
       if (!mounted) return;
       setState(() {
         _authorized = false;
-        _checking = false;
       });
     }
   }

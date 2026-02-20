@@ -29,7 +29,8 @@ class PrinterSettingsRepository {
     final defaultSettings = {
       'selected_printer_name': null,
       'paper_width_mm': 80,
-      'chars_per_line': 48,
+      // 80mm: por defecto usar 42 (Seguro) para evitar cortes/desalineación.
+      'chars_per_line': 42,
       'auto_print_on_payment': 0,
       'auto_open_drawer_on_charge_without_ticket': 0,
       'copies': 1,
@@ -58,7 +59,8 @@ class PrinterSettingsRepository {
       'font_family': 'arialBlack',
       'font_size': 'normal',
       'show_logo': 1,
-      'logo_size': 50,
+      // Logo más visible por defecto.
+      'logo_size': 70,
       'show_business_data': 1,
       'show_subtotal_itbis_total': 1,
       'auto_height': 1,
@@ -71,7 +73,10 @@ class PrinterSettingsRepository {
     };
 
     final db = await AppDb.database;
-    final insertedId = await db.insert(DbTables.printerSettings, defaultSettings);
+    final insertedId = await db.insert(
+      DbTables.printerSettings,
+      defaultSettings,
+    );
 
     return PrinterSettingsModel.fromMap({...defaultSettings, 'id': insertedId});
   }
@@ -127,7 +132,7 @@ class PrinterSettingsRepository {
     final defaults = {
       'selected_printer_name': currentPrinter, // Mantener impresora actual
       'paper_width_mm': 80,
-      'chars_per_line': 48,
+      'chars_per_line': 42,
       'auto_print_on_payment': 0,
       'auto_open_drawer_on_charge_without_ticket': 0,
       'copies': 1,
@@ -152,18 +157,18 @@ class PrinterSettingsRepository {
       'itbis_rate': 0.18,
       'updated_at_ms': now,
       // Nuevos campos
-        'font_family': 'arialBlack',
+      'font_family': 'arialBlack',
       'font_size': 'normal',
       'show_logo': 1,
-        'logo_size': 50,
+      'logo_size': 70,
       'show_business_data': 1,
       'show_subtotal_itbis_total': 1,
       'auto_height': 1,
       'top_margin': 8,
       'bottom_margin': 8,
-        'font_size_level': 6,
-        'line_spacing_level': 6,
-        'section_spacing_level': 6,
+      'font_size_level': 6,
+      'line_spacing_level': 6,
+      'section_spacing_level': 6,
       'section_separator_style':
           currentSettings?.sectionSeparatorStyle ?? 'single',
     };
@@ -191,7 +196,7 @@ class PrinterSettingsRepository {
     final professional = {
       'selected_printer_name': currentPrinter, // Mantener impresora actual
       'paper_width_mm': 80,
-      'chars_per_line': 48,
+      'chars_per_line': 42,
       'auto_print_on_payment': 1, // Activar auto-impresión
       'auto_open_drawer_on_charge_without_ticket': 0,
       'copies': 1,
@@ -203,8 +208,7 @@ class PrinterSettingsRepository {
       'show_discounts': 1,
       'show_code': 1,
       'show_datetime': 1,
-      'header_business_name':
-          currentSettings?.headerBusinessName ?? 'FULLPOS',
+      'header_business_name': currentSettings?.headerBusinessName ?? 'FULLPOS',
       'header_rnc': currentSettings?.headerRnc ?? '',
       'header_address': currentSettings?.headerAddress ?? '',
       'header_phone': currentSettings?.headerPhone ?? '',
@@ -218,18 +222,18 @@ class PrinterSettingsRepository {
       'updated_at_ms': now,
       // Estilo profesional ejecutivo
       // Plantilla ejecutiva pero con alineación perfecta
-        'font_family': 'arialBlack',
+      'font_family': 'arialBlack',
       'font_size': 'normal',
       'show_logo': 1,
-        'logo_size': 50,
+      'logo_size': 70,
       'show_business_data': 1,
       'show_subtotal_itbis_total': 1,
       'auto_height': 1,
       'top_margin': 10,
       'bottom_margin': 10,
-        'font_size_level': 6,
-        'line_spacing_level': 6,
-        'section_spacing_level': 6,
+      'font_size_level': 6,
+      'line_spacing_level': 6,
+      'section_spacing_level': 6,
       'section_separator_style':
           currentSettings?.sectionSeparatorStyle ?? 'single',
     };

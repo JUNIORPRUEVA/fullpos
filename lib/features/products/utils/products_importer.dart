@@ -441,12 +441,65 @@ class ProductsImporter {
     return int.tryParse(text) ?? 0;
   }
 
+  static double _coerceToDouble(Object? value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+
+    var s = value.toString().trim();
+    if (s.isEmpty) return 0.0;
+
+    // Quitar símbolos/monedas y dejar solo dígitos, separadores y signo.
+    s = s.replaceAll(RegExp(r'[^0-9,\.\-]'), '');
+    if (s.isEmpty) return 0.0;
+
+    final lastComma = s.lastIndexOf(',');
+    final lastDot = s.lastIndexOf('.');
+
+    // Si existen ambos, el último separador suele ser el decimal.
+    if (lastComma >= 0 && lastDot >= 0) {
+      final decimalSep = lastComma > lastDot ? ',' : '.';
+      final thousandSep = decimalSep == ',' ? '.' : ',';
+      s = s.replaceAll(thousandSep, '');
+      if (decimalSep == ',') s = s.replaceAll(',', '.');
+      return double.tryParse(s) ?? 0.0;
+    }
+
+    // Solo coma.
+    if (lastComma >= 0) {
+      final parts = s.split(',');
+      if (parts.length > 2) {
+        // Muchas comas => probablemente separadores de miles.
+        s = s.replaceAll(',', '');
+        return double.tryParse(s) ?? 0.0;
+      }
+      final decimalPart = parts.length == 2 ? parts[1] : '';
+      if (decimalPart.length == 1 || decimalPart.length == 2) {
+        // Formato decimal típico: 10,50 => 10.50
+        s = s.replaceAll(',', '.');
+        return double.tryParse(s) ?? 0.0;
+      }
+      // Si no parece decimal, tratar como miles: 1,234 => 1234
+      s = s.replaceAll(',', '');
+      return double.tryParse(s) ?? 0.0;
+    }
+
+    // Solo punto.
+    if (lastDot >= 0) {
+      final parts = s.split('.');
+      if (parts.length > 2) {
+        // Muchas puntos => probablemente separadores de miles.
+        s = s.replaceAll('.', '');
+        return double.tryParse(s) ?? 0.0;
+      }
+      return double.tryParse(s) ?? 0.0;
+    }
+
+    return double.tryParse(s) ?? 0.0;
+  }
+
   static double _readDouble(List<Data?> row, int index) {
     if (index < 0 || index >= row.length) return 0.0;
-    final value = row[index]?.value;
-    if (value == null) return 0.0;
-    final text = value.toString().replaceAll(',', '').trim();
-    return double.tryParse(text) ?? 0.0;
+    return _coerceToDouble(row[index]?.value);
   }
 
   static bool _readBool(List<Data?> row, int index) {

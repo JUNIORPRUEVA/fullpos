@@ -21,6 +21,8 @@ class PurchasesRepository {
     for (final i in items) {
       if (i.qty <= 0) continue;
       if (i.unitCost < 0) continue;
+      final name = i.productNameSnapshot.trim();
+      if (name.isEmpty) continue;
       cleanedItems.add(i);
     }
     if (cleanedItems.isEmpty) {
@@ -57,6 +59,8 @@ class PurchasesRepository {
         await txn.insert(DbTables.purchaseOrderItems, {
           'order_id': orderId,
           'product_id': item.productId,
+          'product_code_snapshot': item.productCodeSnapshot.trim(),
+          'product_name_snapshot': item.productNameSnapshot.trim(),
           'qty': item.qty,
           'unit_cost': item.unitCost,
           'total_line': item.qty * item.unitCost,
@@ -125,11 +129,10 @@ class PurchasesRepository {
 
     final itemRows = await db.rawQuery(
       '''
-      SELECT i.*, p.code AS product_code, p.name AS product_name
+      SELECT i.*
       FROM ${DbTables.purchaseOrderItems} i
-      INNER JOIN ${DbTables.products} p ON p.id = i.product_id
       WHERE i.order_id = ?
-      ORDER BY p.name ASC
+      ORDER BY i.product_name_snapshot ASC
     ''',
       [orderId],
     );
@@ -138,8 +141,8 @@ class PurchasesRepository {
         .map(
           (r) => PurchaseOrderItemDetailDto(
             item: PurchaseOrderItemModel.fromMap(r),
-            productCode: (r['product_code'] as String?) ?? '',
-            productName: (r['product_name'] as String?) ?? '',
+            productCode: (r['product_code_snapshot'] as String?) ?? '',
+            productName: (r['product_name_snapshot'] as String?) ?? '',
           ),
         )
         .toList();
@@ -183,7 +186,8 @@ class PurchasesRepository {
       }
 
       for (final item in items) {
-        final productId = item['product_id'] as int;
+        final productId = item['product_id'] as int?;
+        if (productId == null || productId <= 0) continue;
         final qty = (item['qty'] as num?)?.toDouble() ?? 0.0;
         if (qty <= 0) continue;
 
@@ -242,6 +246,8 @@ class PurchasesRepository {
     for (final i in items) {
       if (i.qty <= 0) continue;
       if (i.unitCost < 0) continue;
+      final name = i.productNameSnapshot.trim();
+      if (name.isEmpty) continue;
       cleanedItems.add(i);
     }
     if (cleanedItems.isEmpty) {
@@ -301,6 +307,8 @@ class PurchasesRepository {
         await txn.insert(DbTables.purchaseOrderItems, {
           'order_id': orderId,
           'product_id': item.productId,
+          'product_code_snapshot': item.productCodeSnapshot.trim(),
+          'product_name_snapshot': item.productNameSnapshot.trim(),
           'qty': item.qty,
           'unit_cost': item.unitCost,
           'total_line': item.qty * item.unitCost,
@@ -346,12 +354,16 @@ class PurchasesRepository {
 }
 
 class _CreatePurchaseItemInput {
-  final int productId;
+  final int? productId;
+  final String productCodeSnapshot;
+  final String productNameSnapshot;
   final double qty;
   final double unitCost;
 
   const _CreatePurchaseItemInput({
     required this.productId,
+    required this.productCodeSnapshot,
+    required this.productNameSnapshot,
     required this.qty,
     required this.unitCost,
   });
@@ -361,12 +373,16 @@ typedef CreatePurchaseItemInput = _CreatePurchaseItemInput;
 
 extension PurchasesCreateInputs on PurchasesRepository {
   CreatePurchaseItemInput itemInput({
-    required int productId,
+    required int? productId,
+    String productCodeSnapshot = '',
+    required String productNameSnapshot,
     required double qty,
     required double unitCost,
   }) {
     return _CreatePurchaseItemInput(
       productId: productId,
+      productCodeSnapshot: productCodeSnapshot,
+      productNameSnapshot: productNameSnapshot,
       qty: qty,
       unitCost: unitCost,
     );

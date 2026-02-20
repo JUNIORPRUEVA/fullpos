@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fullpos/theme/app_colors.dart';
-import 'dart:math' as math;
 
 /// Widget reutilizable para mostrar tarjetas de KPIs - Diseño Corporativo
 class KpiCard extends StatelessWidget {

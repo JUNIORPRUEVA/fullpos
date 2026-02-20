@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -23,29 +24,13 @@ class CatalogPdfLauncher {
   CatalogPdfLauncher._();
 
   static Future<void> open(BuildContext context) async {
-    try {
-      final products = await ProductsRepository().getAll();
-      await _generateAndPreview(
-        context: context,
-        products: products,
-        title: null,
-        fileNameSuffix: null,
-      );
-    } catch (e, st) {
-      if (!context.mounted) return;
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
-        context: context,
-        onRetry: () => open(context),
-        module: 'products/catalog_pdf/open',
-      );
-    }
+    // Evitamos el modo "Todos los productos" porque un catálogo muy grande
+    // puede tardar demasiado o no llegar a renderizar en preview.
+    return openFromSidebar(context);
   }
 
   /// Flujo para el acceso directo del Sidebar:
-  /// Permite elegir si se genera con todos los productos,
-  /// por categoría, o por selección manual.
+  /// Permite elegir por categoría o por selección manual.
   static Future<void> openFromSidebar(BuildContext context) async {
     final container = ProviderScope.containerOf(context, listen: false);
     final loading = container.read(appLoadingProvider.notifier);
@@ -99,17 +84,16 @@ class CatalogPdfLauncher {
     return showDialog<_CatalogSelection>(
       context: context,
       builder: (dialogContext) {
-        int mode = 0; // 0=all, 1=category, 2=selected
+        int mode = 1; // 1=category, 2=selected
         CategoryModel? category;
         final selectedIds = <int>{};
 
         return StatefulBuilder(
           builder: (context, setState) {
             final canGenerate = switch (mode) {
-              0 => true,
               1 => category != null,
               2 => selectedIds.isNotEmpty,
-              _ => true,
+              _ => false,
             };
 
             Widget bodyForMode() {
@@ -173,9 +157,7 @@ class CatalogPdfLauncher {
                 );
               }
 
-              return const Text(
-                'Se generará un catálogo con todos los productos disponibles.',
-              );
+              return const SizedBox.shrink();
             }
 
             return AlertDialog(
@@ -185,12 +167,6 @@ class CatalogPdfLauncher {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    RadioListTile<int>(
-                      value: 0,
-                      groupValue: mode,
-                      onChanged: (v) => setState(() => mode = v ?? 0),
-                      title: const Text('Todos los productos'),
-                    ),
                     RadioListTile<int>(
                       value: 2,
                       groupValue: mode,
@@ -222,17 +198,6 @@ class CatalogPdfLauncher {
                           final baseTitle = businessName.isNotEmpty
                               ? 'Catálogo de $businessName'
                               : 'Catálogo de Productos';
-
-                          if (mode == 0) {
-                            Navigator.of(dialogContext).pop(
-                              _CatalogSelection(
-                                products: products,
-                                title: baseTitle,
-                                fileNameSuffix: null,
-                              ),
-                            );
-                            return;
-                          }
 
                           if (mode == 1 && category != null) {
                             final filtered = products
@@ -287,12 +252,7 @@ class CatalogPdfLauncher {
     required String? fileNameSuffix,
   }) async {
     try {
-      final bytes = await ProductCatalogPrinter.generateCatalogPdf(
-        products: products,
-        title: title,
-      );
-
-      if (!context.mounted) return;
+      await Future<void>.delayed(Duration.zero);
 
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final safeBusiness = _sanitizeFilePart(
@@ -307,7 +267,8 @@ class CatalogPdfLauncher {
 
       await _showPreviewDialog(
         context: context,
-        bytes: bytes,
+        products: products,
+        catalogTitle: title,
         suggestedFileName: fileName,
       );
     } catch (e, st) {
@@ -361,173 +322,303 @@ class CatalogPdfLauncher {
 
   static Future<void> _showPreviewDialog({
     required BuildContext context,
-    required Uint8List bytes,
+    required List<ProductModel> products,
+    required String? catalogTitle,
     required String suggestedFileName,
   }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return _CatalogPdfPreviewDialog(
+          products: products,
+          catalogTitle: catalogTitle,
+          suggestedFileName: suggestedFileName,
+        );
+      },
+    );
+  }
+}
+
+class _CatalogPdfPreviewDialog extends StatefulWidget {
+  const _CatalogPdfPreviewDialog({
+    required this.products,
+    required this.catalogTitle,
+    required this.suggestedFileName,
+  });
+
+  final List<ProductModel> products;
+  final String? catalogTitle;
+  final String suggestedFileName;
+
+  @override
+  State<_CatalogPdfPreviewDialog> createState() =>
+      _CatalogPdfPreviewDialogState();
+}
+
+class _CatalogPdfPreviewDialogState extends State<_CatalogPdfPreviewDialog> {
+  late Future<Uint8List> pdfFuture;
+  bool busy = false;
+  bool generating = true;
+  Object? generationError;
+
+  @override
+  void initState() {
+    super.initState();
+    generating = true;
+    generationError = null;
+    pdfFuture = ProductCatalogPrinter.generateCatalogPdf(
+      products: widget.products,
+      title: widget.catalogTitle,
+    );
+
+    pdfFuture
+        .then((_) {
+          _safeSetState(() {
+            generating = false;
+            generationError = null;
+          });
+        })
+        .catchError((e) {
+          _safeSetState(() {
+            generating = false;
+            generationError = e;
+          });
+        });
+  }
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    final locked = phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks;
+
+    if (locked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(fn);
+      });
+      return;
+    }
+
+    setState(fn);
+  }
+
+  void _startGeneration() {
+    _safeSetState(() {
+      generating = true;
+      generationError = null;
+      pdfFuture = ProductCatalogPrinter.generateCatalogPdf(
+        products: widget.products,
+        title: widget.catalogTitle,
+      );
+    });
+
+    pdfFuture
+        .then((_) {
+          _safeSetState(() {
+            generating = false;
+            generationError = null;
+          });
+        })
+        .catchError((e) {
+          _safeSetState(() {
+            generating = false;
+            generationError = e;
+          });
+        });
+  }
+
+  Future<void> runBusy(Future<void> Function() fn) async {
+    if (busy) return;
+    if (!mounted) return;
+    _safeSetState(() => busy = true);
+    try {
+      await fn();
+    } finally {
+      if (mounted) _safeSetState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final businessName = appConfigService.getBusinessName().trim();
-    final title = businessName.isEmpty
+    final dialogTitle = businessName.isEmpty
         ? 'Catálogo (PDF)'
         : 'Catálogo de $businessName (PDF)';
     final shareText = businessName.isEmpty
         ? 'Catálogo de Productos'
         : 'Catálogo de Productos - $businessName';
 
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        bool busy = false;
+    final showSpinner = busy || generating;
+    final hasError = generationError != null;
+    final canAct = !showSpinner && !hasError;
 
-        return StatefulBuilder(
-          builder: (stateContext, setState) {
-            Future<void> runBusy(Future<void> Function() fn) async {
-              if (busy) return;
-              if (!stateContext.mounted) return;
-              setState(() => busy = true);
-              try {
-                await fn();
-              } finally {
-                if (stateContext.mounted) {
-                  setState(() => busy = false);
-                }
-              }
-            }
+    // Importante: PdfPreview rasteriza TODAS las páginas del documento para la
+    // vista previa. Cuando el PDF tiene muchas páginas, esto puede tardar
+    // muchísimo o parecer que "nunca termina".
+    // Por eso limitamos la vista previa a las primeras páginas.
+    const previewPageLimit = 10;
+    final bool limitPreviewPages = widget.products.length >= 120;
+    final List<int>? previewPages = limitPreviewPages
+        ? List<int>.generate(previewPageLimit, (i) => i)
+        : null;
 
-            return WillPopScope(
-              onWillPop: () async => !busy,
-              child: Dialog(
-                child: SizedBox(
-                  width: 980,
-                  height: 720,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+    return WillPopScope(
+      onWillPop: () async => !(busy || generating),
+      child: Dialog(
+        child: SizedBox(
+          width: 980,
+          height: 720,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        dialogTitle,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                title,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (busy)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 16),
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              ),
-                            OutlinedButton(
-                              onPressed: busy
-                                  ? null
-                                  : () async {
-                                      await runBusy(() async {
-                                        final file = await _savePdfToDownloads(
-                                          bytes: bytes,
-                                          fileName: suggestedFileName,
-                                        );
-                                        if (dialogContext.mounted) {
-                                          ScaffoldMessenger.of(
-                                            dialogContext,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                'PDF guardado en Descargas: ${file.path}',
-                                              ),
-                                              backgroundColor:
-                                                  AppColors.success,
-                                            ),
-                                          );
-                                        }
-                                      });
-                                    },
-                              child: const Text('Descargar'),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: busy
-                                  ? null
-                                  : () async {
-                                      File? file;
-                                      await runBusy(() async {
-                                        file = await _writePdfToTemp(
-                                          bytes: bytes,
-                                          fileName: suggestedFileName,
-                                        );
-                                      });
-
-                                      if (!dialogContext.mounted ||
-                                          file == null) {
-                                        return;
-                                      }
-
-                                      // En Windows, la UI de compartir puede no
-                                      // completar el Future al cancelar; no
-                                      // bloqueamos el estado "busy".
-                                      unawaited(
-                                        Share.shareXFiles([
-                                          XFile(file!.path),
-                                        ], text: shareText),
-                                      );
-                                    },
-                              child: const Text('Compartir'),
-                            ),
-                            const SizedBox(width: 8),
-                            TextButton(
-                              onPressed: busy
-                                  ? null
-                                  : () {
-                                      if (Navigator.of(
-                                        dialogContext,
-                                      ).canPop()) {
-                                        Navigator.of(dialogContext).pop();
-                                      }
-                                    },
-                              child: const Text('Cerrar'),
-                            ),
-                          ],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (showSpinner)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       ),
-                      const Divider(height: 1),
+                    OutlinedButton(
+                      onPressed: canAct
+                          ? () async {
+                              await runBusy(() async {
+                                final bytes = await pdfFuture;
+                                final file =
+                                    await CatalogPdfLauncher._savePdfToDownloads(
+                                      bytes: bytes,
+                                      fileName: widget.suggestedFileName,
+                                    );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'PDF guardado en Descargas: ${file.path}',
+                                      ),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  );
+                                }
+                              });
+                            }
+                          : null,
+                      child: const Text('Descargar'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: canAct
+                          ? () async {
+                              File? file;
+                              await runBusy(() async {
+                                final bytes = await pdfFuture;
+                                file = await CatalogPdfLauncher._writePdfToTemp(
+                                  bytes: bytes,
+                                  fileName: widget.suggestedFileName,
+                                );
+                              });
+
+                              if (!mounted || file == null) return;
+
+                              unawaited(
+                                Share.shareXFiles([
+                                  XFile(file!.path),
+                                ], text: shareText),
+                              );
+                            }
+                          : null,
+                      child: const Text('Compartir'),
+                    ),
+                    const SizedBox(width: 8),
+                    if (!showSpinner && hasError)
+                      TextButton(
+                        onPressed: _startGeneration,
+                        child: const Text('Reintentar'),
+                      ),
+                    TextButton(
+                      onPressed: (busy || generating)
+                          ? null
+                          : () {
+                              if (Navigator.of(context).canPop()) {
+                                Navigator.of(context).pop();
+                              }
+                            },
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    colorScheme: Theme.of(context).colorScheme.copyWith(
+                      primary: AppColors.teal700,
+                      secondary: AppColors.gold,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      if (limitPreviewPages)
+                        Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Text(
+                            'Vista previa limitada: se muestran solo las primeras $previewPageLimit páginas.\n'
+                            'El PDF descargado/compartido incluye todos los productos seleccionados.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
                       Expanded(
-                        child: Theme(
-                          data: Theme.of(dialogContext).copyWith(
-                            colorScheme: Theme.of(dialogContext).colorScheme
-                                .copyWith(
-                                  primary: AppColors.teal700,
-                                  secondary: AppColors.gold,
+                        child: PdfPreview(
+                          build: (format) => pdfFuture,
+                          pages: previewPages,
+                          maxPageWidth: 620,
+                          canChangeOrientation: false,
+                          canChangePageFormat: false,
+                          allowPrinting: false,
+                          allowSharing: false,
+                          onError: (context, error) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  'No se pudo mostrar la vista previa del PDF.\n'
+                                  'Puedes usar Descargar o Compartir para abrirlo externamente.',
+                                  textAlign: TextAlign.center,
                                 ),
-                          ),
-                          child: PdfPreview(
-                            build: (format) async => bytes,
-                            canChangeOrientation: false,
-                            canChangePageFormat: false,
-                            allowPrinting: false,
-                            allowSharing: false,
-                          ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            );
-          },
-        );
-      },
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

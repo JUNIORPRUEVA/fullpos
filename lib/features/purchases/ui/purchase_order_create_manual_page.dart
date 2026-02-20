@@ -24,17 +24,50 @@ class PurchaseOrderCreateManualPage extends StatefulWidget {
 }
 
 class _LineDraft {
-  final ProductModel product;
+  final ProductModel? product;
+  final String productCodeSnapshot;
+  final String productNameSnapshot;
   double qty;
   double unitCost;
 
   _LineDraft({
     required this.product,
+    required this.productCodeSnapshot,
+    required this.productNameSnapshot,
     required this.qty,
     required this.unitCost,
   });
 
   double get total => qty * unitCost;
+
+  factory _LineDraft.fromProduct({
+    required ProductModel product,
+    required double qty,
+    required double unitCost,
+  }) {
+    return _LineDraft(
+      product: product,
+      productCodeSnapshot: product.code,
+      productNameSnapshot: product.name,
+      qty: qty,
+      unitCost: unitCost,
+    );
+  }
+
+  factory _LineDraft.custom({
+    required String code,
+    required String name,
+    required double qty,
+    required double unitCost,
+  }) {
+    return _LineDraft(
+      product: null,
+      productCodeSnapshot: code.trim(),
+      productNameSnapshot: name.trim(),
+      qty: qty,
+      unitCost: unitCost,
+    );
+  }
 }
 
 class _PurchaseOrderCreateManualPageState
@@ -105,11 +138,28 @@ class _PurchaseOrderCreateManualPageState
         }
 
         for (final it in detail.items) {
-          final p = await _productsRepo.getById(it.item.productId);
-          if (p == null) continue;
+          final productId = it.item.productId;
+          if (productId != null) {
+            final p = await _productsRepo.getById(productId);
+            if (p != null) {
+              editLines.add(
+                _LineDraft(
+                  product: p,
+                  productCodeSnapshot: it.productCode,
+                  productNameSnapshot: it.productName,
+                  qty: it.item.qty,
+                  unitCost: it.item.unitCost,
+                ),
+              );
+              continue;
+            }
+          }
+
+          // Producto eliminado o línea sin inventario: usar snapshots.
           editLines.add(
-            _LineDraft(
-              product: p,
+            _LineDraft.custom(
+              code: it.productCode,
+              name: it.productName,
               qty: it.item.qty,
               unitCost: it.item.unitCost,
             ),
@@ -175,12 +225,13 @@ class _PurchaseOrderCreateManualPageState
       final items = _lines
           .map(
             (l) => _purchasesRepo.itemInput(
-              productId: l.product.id ?? 0,
+              productId: l.product?.id,
+              productCodeSnapshot: l.productCodeSnapshot,
+              productNameSnapshot: l.productNameSnapshot,
               qty: l.qty,
               unitCost: l.unitCost,
             ),
           )
-          .where((e) => e.productId > 0)
           .toList();
 
       final purchaseDateMs = _purchaseDate.millisecondsSinceEpoch;
@@ -517,13 +568,13 @@ class _PurchaseOrderCreateManualPageState
 
     if (selected == null) return;
 
-    final existing = _lines.indexWhere((l) => l.product.id == selected.id);
+    final existing = _lines.indexWhere((l) => l.product?.id == selected.id);
     setState(() {
       if (existing >= 0) {
         _lines[existing].qty += 1;
       } else {
         _lines.add(
-          _LineDraft(
+          _LineDraft.fromProduct(
             product: selected,
             qty: 1,
             unitCost: selected.purchasePrice,
@@ -531,6 +582,133 @@ class _PurchaseOrderCreateManualPageState
         );
       }
     });
+  }
+
+  Future<void> _addCustomProductDialog() async {
+    if (_supplier?.id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Seleccione un suplidor primero'),
+          backgroundColor: AppColors.info,
+        ),
+      );
+      return;
+    }
+
+    final codeCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: '1');
+    final costCtrl = TextEditingController(text: '0');
+
+    final result = await showDialog<_LineDraft>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Producto no inventario'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: codeCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Código (opcional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: qtyCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Cantidad',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: costCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Costo',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final qty =
+                    double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0;
+                final cost =
+                    double.tryParse(costCtrl.text.replaceAll(',', '.')) ?? 0;
+
+                if (name.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Nombre requerido'),
+                      backgroundColor: AppColors.warning,
+                    ),
+                  );
+                  return;
+                }
+                if (qty <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cantidad debe ser mayor a 0'),
+                      backgroundColor: AppColors.warning,
+                    ),
+                  );
+                  return;
+                }
+
+                Navigator.of(dialogContext).pop(
+                  _LineDraft.custom(
+                    code: codeCtrl.text,
+                    name: name,
+                    qty: qty,
+                    unitCost: cost,
+                  ),
+                );
+              },
+              child: const Text('Agregar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+    setState(() => _lines.add(result));
   }
 
   @override
@@ -653,6 +831,13 @@ class _PurchaseOrderCreateManualPageState
                                 icon: const Icon(Icons.add),
                                 label: const Text('Agregar producto'),
                               ),
+                              const SizedBox(width: 10),
+                              OutlinedButton.icon(
+                                onPressed:
+                                    _saving ? null : _addCustomProductDialog,
+                                icon: const Icon(Icons.playlist_add),
+                                label: const Text('Producto no inventario'),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -708,13 +893,28 @@ class _PurchaseOrderCreateManualPageState
                                             CrossAxisAlignment.start,
                                         children: [
                                           // Imagen del producto
-                                          ProductThumbnail.fromProduct(
-                                            line.product,
-                                            size: 70,
-                                            borderRadius: BorderRadius.circular(
-                                              6,
+                                          if (line.product != null)
+                                            ProductThumbnail.fromProduct(
+                                              line.product!,
+                                              size: 70,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            )
+                                          else
+                                            Container(
+                                              width: 70,
+                                              height: 70,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    AppColors.surfaceLightBorder,
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Icon(
+                                                Icons.inventory_2_outlined,
+                                                color: AppColors.textDarkSecondary,
+                                              ),
                                             ),
-                                          ),
                                           const SizedBox(width: 12),
                                           // Información del producto
                                           Expanded(
@@ -724,7 +924,7 @@ class _PurchaseOrderCreateManualPageState
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  line.product.code,
+                                                  line.productCodeSnapshot,
                                                   style: const TextStyle(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.bold,
@@ -733,7 +933,7 @@ class _PurchaseOrderCreateManualPageState
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  line.product.name,
+                                                  line.productNameSnapshot,
                                                   style: const TextStyle(
                                                     fontWeight: FontWeight.w600,
                                                   ),

@@ -103,16 +103,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     if (!mounted) return;
     setState(() => _saving = true);
 
-    final updatedSettings = _settings.copyWith(
-      headerExtra: _headerExtraCtrl.text.trim(),
-      footerMessage: _footerCtrl.text.trim(),
-      warrantyPolicy: _warrantyPolicyCtrl.text.trim(),
-      // Guardar datos de empresa desde CompanyInfo (sin duplicar)
-      headerBusinessName: _companyInfo?.name ?? 'FULLPOS',
-      headerRnc: _companyInfo?.rnc,
-      headerAddress: _companyInfo?.address,
-      headerPhone: _companyInfo?.primaryPhone,
-    );
+    final updatedSettings = _buildSettingsForPersist();
 
     try {
       await PrinterSettingsRepository.updateSettings(updatedSettings);
@@ -156,6 +147,21 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
     if (!mounted) return;
     setState(() => _printing = true);
+
+    // Asegurar que la impresión use los cambios del usuario.
+    // UnifiedTicketPrinter lee desde DB, por lo que si el usuario no presiona
+    // “Guardar”, el test podría salir con configuración anterior.
+    try {
+      final updatedSettings = _buildSettingsForPersist();
+      await PrinterSettingsRepository.updateSettings(updatedSettings);
+      if (mounted) {
+        setState(() => _settings = updatedSettings);
+      }
+    } catch (e, st) {
+      debugPrint(
+        'Error persisting printer settings before test print: $e\n$st',
+      );
+    }
 
     // Usar el nuevo sistema unificado
     PrintTicketResult result;
@@ -209,6 +215,19 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
     if (!mounted) return;
     setState(() => _printing = true);
+
+    // Persistir cambios antes de enviar la regla.
+    try {
+      final updatedSettings = _buildSettingsForPersist();
+      await PrinterSettingsRepository.updateSettings(updatedSettings);
+      if (mounted) {
+        setState(() => _settings = updatedSettings);
+      }
+    } catch (e, st) {
+      debugPrint(
+        'Error persisting printer settings before ruler print: $e\n$st',
+      );
+    }
     final result = await UnifiedTicketPrinter.printWidthRulerTest();
     if (mounted) setState(() => _printing = false);
 
@@ -285,7 +304,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
             SizedBox(height: 16),
             Text(
               '⚠️ La impresora seleccionada NO se modificará.',
-              style: TextStyle(color: _scheme.primary, fontStyle: FontStyle.italic),
+              style: TextStyle(
+                color: _scheme.primary,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ),
@@ -309,7 +331,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
     setState(() => _saving = true);
     try {
-      final resetSettings = await PrinterSettingsRepository.resetToProfessional();
+      final resetSettings =
+          await PrinterSettingsRepository.resetToProfessional();
 
       // Recargar CompanyInfo
       final companyInfo = await CompanyInfoRepository.getCurrentCompanyInfo();
@@ -357,6 +380,19 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     setState(() => _settings = update(_settings));
   }
 
+  PrinterSettingsModel _buildSettingsForPersist() {
+    return _settings.copyWith(
+      headerExtra: _headerExtraCtrl.text.trim(),
+      footerMessage: _footerCtrl.text.trim(),
+      warrantyPolicy: _warrantyPolicyCtrl.text.trim(),
+      // Guardar datos de empresa desde CompanyInfo (sin duplicar)
+      headerBusinessName: _companyInfo?.name ?? 'FULLPOS',
+      headerRnc: _companyInfo?.rnc,
+      headerAddress: _companyInfo?.address,
+      headerPhone: _companyInfo?.primaryPhone,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -366,51 +402,51 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = SettingsLayout.contentPadding(constraints);
-        final sectionGap = SettingsLayout.sectionGap(constraints);
-        final isNarrow = constraints.maxWidth < 980;
+        builder: (context, constraints) {
+          final padding = SettingsLayout.contentPadding(constraints);
+          final sectionGap = SettingsLayout.sectionGap(constraints);
+          final isNarrow = constraints.maxWidth < 980;
 
-        return Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: SettingsLayout.maxWidth(constraints, max: 1400),
-            child: Padding(
-              padding: padding,
-              child: Column(
-                children: [
-                  // Header
-                  _buildHeader(),
-                  SizedBox(height: sectionGap),
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: SettingsLayout.maxWidth(constraints, max: 1400),
+              child: Padding(
+                padding: padding,
+                child: Column(
+                  children: [
+                    // Header
+                    _buildHeader(),
+                    SizedBox(height: sectionGap),
 
-                  // Contenido principal
-                  Expanded(
-                    child: isNarrow
-                        ? Column(
-                            children: [
-                              Expanded(child: _buildSettingsPanel()),
-                              SizedBox(height: sectionGap),
-                              Expanded(child: _buildPreviewPanel()),
-                            ],
-                          )
-                        : Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Panel de configuraci??n (izquierda)
-                              Expanded(flex: 3, child: _buildSettingsPanel()),
-                              SizedBox(width: sectionGap),
+                    // Contenido principal
+                    Expanded(
+                      child: isNarrow
+                          ? Column(
+                              children: [
+                                Expanded(child: _buildSettingsPanel()),
+                                SizedBox(height: sectionGap),
+                                Expanded(child: _buildPreviewPanel()),
+                              ],
+                            )
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Panel de configuraci??n (izquierda)
+                                Expanded(flex: 3, child: _buildSettingsPanel()),
+                                SizedBox(width: sectionGap),
 
-                              // Panel de preview (derecha)
-                              Expanded(flex: 2, child: _buildPreviewPanel()),
-                            ],
-                          ),
-                  ),
-                ],
+                                // Panel de preview (derecha)
+                                Expanded(flex: 2, child: _buildPreviewPanel()),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
       ),
     );
   }
@@ -443,7 +479,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 ),
                 Text(
                   'Configure el diseño y contenido de sus recibos de venta',
-                  style: TextStyle(color: _scheme.onPrimary.withOpacity(0.7), fontSize: 13),
+                  style: TextStyle(
+                    color: _scheme.onPrimary.withOpacity(0.7),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -680,7 +719,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
                   // 80mm: usar 48 por defecto (mm80 normal), con opción de bajar a 42.
                   final current = _settings.charsPerLine;
-                  final chars = (current == 42) ? 42 : 48;
+                  // 80mm: por defecto 42 (Seguro). Mantener 48 si el usuario ya lo eligió.
+                  final chars = (current == 48) ? 48 : 42;
                   _updateSetting(
                     (s) => s.copyWith(paperWidthMm: width, charsPerLine: chars),
                   );
@@ -721,7 +761,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 const SizedBox(height: 6),
                 Text(
                   'Recomendado: 42 si el ticket sale “apretado” o se corta.',
-                  style: TextStyle(color: _scheme.onSurfaceVariant, fontSize: 12),
+                  style: TextStyle(
+                    color: _scheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
               ],
 
@@ -992,12 +1035,19 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 18, color: _scheme.onSecondaryContainer),
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: _scheme.onSecondaryContainer,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Recomendación: use Courier para que las columnas (precio/total) queden perfectamente alineadas en la impresora.',
-                        style: TextStyle(fontSize: 12.5, color: _scheme.onSecondaryContainer),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: _scheme.onSecondaryContainer,
+                        ),
                       ),
                     ),
                   ],
@@ -1105,11 +1155,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: _scheme.primary,
-                      size: 20,
-                    ),
+                    Icon(Icons.info_outline, color: _scheme.primary, size: 20),
                     const SizedBox(width: 12),
                     const Expanded(
                       child: Text(
@@ -1405,11 +1451,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: _scheme.primary,
-                      size: 20,
-                    ),
+                    Icon(Icons.info_outline, color: _scheme.primary, size: 20),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1423,7 +1465,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                              Text(
+                          Text(
                             'Los datos del negocio se toman automáticamente de Configuración → Empresa',
                             style: TextStyle(
                               fontSize: 12,
@@ -1461,7 +1503,9 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 },
                 icon: const Icon(Icons.settings, size: 18),
                 label: Text('Editar en Configuración Empresa'),
-                style: OutlinedButton.styleFrom(foregroundColor: _scheme.primary),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _scheme.primary,
+                ),
               ),
 
               const SizedBox(height: 16),
@@ -1759,7 +1803,11 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
           Icon(icon, size: 20, color: _scheme.onSurfaceVariant),
           const SizedBox(width: 12),
           Expanded(child: Text(label)),
-          Switch(value: value, onChanged: onChanged, activeThumbColor: _scheme.primary),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: _scheme.primary,
+          ),
         ],
       ),
     );

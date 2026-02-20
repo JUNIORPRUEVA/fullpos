@@ -1380,7 +1380,9 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: theme.shadowColor.withOpacity(isSelected ? 0.12 : 0.07),
+                  color: theme.shadowColor.withOpacity(
+                    isSelected ? 0.12 : 0.07,
+                  ),
                   blurRadius: isSelected ? 14 : 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1463,7 +1465,10 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                               ),
                               if (!compact) ...[
                                 const SizedBox(width: 6),
-                                Icon(Icons.chevron_right, color: scheme.outline),
+                                Icon(
+                                  Icons.chevron_right,
+                                  color: scheme.outline,
+                                ),
                               ],
                             ],
                           );
@@ -1682,7 +1687,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                         )
                       : ListView.separated(
                           itemCount: data.movements.length,
-                          separatorBuilder: (_, __) => Divider(
+                          separatorBuilder: (context, index) => Divider(
                             height: 1,
                             color: scheme.outlineVariant.withOpacity(0.35),
                           ),
@@ -1707,9 +1712,10 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                                       movement.reason,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),

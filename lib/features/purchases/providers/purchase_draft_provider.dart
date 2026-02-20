@@ -96,10 +96,13 @@ final purchaseDraftProvider =
 class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
   PurchaseDraftController() : super(PurchaseDraftState.initial());
 
+  int _customTempId = -1;
+
   void reset({double? taxRatePercent}) {
     state = PurchaseDraftState.initial(
       taxRatePercent: taxRatePercent ?? state.taxRatePercent,
     );
+    _customTempId = -1;
   }
 
   void setSupplier(SupplierModel? supplier) {
@@ -141,6 +144,50 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
       product: product,
       qty: (qty ?? 1).clamp(0.0, double.infinity),
       unitCost: (unitCost ?? product.purchasePrice).clamp(0.0, double.infinity),
+    );
+
+    state = state.copyWith(lines: [...state.lines, line]);
+  }
+
+  void addCustomProduct({
+    String code = '',
+    required String name,
+    double qty = 1,
+    double unitCost = 0,
+  }) {
+    final safeName = name.trim();
+    if (safeName.isEmpty) return;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final id = _customTempId;
+    _customTempId -= 1;
+
+    final product = ProductModel(
+      id: id,
+      code: code.trim().isEmpty ? 'N/A' : code.trim(),
+      name: safeName,
+      // Producto fuera de inventario: no tiene relación real.
+      supplierId: state.supplier?.id,
+      purchasePrice: unitCost,
+      salePrice: 0.0,
+      stock: 0.0,
+      reservedStock: 0.0,
+      stockMin: 0.0,
+      isActive: true,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+      placeholderType: 'color',
+      placeholderColorHex: null,
+      imagePath: null,
+      imageUrl: null,
+      categoryId: null,
+      deletedAtMs: null,
+    );
+
+    final line = PurchaseDraftLine(
+      product: product,
+      qty: qty.clamp(0.0, double.infinity),
+      unitCost: unitCost.clamp(0.0, double.infinity),
     );
 
     state = state.copyWith(lines: [...state.lines, line]);

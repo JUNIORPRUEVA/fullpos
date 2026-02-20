@@ -22,6 +22,7 @@ class Topbar extends ConsumerStatefulWidget {
   final VoidCallback? onMenuPressed;
   final double scale;
   final bool showBottomBorder;
+  final double topPadding;
 
   const Topbar({
     super.key,
@@ -29,6 +30,7 @@ class Topbar extends ConsumerStatefulWidget {
     this.onMenuPressed,
     this.scale = 1.0,
     this.showBottomBorder = true,
+    this.topPadding = 0.0,
   });
 
   @override
@@ -260,6 +262,7 @@ class _TopbarState extends ConsumerState<Topbar> {
         final isCompact = constraints.maxWidth < 900;
         final s = widget.scale.clamp(0.85, 1.12);
         final topbarHeight = (AppSizes.topbarHeight * s).clamp(46.0, 66.0);
+        final topInset = (widget.topPadding * s).clamp(0.0, 12.0);
         final padM = AppSizes.paddingM * s;
         final padL = AppSizes.paddingL * s;
         final spaceS = AppSizes.spaceS * s;
@@ -364,7 +367,7 @@ class _TopbarState extends ConsumerState<Topbar> {
         }
 
         return Container(
-          height: topbarHeight,
+          height: topbarHeight + topInset,
           decoration: BoxDecoration(
             color: appBarBg,
             border: widget.showBottomBorder
@@ -383,7 +386,12 @@ class _TopbarState extends ConsumerState<Topbar> {
               ),
             ],
           ),
-          padding: EdgeInsets.symmetric(horizontal: horizontalPad),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPad,
+            topInset,
+            horizontalPad,
+            0,
+          ),
           child: Row(
             children: [
               if (widget.showMenuButton) ...[

@@ -967,8 +967,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                     }
 
                                     final s = _session;
-                                    if (s == null)
+                                    if (s == null) {
                                       return const SizedBox(height: 0);
+                                    }
 
                                     final end = s.closedAt ?? DateTime.now();
                                     final duration = end.difference(s.openedAt);

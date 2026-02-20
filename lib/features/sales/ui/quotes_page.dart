@@ -689,7 +689,7 @@ class _QuotesPageState extends State<QuotesPage> {
                                   controller: _quoteItemsScrollController,
                                   primary: false,
                                   itemCount: quoteDetail.items.length,
-                                  separatorBuilder: (_, __) =>
+                                  separatorBuilder: (context, index) =>
                                       const SizedBox(height: 4),
                                   itemBuilder: (context, index) {
                                     final item = quoteDetail.items[index];

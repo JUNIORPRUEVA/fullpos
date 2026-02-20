@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import '../constants/app_sizes.dart';
 import '../theme/app_gradient_theme.dart';
@@ -73,15 +75,23 @@ class _AppShellState extends State<AppShell> {
             final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
             final footerScale = 1.0;
 
+            final isDesktop =
+                Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+            final double topbarInnerTopPadding = (!isNarrow && isDesktop)
+                ? AppSizes.paddingXS
+                : 0.0;
+
             Widget topbarWidget = Topbar(
               scale: topbarScale,
               showBottomBorder: !isFullScreen,
+              topPadding: topbarInnerTopPadding,
             );
             if (isNarrow) {
               topbarWidget = Builder(
                 builder: (context) => Topbar(
                   scale: topbarScale,
                   showBottomBorder: !isFullScreen,
+                  topPadding: topbarInnerTopPadding,
                   showMenuButton: true,
                   onMenuPressed: () => Scaffold.of(context).openDrawer(),
                 ),
@@ -90,10 +100,16 @@ class _AppShellState extends State<AppShell> {
 
             final contentColumn = Column(
               children: [
-                SizedBox(height: topbarHeight, child: topbarWidget),
+                SizedBox(
+                  height: topbarHeight + topbarInnerTopPadding,
+                  child: topbarWidget,
+                ),
                 Expanded(child: widget.child),
                 if (showFooter)
-                  SizedBox(height: footerHeight, child: Footer(scale: footerScale)),
+                  SizedBox(
+                    height: footerHeight,
+                    child: Footer(scale: footerScale),
+                  ),
               ],
             );
 
@@ -112,15 +128,12 @@ class _AppShellState extends State<AppShell> {
               ),
               child: isNarrow
                   ? SafeArea(child: contentColumn)
-                    : Row(
-                        children: [
-                          Sidebar(
-                            customWidth: sidebarWidth,
-                            scale: sidebarScale,
-                          ),
-                          Expanded(child: contentColumn),
-                        ],
-                      ),
+                  : Row(
+                      children: [
+                        Sidebar(customWidth: sidebarWidth, scale: sidebarScale),
+                        Expanded(child: contentColumn),
+                      ],
+                    ),
             );
 
             return Scaffold(

@@ -103,11 +103,11 @@ class TicketRenderer {
     final w = config.maxCharsPerLine;
     final bool isLayaway = data.isLayaway;
     final double pendingAmount = data.pendingAmount < 0
-      ? 0
-      : data.pendingAmount;
-    final String layawayStatus = (data.statusLabel ??
-        (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'))
-      .toUpperCase();
+        ? 0
+        : data.pendingAmount;
+    final String layawayStatus =
+        (data.statusLabel ?? (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'))
+            .toUpperCase();
 
     // ============================================================
     // 1. ENCABEZADO: EMPRESA (centrado)
@@ -165,7 +165,9 @@ class TicketRenderer {
     // 3. FILA CAJERO + FECHA/TICKET (dos columnas)
     // ============================================================
     if (config.showCashier && data.cashierName != null) {
-      final cajeroLabel = _sanitizeTicketText('Cajero: ${data.cashierName}');
+      final cajeroLabel = _sanitizeTicketText(
+        'CAJERO: ${(data.cashierName ?? '').toUpperCase()}',
+      );
       final dateStr = 'FECHA: ${_formatDate(data.dateTime)}';
       final ticketStr = 'TICKET: ${data.ticketNumber}';
 
@@ -213,7 +215,7 @@ class TicketRenderer {
       lines.add(alignText('DATOS DEL CLIENTE:', w, config.detailsAlignment));
       lines.add(
         alignText(
-          _sanitizeTicketText('Nombre: ${data.client!.name}'),
+          _sanitizeTicketText('NOMBRE: ${data.client!.name.toUpperCase()}'),
           w,
           config.detailsAlignment,
         ),
@@ -221,7 +223,9 @@ class TicketRenderer {
       if (data.client!.rnc != null && data.client!.rnc!.isNotEmpty) {
         lines.add(
           alignText(
-            _sanitizeTicketText('RNC/Cedula: ${data.client!.rnc}'),
+            _sanitizeTicketText(
+              'RNC/CEDULA: ${data.client!.rnc!.toUpperCase()}',
+            ),
             w,
             config.detailsAlignment,
           ),
@@ -230,7 +234,7 @@ class TicketRenderer {
       if (data.client!.phone != null && data.client!.phone!.isNotEmpty) {
         lines.add(
           alignText(
-            _sanitizeTicketText('Telefono: ${data.client!.phone}'),
+            _sanitizeTicketText('TELEFONO: ${data.client!.phone}'),
             w,
             config.detailsAlignment,
           ),
@@ -331,20 +335,19 @@ class TicketRenderer {
     // ============================================================
     final methodLower = data.paymentMethod.toLowerCase();
     final bool isCredit =
-      methodLower.contains('credit') || methodLower.contains('crédito') || methodLower.contains('credito');
+        methodLower.contains('credit') ||
+        methodLower.contains('crédito') ||
+        methodLower.contains('credito');
     final double creditPending = isCredit ? pendingAmount : 0.0;
 
-    if (config.showPaymentInfo && (data.paymentMethod.isNotEmpty || isLayaway)) {
+    if (config.showPaymentInfo &&
+        (data.paymentMethod.isNotEmpty || isLayaway)) {
       lines.add(sepLine(w));
 
       if (isLayaway) {
         lines.add(alignText('APARTADO', w, 'center'));
         lines.add(
-          _totalsBlockLine(
-            label: 'Estado',
-            value: layawayStatus,
-            width: w,
-          ),
+          _totalsBlockLine(label: 'Estado', value: layawayStatus, width: w),
         );
 
         if (data.lastPaymentAmount > 0) {
@@ -680,9 +683,9 @@ class TicketRenderer {
     final double pendingAmount = data.pendingAmount < 0
         ? 0
         : data.pendingAmount;
-    final String layawayStatus = (data.statusLabel ??
-            (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'))
-        .toUpperCase();
+    final String layawayStatus =
+        (data.statusLabel ?? (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'))
+            .toUpperCase();
 
     void addLine(String raw) => lines.add(_fitLine(raw, w));
     void addAlignedTextLine(String text, String align) =>
@@ -746,19 +749,23 @@ class TicketRenderer {
     );
 
     final clientName = (data.client?.name ?? '').trim();
+    final resolvedClient = clientName.isEmpty ? 'GENERAL' : clientName;
     addAlignedTextLine(
-      'Cliente: ${clientName.isEmpty ? 'General' : clientName}',
+      'CLIENTE: ${resolvedClient.toUpperCase()}',
       config.detailsAlignment,
     );
 
     final clientRnc = (data.client?.rnc ?? '').trim();
     // En el ejemplo de referencia, la línea RNC aparece aunque esté vacía.
-    addAlignedTextLine('RNC: $clientRnc', config.detailsAlignment);
+    addAlignedTextLine(
+      'RNC: ${clientRnc.toUpperCase()}',
+      config.detailsAlignment,
+    );
 
     if (config.showCashier) {
       final cashier = (data.cashierName ?? '').trim();
       addAlignedTextLine(
-        'Cajero(a): ${cashier.isEmpty ? 'N/A' : cashier}',
+        'CAJERO(A): ${(cashier.isEmpty ? 'N/A' : cashier).toUpperCase()}',
         config.detailsAlignment,
       );
     }
@@ -819,7 +826,7 @@ class TicketRenderer {
     // Usamos 2 espacios dentro de la columna descripción para que no se vea pegado.
     final header =
         '${ReceiptText.padRight('CANT.', qtyW)}'
-        '${ReceiptText.padRight('  DESCRIPCION', descW)}'
+          '${ReceiptText.padRight('  DESCRIPCION', descW)}'
         '${ReceiptText.padLeft('PRECIO', priceW)}'
         '${ReceiptText.padLeft('TOTAL', totalW)}';
 
@@ -916,7 +923,7 @@ class TicketRenderer {
     if (config.showPaymentInfo) {
       final method = _paymentLabel(data.paymentMethod);
       final isCredit = method == 'CREDITO';
-        final creditPending = isCredit ? pendingAmount : 0.0;
+      final creditPending = isCredit ? pendingAmount : 0.0;
 
       if (isLayaway) {
         addLine(arrowTotal('APARTADO', layawayStatus));
@@ -942,15 +949,12 @@ class TicketRenderer {
         final paidFallback = (data.paidAmount <= 0 && safeTotal > 0)
             ? safeTotal
             : data.paidAmount;
-        final changeFallback =
-            (data.paidAmount <= 0) ? 0.0 : data.changeAmount;
+        final changeFallback = (data.paidAmount <= 0) ? 0.0 : data.changeAmount;
 
         if (method == 'TARJETA') {
           addLine(arrowTotal('TARJETA', ReceiptText.money(paidFallback)));
         } else if (method == 'TRANSFERENCIA') {
-          addLine(
-            arrowTotal('TRANSFERENCIA', ReceiptText.money(paidFallback)),
-          );
+          addLine(arrowTotal('TRANSFERENCIA', ReceiptText.money(paidFallback)));
         } else if (method == 'EFECTIVO') {
           addLine(arrowTotal('EFECTIVO', ReceiptText.money(safeTotal)));
           addLine(arrowTotal('PAGADO', ReceiptText.money(paidFallback)));
@@ -967,6 +971,7 @@ class TicketRenderer {
       }
     }
 
+    // Separador final (antes de política/footer)
     addLine(sepLine(w));
     addLine('');
 
@@ -983,6 +988,9 @@ class TicketRenderer {
     // 7) Política de garantía/cambios (configurable)
     final policyText = config.warrantyPolicy.trim();
     if (policyText.isNotEmpty) {
+      // Separar visualmente la política del bloque de totales/pago.
+      // Ya existe un separador y una línea en blanco justo antes.
+      addLine('');
       addAlignedTextLine('POLITICA DE GARANTIA', 'center');
       addLine('');
 

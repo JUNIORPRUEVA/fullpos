@@ -56,8 +56,9 @@ try {
   $required = @(
     (Join-Path $releaseDir 'fullpos.exe'),
     (Join-Path $releaseDir 'flutter_windows.dll'),
-    (Join-Path $releaseDir 'flutter_assets'),
-    (Join-Path $releaseDir 'data')
+    (Join-Path $releaseDir 'data'),
+    (Join-Path $releaseDir 'data\flutter_assets'),
+    (Join-Path $releaseDir 'data\icudtl.dat')
   )
   foreach ($p in $required) {
     if (!(Test-Path $p)) {
