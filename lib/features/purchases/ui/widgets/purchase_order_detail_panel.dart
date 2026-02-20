@@ -12,12 +12,14 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
   final void Function(PurchaseOrderDetailDto detail)? onOpenPdf;
   final void Function(int orderId)? onReceive;
   final void Function(PurchaseOrderDetailDto detail)? onDuplicate;
+  final void Function(int orderId)? onDelete;
 
   const PurchaseOrderDetailPanel({
     super.key,
     this.onOpenPdf,
     this.onReceive,
     this.onDuplicate,
+    this.onDelete,
   });
 
   @override
@@ -47,10 +49,7 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
       child: detailAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text(
-            'Error: $e',
-            style: TextStyle(color: scheme.error),
-          ),
+          child: Text('Error: $e', style: TextStyle(color: scheme.error)),
         ),
         data: (detail) {
           if (detail == null) {
@@ -88,6 +87,8 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
 
           final status = detail.order.status.trim().toUpperCase();
           final isReceived = status == 'RECIBIDA';
+          final isPartial = status == 'PARCIAL';
+          final canDelete = status == 'PENDIENTE';
 
           return Column(
             children: [
@@ -140,12 +141,19 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
                           ? null
                           : () => onReceive?.call(detail.order.id ?? 0),
                       icon: const Icon(Icons.inventory_outlined),
-                      label: Text(isReceived ? 'Recibida' : 'Marcar recibida'),
+                      label: Text(
+                        isReceived
+                            ? 'Recibida'
+                            : (isPartial ? 'Continuar recepción' : 'Recibir'),
+                      ),
                     ),
                   ],
                 ),
               ),
-              Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.45)),
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withOpacity(0.45),
+              ),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.all(AppSizes.paddingM),
@@ -172,7 +180,9 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest.withOpacity(0.35),
+                          color: scheme.surfaceContainerHighest.withOpacity(
+                            0.35,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: scheme.outlineVariant.withOpacity(0.45),
@@ -200,6 +210,19 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
                 ),
                 child: Row(
                   children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: canDelete
+                            ? () => onDelete?.call(detail.order.id ?? 0)
+                            : null,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Eliminar'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.error,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => onDuplicate?.call(detail),
@@ -278,14 +301,20 @@ class _InfoGrid extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        chip('Estado', detail.order.status.trim().toUpperCase(),
-            bg: detail.order.status.trim().toUpperCase() == 'RECIBIDA'
-                ? AppColors.successLight
-                : AppColors.warningLight),
+        chip(
+          'Estado',
+          detail.order.status.trim().toUpperCase(),
+          bg: detail.order.status.trim().toUpperCase() == 'RECIBIDA'
+              ? AppColors.successLight
+              : AppColors.warningLight,
+        ),
         chip('Subtotal', currency.format(detail.order.subtotal)),
         chip('Impuestos', currency.format(detail.order.taxAmount)),
-        chip('Total', currency.format(detail.order.total),
-            bg: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5)),
+        chip(
+          'Total',
+          currency.format(detail.order.total),
+          bg: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+        ),
         chip('Tipo', detail.order.isAuto == 1 ? 'Automática' : 'Manual'),
       ],
     );
@@ -321,7 +350,10 @@ class _ItemsTable extends StatelessWidget {
                   width: 70,
                   child: Text('Cant', textAlign: TextAlign.right),
                 ),
-                const SizedBox(width: 90, child: Text('Costo', textAlign: TextAlign.right)),
+                const SizedBox(
+                  width: 90,
+                  child: Text('Costo', textAlign: TextAlign.right),
+                ),
                 const SizedBox(
                   width: 100,
                   child: Text('Subtotal', textAlign: TextAlign.right),

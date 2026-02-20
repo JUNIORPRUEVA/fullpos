@@ -82,6 +82,7 @@ Future<int> _insertCashboxToday(Database db) async {
     'opened_at_ms': DateTime.now().millisecondsSinceEpoch,
     'opened_by_user_id': 1,
     'initial_amount': 100.0,
+    'current_amount': 100.0,
     'status': 'OPEN',
     'note': 'test',
   }, conflictAlgorithm: ConflictAlgorithm.abort);
@@ -94,6 +95,7 @@ Future<int> _insertCashboxTodayWithAmount(Database db, double amount) async {
     'opened_at_ms': DateTime.now().millisecondsSinceEpoch,
     'opened_by_user_id': 1,
     'initial_amount': amount,
+    'current_amount': amount,
     'status': 'OPEN',
     'note': 'test',
   }, conflictAlgorithm: ConflictAlgorithm.abort);
@@ -199,7 +201,47 @@ void main() {
     });
 
     test(
-      'openShiftForCurrentUser carries forward last closed shift closing amount when openingAmount=0',
+      'getOpenSession ignores legacy-closed shift (status OPEN but closed_at_ms set)',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxToday(db);
+
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final legacyId = await db.insert(DbTables.cashSessions, {
+          'opened_by_user_id': 1,
+          'user_name': 'Admin',
+          'opened_at_ms': nowMs - 10 * 1000,
+          'initial_amount': 100.0,
+          'cashbox_daily_id': cashboxId,
+          'business_date': OperationFlowService.businessDateOf(),
+          'requires_closure': 0,
+          'status': 'OPEN',
+          'closed_at_ms': nowMs - 5 * 1000,
+          'closing_amount': 250.0,
+          'expected_cash': 250.0,
+          'difference': 0.0,
+          'note': 'legacy',
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+        final open = await CashRepository.getOpenSession(userId: 1);
+        expect(open, isNull);
+
+        final newShift = await OperationFlowService.openShiftForCurrentUser(
+          openingAmount: 0,
+        );
+        expect(newShift.id, isNot(legacyId));
+      },
+    );
+
+    test(
+      'openShiftForCurrentUser uses daily cashbox initial amount when openingAmount=0 (no carry-forward)',
       () async {
         final db = await AppDb.database;
         await _insertCashboxTodayWithAmount(db, 3000.0);
@@ -224,7 +266,7 @@ void main() {
         final shift2 = await OperationFlowService.openShiftForCurrentUser(
           openingAmount: 0,
         );
-        expect(shift2.openingAmount, 3100.0);
+        expect(shift2.openingAmount, 3000.0);
       },
     );
 
@@ -349,6 +391,130 @@ void main() {
         expect((row.first['closing_amount'] as num?)?.toDouble(), 120);
         expect((row.first['expected_cash'] as num?)?.toDouble(), 100);
         expect((row.first['difference'] as num?)?.toDouble(), 20);
+      },
+    );
+
+    test(
+      'closeSession bumps daily cashbox amount by net CASH sales and keeps it OPEN',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxTodayWithAmount(db, 1000.0);
+
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final shiftId = await _insertOpenShift(
+          db,
+          userId: 1,
+          userName: 'Admin',
+          cashboxId: cashboxId,
+        );
+
+        final summary = CashSummaryModel(
+          openingAmount: 1000.0,
+          cashInManual: 0.0,
+          cashOutManual: 0.0,
+          creditAbonos: 0.0,
+          layawayAbonos: 0.0,
+          salesCashTotal: 4500.0,
+          salesCardTotal: 2000.0,
+          salesTransferTotal: 0.0,
+          salesCreditTotal: 0.0,
+          refundsCash: 0.0,
+          expectedCash: 5500.0,
+          totalTickets: 1,
+          totalRefunds: 0,
+        );
+
+        await CashRepository.closeSession(
+          sessionId: shiftId,
+          closingAmount: 5500.0,
+          note: 'corte',
+          summary: summary,
+          expectedUserId: 1,
+          expectedCashboxDailyId: cashboxId,
+        );
+
+        final cashboxRow = await db.query(
+          DbTables.cashboxDaily,
+          where: 'id = ?',
+          whereArgs: [cashboxId],
+          limit: 1,
+        );
+
+        expect(cashboxRow, isNotEmpty);
+        expect(cashboxRow.first['status'], 'OPEN');
+        expect(
+          (cashboxRow.first['initial_amount'] as num?)?.toDouble(),
+          1000.0,
+        );
+        expect(
+          (cashboxRow.first['current_amount'] as num?)?.toDouble(),
+          5500.0,
+        );
+      },
+    );
+
+    test(
+      'after closing shift, next cashier opening shift sees updated cashbox current amount',
+      () async {
+        final db = await AppDb.database;
+        await _insertCashboxTodayWithAmount(db, 2000.0);
+
+        // Cajero 1 abre turno (0 -> usa monto actual de caja diaria)
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+        final shift1 = await OperationFlowService.openShiftForCurrentUser(
+          openingAmount: 0,
+        );
+        expect(shift1.openingAmount, 2000.0);
+
+        // Cierra turno sumando ventas en efectivo 1000 (neto)
+        final summary = CashSummaryModel(
+          openingAmount: 2000.0,
+          cashInManual: 0.0,
+          cashOutManual: 0.0,
+          creditAbonos: 0.0,
+          layawayAbonos: 0.0,
+          salesCashTotal: 1000.0,
+          salesCardTotal: 0.0,
+          salesTransferTotal: 0.0,
+          salesCreditTotal: 0.0,
+          refundsCash: 0.0,
+          expectedCash: 3000.0,
+          totalTickets: 1,
+          totalRefunds: 0,
+        );
+        await CashRepository.closeSession(
+          sessionId: shift1.id!,
+          closingAmount: 3000.0,
+          note: 'corte',
+          summary: summary,
+          expectedUserId: 1,
+          expectedCashboxDailyId: shift1.cashboxDailyId,
+        );
+
+        await SessionManager.logout();
+
+        // Cajero 2 abre turno (0 -> debe ver 3000)
+        await SessionManager.login(
+          userId: 2,
+          username: 'cashier2',
+          displayName: 'Cashier 2',
+          role: 'cashier',
+        );
+        final shift2 = await OperationFlowService.openShiftForCurrentUser(
+          openingAmount: 0,
+        );
+        expect(shift2.openingAmount, 3000.0);
       },
     );
 

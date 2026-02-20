@@ -11,12 +11,14 @@ class PurchaseOrdersList extends ConsumerWidget {
   final void Function(int orderId)? onOpenPdf;
   final void Function(int orderId)? onReceive;
   final void Function(int orderId)? onEdit;
+  final void Function(int orderId)? onDelete;
 
   const PurchaseOrdersList({
     super.key,
     this.onOpenPdf,
     this.onReceive,
     this.onEdit,
+    this.onDelete,
   });
 
   @override
@@ -111,7 +113,7 @@ class PurchaseOrdersList extends ConsumerWidget {
                       child: Text('Total', textAlign: TextAlign.right),
                     ),
                     const SizedBox(width: 120, child: Text('Estado')),
-                    const SizedBox(width: 120, child: Text('Acciones')),
+                    const SizedBox(width: 164, child: Text('Acciones')),
                   ],
                 ),
               );
@@ -208,7 +210,7 @@ class PurchaseOrdersList extends ConsumerWidget {
                         ),
                       ),
                       SizedBox(
-                        width: 120,
+                        width: 164,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
@@ -234,6 +236,13 @@ class PurchaseOrdersList extends ConsumerWidget {
                                   ? null
                                   : (id <= 0 ? null : () => onEdit?.call(id)),
                               icon: const Icon(Icons.edit_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Eliminar',
+                              onPressed: status == 'PENDIENTE'
+                                  ? (id <= 0 ? null : () => onDelete?.call(id))
+                                  : null,
+                              icon: const Icon(Icons.delete_outline),
                             ),
                           ],
                         ),

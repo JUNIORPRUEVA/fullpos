@@ -405,7 +405,9 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
     );
 
     final ticket = PurchaseTicketPanel(
-      onOrderCreated: () => context.go('/purchases/orders'),
+      onOrderCreated: (
+        orderId,
+      ) => context.go('/purchases/orders?orderId=$orderId'),
       isAuto: true,
     );
 

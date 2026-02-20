@@ -94,6 +94,7 @@ class OperationFlowService {
       DbTables.cashSessions,
       where: '''
         status = 'OPEN'
+        AND closed_at_ms IS NULL
         AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
       ''',
       whereArgs: [cashboxDailyId, businessDate],
@@ -172,6 +173,7 @@ class OperationFlowService {
             DbTables.cashboxDaily,
             {
               'initial_amount': openingAmount,
+              'current_amount': openingAmount,
               'opened_by_user_id': userId,
               'note': newNote,
             },
@@ -204,7 +206,7 @@ class OperationFlowService {
           DbTables.cashSessions,
           columns: ['id'],
           where:
-              "status = 'OPEN' AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))",
+              "status = 'OPEN' AND closed_at_ms IS NULL AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))",
           whereArgs: [existing.id, businessDate],
           limit: 1,
         );
@@ -227,6 +229,7 @@ class OperationFlowService {
             'opened_at_ms': now,
             'opened_by_user_id': userId,
             'initial_amount': openingAmount,
+            'current_amount': openingAmount,
             'status': 'OPEN',
             'closed_at_ms': null,
             'closed_by_user_id': null,
@@ -256,6 +259,7 @@ class OperationFlowService {
       'opened_at_ms': now,
       'opened_by_user_id': userId,
       'initial_amount': openingAmount,
+      'current_amount': openingAmount,
       'status': 'OPEN',
       'note': note,
     }, conflictAlgorithm: ConflictAlgorithm.abort);
@@ -285,6 +289,7 @@ class OperationFlowService {
         columns: ['id', 'opened_by_user_id', 'user_name', 'business_date'],
         where: '''
           status = 'OPEN'
+          AND closed_at_ms IS NULL
           AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
         ''',
         whereArgs: [cashbox.id, today],
@@ -341,37 +346,17 @@ class OperationFlowService {
     final db = await AppDb.database;
     int? id;
     await db.transaction((txn) async {
-      // Si el usuario no especifica monto de apertura:
-      // - Preferir el cierre del último turno cerrado del día (carry-forward).
-      // - Si no existe, usar el fondo inicial de la caja diaria.
+      // Si el usuario abre el turno con 0, usar el fondo inicial de la caja diaria.
+      // Importante: NO heredar montos del turno anterior (evita que parezca que
+      // el monto "no se resetea" luego de cerrar y volver a abrir turno).
       var resolvedOpeningAmount = openingAmount;
       if (resolvedOpeningAmount.abs() < 1e-9) {
-        final lastClosedRows = await txn.query(
-          DbTables.cashSessions,
-          columns: ['closing_amount', 'expected_cash'],
-          where: '''
-            (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
-            AND business_date = ?
-            AND (status = 'CLOSED' OR closed_at_ms IS NOT NULL)
-          ''',
-          whereArgs: [cashbox.id, businessDate, businessDate],
-          orderBy: 'closed_at_ms DESC, opened_at_ms DESC',
-          limit: 1,
-        );
-
-        if (lastClosedRows.isNotEmpty) {
-          final row = lastClosedRows.first;
-          final closing = (row['closing_amount'] as num?)?.toDouble();
-          final expected = (row['expected_cash'] as num?)?.toDouble();
-          resolvedOpeningAmount = closing ?? expected ?? cashbox.initialAmount;
-        } else {
-          resolvedOpeningAmount = cashbox.initialAmount;
-        }
+        resolvedOpeningAmount = cashbox.currentAmount;
       }
 
       final existingUserRows = await txn.query(
         DbTables.cashSessions,
-        where: 'status = ? AND opened_by_user_id = ?',
+        where: 'status = ? AND closed_at_ms IS NULL AND opened_by_user_id = ?',
         whereArgs: ['OPEN', userId],
         orderBy: 'opened_at_ms DESC',
         limit: 1,

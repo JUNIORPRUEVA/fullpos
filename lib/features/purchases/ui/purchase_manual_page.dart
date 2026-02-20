@@ -124,7 +124,9 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
                     final ticket = ConstrainedBox(
                       constraints: _ticketPanelConstraints(width),
                       child: PurchaseTicketPanel(
-                        onOrderCreated: () => context.go('/purchases/orders'),
+                        onOrderCreated: (orderId) => context.go(
+                          '/purchases/orders?orderId=$orderId',
+                        ),
                       ),
                     );
 

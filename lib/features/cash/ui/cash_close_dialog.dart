@@ -304,13 +304,17 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       }
 
       if (mounted) {
+        final rootContext = Navigator.of(context, rootNavigator: true).context;
+        final messenger = ScaffoldMessenger.of(rootContext);
         Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Corte de caja realizado correctamente'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: const Text('Corte de caja realizado correctamente'),
+              backgroundColor: Theme.of(rootContext).colorScheme.primary,
+            ),
+          );
+        });
       }
     } catch (e, st) {
       if (mounted) {

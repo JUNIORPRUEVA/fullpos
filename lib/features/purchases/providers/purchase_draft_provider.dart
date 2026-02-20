@@ -36,6 +36,7 @@ class PurchaseDraftState {
   final SupplierModel? supplier;
   final DateTime createdAt;
   final DateTime purchaseDate;
+  final bool itbisEnabled;
   final double taxRatePercent;
   final String notes;
   final List<PurchaseDraftLine> lines;
@@ -44,6 +45,7 @@ class PurchaseDraftState {
     required this.supplier,
     required this.createdAt,
     required this.purchaseDate,
+    required this.itbisEnabled,
     required this.taxRatePercent,
     required this.notes,
     required this.lines,
@@ -55,6 +57,7 @@ class PurchaseDraftState {
       supplier: null,
       createdAt: now,
       purchaseDate: now,
+      itbisEnabled: false,
       taxRatePercent: taxRatePercent,
       notes: '',
       lines: const [],
@@ -65,7 +68,8 @@ class PurchaseDraftState {
       supplier != null || notes.trim().isNotEmpty || lines.isNotEmpty;
 
   double get subtotal => lines.fold(0.0, (s, l) => s + l.subtotal);
-  double get taxAmount => subtotal * (taxRatePercent / 100.0);
+  double get effectiveTaxRatePercent => itbisEnabled ? taxRatePercent : 0.0;
+  double get taxAmount => subtotal * (effectiveTaxRatePercent / 100.0);
   double get total => subtotal + taxAmount;
 
   PurchaseDraftState copyWith({
@@ -73,6 +77,7 @@ class PurchaseDraftState {
     bool clearSupplier = false,
     DateTime? createdAt,
     DateTime? purchaseDate,
+    bool? itbisEnabled,
     double? taxRatePercent,
     String? notes,
     List<PurchaseDraftLine>? lines,
@@ -81,6 +86,7 @@ class PurchaseDraftState {
       supplier: clearSupplier ? null : (supplier ?? this.supplier),
       createdAt: createdAt ?? this.createdAt,
       purchaseDate: purchaseDate ?? this.purchaseDate,
+      itbisEnabled: itbisEnabled ?? this.itbisEnabled,
       taxRatePercent: taxRatePercent ?? this.taxRatePercent,
       notes: notes ?? this.notes,
       lines: lines ?? this.lines,
@@ -118,6 +124,10 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
         ? value.clamp(0.0, 100.0)
         : state.taxRatePercent;
     state = state.copyWith(taxRatePercent: safe.toDouble());
+  }
+
+  void setItbisEnabled(bool enabled) {
+    state = state.copyWith(itbisEnabled: enabled);
   }
 
   void setNotes(String value) {
@@ -244,6 +254,7 @@ class PurchaseDraftController extends StateNotifier<PurchaseDraftState> {
       supplier: supplier,
       lines: lines,
       taxRatePercent: taxRatePercent ?? state.taxRatePercent,
+      itbisEnabled: (taxRatePercent ?? state.taxRatePercent) > 0,
       notes: notes ?? '',
       purchaseDate: purchaseDate ?? DateTime.now(),
     );

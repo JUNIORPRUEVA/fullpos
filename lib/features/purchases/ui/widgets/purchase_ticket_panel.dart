@@ -16,7 +16,7 @@ import '../../providers/purchase_draft_provider.dart';
 import '../../utils/purchase_order_pdf_launcher.dart';
 
 class PurchaseTicketPanel extends ConsumerStatefulWidget {
-  final VoidCallback? onOrderCreated;
+  final void Function(int orderId)? onOrderCreated;
   final bool isAuto;
 
   const PurchaseTicketPanel({
@@ -90,8 +90,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                         child: ListView.separated(
                           shrinkWrap: true,
                           itemCount: filtered.length,
-                          separatorBuilder: (_, _) =>
-                              const Divider(height: 1),
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final s = filtered[index];
                             final isSelected = current?.id == s.id;
@@ -140,7 +139,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       supplierId: draft.supplier?.id ?? 0,
       status: 'PENDIENTE',
       subtotal: draft.subtotal,
-      taxRate: draft.taxRatePercent,
+      taxRate: draft.effectiveTaxRatePercent,
       taxAmount: draft.taxAmount,
       total: draft.total,
       isAuto: 0,
@@ -164,6 +163,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
               productCodeSnapshot: l.product.code,
               productNameSnapshot: l.product.name,
               qty: l.qty,
+              receivedQty: 0,
               unitCost: l.unitCost,
               totalLine: l.subtotal,
               createdAtMs: nowMs,
@@ -247,25 +247,23 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       final repo = PurchasesRepository();
       final items = draft.lines
           .where((l) => l.product.id != null)
-          .map(
-            (l) {
-              final rawId = l.product.id;
-              final productId = (rawId != null && rawId > 0) ? rawId : null;
-              return repo.itemInput(
-                productId: productId,
-                productCodeSnapshot: l.product.code,
-                productNameSnapshot: l.product.name,
-                qty: l.qty,
-                unitCost: l.unitCost,
-              );
-            },
-          )
+          .map((l) {
+            final rawId = l.product.id;
+            final productId = (rawId != null && rawId > 0) ? rawId : null;
+            return repo.itemInput(
+              productId: productId,
+              productCodeSnapshot: l.product.code,
+              productNameSnapshot: l.product.name,
+              qty: l.qty,
+              unitCost: l.unitCost,
+            );
+          })
           .toList(growable: false);
 
       final orderId = await repo.createOrder(
         supplierId: supplier.id!,
         items: items,
-        taxRatePercent: draft.taxRatePercent,
+        taxRatePercent: draft.effectiveTaxRatePercent,
         notes: draft.notes.trim().isEmpty ? null : draft.notes.trim(),
         isAuto: widget.isAuto,
         purchaseDateMs: draft.purchaseDate.millisecondsSinceEpoch,
@@ -289,7 +287,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       }
 
       ref.read(purchaseDraftProvider.notifier).reset();
-      widget.onOrderCreated?.call();
+      widget.onOrderCreated?.call(orderId);
     } catch (e, st) {
       if (!mounted) return;
       await ErrorHandler.instance.handle(
@@ -444,12 +442,14 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                   return;
                 }
 
-                ref.read(purchaseDraftProvider.notifier).addCustomProduct(
-                  code: codeCtrl.text,
-                  name: name,
-                  qty: qty,
-                  unitCost: cost,
-                );
+                ref
+                    .read(purchaseDraftProvider.notifier)
+                    .addCustomProduct(
+                      code: codeCtrl.text,
+                      name: name,
+                      qty: qty,
+                      unitCost: cost,
+                    );
                 Navigator.of(c).pop(true);
               },
               child: const Text('Agregar'),
@@ -636,7 +636,9 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       children: [
         _SummaryRow(label: 'Subtotal', value: currency.format(draft.subtotal)),
         _SummaryRow(
-          label: 'Impuestos (${draft.taxRatePercent.toStringAsFixed(0)}%)',
+          label: draft.itbisEnabled
+              ? 'Impuestos (${draft.taxRatePercent.toStringAsFixed(0)}%)'
+              : 'Impuestos (OFF)',
           value: currency.format(draft.taxAmount),
         ),
         const Divider(height: 18),
@@ -782,8 +784,9 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                       height: 38,
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed:
-                            _saving ? null : () => _addCustomProductDialog(context),
+                        onPressed: _saving
+                            ? null
+                            : () => _addCustomProductDialog(context),
                         icon: const Icon(Icons.playlist_add),
                         label: const Text('Producto no inventario'),
                       ),
@@ -805,6 +808,34 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Switch.adaptive(
+                            value: draft.itbisEnabled,
+                            onChanged: _saving
+                                ? null
+                                : (v) {
+                                    ref
+                                        .read(purchaseDraftProvider.notifier)
+                                        .setItbisEnabled(v);
+                                  },
+                          ),
+                          Text(
+                            draft.itbisEnabled
+                                ? 'Aplicar ITBIS (${draft.taxRatePercent.toStringAsFixed(0)}%)'
+                                : 'Aplicar ITBIS',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurface.withOpacity(0.75),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

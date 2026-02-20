@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/theme_settings_model.dart';
@@ -9,79 +11,34 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
 import '../../../core/theme/sales_page_theme.dart';
+import '../../../core/session/session_manager.dart';
 
 /// Notifier para manejar el estado del tema
 class ThemeNotifier extends StateNotifier<ThemeSettings> {
   final ThemeSettingsRepository _repository;
+  StreamSubscription<void>? _sessionSub;
 
   ThemeNotifier(this._repository) : super(ThemeSettings.defaultSettings) {
     _loadSettings();
+
+    // Live update across tenants: when login/logout or companyId changes,
+    // reload theme overrides for the active company.
+    _sessionSub = SessionManager.changes.listen((_) {
+      unawaited(_loadSettings());
+    });
+  }
+
+  @override
+  void dispose() {
+    _sessionSub?.cancel();
+    _sessionSub = null;
+    super.dispose();
   }
 
   /// Cargar configuraciÃ³n guardada
   Future<void> _loadSettings() async {
     final loaded = await _repository.loadThemeSettings();
-    final normalized = _normalizeLoadedSettings(loaded);
-    state = normalized;
-    if (normalized != loaded) {
-      await _repository.saveThemeSettings(normalized);
-    }
-  }
-
-  ThemeSettings _normalizeLoadedSettings(ThemeSettings settings) {
-    bool isVeryLight(Color c) =>
-        c.opacity != 0 && c.computeLuminance() > 0.82;
-
-    var s = settings;
-
-    // Requisito: color primario siempre negro.
-    // Esto garantiza que `scheme.primary` sea negro en toda la app.
-    final enforcedPrimary = ThemeSettings.defaultSettings.primaryColor;
-    if (s.primaryColor != enforcedPrimary) {
-      s = s.copyWith(primaryColor: enforcedPrimary);
-    }
-
-    // Evita “flash” blanco en modo oscuro: algunos perfiles legacy guardan
-    // gradientes completamente blancos aunque isDarkMode=true.
-    if (s.isDarkMode &&
-        isVeryLight(s.backgroundGradientStart) &&
-        isVeryLight(s.backgroundGradientMid) &&
-        isVeryLight(s.backgroundGradientEnd)) {
-      s = s.copyWith(
-        backgroundGradientStart: ThemeSettings.defaultSettings.backgroundGradientStart,
-        backgroundGradientMid: ThemeSettings.defaultSettings.backgroundGradientMid,
-        backgroundGradientEnd: ThemeSettings.defaultSettings.backgroundGradientEnd,
-      );
-    }
-
-    // En modo claro: si el fondo quedó prácticamente blanco plano,
-    // lo convertimos a un degradado sutil (gris/blanco/azul muy suave).
-    if (!s.isDarkMode &&
-        s.backgroundGradientStart.opacity != 0 &&
-        s.backgroundGradientMid.opacity != 0 &&
-        s.backgroundGradientEnd.opacity != 0 &&
-        s.backgroundGradientStart.computeLuminance() > 0.92 &&
-        s.backgroundGradientMid.computeLuminance() > 0.92 &&
-        s.backgroundGradientEnd.computeLuminance() > 0.92) {
-      s = s.copyWith(
-        backgroundGradientStart: AppColors.surfaceLightVariant,
-        backgroundGradientMid: AppColors.goldSoft,
-        backgroundGradientEnd: AppColors.surfaceLight,
-      );
-    }
-
-    // Asegura contraste mínimo del texto de la barra de control de ventas
-    // contra el fondo del campo (ayuda a evitar combinaciones ilegibles).
-    final fixedControlText = _ensureReadableColor(
-      s.salesControlBarTextColor,
-      s.salesControlBarContentBackgroundColor,
-      minRatio: 3.0,
-    );
-    if (fixedControlText != s.salesControlBarTextColor) {
-      s = s.copyWith(salesControlBarTextColor: fixedControlText);
-    }
-
-    return s;
+    state = loaded;
   }
 
   /// Actualizar color primario

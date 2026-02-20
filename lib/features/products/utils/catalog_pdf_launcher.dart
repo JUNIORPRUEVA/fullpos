@@ -454,15 +454,10 @@ class _CatalogPdfPreviewDialogState extends State<_CatalogPdfPreviewDialog> {
     final hasError = generationError != null;
     final canAct = !showSpinner && !hasError;
 
-    // Importante: PdfPreview rasteriza TODAS las páginas del documento para la
-    // vista previa. Cuando el PDF tiene muchas páginas, esto puede tardar
-    // muchísimo o parecer que "nunca termina".
-    // Por eso limitamos la vista previa a las primeras páginas.
-    const previewPageLimit = 10;
-    final bool limitPreviewPages = widget.products.length >= 120;
-    final List<int>? previewPages = limitPreviewPages
-        ? List<int>.generate(previewPageLimit, (i) => i)
-        : null;
+    // Nota: no forzamos lista de páginas fija para evitar índices fuera de
+    // rango cuando el PDF generado tenga menos páginas de las esperadas.
+    // (printing rasteriza internamente y puede lanzar ArgumentError).
+    final bool showLargePreviewHint = widget.products.length >= 120;
 
     return WillPopScope(
       onWillPop: () async => !(busy || generating),
@@ -578,12 +573,12 @@ class _CatalogPdfPreviewDialogState extends State<_CatalogPdfPreviewDialog> {
                   ),
                   child: Column(
                     children: [
-                      if (limitPreviewPages)
+                      if (showLargePreviewHint)
                         Padding(
                           padding: const EdgeInsets.all(10),
                           child: Text(
-                            'Vista previa limitada: se muestran solo las primeras $previewPageLimit páginas.\n'
-                            'El PDF descargado/compartido incluye todos los productos seleccionados.',
+                            'El catálogo es grande y la vista previa puede tardar en renderizar.\n'
+                            'Si demora, usa Descargar o Compartir para abrirlo externamente.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(fontSize: 12),
                           ),
@@ -591,7 +586,6 @@ class _CatalogPdfPreviewDialogState extends State<_CatalogPdfPreviewDialog> {
                       Expanded(
                         child: PdfPreview(
                           build: (format) => pdfFuture,
-                          pages: previewPages,
                           maxPageWidth: 620,
                           canChangeOrientation: false,
                           canChangePageFormat: false,

@@ -26,6 +26,41 @@ class PurchaseOrdersPage extends ConsumerStatefulWidget {
 
 class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
   final TextEditingController _searchCtrl = TextEditingController();
+  bool _routeBootstrapped = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.invalidate(purchaseOrdersListProvider);
+      ref.invalidate(purchaseSelectedOrderDetailProvider);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeBootstrapped) return;
+    _routeBootstrapped = true;
+
+    final orderId = int.tryParse(
+      GoRouterState.of(context).uri.queryParameters['orderId'] ?? '',
+    );
+
+    Future.microtask(() {
+      if (!mounted) return;
+
+      ref.read(purchaseOrdersFiltersProvider.notifier).state =
+          PurchaseOrdersFilterState.initial();
+      ref.invalidate(purchaseOrdersListProvider);
+
+      if (orderId != null && orderId > 0) {
+        ref.read(purchaseSelectedOrderIdProvider.notifier).state = orderId;
+        ref.invalidate(purchaseSelectedOrderDetailProvider);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -146,6 +181,7 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
               items: const [
                 DropdownMenuItem(value: null, child: Text('Todos')),
                 DropdownMenuItem(value: 'PENDIENTE', child: Text('Pendiente')),
+                DropdownMenuItem(value: 'PARCIAL', child: Text('Parcial')),
                 DropdownMenuItem(value: 'RECIBIDA', child: Text('Recibida')),
               ],
               onChanged: (v) {
@@ -402,16 +438,54 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
       }
     }
 
-    Future<void> receive(int orderId) async {
+    void receive(int orderId) {
+      if (orderId <= 0) return;
+      context.go('/purchases/receive/$orderId');
+    }
+
+    Future<void> deleteOrder(int orderId) async {
+      if (orderId <= 0) return;
+
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (c) {
+          return AlertDialog(
+            title: const Text('Eliminar orden'),
+            content: const Text(
+              'Solo se puede eliminar una orden pendiente. Esta acción no se puede deshacer. ¿Continuar?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(c).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(c).pop(true),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirm != true) return;
+
       final repo = PurchasesRepository();
       try {
-        await repo.markAsReceived(orderId);
+        await repo.deleteOrder(orderId);
+        if (!context.mounted) return;
+
+        final selectedId = ref.read(purchaseSelectedOrderIdProvider);
+        if (selectedId == orderId) {
+          ref.read(purchaseSelectedOrderIdProvider.notifier).state = null;
+        }
+
         ref.invalidate(purchaseOrdersListProvider);
         ref.invalidate(purchaseSelectedOrderDetailProvider);
-        if (!context.mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Orden marcada como recibida'),
+            content: Text('✅ Orden eliminada'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -421,8 +495,8 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
           e,
           stackTrace: st,
           context: context,
-          onRetry: () => receive(orderId),
-          module: 'purchases/v2/orders/receive',
+          onRetry: () => deleteOrder(orderId),
+          module: 'purchases/v2/orders/delete',
         );
       }
     }
@@ -458,6 +532,7 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                     onOpenPdf: (id) => openPdf(id),
                     onReceive: (id) => receive(id),
                     onEdit: (id) => context.go('/purchases/edit/$id'),
+                    onDelete: (id) => deleteOrder(id),
                   );
 
                   final detail = PurchaseOrderDetailPanel(
@@ -468,6 +543,7 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                         ),
                     onReceive: (id) => receive(id),
                     onDuplicate: (detail) => duplicateToDraft(detail),
+                    onDelete: (id) => deleteOrder(id),
                   );
 
                   if (isNarrow) {

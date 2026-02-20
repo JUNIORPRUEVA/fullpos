@@ -121,7 +121,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
     Color readableOn(Color bg) => ColorUtils.readableTextColor(bg);
 
     return DialogKeyboardShortcuts(
+      enableSubmitShortcuts: !_isLoading,
       onSubmit: _isLoading ? null : _openCash,
+      onCancel: _isLoading ? null : () => Navigator.pop(context),
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.symmetric(
@@ -222,7 +224,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                              'Monto inicial turno',
+                            'Monto inicial turno',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,

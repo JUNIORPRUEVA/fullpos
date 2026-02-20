@@ -1132,6 +1132,7 @@ class AppDb {
           opened_at_ms INTEGER NOT NULL,
           opened_by_user_id INTEGER NOT NULL,
           initial_amount REAL NOT NULL DEFAULT 0,
+          current_amount REAL,
           status TEXT NOT NULL DEFAULT 'OPEN',
           closed_at_ms INTEGER,
           closed_by_user_id INTEGER,
@@ -1936,6 +1937,7 @@ class AppDb {
           opened_at_ms INTEGER NOT NULL,
           opened_by_user_id INTEGER NOT NULL,
           initial_amount REAL NOT NULL DEFAULT 0,
+          current_amount REAL,
           status TEXT NOT NULL DEFAULT 'OPEN',
           closed_at_ms INTEGER,
           closed_by_user_id INTEGER,
@@ -2030,6 +2032,7 @@ class AppDb {
         product_code_snapshot TEXT NOT NULL DEFAULT '',
         product_name_snapshot TEXT NOT NULL,
         qty REAL NOT NULL,
+        received_qty REAL NOT NULL DEFAULT 0,
         unit_cost REAL NOT NULL,
         total_line REAL NOT NULL,
         created_at_ms INTEGER NOT NULL,
@@ -2047,6 +2050,7 @@ class AppDb {
         product_code_snapshot,
         product_name_snapshot,
         qty,
+        received_qty,
         unit_cost,
         total_line,
         created_at_ms
@@ -2058,6 +2062,7 @@ class AppDb {
         COALESCE(p.code, ''),
         COALESCE(p.name, ''),
         i.qty,
+        0,
         i.unit_cost,
         i.total_line,
         i.created_at_ms
@@ -2614,6 +2619,7 @@ class AppDb {
         subtotal REAL NOT NULL DEFAULT 0,
         tax_rate REAL NOT NULL DEFAULT 0,
         tax_amount REAL NOT NULL DEFAULT 0,
+        received_qty REAL NOT NULL DEFAULT 0,
         total REAL NOT NULL DEFAULT 0,
         is_auto INTEGER NOT NULL DEFAULT 0,
         notes TEXT,
@@ -2645,6 +2651,7 @@ class AppDb {
         product_code_snapshot TEXT NOT NULL DEFAULT '',
         product_name_snapshot TEXT NOT NULL,
         qty REAL NOT NULL,
+        received_qty REAL NOT NULL DEFAULT 0,
         unit_cost REAL NOT NULL,
         total_line REAL NOT NULL,
         created_at_ms INTEGER NOT NULL,
@@ -2769,6 +2776,7 @@ class AppDb {
         opened_at_ms INTEGER NOT NULL,
         opened_by_user_id INTEGER NOT NULL,
         initial_amount REAL NOT NULL DEFAULT 0,
+        current_amount REAL,
         status TEXT NOT NULL DEFAULT 'OPEN',
         closed_at_ms INTEGER,
         closed_by_user_id INTEGER,
@@ -3786,6 +3794,7 @@ class AppDb {
         opened_at_ms INTEGER NOT NULL,
         opened_by_user_id INTEGER NOT NULL,
         initial_amount REAL NOT NULL DEFAULT 0,
+        current_amount REAL,
         status TEXT NOT NULL DEFAULT 'OPEN',
         closed_at_ms INTEGER,
         closed_by_user_id INTEGER,
@@ -3996,6 +4005,7 @@ class AppDb {
         product_code_snapshot TEXT NOT NULL DEFAULT '',
         product_name_snapshot TEXT NOT NULL,
         qty REAL NOT NULL,
+        received_qty REAL NOT NULL DEFAULT 0,
         unit_cost REAL NOT NULL,
         total_line REAL NOT NULL,
         created_at_ms INTEGER NOT NULL,
@@ -4003,6 +4013,12 @@ class AppDb {
         FOREIGN KEY (product_id) REFERENCES ${DbTables.products}(id)
       )
     ''');
+    await _addColumnIfMissing(
+      db,
+      DbTables.purchaseOrderItems,
+      'received_qty',
+      'REAL NOT NULL DEFAULT 0',
+    );
     await _createIndexIfMissing(
       db,
       'idx_compras_ordenes_supplier',
@@ -4042,6 +4058,19 @@ class AppDb {
         DbTables.cashboxDaily,
         'status',
       );
+
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashboxDaily,
+        'current_amount',
+        'REAL',
+      );
+      // Backfill: si el monto actual aún no existe, partir del fondo inicial.
+      await db.execute('''
+        UPDATE ${DbTables.cashboxDaily}
+        SET current_amount = initial_amount
+        WHERE current_amount IS NULL
+      ''');
     }
 
     // cash_sessions
@@ -4052,6 +4081,19 @@ class AppDb {
         'user_name',
         "TEXT NOT NULL DEFAULT 'admin'",
       );
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'closed_at_ms',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashSessions,
+        'closed_by_user_id',
+        'INTEGER REFERENCES ${DbTables.users}(id)',
+      );
+      await _addColumnIfMissing(db, DbTables.cashSessions, 'note', 'TEXT');
       await _addColumnIfMissing(
         db,
         DbTables.cashSessions,
@@ -4109,7 +4151,12 @@ class AppDb {
       await db.execute('''
         UPDATE ${DbTables.cashSessions}
         SET status = 'CLOSED'
-        WHERE closed_at_ms IS NOT NULL AND (status IS NULL OR status = '')
+        WHERE closed_at_ms IS NOT NULL
+          AND (
+            status IS NULL
+            OR TRIM(status) = ''
+            OR UPPER(TRIM(status)) = 'OPEN'
+          )
       ''');
       await db.execute('''
         UPDATE ${DbTables.cashSessions}

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
@@ -697,38 +698,21 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
         const SnackBar(content: Text('Turno cerrado correctamente.')),
       );
 
-      if (_canCloseCashbox) {
-        final gate = await OperationFlowService.loadGateState();
+      // Evitar _debugLocked: cerrar rutas/navegar en el siguiente frame.
+      // (Cerrar el panel y luego enviar al flujo de operación.)
+      final rootNavigator = Navigator.of(context, rootNavigator: true);
+      final rootContext = rootNavigator.context;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final canOfferCashboxClose =
-            gate.cashboxToday?.isOpen == true && gate.userOpenShift == null;
-        if (canOfferCashboxClose) {
-          final closeNow = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              title: const Text('Turno cerrado'),
-              content: const Text(
-                'Tu turno se cerró correctamente. ¿Deseas cerrar también la caja del día ahora?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Ahora no'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Cerrar caja ahora'),
-                ),
-              ],
-            ),
-          );
-
-          if (closeNow == true && mounted) {
-            await _showCloseCashbox();
-          }
+        // Cerrar el panel (Dialog)
+        if (rootNavigator.canPop()) {
+          rootNavigator.pop();
         }
-      }
+        // Navegar en el frame siguiente para no competir con el pop.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          rootContext.go('/operation-start');
+        });
+      });
     }
   }
 
@@ -793,6 +777,8 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       businessDate,
     );
     final cashboxId = cashboxBefore?.id;
+
+    if (!mounted) return;
 
     setState(() => _closingCashbox = true);
     try {

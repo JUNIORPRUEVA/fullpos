@@ -31,7 +31,12 @@ class CashRepository {
           .runDbSafe<CashSessionModel?>(() async {
             final db = await AppDb.database;
 
-            String where = 'status = ?';
+            // Un turno se considera ABIERTO solo si:
+            // - status = OPEN
+            // - closed_at_ms IS NULL
+            // Esto evita reutilizar turnos legacy que quedaron con status=OPEN
+            // pero ya tienen closed_at_ms.
+            String where = 'status = ? AND closed_at_ms IS NULL';
             List<dynamic> args = ['OPEN'];
 
             final resolvedUserId = scopeToResolvedUser
@@ -129,6 +134,9 @@ class CashRepository {
       final actorUserId = expectedUserId ?? await SessionManager.userId();
 
       final difference = summary.calculateDifference(closingAmount);
+      final netCashDelta =
+          (summary.salesCashTotal - summary.refundsCash) +
+          (summary.cashInManual - summary.cashOutManual);
 
       await db.transaction((txn) async {
         final sessionRows = await txn.query(
@@ -137,6 +145,7 @@ class CashRepository {
             'id',
             'opened_by_user_id',
             'cashbox_daily_id',
+            'business_date',
             'status',
             'closed_at_ms',
           ],
@@ -154,6 +163,7 @@ class CashRepository {
         final closedAtMs = session['closed_at_ms'] as int?;
         final ownerUserId = session['opened_by_user_id'] as int?;
         final cashboxDailyId = session['cashbox_daily_id'] as int?;
+        final businessDate = session['business_date'] as String?;
 
         if (status != CashSessionStatus.open || closedAtMs != null) {
           throw Exception(
@@ -186,6 +196,46 @@ class CashRepository {
 
         if (updated != 1) {
           throw Exception('No fue posible confirmar el cierre del turno.');
+        }
+
+        // Regla operativa: al cerrar turno, la caja diaria debe reflejar el
+        // efectivo acumulado por ventas en efectivo (neto de devoluciones).
+        // Nota: no se incluyen ventas con tarjeta/transferencia/crédito.
+        final resolvedCashboxDailyId =
+            expectedCashboxDailyId ??
+            cashboxDailyId ??
+            await () async {
+              if (businessDate == null || businessDate.trim().isEmpty) {
+                return null;
+              }
+              final rows = await txn.query(
+                DbTables.cashboxDaily,
+                columns: ['id'],
+                where: 'business_date = ? AND status = ?',
+                whereArgs: [businessDate, 'OPEN'],
+                limit: 1,
+              );
+              return rows.isEmpty ? null : (rows.first['id'] as int?);
+            }();
+
+        if (resolvedCashboxDailyId == null) {
+          throw Exception(
+            'No hay caja diaria abierta asociada para actualizar el efectivo.',
+          );
+        }
+
+        final cashboxUpdated = await txn.rawUpdate(
+          '''
+          UPDATE ${DbTables.cashboxDaily}
+          SET current_amount = COALESCE(current_amount, initial_amount, 0) + ?
+          WHERE id = ? AND status = 'OPEN'
+          ''',
+          [netCashDelta, resolvedCashboxDailyId],
+        );
+        if (cashboxUpdated != 1) {
+          throw Exception(
+            'No hay caja diaria abierta para actualizar el efectivo.',
+          );
         }
 
         // UX / consistencia operativa:
@@ -661,61 +711,6 @@ class CashRepository {
     }
 
     var openingAmount = session.openingAmount;
-
-    // Compatibilidad operativa:
-    // Si el turno se abrió en 0 pero está ligado a una caja diaria,
-    // resolver el monto de apertura con continuidad:
-    // - Si hay un turno cerrado previo del día, usar su closing_amount (o expected_cash).
-    // - Si no existe, usar el fondo inicial de la caja diaria.
-    if (openingAmount.abs() < 1e-9 && session.cashboxDailyId != null) {
-      final businessDate = session.businessDate;
-
-      if (businessDate != null && businessDate.trim().isNotEmpty) {
-        final previousClosed = await db.query(
-          DbTables.cashSessions,
-          columns: ['closing_amount', 'expected_cash'],
-          where: '''
-            (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
-            AND business_date = ?
-            AND id != ?
-            AND opened_at_ms < ?
-            AND (status = 'CLOSED' OR closed_at_ms IS NOT NULL)
-          ''',
-          whereArgs: [
-            session.cashboxDailyId,
-            businessDate,
-            businessDate,
-            sessionId,
-            session.openedAtMs,
-          ],
-          orderBy: 'closed_at_ms DESC, opened_at_ms DESC',
-          limit: 1,
-        );
-
-        if (previousClosed.isNotEmpty) {
-          final row = previousClosed.first;
-          final closing = (row['closing_amount'] as num?)?.toDouble();
-          final expected = (row['expected_cash'] as num?)?.toDouble();
-          if (closing != null || expected != null) {
-            openingAmount = closing ?? expected ?? openingAmount;
-          }
-        }
-      }
-
-      if (openingAmount.abs() < 1e-9) {
-        final cashboxRows = await db.query(
-          DbTables.cashboxDaily,
-          columns: ['initial_amount'],
-          where: 'id = ?',
-          whereArgs: [session.cashboxDailyId],
-          limit: 1,
-        );
-        if (cashboxRows.isNotEmpty) {
-          openingAmount =
-              (cashboxRows.first['initial_amount'] as num?)?.toDouble() ?? 0.0;
-        }
-      }
-    }
 
     // Calcular movimientos manuales IN (incluye abonos de crédito y apartado)
     final inResult = await db.rawQuery(

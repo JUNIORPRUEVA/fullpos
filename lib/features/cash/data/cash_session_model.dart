@@ -36,8 +36,9 @@ class CashSessionModel {
   bool get isClosed => status == 'CLOSED';
 
   DateTime get openedAt => DateTime.fromMillisecondsSinceEpoch(openedAtMs);
-  DateTime? get closedAt =>
-      closedAtMs != null ? DateTime.fromMillisecondsSinceEpoch(closedAtMs!) : null;
+  DateTime? get closedAt => closedAtMs != null
+      ? DateTime.fromMillisecondsSinceEpoch(closedAtMs!)
+      : null;
 
   Map<String, dynamic> toMap() {
     return {
@@ -59,6 +60,15 @@ class CashSessionModel {
   }
 
   factory CashSessionModel.fromMap(Map<String, dynamic> map) {
+    final closedAtMs = map['closed_at_ms'] as int?;
+    final rawStatus = (map['status'] as String?)?.trim();
+    final normalizedStatus = rawStatus == null || rawStatus.isEmpty
+        ? null
+        : rawStatus.toUpperCase();
+    final resolvedStatus = closedAtMs != null
+        ? CashSessionStatus.closed
+        : (normalizedStatus ?? CashSessionStatus.open);
+
     return CashSessionModel(
       id: map['id'] as int?,
       userId: map['opened_by_user_id'] as int? ?? 1,
@@ -68,13 +78,12 @@ class CashSessionModel {
       cashboxDailyId: map['cashbox_daily_id'] as int?,
       businessDate: map['business_date'] as String?,
       requiresClosure: (map['requires_closure'] as int? ?? 0) == 1,
-      closedAtMs: map['closed_at_ms'] as int?,
+      closedAtMs: closedAtMs,
       closingAmount: (map['closing_amount'] as num?)?.toDouble(),
       expectedCash: (map['expected_cash'] as num?)?.toDouble(),
       difference: (map['difference'] as num?)?.toDouble(),
       note: map['note'] as String?,
-      status: map['status'] as String? ?? 
-          (map['closed_at_ms'] != null ? 'CLOSED' : 'OPEN'),
+      status: resolvedStatus,
     );
   }
 

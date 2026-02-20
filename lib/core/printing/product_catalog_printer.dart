@@ -329,8 +329,9 @@ class ProductCatalogPrinter {
               (t) => pw.Text(
                 _sanitizePdfText(t),
                 style: const pw.TextStyle(
-                  fontSize: 9,
-                  color: PdfColors.grey700,
+                  fontSize: 10.5,
+                  color: PdfColors.grey900,
+                  height: 1.15,
                 ),
               ),
             )
@@ -384,8 +385,9 @@ class ProductCatalogPrinter {
                         pw.Text(
                           'Te presentamos nuestros productos disponibles.',
                           style: const pw.TextStyle(
-                            fontSize: 10,
-                            color: PdfColors.grey800,
+                            fontSize: 11,
+                            color: PdfColors.grey900,
+                            height: 1.15,
                           ),
                         ),
                         if (slogan.isNotEmpty) ...[
@@ -393,8 +395,9 @@ class ProductCatalogPrinter {
                           pw.Text(
                             _sanitizePdfText(slogan),
                             style: pw.TextStyle(
-                              fontSize: 9,
-                              color: PdfColors.grey700,
+                              fontSize: 10,
+                              color: PdfColors.grey800,
+                              height: 1.15,
                               fontStyle: pw.FontStyle.italic,
                             ),
                           ),
@@ -408,9 +411,10 @@ class ProductCatalogPrinter {
                             child: pw.Text(
                               'Link de acceso: $website',
                               style: const pw.TextStyle(
-                                fontSize: 9,
+                                fontSize: 10,
                                 color: PdfColors.blue,
                                 decoration: pw.TextDecoration.underline,
+                                height: 1.15,
                               ),
                             ),
                           ),
@@ -431,7 +435,7 @@ class ProductCatalogPrinter {
                       dateLabel,
                       style: pw.TextStyle(
                         color: PdfColors.white,
-                        fontSize: 9,
+                        fontSize: 10,
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
@@ -486,8 +490,8 @@ class ProductCatalogPrinter {
                                   child: pw.Text(
                                     'Sin imagen',
                                     style: const pw.TextStyle(
-                                      fontSize: 9,
-                                      color: PdfColors.grey600,
+                                      fontSize: 10,
+                                      color: PdfColors.grey800,
                                     ),
                                   ),
                                 );
@@ -505,8 +509,10 @@ class ProductCatalogPrinter {
                               (sorted[i]['name'] as String? ?? '').trim(),
                             ),
                             style: pw.TextStyle(
-                              fontSize: 11,
+                              fontSize: 12.5,
                               fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.grey900,
+                              height: 1.10,
                             ),
                             maxLines: 2,
                             overflow: pw.TextOverflow.clip,
@@ -515,9 +521,10 @@ class ProductCatalogPrinter {
                           pw.Text(
                             'Precio: ${money(sorted[i]['salePrice'] as num? ?? 0)}',
                             style: pw.TextStyle(
-                              fontSize: 10,
+                              fontSize: 11.5,
                               color: PdfColors.teal900,
                               fontWeight: pw.FontWeight.bold,
+                              height: 1.10,
                             ),
                           ),
                         ],
@@ -575,8 +582,9 @@ class ProductCatalogPrinter {
                             maxLines: 1,
                             overflow: pw.TextOverflow.clip,
                             style: const pw.TextStyle(
-                              fontSize: 8,
-                              color: PdfColors.grey700,
+                              fontSize: 9.5,
+                              color: PdfColors.grey900,
+                              height: 1.10,
                             ),
                           ),
                       ],
@@ -587,8 +595,8 @@ class ProductCatalogPrinter {
                       'Pagina ${context.pageNumber} de ${context.pagesCount}',
                     ),
                     style: const pw.TextStyle(
-                      fontSize: 9,
-                      color: PdfColors.grey700,
+                      fontSize: 9.5,
+                      color: PdfColors.grey900,
                     ),
                   ),
                 ],

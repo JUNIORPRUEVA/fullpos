@@ -49,6 +49,7 @@ class _PurchaseOrderCreateAutoPageState
   List<SupplierModel> _suppliers = const [];
   SupplierModel? _supplier;
   double _taxRate = 18.0;
+  bool _itbisEnabled = false;
 
   final List<_AutoLineDraft> _lines = [];
 
@@ -78,6 +79,7 @@ class _PurchaseOrderCreateAutoPageState
       setState(() {
         _suppliers = suppliers;
         _taxRate = tax;
+        _itbisEnabled = false;
         _loading = false;
       });
     } catch (e, st) {
@@ -98,7 +100,8 @@ class _PurchaseOrderCreateAutoPageState
   }
 
   double get _subtotal => _lines.fold(0.0, (s, l) => s + l.total);
-  double get _tax => _subtotal * (_taxRate / 100.0);
+  double get _effectiveTaxRate => _itbisEnabled ? _taxRate : 0.0;
+  double get _tax => _subtotal * (_effectiveTaxRate / 100.0);
   double get _total => _subtotal + _tax;
 
   Future<void> _buildSuggestions() async {
@@ -172,7 +175,7 @@ class _PurchaseOrderCreateAutoPageState
     try {
       final orderId = await _purchasesRepo.createOrder(
         supplierId: _supplier!.id!,
-        taxRatePercent: _taxRate,
+        taxRatePercent: _effectiveTaxRate,
         isAuto: true,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         items: _lines
@@ -280,8 +283,9 @@ class _PurchaseOrderCreateAutoPageState
                                 width: 180,
                                 child: TextFormField(
                                   initialValue: _taxRate.toStringAsFixed(2),
+                                  enabled: _itbisEnabled,
                                   decoration: const InputDecoration(
-                                    labelText: 'Impuesto %',
+                                    labelText: 'ITBIS %',
                                   ),
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
@@ -325,6 +329,31 @@ class _PurchaseOrderCreateAutoPageState
                                   'Nota importante para suplidor (opcional)',
                             ),
                             maxLines: 2,
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Switch.adaptive(
+                                  value: _itbisEnabled,
+                                  onChanged: _saving
+                                      ? null
+                                      : (v) => setState(
+                                          () => _itbisEnabled = v,
+                                        ),
+                                ),
+                                Text(
+                                  _itbisEnabled
+                                      ? 'Aplicar ITBIS (${_taxRate.toStringAsFixed(2)}%)'
+                                      : 'Aplicar ITBIS',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -435,7 +464,7 @@ class _PurchaseOrderCreateAutoPageState
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Subtotal: ${currency.format(_subtotal)} • Impuesto: ${currency.format(_tax)} • Total: ${currency.format(_total)}',
+                            'Subtotal: ${currency.format(_subtotal)} • ITBIS: ${currency.format(_tax)} (${_itbisEnabled ? _taxRate.toStringAsFixed(2) : 'OFF'}%) • Total: ${currency.format(_total)}',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           ElevatedButton.icon(

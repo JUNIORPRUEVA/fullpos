@@ -169,6 +169,8 @@ class _CashBoxPageState extends State<CashBoxPage> {
     );
     final cashboxId = cashboxBefore?.id;
 
+    if (!mounted) return;
+
     setState(() => _isMutating = true);
     try {
       await OperationFlowService.closeDailyCashboxToday(
@@ -295,34 +297,11 @@ class _CashBoxPageState extends State<CashBoxPage> {
           return;
         }
 
-        final canOfferCashboxClose =
-            _canCloseCashbox &&
-            _cashboxToday?.isOpen == true &&
-            _session == null;
-        if (!canOfferCashboxClose || !mounted) return;
-
-        final closeCashboxNow = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Turno cerrado'),
-            content: const Text(
-              'Tu turno se cerró correctamente. ¿Deseas cerrar también la caja del día ahora?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Ahora no'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Cerrar caja ahora'),
-              ),
-            ],
-          ),
-        );
-
-        if (closeCashboxNow == true && mounted) {
-          await _closeDailyCashbox();
+        // UX: al cerrar el turno, no volver a mostrar el cuadro de “Abrir turno”.
+        // Redirigir al flujo oficial de “Iniciar operación”.
+        if (mounted) {
+          context.go('/operation-start');
+          return;
         }
       }
     } finally {

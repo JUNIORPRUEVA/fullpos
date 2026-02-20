@@ -109,6 +109,7 @@ class PurchaseOrderItemModel {
   final String productCodeSnapshot;
   final String productNameSnapshot;
   final double qty;
+  final double receivedQty;
   final double unitCost;
   final double totalLine;
   final int createdAtMs;
@@ -120,6 +121,7 @@ class PurchaseOrderItemModel {
     required this.productCodeSnapshot,
     required this.productNameSnapshot,
     required this.qty,
+    required this.receivedQty,
     required this.unitCost,
     required this.totalLine,
     required this.createdAtMs,
@@ -133,6 +135,7 @@ class PurchaseOrderItemModel {
       productCodeSnapshot: (map['product_code_snapshot'] as String?) ?? '',
       productNameSnapshot: (map['product_name_snapshot'] as String?) ?? '',
       qty: (map['qty'] as num?)?.toDouble() ?? 0.0,
+      receivedQty: (map['received_qty'] as num?)?.toDouble() ?? 0.0,
       unitCost: (map['unit_cost'] as num?)?.toDouble() ?? 0.0,
       totalLine: (map['total_line'] as num?)?.toDouble() ?? 0.0,
       createdAtMs: (map['created_at_ms'] as int?) ?? 0,
@@ -147,6 +150,7 @@ class PurchaseOrderItemModel {
       'product_code_snapshot': productCodeSnapshot,
       'product_name_snapshot': productNameSnapshot,
       'qty': qty,
+      'received_qty': receivedQty,
       'unit_cost': unitCost,
       'total_line': totalLine,
       'created_at_ms': createdAtMs,

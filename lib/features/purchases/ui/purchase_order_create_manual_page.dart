@@ -87,6 +87,7 @@ class _PurchaseOrderCreateManualPageState
   SupplierModel? _supplier;
 
   double _taxRate = 18.0;
+  bool _itbisEnabled = false;
   DateTime _purchaseDate = DateTime.now();
   final List<_LineDraft> _lines = [];
 
@@ -171,6 +172,7 @@ class _PurchaseOrderCreateManualPageState
       setState(() {
         _suppliers = suppliers;
         _taxRate = editTaxRate ?? tax;
+        _itbisEnabled = widget.orderId != null ? (editTaxRate ?? 0) > 0 : false;
         _supplier = editSupplier;
         _lines
           ..clear()
@@ -197,7 +199,8 @@ class _PurchaseOrderCreateManualPageState
   }
 
   double get _subtotal => _lines.fold(0.0, (s, l) => s + l.total);
-  double get _tax => _subtotal * (_taxRate / 100.0);
+  double get _effectiveTaxRate => _itbisEnabled ? _taxRate : 0.0;
+  double get _tax => _subtotal * (_effectiveTaxRate / 100.0);
   double get _total => _subtotal + _tax;
 
   Future<void> _save() async {
@@ -241,7 +244,7 @@ class _PurchaseOrderCreateManualPageState
           orderId: widget.orderId!,
           supplierId: _supplier!.id!,
           items: items,
-          taxRatePercent: _taxRate,
+          taxRatePercent: _effectiveTaxRate,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           purchaseDateMs: purchaseDateMs,
         );
@@ -252,12 +255,12 @@ class _PurchaseOrderCreateManualPageState
             backgroundColor: AppColors.success,
           ),
         );
-        context.go('/purchases/receive/${widget.orderId}');
+        context.go('/purchases/orders?orderId=${widget.orderId}');
       } else {
         final orderId = await _purchasesRepo.createOrder(
           supplierId: _supplier!.id!,
           items: items,
-          taxRatePercent: _taxRate,
+          taxRatePercent: _effectiveTaxRate,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           isAuto: false,
           purchaseDateMs: purchaseDateMs,
@@ -269,7 +272,7 @@ class _PurchaseOrderCreateManualPageState
             backgroundColor: AppColors.success,
           ),
         );
-        context.go('/purchases/receive/$orderId');
+        context.go('/purchases/orders?orderId=$orderId');
       }
     } catch (e, st) {
       if (!mounted) return;
@@ -780,8 +783,9 @@ class _PurchaseOrderCreateManualPageState
                                 width: 180,
                                 child: TextFormField(
                                   initialValue: _taxRate.toStringAsFixed(2),
+                                  enabled: _itbisEnabled,
                                   decoration: const InputDecoration(
-                                    labelText: 'Impuesto %',
+                                    labelText: 'ITBIS %',
                                   ),
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
@@ -839,6 +843,31 @@ class _PurchaseOrderCreateManualPageState
                                 label: const Text('Producto no inventario'),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Switch.adaptive(
+                                  value: _itbisEnabled,
+                                  onChanged: _saving
+                                      ? null
+                                      : (v) => setState(
+                                          () => _itbisEnabled = v,
+                                        ),
+                                ),
+                                Text(
+                                  _itbisEnabled
+                                      ? 'Aplicar ITBIS (${_taxRate.toStringAsFixed(2)}%)'
+                                      : 'Aplicar ITBIS',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -1090,7 +1119,7 @@ class _PurchaseOrderCreateManualPageState
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Subtotal: ${currency.format(_subtotal)} • Impuesto: ${currency.format(_tax)} • Total: ${currency.format(_total)}',
+                            'Subtotal: ${currency.format(_subtotal)} • ITBIS: ${currency.format(_tax)} (${_itbisEnabled ? _taxRate.toStringAsFixed(2) : 'OFF'}%) • Total: ${currency.format(_total)}',
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           ElevatedButton.icon(

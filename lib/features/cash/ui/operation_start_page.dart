@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -309,25 +310,63 @@ class _OperationStartPageState extends State<OperationStartPage> {
     final dividerColor = scheme.onSurface.withOpacity(0.10);
 
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: scheme.surface,
-        body: Container(
-          decoration: BoxDecoration(gradient: gradient),
-          child: const Center(child: CircularProgressIndicator()),
+      return Shortcuts(
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+        },
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                if (!_isWorking) _onEnterOperate();
+                return null;
+              },
+            ),
+          },
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              backgroundColor: scheme.surface,
+              body: Container(
+                decoration: BoxDecoration(gradient: gradient),
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+            ),
+          ),
         ),
       );
     }
 
     final state = _state;
     if (state == null) {
-      return Scaffold(
-        backgroundColor: scheme.surface,
-        body: Container(
-          decoration: BoxDecoration(gradient: gradient),
-          child: Center(
-            child: ElevatedButton(
-              onPressed: _reload,
-              child: const Text('Reintentar'),
+      return Shortcuts(
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+        },
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                if (!_isWorking) _onEnterOperate();
+                return null;
+              },
+            ),
+          },
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              backgroundColor: scheme.surface,
+              body: Container(
+                decoration: BoxDecoration(gradient: gradient),
+                child: Center(
+                  child: ElevatedButton(
+                    onPressed: _reload,
+                    child: const Text('Reintentar'),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -339,257 +378,289 @@ class _OperationStartPageState extends State<OperationStartPage> {
     final showCloseCashboxPrompt =
         cashbox?.isOpen == true && shift == null && !state.hasStaleShift;
 
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      body: Container(
-        decoration: BoxDecoration(gradient: gradient),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSizes.paddingL),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 620),
-              child: Card(
-                color: scheme.surface,
-                elevation: 14,
-                shadowColor: Colors.black.withOpacity(0.24),
-                surfaceTintColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  side: BorderSide(color: cardBorder),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 76,
-                            height: 76,
-                            decoration: BoxDecoration(
-                              color: scheme.primary.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: cardBorder),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Image.asset(
-                              FullposBrandTheme.logoAsset,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Center(
-                                    child: Icon(
-                                      Icons.storefront,
-                                      size: 36,
-                                      color: scheme.primary,
-                                    ),
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              if (!_isWorking) _onEnterOperate();
+              return null;
+            },
+          ),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            backgroundColor: scheme.surface,
+            body: Container(
+              decoration: BoxDecoration(gradient: gradient),
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppSizes.paddingL),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 620),
+                    child: Card(
+                      color: scheme.surface,
+                      elevation: 14,
+                      shadowColor: Colors.black.withOpacity(0.24),
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        side: BorderSide(color: cardBorder),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
                               children: [
-                                Text(
-                                  FullposBrandTheme.appName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    color: onSurface,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.2,
+                                Container(
+                                  width: 76,
+                                  height: 76,
+                                  decoration: BoxDecoration(
+                                    color: scheme.primary.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(color: cardBorder),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Image.asset(
+                                    FullposBrandTheme.logoAsset,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) => Center(
+                                          child: Icon(
+                                            Icons.storefront,
+                                            size: 36,
+                                            color: scheme.primary,
+                                          ),
+                                        ),
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Iniciar operación',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: mutedText,
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        FullposBrandTheme.appName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
+                                              color: onSurface,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 0.2,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Iniciar operación',
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(color: mutedText),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Minimizar',
+                                  onPressed: _isWorking
+                                      ? null
+                                      : () => WindowService.minimize(),
+                                  icon: const Icon(Icons.minimize_rounded),
+                                ),
+                                IconButton(
+                                  tooltip: 'Cerrar aplicación',
+                                  onPressed: _isWorking
+                                      ? null
+                                      : () => WindowService.close(),
+                                  icon: const Icon(Icons.close_rounded),
                                 ),
                               ],
                             ),
-                          ),
-                          IconButton(
-                            tooltip: 'Minimizar',
-                            onPressed: _isWorking
-                                ? null
-                                : () => WindowService.minimize(),
-                            icon: const Icon(Icons.minimize_rounded),
-                          ),
-                          IconButton(
-                            tooltip: 'Cerrar aplicación',
-                            onPressed: _isWorking
-                                ? null
-                                : () => WindowService.close(),
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceVariant.withOpacity(0.40),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: dividerColor),
-                        ),
-                        child: Text(
-                          'Valida caja diaria y turno antes de entrar al sistema.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: mutedText,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceVariant.withOpacity(0.28),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: dividerColor),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Estado de CAJA',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: onSurface,
+                            const SizedBox(height: 18),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              cashbox?.isOpen == true ? 'Abierta' : 'Cerrada',
-                            ),
-                            if (cashbox != null) ...[
-                              Text('Fecha: ${cashbox.businessDate}'),
-                              Text(
-                                'Apertura: ${_formatDateTimeDo(cashbox.openedAtMs)}',
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceVariant.withOpacity(0.40),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: dividerColor),
                               ),
-                              Text(
-                                'Fondo inicial: RD\$ ${cashbox.initialAmount.toStringAsFixed(2)}',
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceVariant.withOpacity(0.28),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: dividerColor),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Estado de TURNO',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(shift?.isOpen == true ? 'Abierto' : 'Cerrado'),
-                            if (shift != null) ...[
-                              Text(
-                                'Apertura: ${_formatDateTimeDo(shift.openedAtMs)}',
-                              ),
-                            ],
-                            if (state.hasStaleShift)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  'Hay un turno anterior sin cerrar. Debes cerrarlo para continuar.',
-                                  style: TextStyle(color: scheme.error),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      if (showCloseCashboxPrompt) ...[
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: scheme.primary.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: cardBorder),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Caja abierta detectada',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  color: onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'No hay turno activo. ¿Deseas cerrar la caja del día?',
+                              child: Text(
+                                'Valida caja diaria y turno antes de entrar al sistema.',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: mutedText,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              FilledButton.icon(
-                                onPressed: _isWorking
-                                    ? null
-                                    : () async {
-                                        setState(() => _isWorking = true);
-                                        try {
-                                          await _closeCashboxFromStart();
-                                        } finally {
-                                          if (mounted) {
-                                            setState(() => _isWorking = false);
-                                          }
-                                        }
-                                      },
-                                icon: const Icon(Icons.lock_clock_outlined),
-                                label: const Text('Cerrar caja ahora'),
+                            ),
+                            const SizedBox(height: 18),
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceVariant.withOpacity(0.28),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: dividerColor),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      FilledButton.icon(
-                        onPressed: _isWorking ? null : _onEnterOperate,
-                        icon: const Icon(Icons.login_rounded),
-                        label: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: _isWorking
-                              ? const SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Estado de CAJA',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: onSurface,
+                                    ),
                                   ),
-                                )
-                              : const Text('Entrar a operar'),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    cashbox?.isOpen == true
+                                        ? 'Abierta'
+                                        : 'Cerrada',
+                                  ),
+                                  if (cashbox != null) ...[
+                                    Text('Fecha: ${cashbox.businessDate}'),
+                                    Text(
+                                      'Apertura: ${_formatDateTimeDo(cashbox.openedAtMs)}',
+                                    ),
+                                    Text(
+                                      'Fondo inicial: RD\$ ${cashbox.initialAmount.toStringAsFixed(2)}',
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceVariant.withOpacity(0.28),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: dividerColor),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Estado de TURNO',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    shift?.isOpen == true
+                                        ? 'Abierto'
+                                        : 'Cerrado',
+                                  ),
+                                  if (shift != null) ...[
+                                    Text(
+                                      'Apertura: ${_formatDateTimeDo(shift.openedAtMs)}',
+                                    ),
+                                  ],
+                                  if (state.hasStaleShift)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        'Hay un turno anterior sin cerrar. Debes cerrarlo para continuar.',
+                                        style: TextStyle(color: scheme.error),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            if (showCloseCashboxPrompt) ...[
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: scheme.primary.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: cardBorder),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Caja abierta detectada',
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            color: onSurface,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'No hay turno activo. ¿Deseas cerrar la caja del día?',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(color: mutedText),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    FilledButton.icon(
+                                      onPressed: _isWorking
+                                          ? null
+                                          : () async {
+                                              setState(() => _isWorking = true);
+                                              try {
+                                                await _closeCashboxFromStart();
+                                              } finally {
+                                                if (mounted) {
+                                                  setState(
+                                                    () => _isWorking = false,
+                                                  );
+                                                }
+                                              }
+                                            },
+                                      icon: const Icon(
+                                        Icons.lock_clock_outlined,
+                                      ),
+                                      label: const Text('Cerrar caja ahora'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            FilledButton.icon(
+                              onPressed: _isWorking ? null : _onEnterOperate,
+                              icon: const Icon(Icons.login_rounded),
+                              label: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                child: _isWorking
+                                    ? const SizedBox(
+                                        height: 22,
+                                        width: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.4,
+                                        ),
+                                      )
+                                    : const Text('Entrar a operar'),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'El cierre de turno y cierre de caja se realizan dentro del módulo Caja y Corte.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: mutedText,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'El cierre de turno y cierre de caja se realizan dentro del módulo Caja y Corte.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: mutedText,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),

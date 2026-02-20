@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/constants/app_sizes.dart';
+import '../../../core/ui/dialog_keyboard_shortcuts.dart';
 
 class CashboxOpenDialog extends StatefulWidget {
   final bool canOpen;
@@ -48,6 +49,13 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
   final _amountController = TextEditingController(text: '0.00');
   bool _submitting = false;
 
+  void _submit() {
+    if (!widget.canOpen || _submitting) return;
+    setState(() => _submitting = true);
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+    Navigator.pop(context, amount);
+  }
+
   @override
   void dispose() {
     _amountController.dispose();
@@ -68,52 +76,50 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
       theme.brightness == Brightness.dark ? 0.35 : 0.60,
     );
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.zero,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final maxWidth = constraints.maxWidth;
-          final maxHeight = constraints.maxHeight;
+    return DialogKeyboardShortcuts(
+      enableSubmitShortcuts: widget.canOpen && !_submitting,
+      onSubmit: _submit,
+      onCancel: _submitting ? null : () => Navigator.pop(context),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxWidth = constraints.maxWidth;
+            final maxHeight = constraints.maxHeight;
 
-          return SizedBox(
-            width: maxWidth,
-            height: maxHeight,
-            child: Container(
-              decoration: BoxDecoration(gradient: gradient),
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppSizes.paddingL),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    child: Card(
-                      color: scheme.surface,
-                      elevation: 14,
-                      shadowColor: Colors.black.withOpacity(0.24),
-                      surfaceTintColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(22),
-                        side: BorderSide(color: cardBorder),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
+            return SizedBox(
+              width: maxWidth,
+              height: maxHeight,
+              child: Container(
+                decoration: BoxDecoration(gradient: gradient),
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppSizes.paddingL),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: Card(
+                        color: scheme.surface,
+                        elevation: 14,
+                        shadowColor: Colors.black.withOpacity(0.24),
+                        surfaceTintColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          side: BorderSide(color: cardBorder),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
                             Row(
                               children: [
                                 Container(
                                   width: 76,
                                   height: 76,
                                   decoration: BoxDecoration(
-                                    color: scheme.primary.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(color: cardBorder),
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: Image.asset(
-                                    FullposBrandTheme.logoAsset,
+                                        : _submit,
                                     fit: BoxFit.cover,
                                     errorBuilder: (context, error, stackTrace) =>
                                         Center(
@@ -128,8 +134,9 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
+          },
+        ),
+      ),
                                       Text(
                                         FullposBrandTheme.appName,
                                         maxLines: 1,

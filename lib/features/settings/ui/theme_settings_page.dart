@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
 import '../../../core/constants/app_sizes.dart';
 import 'theme_selector_widget.dart';
-import 'settings_layout.dart';
 
 /// Página de configuración completa del tema (paleta + tipografía + presets)
 class ThemeSettingsPage extends ConsumerWidget {
@@ -19,9 +18,7 @@ class ThemeSettingsPage extends ConsumerWidget {
       32.0,
     );
 
-    return Theme(
-      data: SettingsLayout.brandedTheme(context),
-      child: Scaffold(
+    return Scaffold(
       appBar: AppBar(title: const Text('TEMA DE LA APLICACIÓN'), elevation: 0),
       body: SingleChildScrollView(
         child: Column(
@@ -38,11 +35,11 @@ class ThemeSettingsPage extends ConsumerWidget {
                     '🎨 Personaliza tu POS (completo)',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Configura la paleta completa: AppBar, Sidebar, Footer, botones y tipografía.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          );
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -136,11 +133,11 @@ class ThemeSettingsPage extends ConsumerWidget {
 
             const SizedBox(height: 12),
 
-            // Paleta completa
+            // Paleta (sin duplicados)
             Padding(
               padding: EdgeInsets.symmetric(horizontal: sidePadding),
               child: _SectionCard(
-                title: 'Paleta de Colores',
+                title: 'Branding',
                 child: Column(
                   children: [
                     _ColorRow(
@@ -149,10 +146,21 @@ class ThemeSettingsPage extends ConsumerWidget {
                       onPick: (c) => notifier.updatePrimaryColor(c),
                     ),
                     _ColorRow(
-                      label: 'Color acento',
+                      label: 'Color secundario / acento',
                       color: settings.accentColor,
                       onPick: (c) => notifier.updateAccentColor(c),
                     ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'Background & Surfaces',
+                child: Column(
+                  children: [
                     _ColorRow(
                       label: 'Fondo (background)',
                       color: settings.backgroundColor,
@@ -174,15 +182,79 @@ class ThemeSettingsPage extends ConsumerWidget {
                       color: settings.backgroundGradientEnd,
                       onPick: (c) => notifier.updateBackgroundGradientEnd(c),
                     ),
+                    const Divider(height: 24),
                     _ColorRow(
                       label: 'Surface',
                       color: settings.surfaceColor,
                       onPick: (c) => notifier.updateSurfaceColor(c),
                     ),
                     _ColorRow(
-                      label: 'Color de texto',
+                      label: 'Cards',
+                      color: settings.cardColor,
+                      onPick: (c) => notifier.updateCardColor(c),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'Texto',
+                child: Column(
+                  children: [
+                    _ColorRow(
+                      label: 'Color de texto (general)',
                       color: settings.textColor,
                       onPick: (c) => notifier.updateTextColor(c),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'AppBar',
+                child: Column(
+                  children: [
+                    _ColorRow(
+                      label: 'Fondo AppBar',
+                      color: settings.appBarColor,
+                      onPick: (c) => notifier.updateAppBarColor(c),
+                    ),
+                    _ColorRow(
+                      label: 'Texto/Iconos AppBar',
+                      color: settings.appBarTextColor,
+                      onPick: (c) => notifier.updateAppBarTextColor(c),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'Sidebar / Menú',
+                child: Column(
+                  children: [
+                    _ColorRow(
+                      label: 'Fondo Sidebar',
+                      color: settings.sidebarColor,
+                      onPick: (c) => notifier.updateSidebarColor(c),
+                    ),
+                    _ColorRow(
+                      label: 'Texto/Iconos Sidebar',
+                      color: settings.sidebarTextColor,
+                      onPick: (c) => notifier.updateSidebarTextColor(c),
+                    ),
+                    _ColorRow(
+                      label: 'Activo/Hover Sidebar',
+                      color: settings.sidebarActiveColor,
+                      onPick: (c) => notifier.updateSidebarActiveColor(c),
                     ),
                     const Divider(height: 24),
                     _ColorRow(
@@ -190,69 +262,42 @@ class ThemeSettingsPage extends ConsumerWidget {
                       color: settings.hoverColor,
                       onPick: (c) => notifier.updateHoverColor(c),
                     ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'Footer',
+                child: Column(
+                  children: [
                     _ColorRow(
-                      label: 'Barra global (AppBar/Sidebar/Footer)',
-                      color: settings.appBarColor,
-                      onPick: (c) => notifier.updateChromeBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto barra global',
-                      color: settings.appBarTextColor,
-                      onPick: (c) => notifier.updateChromeTextColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Hover/Activo barra global',
-                      color: settings.sidebarActiveColor,
-                      onPick: (c) => notifier.updateChromeHoverColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'AppBar principal',
-                      color: settings.appBarColor,
-                      onPick: (c) => notifier.updateAppBarColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto AppBar',
-                      color: settings.appBarTextColor,
-                      onPick: (c) => notifier.updateAppBarTextColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Sidebar principal',
-                      color: settings.sidebarColor,
-                      onPick: (c) => notifier.updateSidebarColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto Sidebar',
-                      color: settings.sidebarTextColor,
-                      onPick: (c) => notifier.updateSidebarTextColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Activo Sidebar',
-                      color: settings.sidebarActiveColor,
-                      onPick: (c) => notifier.updateSidebarActiveColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Footer principal',
+                      label: 'Fondo Footer',
                       color: settings.footerColor,
                       onPick: (c) => notifier.updateFooterColor(c),
                     ),
                     _ColorRow(
-                      label: 'Texto Footer',
+                      label: 'Texto/Iconos Footer',
                       color: settings.footerTextColor,
                       onPick: (c) => notifier.updateFooterTextColor(c),
                     ),
-                    const Divider(height: 24),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'Botones & Estados',
+                child: Column(
+                  children: [
                     _ColorRow(
                       label: 'Botones (principal)',
                       color: settings.buttonColor,
                       onPick: (c) => notifier.updateButtonColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Cards',
-                      color: settings.cardColor,
-                      onPick: (c) => notifier.updateCardColor(c),
                     ),
                     const Divider(height: 24),
                     _ColorRow(
@@ -519,7 +564,8 @@ class ThemeSettingsPage extends ConsumerWidget {
             const SizedBox(height: 20),
           ],
         ),
-      ),
+          ),
+        ),
       ),
     );
   }
