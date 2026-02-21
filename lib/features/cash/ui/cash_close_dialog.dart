@@ -52,6 +52,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   final _formKey = GlobalKey<FormState>();
   final _closingAmountController = TextEditingController();
   final _noteController = TextEditingController();
+
+  // Cache de formateadores/regex para evitar recrearlos en cada build.
+  late final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
+  late final DateFormat _timeOnlyFormat = DateFormat('HH:mm');
+  late final DateFormat _dateTimeShortFormat = DateFormat('dd/MM HH:mm');
+  static final RegExp _ticketSanitizeRegExp = RegExp(
+    r'''[^A-Za-z0-9\s\-_/.:,()#%+*&@'"'>$<]+''',
+  );
+
   bool _isLoading = false;
   CashSummaryModel? _summary;
   bool _loadingSummary = true;
@@ -208,13 +217,12 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
   Future<void> _loadCategorySummary() async {
     try {
-      final summary = await CashRepository.listCategorySummaryForSession(
-        widget.sessionId,
-      );
-      final refundItems =
-          await CashRepository.listRefundItemsByCategoryForSession(
-            widget.sessionId,
-          );
+      final results = await Future.wait([
+        CashRepository.listCategorySummaryForSession(widget.sessionId),
+        CashRepository.listRefundItemsByCategoryForSession(widget.sessionId),
+      ]);
+      final summary = results[0] as List<CategoryCashSummary>;
+      final refundItems = results[1] as List<RefundItemByCategory>;
       if (!mounted) return;
       setState(() {
         _categorySummary = summary;
@@ -420,7 +428,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   }) {
     final w = layout.maxCharsPerLine;
     final lines = <String>[];
-    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    final fmt = _dateTimeFormat;
 
     String sanitize(String text) => _sanitizeTicketText(text);
     String fit(String text) => ReceiptText.fitText(sanitize(text), w);
@@ -453,7 +461,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
 
     if (companyName.trim().isNotEmpty) {
-      lines.add('<H2C>${sanitize(companyName.toUpperCase())}');
+      lines.add('<H2C>${sanitize(companyName)}');
     }
     final headerParts = <String>[];
     if ((companyRnc ?? '').trim().isNotEmpty) {
@@ -545,7 +553,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     if (movements.isEmpty) {
       lines.add(center('Sin movimientos'));
     } else {
-      final timeFmt = DateFormat('HH:mm');
+      final timeFmt = _timeOnlyFormat;
       for (final m in movements) {
         final sign = m.isIn ? '+' : '-';
         final right = '$sign${money(m.amount)}';
@@ -611,7 +619,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       if (refunds.isEmpty) return;
       lines.add('<H2C>DEVOLUCIONES');
       lines.add(line());
-      final timeFmt = DateFormat('HH:mm');
+      final timeFmt = _timeOnlyFormat;
       for (final refund in refunds) {
         final when = DateTime.fromMillisecondsSinceEpoch(
           refund['created_at_ms'] as int,
@@ -690,7 +698,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       );
       lines.add(ReceiptText.line(char: '=', width: w));
 
-      final timeFmt = DateFormat('HH:mm');
+      final timeFmt = _timeOnlyFormat;
       for (final sale in sorted) {
         final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
         final items = saleItemsBySaleId[sale.id ?? -1];
@@ -803,10 +811,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         .replaceAll('ç', 'c')
         .replaceAll('Ç', 'C');
 
-    final filtered = s.replaceAll(
-      RegExp(r'''[^A-Za-z0-9\s\-_/.:,()#%+*&@'"'>$<]+'''),
-      '',
-    );
+    final filtered = s.replaceAll(_ticketSanitizeRegExp, '');
     return filtered.trim();
   }
 
@@ -977,7 +982,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
                                     final end = s.closedAt ?? DateTime.now();
                                     final duration = end.difference(s.openedAt);
-                                    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+                                    final fmt = _dateTimeFormat;
 
                                     return Container(
                                       width: double.infinity,
@@ -1933,7 +1938,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
-    final dateFormat = DateFormat('dd/MM HH:mm');
+    final dateFormat = _dateTimeShortFormat;
 
     return ListView.separated(
       shrinkWrap: true,
@@ -2087,7 +2092,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
-    final timeFormat = DateFormat('dd/MM HH:mm');
+    final timeFormat = _dateTimeShortFormat;
 
     return ListView.separated(
       shrinkWrap: true,
@@ -2262,7 +2267,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
     if (selectedMovement != null) {
       final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
-      final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+      final dateFormat = _dateTimeFormat;
       final m = selectedMovement;
 
       final movementColor = m.isIn
@@ -2389,7 +2394,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
 
     final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final dateFormat = _dateTimeFormat;
     final amount = (selectedRefund['total'] as num?)?.toDouble().abs() ?? 0.0;
     final note = (selectedRefund['note'] as String?)?.trim() ?? '';
     final createdAt = DateTime.fromMillisecondsSinceEpoch(

@@ -51,7 +51,13 @@ void main() {
 
     final repo = ThemeSettingsRepository();
 
-    await SessionManager.setCompanyId(1);
+    await SessionManager.login(
+      userId: 1,
+      username: 'test',
+      displayName: 'Test',
+      role: 'admin',
+      companyId: 1,
+    );
 
     // Baseline is always the shipped default theme.
     final base1 = await repo.loadThemeSettings();
@@ -90,5 +96,7 @@ void main() {
     await SessionManager.setCompanyId(2);
     final company2Unchanged = await repo.loadThemeSettings();
     expect(company2Unchanged, ThemeSettings.defaultSettings);
+
+    await SessionManager.logout();
   });
 }

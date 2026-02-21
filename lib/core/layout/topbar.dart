@@ -9,7 +9,7 @@ import '../theme/color_utils.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
 import '../window/window_service.dart';
-import '../../theme/app_colors.dart';
+import '../../features/settings/providers/theme_provider.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/cash/data/cash_repository.dart';
 import '../../features/cash/ui/cash_open_dialog.dart';
@@ -47,6 +47,7 @@ class _TopbarState extends ConsumerState<Topbar> {
 
   bool _canAccessCash = false;
   int? _openCashSessionId;
+  bool _loadingOpenCashSessionId = false;
   bool _isCashHover = false;
 
   Future<void> _minimize() async {
@@ -215,11 +216,19 @@ class _TopbarState extends ConsumerState<Topbar> {
   }
 
   Future<void> _loadOpenCashSessionId() async {
+    if (_loadingOpenCashSessionId) return;
+    _loadingOpenCashSessionId = true;
     try {
       final id = await CashRepository.getCurrentSessionId();
-      if (mounted) setState(() => _openCashSessionId = id);
+      if (!mounted) return;
+
+      // Evitar rebuilds innecesarios si no hay cambios.
+      if (id == _openCashSessionId) return;
+      setState(() => _openCashSessionId = id);
     } catch (_) {
       // Si falla, no bloquear la UI
+    } finally {
+      _loadingOpenCashSessionId = false;
     }
   }
 
@@ -251,11 +260,15 @@ class _TopbarState extends ConsumerState<Topbar> {
 
   @override
   Widget build(BuildContext context) {
+    final themeSettings = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();
-    final appBarBg = AppColors.primaryBlue;
-    final appBarFg = Colors.white;
+    final appBarBg = themeSettings.topbarColor;
+    final appBarFg = ColorUtils.ensureReadableColor(
+      themeSettings.topbarTextColor,
+      appBarBg,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -373,7 +386,7 @@ class _TopbarState extends ConsumerState<Topbar> {
             border: widget.showBottomBorder
                 ? Border(
                     bottom: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.16),
+                      color: appBarFg.withValues(alpha: 0.16),
                       width: 1,
                     ),
                   )
@@ -410,7 +423,11 @@ class _TopbarState extends ConsumerState<Topbar> {
                       TextSpan(
                         text: 'POS',
                         style: TextStyle(
-                          color: AppColors.lightBlueHover,
+                          color: ColorUtils.ensureReadableColor(
+                            scheme.secondary,
+                            appBarBg,
+                            minRatio: 3.0,
+                          ),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -569,7 +586,7 @@ class _TopbarState extends ConsumerState<Topbar> {
                 width: 1,
                 height: (topbarHeight * 0.52).clamp(20.0, 34.0),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.20),
+                  color: appBarFg.withValues(alpha: 0.20),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -590,10 +607,10 @@ class _TopbarState extends ConsumerState<Topbar> {
                       vertical: (8 * s).clamp(7.0, 10.0),
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: appBarFg.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.22),
+                        color: appBarFg.withValues(alpha: 0.22),
                       ),
                     ),
                     child: Row(
@@ -601,7 +618,7 @@ class _TopbarState extends ConsumerState<Topbar> {
                       children: [
                         CircleAvatar(
                           radius: (14 * s).clamp(12.0, 14.0),
-                          backgroundColor: AppColors.lightBlueHover,
+                          backgroundColor: scheme.secondary,
                           backgroundImage: (_profileImagePath != null)
                               ? FileImage(File(_profileImagePath!))
                               : null,
@@ -609,7 +626,10 @@ class _TopbarState extends ConsumerState<Topbar> {
                               ? Icon(
                                   Icons.person,
                                   size: (14 * s).clamp(12.0, 14.0),
-                                  color: AppColors.darkBlue,
+                                  color: ColorUtils.ensureReadableColor(
+                                    scheme.onSecondary,
+                                    scheme.secondary,
+                                  ),
                                 )
                               : null,
                         ),
@@ -620,7 +640,7 @@ class _TopbarState extends ConsumerState<Topbar> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Colors.white,
+                              color: appBarFg,
                               fontSize: (13.5 * s).clamp(12.0, 14.5),
                               fontWeight: FontWeight.w700,
                             ),

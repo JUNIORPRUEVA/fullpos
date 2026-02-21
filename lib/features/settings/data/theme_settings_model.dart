@@ -9,8 +9,15 @@ class ThemeSettings {
   final Color surfaceColor;
   final Color textColor;
   final Color hoverColor;
+
+  /// AppBar normal (AppBar de pantallas: `Scaffold(appBar: AppBar(...))`)
   final Color appBarColor;
   final Color appBarTextColor;
+
+  /// AppBar principal del layout (Topbar custom en `AppShell`)
+  final Color topbarColor;
+  final Color topbarTextColor;
+
   final Color cardColor;
   final Color buttonColor;
   final Color successColor;
@@ -68,6 +75,8 @@ class ThemeSettings {
     required this.hoverColor,
     required this.appBarColor,
     required this.appBarTextColor,
+    required this.topbarColor,
+    required this.topbarTextColor,
     required this.cardColor,
     required this.buttonColor,
     required this.successColor,
@@ -124,6 +133,8 @@ class ThemeSettings {
     hoverColor: AppColors.brandBlueAccent,
     appBarColor: AppColors.brandBlue,
     appBarTextColor: AppColors.textLight,
+    topbarColor: AppColors.brandBlue,
+    topbarTextColor: AppColors.textLight,
     cardColor: AppColors.brandBlue,
     buttonColor: AppColors.brandBlue,
     successColor: AppColors.success,
@@ -174,6 +185,13 @@ class ThemeSettings {
 
   /// Crear desde Map (para cargar desde DB)
   factory ThemeSettings.fromMap(Map<String, dynamic> map) {
+    final appBarColor = Color(
+      map['appBarColor'] as int? ?? AppColors.surfaceDark.value,
+    );
+    final appBarTextColor = Color(
+      map['appBarTextColor'] as int? ?? AppColors.textLight.value,
+    );
+
     return ThemeSettings(
       primaryColor:
           Color(map['primaryColor'] as int? ?? AppColors.brandBlueLight.value),
@@ -185,10 +203,12 @@ class ThemeSettings {
       textColor: Color(map['textColor'] as int? ?? AppColors.textLight.value),
       hoverColor:
           Color(map['hoverColor'] as int? ?? AppColors.brandBlueAccent.value),
-      appBarColor:
-          Color(map['appBarColor'] as int? ?? AppColors.surfaceDark.value),
-      appBarTextColor:
-          Color(map['appBarTextColor'] as int? ?? AppColors.textLight.value),
+      appBarColor: appBarColor,
+      appBarTextColor: appBarTextColor,
+      // Backwards compatible: si no existe topbarColor, heredarlo de appBarColor.
+      topbarColor: Color(map['topbarColor'] as int? ?? appBarColor.value),
+      topbarTextColor:
+        Color(map['topbarTextColor'] as int? ?? appBarTextColor.value),
       cardColor: Color(map['cardColor'] as int? ?? AppColors.surfaceLight.value),
       buttonColor:
           Color(map['buttonColor'] as int? ?? AppColors.brandBlueLight.value),
@@ -327,6 +347,8 @@ class ThemeSettings {
       'hoverColor': hoverColor.toARGB32(),
       'appBarColor': appBarColor.toARGB32(),
       'appBarTextColor': appBarTextColor.toARGB32(),
+      'topbarColor': topbarColor.toARGB32(),
+      'topbarTextColor': topbarTextColor.toARGB32(),
       'cardColor': cardColor.toARGB32(),
       'buttonColor': buttonColor.toARGB32(),
       'successColor': successColor.toARGB32(),
@@ -394,6 +416,8 @@ class ThemeSettings {
     Color? hoverColor,
     Color? appBarColor,
     Color? appBarTextColor,
+    Color? topbarColor,
+    Color? topbarTextColor,
     Color? cardColor,
     Color? buttonColor,
     Color? successColor,
@@ -446,6 +470,8 @@ class ThemeSettings {
       hoverColor: hoverColor ?? this.hoverColor,
       appBarColor: appBarColor ?? this.appBarColor,
       appBarTextColor: appBarTextColor ?? this.appBarTextColor,
+      topbarColor: topbarColor ?? this.topbarColor,
+      topbarTextColor: topbarTextColor ?? this.topbarTextColor,
       cardColor: cardColor ?? this.cardColor,
       buttonColor: buttonColor ?? this.buttonColor,
       successColor: successColor ?? this.successColor,
@@ -541,6 +567,8 @@ class ThemeSettings {
         other.hoverColor == hoverColor &&
         other.appBarColor == appBarColor &&
         other.appBarTextColor == appBarTextColor &&
+        other.topbarColor == topbarColor &&
+        other.topbarTextColor == topbarTextColor &&
         other.cardColor == cardColor &&
         other.buttonColor == buttonColor &&
         other.successColor == successColor &&
@@ -607,6 +635,8 @@ class ThemeSettings {
     hoverColor,
     appBarColor,
     appBarTextColor,
+    topbarColor,
+    topbarTextColor,
     cardColor,
     buttonColor,
     successColor,
@@ -670,6 +700,8 @@ class PresetThemes {
       hoverColor: AppColors.brandBlueAccent,
       appBarColor: AppColors.surfaceDark,
       appBarTextColor: AppColors.textLight,
+      topbarColor: AppColors.surfaceDark,
+      topbarTextColor: AppColors.textLight,
       cardColor: AppColors.surfaceDarkVariant,
       buttonColor: AppColors.brandBlue,
       successColor: AppColors.success,

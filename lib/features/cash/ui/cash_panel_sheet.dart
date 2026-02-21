@@ -55,6 +55,8 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   bool _canCloseCashbox = false;
   bool _closingCashbox = false;
 
+  late final DateFormat _openedAtFormat = DateFormat('dd/MM HH:mm');
+
   Timer? _clockTimer;
 
   @override
@@ -236,7 +238,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                       ),
                       if (session != null && durationText != null)
                         Text(
-                          'Tiempo: $durationText  •  Apertura: ${DateFormat('dd/MM HH:mm').format(session.openedAt)}',
+                          'Tiempo: $durationText  •  Apertura: ${_openedAtFormat.format(session.openedAt)}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             fontSize: 11,
                             color: scheme.onSurface.withOpacity(0.6),
@@ -716,6 +718,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _showCloseCashbox() async {
     if (_closingCashbox) return;
     if (!_canCloseCashbox) {

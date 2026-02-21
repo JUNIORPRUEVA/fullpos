@@ -55,8 +55,10 @@ class OperationFlowService {
   static const Duration maxShiftOpenDuration = Duration(hours: 48);
   static final int _maxShiftOpenMs = maxShiftOpenDuration.inMilliseconds;
 
+  static final DateFormat _businessDateFormat = DateFormat('yyyy-MM-dd');
+
   static String businessDateOf([DateTime? date]) {
-    return DateFormat('yyyy-MM-dd').format((date ?? DateTime.now()).toLocal());
+    return _businessDateFormat.format((date ?? DateTime.now()).toLocal());
   }
 
   static bool _isShiftOverMaxAge(CashSessionModel shift, int nowMs) {
@@ -71,8 +73,12 @@ class OperationFlowService {
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    final cashbox = await getDailyCashbox(today);
-    final userShift = await CashRepository.getOpenSession(userId: userId);
+    final results = await Future.wait([
+      getDailyCashbox(today),
+      CashRepository.getOpenSession(userId: userId),
+    ]);
+    final cashbox = results[0] as CashboxDailyModel?;
+    final userShift = results[1] as CashSessionModel?;
     final stale = (userShift != null && _isShiftOverMaxAge(userShift, nowMs))
         ? userShift
         : null;

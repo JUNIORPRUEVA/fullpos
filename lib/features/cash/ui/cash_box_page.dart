@@ -9,6 +9,7 @@ import '../data/cashbox_daily_model.dart';
 import '../data/daily_cash_close_ticket_printer.dart';
 import '../data/operation_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../settings/data/user_model.dart' show UserPermissions;
 import 'cash_close_dialog.dart';
 import 'cashbox_open_dialog.dart';
 import 'cash_panel_sheet.dart';
@@ -45,10 +46,16 @@ class _CashBoxPageState extends State<CashBoxPage> {
   Future<void> _loadData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    final gate = await OperationFlowService.loadGateState();
-    final perms = await AuthRepository.getCurrentPermissions();
+
+    final results = await Future.wait([
+      OperationFlowService.loadGateState(),
+      AuthRepository.getCurrentPermissions(),
+      CashRepository.listClosedSessions(limit: 30),
+    ]);
+    final gate = results[0] as OperationGateState;
+    final perms = results[1] as UserPermissions;
+    final history = results[2] as List<CashSessionModel>;
     final session = gate.userOpenShift;
-    final history = await CashRepository.listClosedSessions(limit: 30);
     if (!mounted) return;
     setState(() {
       _session = session;

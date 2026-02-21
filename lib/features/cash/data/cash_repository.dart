@@ -595,8 +595,11 @@ class CashRepository {
     final cashOutManual = (outResult.first['total'] as num?)?.toDouble() ?? 0.0;
 
     // Ventas en efectivo (usando cash_session_id o session_id)
+    // Importante: para caja debemos contar lo VENDIDO (total), no lo RECIBIDO (paid_amount),
+    // porque paid_amount puede incluir el efectivo entregado por el cliente antes de devolver
+    // el cambio/devuelta.
     final cashSalesResult = await db.rawQuery('''
-      SELECT COALESCE(SUM(paid_amount), 0) as total
+      SELECT COALESCE(SUM(total), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
         AND kind = 'invoice'
@@ -763,9 +766,11 @@ class CashRepository {
     final cashOutManual = (outResult.first['total'] as num?)?.toDouble() ?? 0.0;
 
     // Ventas en efectivo (usando cash_session_id o session_id)
+    // Importante: para caja debemos contar lo VENDIDO (total), no lo RECIBIDO (paid_amount),
+    // porque paid_amount puede incluir la devuelta/cambio.
     final cashSalesResult = await db.rawQuery(
       '''
-      SELECT COALESCE(SUM(paid_amount), 0) as total
+      SELECT COALESCE(SUM(total), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id = ? OR session_id = ?)
         AND kind = 'invoice'
@@ -871,7 +876,7 @@ class CashRepository {
 
     // Calcular efectivo esperado
     // expected = apertura + ventas efectivo + entradas - salidas - devoluciones efectivo
-    // Nota: el cambio ya se resta del paid_amount en ventas efectivo
+    // Nota: las ventas en efectivo se calculan con `total` para no incluir devuelta/cambio.
     final expectedCash =
         openingAmount +
         salesCashTotal +

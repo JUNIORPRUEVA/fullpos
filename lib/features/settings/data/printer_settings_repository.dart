@@ -56,7 +56,8 @@ class PrinterSettingsRepository {
       'created_at_ms': now,
       'updated_at_ms': now,
       // Nuevos campos - plantilla profesional
-      'font_family': 'arialBlack',
+      // Evitar 'arialBlack' por defecto: demasiado pesado en tickets.
+      'font_family': 'arial',
       'font_size': 'normal',
       'show_logo': 1,
       // Logo más visible por defecto.
@@ -157,7 +158,7 @@ class PrinterSettingsRepository {
       'itbis_rate': 0.18,
       'updated_at_ms': now,
       // Nuevos campos
-      'font_family': 'arialBlack',
+      'font_family': 'arial',
       'font_size': 'normal',
       'show_logo': 1,
       'logo_size': 70,
@@ -222,7 +223,7 @@ class PrinterSettingsRepository {
       'updated_at_ms': now,
       // Estilo profesional ejecutivo
       // Plantilla ejecutiva pero con alineación perfecta
-      'font_family': 'arialBlack',
+      'font_family': 'arial',
       'font_size': 'normal',
       'show_logo': 1,
       'logo_size': 70,

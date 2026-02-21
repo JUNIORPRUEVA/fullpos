@@ -381,8 +381,7 @@ class _ReportsPageState extends State<ReportsPage>
   EdgeInsets _contentPadding(BoxConstraints constraints) {
     const maxContentWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-    final side =
-        ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
+    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
     return EdgeInsets.fromLTRB(side, 16, side, 16);
   }
 
@@ -434,7 +433,13 @@ class _ReportsPageState extends State<ReportsPage>
               children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () => context.go('/'),
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                      return;
+                    }
+                    context.go('/sales');
+                  },
                   tooltip: 'Volver',
                   style: IconButton.styleFrom(
                     backgroundColor: scheme.surfaceContainerHighest,
@@ -853,7 +858,9 @@ class _ReportsPageState extends State<ReportsPage>
                             child: Text(
                               currencyFormat.format(item.sales),
                               textAlign: TextAlign.right,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           Expanded(
@@ -870,7 +877,9 @@ class _ReportsPageState extends State<ReportsPage>
                             child: Text(
                               currencyFormat.format(item.netSales),
                               textAlign: TextAlign.right,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           Expanded(
@@ -894,7 +903,8 @@ class _ReportsPageState extends State<ReportsPage>
       ),
     );
   }
-Widget _buildChartCard({
+
+  Widget _buildChartCard({
     required String title,
     required IconData icon,
     required Widget child,
@@ -1181,20 +1191,14 @@ Widget _buildChartCard({
                       flex: 2,
                       child: Text(
                         dateStr,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 12, color: scheme.onSurface),
                       ),
                     ),
                     Expanded(
                       flex: 3,
                       child: Text(
                         sale.customerName ?? 'Cliente General',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 12, color: scheme.onSurface),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1279,19 +1283,19 @@ Widget _buildChartCard({
         color = scheme.secondary;
         icon = Icons.swap_horiz;
         break;
-        case 'credit':
-        case 'credito':
-        case 'crédito':
-          label = 'Credito';
-          color = scheme.error;
-          icon = Icons.schedule;
-          break;
-        case 'layaway':
-        case 'apartado':
-          label = 'Apartado';
-          color = scheme.secondary;
-          icon = Icons.bookmark;
-          break;
+      case 'credit':
+      case 'credito':
+      case 'crédito':
+        label = 'Credito';
+        color = scheme.error;
+        icon = Icons.schedule;
+        break;
+      case 'layaway':
+      case 'apartado':
+        label = 'Apartado';
+        color = scheme.secondary;
+        icon = Icons.bookmark;
+        break;
       default:
         label = method ?? 'N/A';
         color = scheme.outline;
@@ -1322,10 +1326,3 @@ Widget _buildChartCard({
     );
   }
 }
-
-
-
-
-
-
-

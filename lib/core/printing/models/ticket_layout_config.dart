@@ -117,7 +117,8 @@ class TicketLayoutConfig {
     this.footerMessage = '¡GRACIAS POR LA COMPRA!',
     this.warrantyPolicy = '',
     this.fontSize = TicketFontSize.normal,
-    this.fontFamily = TicketFontFamily.arialBlack,
+    // Default legible y consistente con tickets por columnas.
+    this.fontFamily = TicketFontFamily.courier,
     this.showDateTime = true,
     this.showTicketCode = true,
     this.showNcf = true,
@@ -252,9 +253,16 @@ class TicketLayoutConfig {
   factory TicketLayoutConfig.fromPrinterSettings(
     PrinterSettingsModel settings,
   ) {
+    // Compatibilidad: en 58mm, 42+ chars por línea vuelve la letra demasiado pequeña.
+    // Si el usuario tiene un valor alto (típico de defaults viejos), normalizamos a 32.
+    final int normalizedCharsPerLine = _normalizeCharsPerLine(
+      paperWidthMm: settings.paperWidthMm,
+      charsPerLine: settings.charsPerLine,
+    );
+
     return TicketLayoutConfig(
       paperWidthDots: settings.paperWidthMm == 80 ? 576 : 384,
-      maxCharsPerLine: settings.charsPerLine,
+      maxCharsPerLine: normalizedCharsPerLine,
       showLogo: settings.showLogo == 1,
       logoScale: settings.logoSize / 80.0,
       logoSizePx: settings.logoSize,
@@ -288,6 +296,19 @@ class TicketLayoutConfig {
       detailsAlignment: settings.detailsAlignment,
       totalsAlignment: settings.totalsAlignment,
     );
+  }
+
+  static int _normalizeCharsPerLine({
+    required int paperWidthMm,
+    required int charsPerLine,
+  }) {
+    // Heurística conservadora: solo corregir valores demasiado altos para 58mm.
+    if (paperWidthMm == 58 && charsPerLine > 34) return 32;
+    // Para 80mm: 42 chars por línea suele dar letra muy pequeña cuando el ancho
+    // imprimible real ronda ~72mm. Para mejorar legibilidad sin cambiar el orden
+    // del ticket, normalizamos valores altos a un ancho más legible.
+    if (paperWidthMm == 80 && charsPerLine >= 42) return 34;
+    return charsPerLine.clamp(16, 64);
   }
 
   /// Obtener ancho del papel en mm

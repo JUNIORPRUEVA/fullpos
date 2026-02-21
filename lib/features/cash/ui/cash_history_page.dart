@@ -57,6 +57,11 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   CashMovementModel? _selectedMovement;
   int _loadSeq = 0;
 
+  late final DateFormat _dateOnlyFormat = DateFormat('dd/MM/yyyy');
+  late final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
+  late final DateFormat _timeOnlyFormat = DateFormat('HH:mm');
+  late final DateFormat _dateTimeShortFormat = DateFormat('dd/MM HH:mm');
+
   @override
   void initState() {
     super.initState();
@@ -163,7 +168,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Widget _buildTopHeaderLine({required bool isNarrow}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateFormat = DateFormat('dd/MM/yyyy');
+    final dateFormat = _dateOnlyFormat;
 
     final controlRadius = BorderRadius.circular(12);
     final controlBorder = BorderSide(color: scheme.outlineVariant);
@@ -443,7 +448,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
               final data = snapshot.data!;
               final theme = Theme.of(context);
               final scheme = theme.colorScheme;
-              final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+              final dateTime = _dateTimeFormat;
               final money = NumberFormat.currency(
                 locale: 'es_DO',
                 symbol: 'RD\$ ',
@@ -505,7 +510,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                         data: data,
                         theme: theme,
                         scheme: scheme,
-                        timeFormat: DateFormat('HH:mm'),
+                        timeFormat: _timeOnlyFormat,
                         moneyFormat: money,
                       ),
                       const SizedBox(height: 12),
@@ -685,7 +690,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
-    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final dateTime = _dateTimeFormat;
     final isIn = movement.isIn;
     final color = isIn ? scheme.primary : scheme.error;
 
@@ -920,7 +925,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   }) {
     final w = layout.maxCharsPerLine;
     final lines = <String>[];
-    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    final fmt = _dateTimeFormat;
 
     String sanitize(String text) => _sanitizeTicketText(text);
     String fit(String text) => ReceiptText.fitText(sanitize(text), w);
@@ -1042,7 +1047,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     if (movements.isEmpty) {
       lines.add(center('Sin movimientos'));
     } else {
-      final timeFmt = DateFormat('HH:mm');
+      final timeFmt = _timeOnlyFormat;
       for (final m in movements) {
         final sign = m.isIn ? '+' : '-';
         final right = '$sign${money(m.amount)}';
@@ -1116,7 +1121,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       );
       lines.add(ReceiptText.line(char: '=', width: w));
 
-      final timeFmt = DateFormat('HH:mm');
+      final timeFmt = _timeOnlyFormat;
       for (final sale in sorted) {
         final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
         final items = saleItemsBySaleId[sale.id ?? -1];
@@ -1319,7 +1324,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateTime = DateFormat('dd/MM HH:mm');
+    final dateTime = _dateTimeShortFormat;
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
 
     final sessions = _filteredSessions;
@@ -1503,7 +1508,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
-    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final dateTime = _dateTimeFormat;
 
     if (session == null || session.id == null) {
       return Container(
@@ -1652,7 +1657,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                   data: data,
                   theme: theme,
                   scheme: scheme,
-                  timeFormat: DateFormat('HH:mm'),
+                  timeFormat: _timeOnlyFormat,
                   moneyFormat: money,
                 ),
                 const SizedBox(height: 14),
@@ -1747,7 +1752,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateTime = DateFormat('dd/MM HH:mm');
+    final dateTime = _dateTimeShortFormat;
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
 
     final movements = _filteredMovements;
@@ -1837,7 +1842,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
-    final dateTime = DateFormat('dd/MM/yyyy HH:mm');
+    final dateTime = _dateTimeFormat;
 
     if (movement == null) {
       return Container(

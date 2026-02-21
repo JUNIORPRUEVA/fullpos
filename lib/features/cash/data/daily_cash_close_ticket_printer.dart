@@ -128,7 +128,7 @@ class DailyCashCloseTicketPrinter {
     final closedAt = msToLocal(cashbox.closedAtMs);
 
     if (companyName.trim().isNotEmpty) {
-      lines.add('<H2C>${sanitize(companyName.toUpperCase())}');
+      lines.add('<H2C>${sanitize(companyName)}');
     }
 
     final headerParts = <String>[];

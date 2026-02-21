@@ -790,7 +790,10 @@ void main() {
           'kind': 'invoice',
           'status': 'completed',
           'payment_method': 'cash',
-          'paid_amount': 50.0,
+          // Cliente entrega más efectivo y se devuelve cambio/devuelta.
+          // Para caja debe contar solo el TOTAL vendido, no el efectivo recibido.
+          'paid_amount': 60.0,
+          'change_amount': 10.0,
           'total': 50.0,
           'session_id': session1,
           'created_at_ms': now,

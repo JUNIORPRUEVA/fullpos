@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_sizes.dart';
-import '../../theme/app_colors.dart';
+import '../theme/color_utils.dart';
 import '../utils/date_time_formatter.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
+import '../../features/settings/providers/theme_provider.dart';
 
 /// Footer del layout principal
 class Footer extends ConsumerStatefulWidget {
@@ -41,13 +42,21 @@ class _FooterState extends ConsumerState<Footer> {
   @override
   Widget build(BuildContext context) {
     final businessSettings = ref.watch(businessSettingsProvider);
+    final themeSettings = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final shadowColor = theme.shadowColor;
-    final footerTextColor = Colors.white;
-    final activeColor = AppColors.lightBlueHover;
+    final footerBg = themeSettings.footerColor;
+    final footerTextColor = ColorUtils.ensureReadableColor(
+      themeSettings.footerTextColor,
+      footerBg,
+    );
+    final activeColor = ColorUtils.ensureReadableColor(
+      scheme.secondary,
+      footerBg,
+      minRatio: 3.0,
+    );
     final borderColor = scheme.outlineVariant.withOpacity(0.35);
-    final footerBg = AppColors.primaryBlue;
     final year = DateTime.now().year;
     final s = widget.scale.clamp(0.65, 1.12);
     final h = (AppSizes.footerHeight * s).clamp(26.0, 40.0);
@@ -90,7 +99,7 @@ class _FooterState extends ConsumerState<Footer> {
               Text(
                 timestamp,
                 style: TextStyle(
-                    color: Colors.white.withOpacity(0.88),
+                  color: footerTextColor.withOpacity(0.88),
                   fontSize: infoFont,
                 ),
               ),

@@ -180,9 +180,11 @@ class TicketBuilder {
     final doc = pw.Document();
 
     // Fuentes monoespaciadas para preservar columnas.
+    // Importante: NO forzar negrita en el cuerpo en tamaños normales;
+    // pero cuando el tamaño queda muy pequeño (común en 58mm), el normal puede
+    // salir “lavado” en algunas impresoras/drivers, así que oscurecemos levemente.
     final pw.Font normalFont = pw.Font.courier();
     final pw.Font boldFont = pw.Font.courierBold();
-    final bool forceBoldBody = layout.fontSizeLevel >= 6;
 
     // Ancho real imprimible (ver `TicketLayoutConfig.printableWidthMm`).
     final double pageWidth = layout.printableWidthMm * PdfPageFormat.mm;
@@ -220,6 +222,15 @@ class TicketBuilder {
           maxReadableFont,
         )
         .clamp(5.5, maxReadableFont);
+
+    // En muchas impresoras 80mm, el Courier normal puede salir “gris” comparado con el
+    // encabezado (que va en bold). Para mantener TODO igual pero más negro, usamos
+    // una base más oscura en 80mm. En 58mm, solo forzamos bold cuando el tamaño es
+    // muy pequeño para mejorar contraste sin volverlo pesado.
+    final bool preferDarkerBody = layout.paperWidthMm == 80;
+    final pw.Font bodyFont = preferDarkerBody
+      ? boldFont
+      : (fontSize < 7.0 ? boldFont : normalFont);
 
     final content = <pw.Widget>[];
 
@@ -292,7 +303,7 @@ class TicketBuilder {
 
     pw.TextStyle styleFromTag(String tag) {
       final t = tag.toUpperCase();
-      final bool bold = t.startsWith('B') || t.startsWith('H') || forceBoldBody;
+      final bool bold = t.startsWith('B') || t.startsWith('H');
       double size = fontSize;
       if (t.startsWith('H1')) size = fontSize * 1.35;
       if (t.startsWith('H2')) size = fontSize * 1.18;
@@ -301,7 +312,7 @@ class TicketBuilder {
       size = size.clamp(fontSize, 16.0);
 
       return pw.TextStyle(
-        font: bold ? boldFont : normalFont,
+        font: bold ? boldFont : bodyFont,
         fontSize: size,
         lineSpacing: 1.0 * layout.lineSpacingFactor,
       );

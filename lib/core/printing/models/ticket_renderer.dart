@@ -106,8 +106,7 @@ class TicketRenderer {
         ? 0
         : data.pendingAmount;
     final String layawayStatus =
-        (data.statusLabel ?? (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'))
-            .toUpperCase();
+        (data.statusLabel ?? (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'));
 
     // ============================================================
     // 1. ENCABEZADO: EMPRESA (centrado)
@@ -166,7 +165,7 @@ class TicketRenderer {
     // ============================================================
     if (config.showCashier && data.cashierName != null) {
       final cajeroLabel = _sanitizeTicketText(
-        'CAJERO: ${(data.cashierName ?? '').toUpperCase()}',
+        'CAJERO: ${(data.cashierName ?? '')}',
       );
       final dateStr = 'FECHA: ${_formatDate(data.dateTime)}';
       final ticketStr = 'TICKET: ${data.ticketNumber}';
@@ -215,7 +214,7 @@ class TicketRenderer {
       lines.add(alignText('DATOS DEL CLIENTE:', w, config.detailsAlignment));
       lines.add(
         alignText(
-          _sanitizeTicketText('NOMBRE: ${data.client!.name.toUpperCase()}'),
+          _sanitizeTicketText('NOMBRE: ${data.client!.name}'),
           w,
           config.detailsAlignment,
         ),
@@ -223,9 +222,7 @@ class TicketRenderer {
       if (data.client!.rnc != null && data.client!.rnc!.isNotEmpty) {
         lines.add(
           alignText(
-            _sanitizeTicketText(
-              'RNC/CEDULA: ${data.client!.rnc!.toUpperCase()}',
-            ),
+            _sanitizeTicketText('RNC/CEDULA: ${data.client!.rnc!}'),
             w,
             config.detailsAlignment,
           ),
@@ -269,7 +266,7 @@ class TicketRenderer {
         'right',
       );
       final prod = alignText(
-        _sanitizeTicketText(item.name),
+        _sanitizeTicketText(item.name).toUpperCase(),
         productWidth,
         'left',
       );
@@ -672,7 +669,8 @@ class TicketRenderer {
       case 'apartado':
         return 'APARTADO';
       default:
-        return method.trim().toUpperCase();
+        // No forzar mayúsculas en valores no reconocidos.
+        return method.trim();
     }
   }
 
@@ -684,8 +682,7 @@ class TicketRenderer {
         ? 0
         : data.pendingAmount;
     final String layawayStatus =
-        (data.statusLabel ?? (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'))
-            .toUpperCase();
+        (data.statusLabel ?? (pendingAmount > 0 ? 'PENDIENTE' : 'PAGADO'));
 
     void addLine(String raw) => lines.add(_fitLine(raw, w));
     void addAlignedTextLine(String text, String align) =>
@@ -699,9 +696,9 @@ class TicketRenderer {
 
     // 1) Encabezado
     if (config.showCompanyInfo) {
-      final companyName = company.name.trim();
+      final companyName = company.name.trim().toUpperCase();
       if (companyName.isNotEmpty) {
-        addAlignedTextLine(companyName.toUpperCase(), config.headerAlignment);
+        addAlignedTextLine(companyName, config.headerAlignment);
       }
 
       final address = (company.address ?? '').trim();
@@ -750,22 +747,16 @@ class TicketRenderer {
 
     final clientName = (data.client?.name ?? '').trim();
     final resolvedClient = clientName.isEmpty ? 'GENERAL' : clientName;
-    addAlignedTextLine(
-      'CLIENTE: ${resolvedClient.toUpperCase()}',
-      config.detailsAlignment,
-    );
+    addAlignedTextLine('CLIENTE: $resolvedClient', config.detailsAlignment);
 
     final clientRnc = (data.client?.rnc ?? '').trim();
     // En el ejemplo de referencia, la línea RNC aparece aunque esté vacía.
-    addAlignedTextLine(
-      'RNC: ${clientRnc.toUpperCase()}',
-      config.detailsAlignment,
-    );
+    addAlignedTextLine('RNC: $clientRnc', config.detailsAlignment);
 
     if (config.showCashier) {
       final cashier = (data.cashierName ?? '').trim();
       addAlignedTextLine(
-        'CAJERO(A): ${(cashier.isEmpty ? 'N/A' : cashier).toUpperCase()}',
+        'CAJERO(A): ${(cashier.isEmpty ? 'N/A' : cashier)}',
         config.detailsAlignment,
       );
     }
@@ -826,7 +817,7 @@ class TicketRenderer {
     // Usamos 2 espacios dentro de la columna descripción para que no se vea pegado.
     final header =
         '${ReceiptText.padRight('CANT.', qtyW)}'
-          '${ReceiptText.padRight('  DESCRIPCION', descW)}'
+        '${ReceiptText.padRight('  DESCRIPCION', descW)}'
         '${ReceiptText.padLeft('PRECIO', priceW)}'
         '${ReceiptText.padLeft('TOTAL', totalW)}';
 
@@ -836,7 +827,7 @@ class TicketRenderer {
 
     String buildItemDesc(TicketItemData item) {
       // Requisito: NO imprimir código de producto en ningún ticket.
-      return item.name.trim();
+      return item.name.trim().toUpperCase();
     }
 
     String truncateDesc(String text, int width) {
@@ -884,7 +875,7 @@ class TicketRenderer {
     String arrowTotal(String label, String value) {
       // Totales como bloque alineado a la derecha (visual “pegado” al lado derecho).
       // Mantiene el formato EXACTO: LABEL + " --> " + VALUE, con VALUE al borde derecho.
-      final safeLabel = _sanitizeTicketText(label).toUpperCase();
+      final safeLabel = _sanitizeTicketText(label);
       final safeValue = _sanitizeTicketText(value);
       const arrow = ' --> ';
 

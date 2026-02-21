@@ -15,7 +15,6 @@ import '../../features/settings/providers/business_settings_provider.dart';
 import '../../features/settings/providers/theme_provider.dart';
 import '../../features/products/utils/catalog_pdf_launcher.dart';
 import '../../features/auth/services/logout_flow_service.dart';
-import '../../theme/app_colors.dart';
 
 /// Sidebar del layout principal con navegacion (colapsable).
 ///
@@ -76,30 +75,27 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    final sidebarBg = AppColors.darkBlue;
-    var sidebarTextColor = ColorUtils.ensureReadableColor(
+    final sidebarBg = themeSettings.sidebarColor;
+    final sidebarTextColor = ColorUtils.ensureReadableColor(
       themeSettings.sidebarTextColor,
       sidebarBg,
     );
-
-    // IMPORTANTE (UX): El usuario requiere texto + iconos del sidebar en blanco.
-    // Forzamos el color de foreground del sidebar, independientemente del tema.
-    sidebarTextColor = Colors.white;
 
     // En sidebar claro, evita que el texto se vea "negro puro":
     // lo bajamos a gris manteniendo contraste.
     final isSidebarVeryLight = sidebarBg.computeLuminance() > 0.78;
     final isTextVeryDark = sidebarTextColor.computeLuminance() < 0.12;
-    if (isSidebarVeryLight && isTextVeryDark) {
-      sidebarTextColor = sidebarTextColor.withOpacity(0.76);
-    }
-    final activeColor = AppColors.lightBlueHover;
-    final hoverColor = AppColors.lightBlueHover;
+    final effectiveSidebarTextColor = (isSidebarVeryLight && isTextVeryDark)
+        ? sidebarTextColor.withOpacity(0.76)
+        : sidebarTextColor;
+
+    final activeColor = themeSettings.sidebarActiveColor;
+    final hoverColor = themeSettings.hoverColor;
 
     // En lightPillStyle (true) se fuerzan foregrounds oscuros en `PremiumNavItem`.
     // Para cumplir el requerimiento de blancos, lo desactivamos.
     const lightPillStyle = false;
-    const navItemTextColor = Colors.white;
+    final navItemTextColor = effectiveSidebarTextColor;
 
     final borderColor = scheme.outlineVariant.withOpacity(0.35);
     final shadowColor = theme.shadowColor;
@@ -271,7 +267,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: sidebarTextColor.withOpacity(0.78),
+                                  color: effectiveSidebarTextColor.withOpacity(
+                                    0.78,
+                                  ),
                                   fontWeight: FontWeight.w700,
                                   fontSize: (11.0 * s).clamp(9.5, 12.5),
                                   letterSpacing: 0.2,
@@ -294,7 +292,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                           iconSize: (22 * s).clamp(18.0, 24.0),
                           icon: Icon(
                             Icons.chevron_left,
-                            color: sidebarTextColor.withOpacity(0.95),
+                            color: effectiveSidebarTextColor.withOpacity(0.95),
                           ),
                         ),
                       ],
@@ -314,7 +312,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   Text(
                     text.toUpperCase(),
                     style: TextStyle(
-                      color: sidebarTextColor.withOpacity(0.65),
+                      color: effectiveSidebarTextColor.withOpacity(0.65),
                       fontSize: (9.5 * s).clamp(8.5, 11.0),
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.9,
@@ -325,7 +323,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     child: Divider(
                       height: 1,
                       thickness: 1,
-                      color: sidebarTextColor.withOpacity(0.16),
+                      color: effectiveSidebarTextColor.withOpacity(0.16),
                     ),
                   ),
                 ],
@@ -337,7 +335,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
             children: [
               SizedBox(height: (3 * s).clamp(2.0, 6.0)),
               header,
-              Divider(color: sidebarTextColor.withOpacity(0.12), height: 1),
+              Divider(
+                color: effectiveSidebarTextColor.withOpacity(0.12),
+                height: 1,
+              ),
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.symmetric(vertical: padS),
@@ -547,7 +548,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                             await ref.read(appBootstrapProvider).refreshAuth();
                             if (!context.mounted) return;
                             final rootCtx =
-                                ErrorHandler.navigatorKey.currentContext ?? context;
+                                ErrorHandler.navigatorKey.currentContext ??
+                                context;
                             GoRouter.of(rootCtx).refresh();
                             GoRouter.of(rootCtx).go('/login');
                           },
@@ -563,7 +565,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       }
                     },
                     isCollapsed: effectiveCollapsed,
-                    textColor: sidebarTextColor,
+                    textColor: effectiveSidebarTextColor,
                     activeColor: scheme.error,
                     hoverColor: hoverColor,
                     lightPillStyle: false,
@@ -648,27 +650,22 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     const duration = Duration(milliseconds: 150);
     final pillRadius = BorderRadius.circular((16 * s).clamp(12.0, 16.0));
 
-    // Requerimiento UX: texto + iconos del sidebar siempre en blanco.
-    // (Independiente del tema/preset que intente forzar foreground oscuro.)
-
     final idleBg = widget.textColor.withOpacity(0.04);
     final hoverBgA = widget.hoverColor.withOpacity(0.14);
     final hoverBgB = widget.hoverColor.withOpacity(0.06);
     final activeBgA = Color.alphaBlend(
-      Colors.white.withOpacity(0.08),
-      AppColors.primaryBlue,
+      Colors.white.withOpacity(0.10),
+      widget.activeColor,
     );
     final activeBgB = Color.alphaBlend(
-      Colors.black.withOpacity(0.08),
-      AppColors.primaryBlue,
+      Colors.black.withOpacity(0.10),
+      widget.activeColor,
     );
 
     final baseFg = widget.textColor;
-    final activeFg = Colors.white;
+    final activeFg = ColorUtils.ensureReadableColor(baseFg, widget.activeColor);
     final fgColor = isActive ? activeFg : baseFg;
-    final iconColor = isActive
-      ? activeFg
-        : baseFg.withOpacity(0.95);
+    final iconColor = isActive ? activeFg : baseFg.withOpacity(0.95);
 
     final item = Padding(
       padding: EdgeInsets.symmetric(
@@ -716,7 +713,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                 borderRadius: pillRadius,
                 border: Border.all(
                   color: isActive
-                      ? AppColors.lightBlueHover.withOpacity(0.55)
+                      ? widget.activeColor.withOpacity(0.55)
                       : widget.textColor.withOpacity(0.08),
                   width: 1.2,
                 ),
@@ -747,13 +744,12 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           height: (20 * s).clamp(18.0, 22.0),
                           decoration: BoxDecoration(
                             color: isActive
-                                ? AppColors.lightBlueHover
+                                ? widget.activeColor
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
-                        if (isActive)
-                          SizedBox(width: (8 * s).clamp(6.0, 8.0)),
+                        if (isActive) SizedBox(width: (8 * s).clamp(6.0, 8.0)),
                         Icon(
                           widget.icon,
                           color: iconColor,

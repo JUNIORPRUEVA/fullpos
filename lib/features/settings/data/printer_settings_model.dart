@@ -100,7 +100,8 @@ class PrinterSettingsModel {
     required this.createdAtMs,
     required this.updatedAtMs,
     // Nuevos campos con valores por defecto profesionales
-    this.fontFamily = 'arialBlack',
+    // Evitar 'arialBlack' como default: en tickets térmicos/PDF se ve muy pesado.
+    this.fontFamily = 'arial',
     this.fontSize = 'normal',
     this.showLogo = 1,
     this.logoSize = 70,
@@ -228,7 +229,7 @@ class PrinterSettingsModel {
         createdAtMs: map['created_at_ms'] as int,
         updatedAtMs: map['updated_at_ms'] as int,
         // Nuevos campos
-        fontFamily: map['font_family'] as String? ?? 'arialBlack',
+        fontFamily: map['font_family'] as String? ?? 'arial',
         fontSize: map['font_size'] as String? ?? 'normal',
         showLogo: map['show_logo'] as int? ?? 1,
         logoSize: map['logo_size'] as int? ?? 50,

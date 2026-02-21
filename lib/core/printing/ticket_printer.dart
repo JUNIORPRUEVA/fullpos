@@ -168,7 +168,9 @@ class TicketPrinter {
         boldFont = pw.Font.helveticaBold();
         break;
       case 'arialBlack':
-        baseFont = pw.Font.helveticaBold();
+        // Arial Black era demasiado pesado/oscuro en térmicas.
+        // Mantener cuerpo en normal y solo encabezados/énfasis en bold.
+        baseFont = pw.Font.helvetica();
         boldFont = pw.Font.helveticaBold();
         break;
       case 'roboto':

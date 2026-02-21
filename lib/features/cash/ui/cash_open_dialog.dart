@@ -41,34 +41,38 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
   }
 
   Future<void> _openCash() async {
+    if (_isLoading) return;
     final formState = _formKey.currentState;
     if (formState == null) return;
     if (!formState.validate()) return;
 
-    final authorized = await requireAuthorizationIfNeeded(
-      context: context,
-      action: AppActions.openShift,
-      resourceType: 'cash_session',
-      resourceId: 'new',
-      reason: 'Abrir turno',
-    );
-    if (!authorized || !mounted) return;
-
     setState(() => _isLoading = true);
 
     try {
+      final authorized = await requireAuthorizationIfNeeded(
+        context: context,
+        action: AppActions.openShift,
+        resourceType: 'cash_session',
+        resourceId: 'new',
+        reason: 'Abrir turno',
+      );
+      if (!authorized || !mounted) return;
+
       final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
       await OperationFlowService.openShiftForCurrentUser(openingAmount: amount);
       await ref.read(cashSessionControllerProvider.notifier).refresh();
 
       if (mounted) {
+        final rootContext = Navigator.of(context, rootNavigator: true).context;
         Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Turno abierto con \$${amount.toStringAsFixed(2)}'),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.of(rootContext).showSnackBar(
+            SnackBar(
+              content: Text('Turno abierto con \$${amount.toStringAsFixed(2)}'),
+              backgroundColor: Theme.of(rootContext).colorScheme.primary,
+            ),
+          );
+        });
       }
     } catch (e, st) {
       if (mounted) {

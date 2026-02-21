@@ -35,11 +35,11 @@ class ThemeSettingsPage extends ConsumerWidget {
                     '🎨 Personaliza tu POS (completo)',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          );
+                  const SizedBox(height: 8),
+                  Text(
+                    'Configura la paleta completa: AppBar, Sidebar, Footer, botones y tipografía.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -217,16 +217,53 @@ class ThemeSettingsPage extends ConsumerWidget {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: sidePadding),
               child: _SectionCard(
-                title: 'AppBar',
+                title: 'General (AppBar principal + Sidebar + Footer)',
                 child: Column(
                   children: [
                     _ColorRow(
-                      label: 'Fondo AppBar',
+                      label: 'Fondo general (AppBar principal/Sidebar/Footer)',
+                      color: settings.topbarColor,
+                      onPick: (c) => notifier.updateChromeBackgroundColor(c),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'AppBar principal (barra superior)',
+                child: Column(
+                  children: [
+                    _ColorRow(
+                      label: 'Fondo AppBar principal',
+                      color: settings.topbarColor,
+                      onPick: (c) => notifier.updateTopbarColor(c),
+                    ),
+                    _ColorRow(
+                      label: 'Texto/Iconos AppBar principal',
+                      color: settings.topbarTextColor,
+                      onPick: (c) => notifier.updateTopbarTextColor(c),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: sidePadding),
+              child: _SectionCard(
+                title: 'AppBar (pantallas)',
+                child: Column(
+                  children: [
+                    _ColorRow(
+                      label: 'Fondo AppBar (pantallas)',
                       color: settings.appBarColor,
                       onPick: (c) => notifier.updateAppBarColor(c),
                     ),
                     _ColorRow(
-                      label: 'Texto/Iconos AppBar',
+                      label: 'Texto/Iconos AppBar (pantallas)',
                       color: settings.appBarTextColor,
                       onPick: (c) => notifier.updateAppBarTextColor(c),
                     ),
@@ -564,8 +601,6 @@ class ThemeSettingsPage extends ConsumerWidget {
             const SizedBox(height: 20),
           ],
         ),
-          ),
-        ),
       ),
     );
   }
@@ -667,8 +702,20 @@ class _ColorRow extends StatelessWidget {
 
     final controller = TextEditingController(text: toHex(initial));
 
+    var closing = false;
+    void requestClose([Color? value]) {
+      if (closing) return;
+      closing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        final nav = Navigator.of(context, rootNavigator: true);
+        if (nav.canPop()) nav.pop(value);
+      });
+    }
+
     final result = await showDialog<Color>(
       context: context,
+      useRootNavigator: true,
       builder: (ctx) {
         return AlertDialog(
           title: const Text('Seleccionar color'),
@@ -824,12 +871,9 @@ class _ColorRow extends StatelessWidget {
             },
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
-            ),
+            TextButton(onPressed: requestClose, child: const Text('Cancelar')),
             ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(current),
+              onPressed: () => requestClose(current),
               child: const Text('Aplicar'),
             ),
           ],

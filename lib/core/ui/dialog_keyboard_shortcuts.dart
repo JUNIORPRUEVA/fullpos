@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 ///
 /// Note: [onSubmit] should perform validation and close the dialog itself
 /// (e.g. via `Navigator.pop`) only when successful.
-class DialogKeyboardShortcuts extends StatelessWidget {
+class DialogKeyboardShortcuts extends StatefulWidget {
   final Widget child;
   final FutureOr<void> Function()? onSubmit;
   final VoidCallback? onCancel;
@@ -30,40 +30,65 @@ class DialogKeyboardShortcuts extends StatelessWidget {
   });
 
   @override
+  State<DialogKeyboardShortcuts> createState() =>
+      _DialogKeyboardShortcutsState();
+}
+
+class _DialogKeyboardShortcutsState extends State<DialogKeyboardShortcuts> {
+  bool _invoking = false;
+
+  void _invokeOnce(FutureOr<void> Function() fn) {
+    if (_invoking) return;
+    _invoking = true;
+    scheduleMicrotask(() async {
+      try {
+        await fn();
+      } finally {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _invoking = false;
+        });
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final submitAction = onSubmit ?? () => Navigator.of(context).maybePop();
+    final submitAction =
+        widget.onSubmit ?? () => Navigator.of(context).maybePop();
     final shortcuts = <ShortcutActivator, Intent>{
-      if (enableDismissShortcut)
+      if (widget.enableDismissShortcut)
         const SingleActivator(LogicalKeyboardKey.escape): const DismissIntent(),
-      if (enableSubmitShortcuts)
+      if (widget.enableSubmitShortcuts)
         const SingleActivator(LogicalKeyboardKey.enter): const ActivateIntent(),
-      if (enableSubmitShortcuts)
+      if (widget.enableSubmitShortcuts)
         const SingleActivator(LogicalKeyboardKey.numpadEnter):
             const ActivateIntent(),
-      ...?extraShortcuts,
+      ...?widget.extraShortcuts,
     };
 
     final actions = <Type, Action<Intent>>{
       DismissIntent: CallbackAction<DismissIntent>(
         onInvoke: (_) {
-          (onCancel ?? () => Navigator.of(context).maybePop())();
+          _invokeOnce(() {
+            (widget.onCancel ?? () => Navigator.of(context).maybePop())();
+          });
           return null;
         },
       ),
       ActivateIntent: CallbackAction<ActivateIntent>(
         onInvoke: (_) {
-          submitAction();
+          _invokeOnce(submitAction);
           return null;
         },
       ),
-      ...?extraActions,
+      ...?widget.extraActions,
     };
 
     return Shortcuts(
       shortcuts: shortcuts,
       child: Actions(
         actions: actions,
-        child: Focus(autofocus: true, child: child),
+        child: Focus(autofocus: true, child: widget.child),
       ),
     );
   }

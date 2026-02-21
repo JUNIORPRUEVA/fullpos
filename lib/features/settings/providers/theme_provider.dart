@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/theme_settings_model.dart';
 import '../data/theme_settings_repository.dart';
 import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/app_status_theme.dart';
@@ -93,6 +92,20 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
   /// Actualizar color del texto del AppBar
   Future<void> updateAppBarTextColor(Color color) async {
     final newSettings = state.copyWith(appBarTextColor: color);
+    state = newSettings;
+    await _repository.saveThemeSettings(newSettings);
+  }
+
+  /// Actualizar color del AppBar principal (Topbar del layout)
+  Future<void> updateTopbarColor(Color color) async {
+    final newSettings = state.copyWith(topbarColor: color);
+    state = newSettings;
+    await _repository.saveThemeSettings(newSettings);
+  }
+
+  /// Actualizar color del texto/iconos del AppBar principal (Topbar)
+  Future<void> updateTopbarTextColor(Color color) async {
+    final newSettings = state.copyWith(topbarTextColor: color);
     state = newSettings;
     await _repository.saveThemeSettings(newSettings);
   }
@@ -213,7 +226,8 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
 
   Future<void> updateChromeBackgroundColor(Color color) async {
     final newSettings = state.copyWith(
-      appBarColor: color,
+      // "Chrome" = AppBar principal (Topbar) + Sidebar + Footer.
+      topbarColor: color,
       sidebarColor: color,
       footerColor: color,
     );
@@ -223,7 +237,7 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
 
   Future<void> updateChromeTextColor(Color color) async {
     final newSettings = state.copyWith(
-      appBarTextColor: color,
+      topbarTextColor: color,
       sidebarTextColor: color,
       footerTextColor: color,
     );

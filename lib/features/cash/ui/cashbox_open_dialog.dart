@@ -113,52 +113,52 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 76,
-                                  height: 76,
-                                  decoration: BoxDecoration(
-                                        : _submit,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        Center(
-                                      child: Icon(
-                                        Icons.storefront,
-                                        size: 36,
-                                        color: scheme.primary,
-                                      ),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 76,
+                                    height: 76,
+                                    decoration: BoxDecoration(
+                                      color: scheme.primary.withOpacity(0.10),
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(color: cardBorder),
+                                    ),
+                                    child: Icon(
+                                      Icons.storefront,
+                                      size: 36,
+                                      color: scheme.primary,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-          },
-        ),
-      ),
-                                      Text(
-                                        FullposBrandTheme.appName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.titleLarge?.copyWith(
-                                          color: onSurface,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.2,
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          FullposBrandTheme.appName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.titleLarge
+                                              ?.copyWith(
+                                            color: onSurface,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.2,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        widget.title,
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: mutedText,
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          widget.title,
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            color: mutedText,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
                             const SizedBox(height: 18),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -251,13 +251,7 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                                   child: FilledButton.icon(
                                     onPressed: (!widget.canOpen || _submitting)
                                         ? null
-                                        : () {
-                                            setState(() => _submitting = true);
-                                            final amount =
-                                                double.tryParse(_amountController.text.trim()) ??
-                                                    0;
-                                            Navigator.pop(context, amount);
-                                          },
+                                        : _submit,
                                     icon: const Icon(Icons.lock_open_rounded),
                                     label: Text(widget.confirmLabel),
                                   ),
@@ -275,6 +269,7 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
           );
         },
       ),
-    );
+    ),
+  );
   }
 }
