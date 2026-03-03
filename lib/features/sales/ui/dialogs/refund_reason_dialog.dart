@@ -84,6 +84,11 @@ Future<String?> showRefundReasonDialog(BuildContext context) async {
     },
   );
 
+  // `showDialog` completa el Future cuando se llama `Navigator.pop`, pero el
+  // route puede seguir en transición (animación) unos frames.
+  // Si se hace dispose inmediato, el `TextField` puede intentar usar el
+  // controller durante el cierre del diálogo.
+  await Future<void>.delayed(const Duration(milliseconds: 300));
   controller.dispose();
   return reason;
 }

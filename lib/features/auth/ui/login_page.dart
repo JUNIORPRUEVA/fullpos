@@ -454,6 +454,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         },
       );
     } finally {
+      // `showDialog` completa cuando se llama `Navigator.pop`, pero el diálogo
+      // puede seguir en transición (animación). Si se hace dispose inmediato,
+      // el `TextField` puede tocar el controller durante el cierre.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
       tokenController.dispose();
       newPasswordController.dispose();
       confirmPasswordController.dispose();

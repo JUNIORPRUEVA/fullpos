@@ -74,9 +74,11 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
   }
 
   void _updateConfig(QuotesFilterConfig newConfig) {
+    if (!mounted) return;
     setState(() {
       _config = newConfig;
     });
+    if (!mounted) return;
     widget.onFilterChanged(_config);
   }
 
@@ -87,6 +89,7 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
+    if (!mounted) return;
     if (picked != null) {
       _updateConfig(_config.copyWith(selectedDate: picked));
     }
@@ -101,12 +104,14 @@ class _QuotesFilterBarState extends State<QuotesFilterBar> {
       saveText: 'Aceptar',
       cancelText: 'Cancelar',
     );
+    if (!mounted) return;
     if (picked != null) {
       _updateConfig(_config.copyWith(dateRange: picked));
     }
   }
 
   void _clearFilters() {
+    if (!mounted) return;
     _searchController.clear();
     _updateConfig(const QuotesFilterConfig());
   }

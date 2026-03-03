@@ -131,12 +131,17 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     );
 
     if (confirm != true) {
-      qtyCtrl.dispose();
+      Future<void>.delayed(const Duration(milliseconds: 300)).then((_) {
+        qtyCtrl.dispose();
+      });
       return;
     }
 
-    final parsed = double.tryParse(qtyCtrl.text.trim().replaceAll(',', '.'));
-    qtyCtrl.dispose();
+    final qtyText = qtyCtrl.text.trim();
+    Future<void>.delayed(const Duration(milliseconds: 300)).then((_) {
+      qtyCtrl.dispose();
+    });
+    final parsed = double.tryParse(qtyText.replaceAll(',', '.'));
     if (parsed == null || parsed <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -310,11 +315,13 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     );
 
     if (confirm != true) {
-      codeCtrl.dispose();
-      nameCtrl.dispose();
-      costCtrl.dispose();
-      saleCtrl.dispose();
-      qtyCtrl.dispose();
+      Future<void>.delayed(const Duration(milliseconds: 300)).then((_) {
+        codeCtrl.dispose();
+        nameCtrl.dispose();
+        costCtrl.dispose();
+        saleCtrl.dispose();
+        qtyCtrl.dispose();
+      });
       return;
     }
 
@@ -330,11 +337,13 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
       qtyCtrl.text.trim().replaceAll(',', '.'),
     );
 
-    codeCtrl.dispose();
-    nameCtrl.dispose();
-    costCtrl.dispose();
-    saleCtrl.dispose();
-    qtyCtrl.dispose();
+    Future<void>.delayed(const Duration(milliseconds: 300)).then((_) {
+      codeCtrl.dispose();
+      nameCtrl.dispose();
+      costCtrl.dispose();
+      saleCtrl.dispose();
+      qtyCtrl.dispose();
+    });
 
     if (code.isEmpty || name.isEmpty) {
       if (!mounted) return;

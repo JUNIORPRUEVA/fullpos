@@ -123,7 +123,7 @@ class LogoutFlowService {
   static Future<String?> _promptRequiredReason(BuildContext context) async {
     final reasonCtrl = TextEditingController();
     try {
-      return showDialog<String>(
+      final result = await showDialog<String>(
         context: context,
         barrierDismissible: false,
         builder: (context) {
@@ -175,8 +175,18 @@ class LogoutFlowService {
           );
         },
       );
+
+      return result;
     } finally {
-      reasonCtrl.dispose();
+      // NOTE: showDialog completes when the route is popped, but the dialog
+      // widget tree can still be unmounting during the closing animation.
+      // Disposing the controller immediately can cause:
+      // "A TextEditingController was used after being disposed".
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future<void>.delayed(const Duration(milliseconds: 250), () {
+          reasonCtrl.dispose();
+        });
+      });
     }
   }
 

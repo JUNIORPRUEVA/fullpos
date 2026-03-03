@@ -379,6 +379,8 @@ class _CatalogTabState extends State<CatalogTab> {
       ),
     );
 
+    // Evita dispose antes de que termine la animación de cierre del diálogo.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     controller.dispose();
     return result == true;
   }

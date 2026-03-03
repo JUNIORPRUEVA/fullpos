@@ -5412,9 +5412,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       if (!mounted || selected == null) return;
       setState(() => _currentCartIndex = selected);
     } finally {
-      ticketListController.dispose();
-      nameController.dispose();
-      editController.dispose();
+      // Defer disposal to the next frame so the dialog tree has fully
+      // unmounted before disposing controllers used by TextFields.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ticketListController.dispose();
+        nameController.dispose();
+        editController.dispose();
+      });
     }
   }
 }
