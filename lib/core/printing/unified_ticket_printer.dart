@@ -73,11 +73,14 @@ class UnifiedTicketPrinter {
     required String ticketNumber,
     bool includeLogo = true,
     int? overrideCopies,
+    TicketLayoutConfig? layoutOverride,
   }) async {
     try {
       final company = await CompanyInfoRepository.getCurrentCompanyInfo();
       final printerSettings = await PrinterSettingsRepository.getOrCreate();
-      final layout = TicketLayoutConfig.fromPrinterSettings(printerSettings);
+      final layout =
+          layoutOverride ??
+          TicketLayoutConfig.fromPrinterSettings(printerSettings);
 
       final builder = TicketBuilder(layout: layout, company: company);
       final pdf = builder.buildPdfFromLines(lines, includeLogo: includeLogo);
@@ -135,9 +138,11 @@ class UnifiedTicketPrinter {
     final isCredit = (sale.paymentMethod?.toLowerCase() ?? '') == 'credit';
     final normalizedPaid = sale.paidAmount;
     final normalizedChange = isCredit ? 0.0 : sale.changeAmount;
-    final normalizedPending = pendingAmount ??
-      (sale.total - normalizedPaid).clamp(0, double.infinity);
-    final normalizedStatus = statusLabel ?? (isCredit ? 'PENDIENTE' : sale.status);
+    final normalizedPending =
+        pendingAmount ??
+        (sale.total - normalizedPaid).clamp(0, double.infinity);
+    final normalizedStatus =
+        statusLabel ?? (isCredit ? 'PENDIENTE' : sale.status);
 
     // Crear TicketData desde la venta
     final ticketData = TicketData.fromSale(
@@ -165,8 +170,8 @@ class UnifiedTicketPrinter {
       creditTermDays: sale.creditTermDays,
       creditInstallments: sale.creditInstallments,
       creditDueDate: sale.creditDueDateMs != null
-        ? DateTime.fromMillisecondsSinceEpoch(sale.creditDueDateMs!)
-        : null,
+          ? DateTime.fromMillisecondsSinceEpoch(sale.creditDueDateMs!)
+          : null,
       creditNote: sale.creditNote,
     );
 
@@ -285,7 +290,10 @@ class UnifiedTicketPrinter {
 
       final layout = TicketLayoutConfig.fromPrinterSettings(settings);
       final builder = TicketBuilder(layout: layout, company: company);
-      final pdf = builder.buildPdfFromLines(const <String>[' ', ' '], includeLogo: false);
+      final pdf = builder.buildPdfFromLines(const <String>[
+        ' ',
+        ' ',
+      ], includeLogo: false);
 
       final result = await ThermalPrinterService.printDocument(
         document: pdf,

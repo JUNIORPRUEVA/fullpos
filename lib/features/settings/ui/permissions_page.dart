@@ -4,6 +4,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/authz/permission.dart';
 import '../../../core/security/authz/permission_gate.dart';
+import '../data/business_settings_repository.dart';
 import '../data/user_model.dart';
 import '../data/users_repository.dart';
 
@@ -70,6 +71,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
   bool _isSaving = false;
   bool _hasChanges = false;
   bool _isFetching = true;
+  bool _fullQuotesFlowEnabled = false;
   final ScrollController _moduleListController = ScrollController();
   _UserPermissionCategory _selectedCategory = _UserPermissionCategory.sales;
   static const double _contentMaxWidth = 1200;
@@ -85,6 +87,19 @@ class _PermissionsPageState extends State<PermissionsPage> {
         ? UserPermissions.admin()
         : UserPermissions.cashier();
     _loadUserPermissions();
+    _loadBusinessSettings();
+  }
+
+  Future<void> _loadBusinessSettings() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!mounted) return;
+      setState(() {
+        _fullQuotesFlowEnabled = settings.enableFullQuotesFlow;
+      });
+    } catch (_) {
+      // Best-effort: if we can't load it, keep the feature disabled here.
+    }
   }
 
   @override
@@ -350,6 +365,15 @@ class _PermissionsPageState extends State<PermissionsPage> {
         riskLevel: _RiskLevel.low,
         read: (p) => p.canViewQuotes,
         write: (p, v) => p.copyWith(canViewQuotes: v),
+      ),
+      _PermissionDef(
+        id: 'cotizaciones.pasar_ticket',
+        title: 'Pasar cotización a ticket pendiente',
+        description:
+            'Permite convertir cotizaciones en tickets pendientes (requiere activar el flujo completo en configuración).',
+        riskLevel: _RiskLevel.medium,
+        read: (p) => p.canConvertQuotesToTicket,
+        write: (p, v) => p.copyWith(canConvertQuotesToTicket: v),
       ),
     ],
     _UserPermissionCategory.returns: [
@@ -1228,6 +1252,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final scheme = Theme.of(context).colorScheme;
     final value = def.read(_permissions);
 
+    final isQuoteConvert = def.id == 'cotizaciones.pasar_ticket';
+    final disabledByConfig = isQuoteConvert && !_fullQuotesFlowEnabled;
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       tileColor: scheme.surface,
@@ -1236,7 +1263,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
         def.title,
         style: TextStyle(
           fontWeight: FontWeight.w600,
-          color: value ? scheme.onSurface : scheme.onSurface.withOpacity(0.75),
+          color: disabledByConfig
+              ? scheme.onSurface.withOpacity(0.50)
+              : (value ? scheme.onSurface : scheme.onSurface.withOpacity(0.75)),
         ),
       ),
       subtitle: Padding(
@@ -1251,6 +1280,17 @@ class _PermissionsPageState extends State<PermissionsPage> {
                 color: scheme.onSurface.withOpacity(0.70),
               ),
             ),
+            if (disabledByConfig) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Deshabilitado: active "Flujo completo de cotizaciones" en Configuración del negocio.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onSurface.withOpacity(0.70),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 6),
             _riskPill(def.riskLevel),
           ],
@@ -1259,9 +1299,11 @@ class _PermissionsPageState extends State<PermissionsPage> {
       trailing: Switch.adaptive(
         value: value,
         activeColor: accentColor,
-        onChanged: (v) {
-          _updatePermission((p) => def.write(p, v));
-        },
+        onChanged: disabledByConfig
+            ? null
+            : (v) {
+                _updatePermission((p) => def.write(p, v));
+              },
       ),
     );
   }

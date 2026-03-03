@@ -397,6 +397,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       ticketNumber: 'CASH-${widget.sessionId}',
       includeLogo: true,
       overrideCopies: settings.copies,
+      layoutOverride: layout,
     );
 
     if (!result.success && mounted) {

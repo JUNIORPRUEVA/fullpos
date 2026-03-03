@@ -147,6 +147,7 @@ class UserPermissions {
   // Cotizaciones
   final bool canCreateQuotes;
   final bool canViewQuotes;
+  final bool canConvertQuotesToTicket;
 
   // Herramientas
   final bool canAccessTools;
@@ -191,6 +192,7 @@ class UserPermissions {
     this.canExportReports = false,
     this.canCreateQuotes = false,
     this.canViewQuotes = false,
+    this.canConvertQuotesToTicket = false,
     this.canAccessTools = false,
     this.canProcessReturns = false,
     this.canViewCredits = false,
@@ -227,6 +229,7 @@ class UserPermissions {
     canExportReports: false,
     canCreateQuotes: false,
     canViewQuotes: false,
+    canConvertQuotesToTicket: false,
     canAccessTools: false,
     canProcessReturns: false,
     canViewCredits: false,
@@ -263,6 +266,7 @@ class UserPermissions {
     canExportReports: true,
     canCreateQuotes: true,
     canViewQuotes: true,
+    canConvertQuotesToTicket: true,
     canAccessTools: true,
     canProcessReturns: true,
     canViewCredits: true,
@@ -299,6 +303,7 @@ class UserPermissions {
     canExportReports: false,
     canCreateQuotes: true,
     canViewQuotes: true,
+    canConvertQuotesToTicket: false,
     canAccessTools: false,
     canProcessReturns: false,
     canViewCredits: true,
@@ -334,6 +339,7 @@ class UserPermissions {
     'can_export_reports': canExportReports,
     'can_create_quotes': canCreateQuotes,
     'can_view_quotes': canViewQuotes,
+    'can_convert_quotes_to_ticket': canConvertQuotesToTicket,
     'can_access_tools': canAccessTools,
     'can_process_returns': canProcessReturns,
     'can_view_credits': canViewCredits,
@@ -404,6 +410,9 @@ class UserPermissions {
       canCreateQuotes:
           map['can_create_quotes'] as bool? ?? defaults.canCreateQuotes,
       canViewQuotes: map['can_view_quotes'] as bool? ?? defaults.canViewQuotes,
+      canConvertQuotesToTicket:
+          map['can_convert_quotes_to_ticket'] as bool? ??
+          defaults.canConvertQuotesToTicket,
       canAccessTools:
           map['can_access_tools'] as bool? ?? defaults.canAccessTools,
       canProcessReturns:
@@ -446,6 +455,7 @@ class UserPermissions {
     bool? canExportReports,
     bool? canCreateQuotes,
     bool? canViewQuotes,
+    bool? canConvertQuotesToTicket,
     bool? canAccessTools,
     bool? canProcessReturns,
     bool? canViewCredits,
@@ -479,6 +489,8 @@ class UserPermissions {
     canExportReports: canExportReports ?? this.canExportReports,
     canCreateQuotes: canCreateQuotes ?? this.canCreateQuotes,
     canViewQuotes: canViewQuotes ?? this.canViewQuotes,
+    canConvertQuotesToTicket:
+        canConvertQuotesToTicket ?? this.canConvertQuotesToTicket,
     canAccessTools: canAccessTools ?? this.canAccessTools,
     canProcessReturns: canProcessReturns ?? this.canProcessReturns,
     canViewCredits: canViewCredits ?? this.canViewCredits,

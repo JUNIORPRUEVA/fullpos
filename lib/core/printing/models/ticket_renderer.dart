@@ -265,17 +265,53 @@ class TicketRenderer {
         cantWidth,
         'right',
       );
-      final prod = alignText(
-        _sanitizeTicketText(item.name).toUpperCase(),
-        productWidth,
-        'left',
-      );
+      final cleanedName = _sanitizeTicketText(
+        item.name,
+      ).replaceAll(RegExp(r'\s+'), ' ').trim();
+
+      List<String> wrapToMaxLines(String text, int width, int maxLines) {
+        final t = text.trim();
+        if (width <= 0) return const <String>[''];
+        if (t.isEmpty) return const <String>[''];
+        if (t.length <= width) return <String>[t];
+
+        final out = <String>[];
+        var start = 0;
+        while (start < t.length && out.length < maxLines) {
+          final end = (start + width) < t.length ? (start + width) : t.length;
+          out.add(t.substring(start, end));
+          start = end;
+        }
+
+        if (start < t.length && out.isNotEmpty) {
+          final last = out.length - 1;
+          if (width >= 3) {
+            final base = out[last];
+            final cut = base.length >= (width - 3) ? (width - 3) : base.length;
+            out[last] = '${base.substring(0, cut)}...';
+          }
+        }
+
+        return out;
+      }
+
+      final prodLines = wrapToMaxLines(cleanedName, productWidth, 2);
+      final prod = alignText(prodLines.first, productWidth, 'left');
       final price = alignText(
         'RD\$ ${_formatNumber(item.unitPrice)}',
         priceWidth,
         'right',
       );
       lines.add('$cant $prod $price');
+
+      // Si el nombre del producto es largo, continuar en una segunda línea
+      // sin repetir cantidad ni precio, para mantener la tabla intacta.
+      if (prodLines.length > 1) {
+        final cantBlank = alignText('', cantWidth, 'right');
+        final prodCont = alignText(prodLines[1], productWidth, 'left');
+        final priceBlank = alignText('', priceWidth, 'right');
+        lines.add('$cantBlank $prodCont $priceBlank');
+      }
     }
 
     lines.add(sepLine(w));
@@ -827,27 +863,57 @@ class TicketRenderer {
 
     String buildItemDesc(TicketItemData item) {
       // Requisito: NO imprimir código de producto en ningún ticket.
-      return item.name.trim().toUpperCase();
+      return item.name.trim();
     }
 
-    String truncateDesc(String text, int width) {
+    List<String> wrapDesc(String text, int width, {int maxLines = 2}) {
       final cleaned = _sanitizeTicketText(
         text,
       ).replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (width <= 0) return '';
-      if (cleaned.length <= width) return cleaned;
-      if (width <= 3) return cleaned.substring(0, width);
-      return '${cleaned.substring(0, width - 3)}...';
+      if (width <= 0) return const <String>[''];
+      if (cleaned.isEmpty) return const <String>[''];
+      if (cleaned.length <= width) return <String>[cleaned];
+
+      final out = <String>[];
+      var start = 0;
+      while (start < cleaned.length && out.length < maxLines) {
+        final end = (start + width) < cleaned.length
+            ? (start + width)
+            : cleaned.length;
+        out.add(cleaned.substring(start, end));
+        start = end;
+      }
+
+      if (start < cleaned.length && out.isNotEmpty) {
+        final last = out.length - 1;
+        if (width >= 3) {
+          final base = out[last];
+          final cut = base.length >= (width - 3) ? (width - 3) : base.length;
+          out[last] = '${base.substring(0, cut)}...';
+        }
+      }
+
+      return out;
     }
 
     for (final item in data.items) {
       final qty = ReceiptText.padRight(fmtQty(item.quantity), qtyW);
       final descInnerW = (descW - 2).clamp(0, descW);
-      final descText = truncateDesc(buildItemDesc(item), descInnerW);
+      final descLines = wrapDesc(buildItemDesc(item), descInnerW, maxLines: 2);
+      final descText = descLines.isEmpty ? '' : descLines.first;
       final desc = ReceiptText.padRight('  $descText', descW);
       final unitPrice = ReceiptText.padLeft(fmtMoney(item.unitPrice), priceW);
       final lineTotal = ReceiptText.padLeft(fmtMoney(item.total), totalW);
       addLine('$qty$desc$unitPrice$lineTotal');
+
+      // Línea de continuación para descripción larga (sin repetir precios).
+      if (descLines.length > 1) {
+        final contQty = ReceiptText.padRight('', qtyW);
+        final contDesc = ReceiptText.padRight('  ${descLines[1]}', descW);
+        final contUnitPrice = ReceiptText.padLeft('', priceW);
+        final contTotal = ReceiptText.padLeft('', totalW);
+        addLine('$contQty$contDesc$contUnitPrice$contTotal');
+      }
     }
 
     addLine(ReceiptText.line(width: w));

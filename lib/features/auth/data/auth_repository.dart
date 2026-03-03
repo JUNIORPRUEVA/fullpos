@@ -160,6 +160,8 @@ class AuthRepository {
         return permissions.canCreateQuotes;
       case 'can_view_quotes':
         return permissions.canViewQuotes;
+      case 'can_convert_quotes_to_ticket':
+        return permissions.canConvertQuotesToTicket;
       case 'can_access_tools':
         return permissions.canAccessTools;
       case 'can_process_returns':

@@ -109,7 +109,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: ErrorHandler.navigatorKey,
     // Nota: La pantalla de arranque se maneja fuera del router (AppEntry).
     // Mantener una ruta inicial estable evita “rebotes” visuales.
-    initialLocation: isLoggedIn ? '/operation-start' : '/login',
+    initialLocation: isLoggedIn ? '/sales' : '/login',
     refreshListenable: refresh,
     redirect: (context, state) async {
       final path = state.uri.path;
@@ -181,16 +181,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       // Mantener UI idéntica: no redirigir por permisos.
-      if (isOnLogin) return '/operation-start';
+      if (isOnLogin) return '/sales';
 
       // Flujo profesional: Login -> Iniciar operación -> Ventas.
       // Bloquea entrada a ventas sin turno abierto.
-      if (isOnSales) {
-        final gate = await OperationFlowService.loadGateState();
-        if (!gate.canOperate) return '/operation-start';
+      OperationGateState? opGateCache;
+      Future<OperationGateState> loadOpGate() async {
+        opGateCache ??= await OperationFlowService.loadGateState();
+        return opGateCache!;
       }
 
-      if (isOnOperationStart) return null;
+      if (isOnSales) {
+        final opGate = await loadOpGate();
+        if (!opGate.canOperate) return '/operation-start';
+      }
+
+      // Si ya puedes operar, no mostrar nuevamente /operation-start al reingresar.
+      if (isOnOperationStart) {
+        final opGate = await loadOpGate();
+        if (opGate.canOperate) return '/sales';
+        return null;
+      }
 
       return null;
     },

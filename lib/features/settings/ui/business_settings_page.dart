@@ -287,6 +287,7 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
         defaultTaxRate: _draft.defaultTaxRate,
         taxIncludedInPrices: _draft.taxIncludedInPrices,
         defaultChargeOutputMode: _draft.defaultChargeOutputMode,
+        enableFullQuotesFlow: _draft.enableFullQuotesFlow,
         defaultCurrency: _draft.defaultCurrency,
         currencySymbol: _draft.currencySymbol,
       );
@@ -350,79 +351,79 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-      appBar: AppBar(
-        title: const Text('CONFIGURACIÓN DEL NEGOCIO'),
-        actions: [
-          if (_hasChanges)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _scheme.secondary.withAlpha(50),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    'SIN GUARDAR',
-                    style: TextStyle(
-                      color: _scheme.secondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+        appBar: AppBar(
+          title: const Text('CONFIGURACIÓN DEL NEGOCIO'),
+          actions: [
+            if (_hasChanges)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _scheme.secondary.withAlpha(50),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'SIN GUARDAR',
+                      style: TextStyle(
+                        color: _scheme.secondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          OutlinedButton.icon(
-            onPressed: _isLoading ? null : _saveAll,
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                    ),
-                  )
-                : const Icon(Icons.save, color: Colors.black),
-            label: const Text(
-              'GUARDAR TODO',
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w700,
+            OutlinedButton.icon(
+              onPressed: _isLoading ? null : _saveAll,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                      ),
+                    )
+                  : const Icon(Icons.save, color: Colors.black),
+              label: const Text(
+                'GUARDAR TODO',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.black,
+                side: const BorderSide(color: Colors.black, width: 1.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.black,
-              side: const BorderSide(color: Colors.black, width: 1.2),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.black,
-          unselectedLabelColor: Colors.black87,
-          indicatorColor: Colors.black,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w800),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
-          tabs: const [
-            Tab(icon: Icon(Icons.store), text: 'Empresa'),
-            Tab(icon: Icon(Icons.attach_money), text: 'Impuestos'),
+            const SizedBox(width: 8),
           ],
+          bottom: TabBar(
+            controller: _tabController,
+            labelColor: Colors.black,
+            unselectedLabelColor: Colors.black87,
+            indicatorColor: Colors.black,
+            labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+            tabs: const [
+              Tab(icon: Icon(Icons.store), text: 'Empresa'),
+              Tab(icon: Icon(Icons.attach_money), text: 'Impuestos'),
+            ],
+          ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildCompanyTab(settings), _buildTaxesTab(settings)],
-      ),
+        body: TabBarView(
+          controller: _tabController,
+          children: [_buildCompanyTab(settings), _buildTaxesTab(settings)],
+        ),
       ),
     );
   }
@@ -640,7 +641,11 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
 
   Widget _buildTaxesTab(BusinessSettings settings) {
     final defaultChargeOutputMode =
-        const {'ticket', 'pdf', 'none'}.contains(settings.defaultChargeOutputMode)
+        const {
+          'ticket',
+          'pdf',
+          'none',
+        }.contains(settings.defaultChargeOutputMode)
         ? settings.defaultChargeOutputMode
         : 'ticket';
 
@@ -732,6 +737,21 @@ class _BusinessSettingsPageState extends ConsumerState<BusinessSettingsPage>
               if (value == null) return;
               setState(() {
                 _draft = _draft.copyWith(defaultChargeOutputMode: value);
+                _hasChanges = true;
+              });
+            },
+          ),
+
+          const SizedBox(height: 12),
+          SwitchListTile(
+            title: const Text('Flujo completo de cotizaciones'),
+            subtitle: const Text(
+              'Permite pasar cotizaciones a ticket pendiente (según permisos de usuario).',
+            ),
+            value: settings.enableFullQuotesFlow,
+            onChanged: (value) {
+              setState(() {
+                _draft = _draft.copyWith(enableFullQuotesFlow: value);
                 _hasChanges = true;
               });
             },

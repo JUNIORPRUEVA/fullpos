@@ -2006,11 +2006,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
     final cashSessionState = ref.watch(cashSessionControllerProvider);
     final currentSessionId = cashSessionState.valueOrNull?.id;
+    final isCashSessionResolved = cashSessionState is AsyncData;
     final cashIsOpen = currentSessionId != null;
+    final showCashClosedOverlay = isCashSessionResolved && !cashIsOpen;
 
     if (_previousCashOpen == null) {
-      _previousCashOpen = cashIsOpen;
-    } else if (_previousCashOpen == true && !cashIsOpen) {
+      // Evitar marcar como "cerrado" durante loading.
+      _previousCashOpen = isCashSessionResolved ? cashIsOpen : true;
+    } else if (isCashSessionResolved &&
+        _previousCashOpen == true &&
+        !cashIsOpen) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         // Limpieza inmediata del panel/columna de detalle.
@@ -2021,7 +2026,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         });
       });
     }
-    _previousCashOpen = cashIsOpen;
+    if (isCashSessionResolved) {
+      _previousCashOpen = cashIsOpen;
+    }
 
     // Atajos opcionales que dependen de la preferencia de teclado.
     final Map<LogicalKeySet, Intent> optionalShortcuts =
@@ -2432,7 +2439,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ),
                         ],
                       ),
-                      if (!cashIsOpen) _buildCashClosedOverlay(),
+                      if (showCashClosedOverlay) _buildCashClosedOverlay(),
                     ],
                   );
                 }

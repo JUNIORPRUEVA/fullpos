@@ -246,7 +246,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 }
                 if (newPassword.length < 6) {
                   setDialogState(() {
-                    error = 'La nueva contraseña debe tener al menos 6 caracteres';
+                    error =
+                        'La nueva contraseña debe tener al menos 6 caracteres';
                   });
                   return;
                 }
@@ -284,7 +285,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   }
 
                   if (user == null || user.id == null || !user.isAdmin) {
-                    throw Exception('No se encontró una cuenta administrador en esta computadora.');
+                    throw Exception(
+                      'No se encontró una cuenta administrador en esta computadora.',
+                    );
                   }
 
                   await UsersRepository.changePassword(user.id!, newPassword);
@@ -308,7 +311,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   if (mounted) {
                     ScaffoldMessenger.of(this.context).showSnackBar(
                       const SnackBar(
-                        content: Text('Contraseña restablecida. Ya puedes iniciar sesión.'),
+                        content: Text(
+                          'Contraseña restablecida. Ya puedes iniciar sesión.',
+                        ),
                       ),
                     );
                   }
@@ -408,14 +413,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         const SizedBox(height: 10),
                         Text(
                           info!,
-                          style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                       ],
                       if (error != null) ...[
                         const SizedBox(height: 10),
                         Text(
                           error!,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
                       ],
                     ],
@@ -423,7 +432,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
                 actions: [
                   TextButton(
-                    onPressed: loading ? null : () => Navigator.of(dialogContext).pop(),
+                    onPressed: loading
+                        ? null
+                        : () => Navigator.of(dialogContext).pop(),
                     child: const Text('Cerrar'),
                   ),
                   FilledButton(
@@ -768,7 +779,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: _isLoading ? null : _openForgotPasswordDialog,
+                            onPressed: _isLoading
+                                ? null
+                                : _openForgotPasswordDialog,
                             child: const Text('Olvidé mi contraseña'),
                           ),
                         ),

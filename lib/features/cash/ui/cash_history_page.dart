@@ -909,6 +909,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       ticketNumber: 'CASH-${data.session.id ?? ''}',
       includeLogo: true,
       overrideCopies: settings.copies,
+      layoutOverride: layout,
     );
   }
 

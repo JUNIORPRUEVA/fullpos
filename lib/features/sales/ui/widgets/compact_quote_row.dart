@@ -10,7 +10,6 @@ class CompactQuoteRow extends StatelessWidget {
   final QuoteDetailDto quoteDetail;
   final bool isSelected;
   final VoidCallback onTap;
-  final VoidCallback onSell;
   final VoidCallback onWhatsApp;
   final VoidCallback onPdf;
   final VoidCallback onDuplicate;
@@ -23,7 +22,6 @@ class CompactQuoteRow extends StatelessWidget {
     required this.quoteDetail,
     this.isSelected = false,
     required this.onTap,
-    required this.onSell,
     required this.onWhatsApp,
     required this.onPdf,
     required this.onDuplicate,
@@ -75,7 +73,6 @@ class CompactQuoteRow extends StatelessWidget {
 
     final actions = <_QuoteAction>[
       _QuoteAction.view,
-      if (canConvert) _QuoteAction.sell,
       if (canConvert && onConvertToTicket != null) _QuoteAction.ticket,
       _QuoteAction.whatsapp,
       _QuoteAction.pdf,
@@ -172,10 +169,7 @@ class CompactQuoteRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(999),
@@ -203,9 +197,6 @@ class CompactQuoteRow extends StatelessWidget {
                   switch (action) {
                     case _QuoteAction.view:
                       onTap();
-                      break;
-                    case _QuoteAction.sell:
-                      onSell();
                       break;
                     case _QuoteAction.ticket:
                       onConvertToTicket?.call();
@@ -252,8 +243,6 @@ class CompactQuoteRow extends StatelessWidget {
     switch (action) {
       case _QuoteAction.view:
         return 'Ver detalles';
-      case _QuoteAction.sell:
-        return 'Convertir a venta';
       case _QuoteAction.ticket:
         return 'Pasar a ticket';
       case _QuoteAction.whatsapp:
@@ -273,8 +262,6 @@ class CompactQuoteRow extends StatelessWidget {
     switch (action) {
       case _QuoteAction.view:
         return Icons.visibility_outlined;
-      case _QuoteAction.sell:
-        return Icons.point_of_sale;
       case _QuoteAction.ticket:
         return Icons.receipt_long;
       case _QuoteAction.whatsapp:
@@ -325,13 +312,4 @@ class CompactQuoteRow extends StatelessWidget {
   }
 }
 
-enum _QuoteAction {
-  view,
-  sell,
-  ticket,
-  whatsapp,
-  pdf,
-  download,
-  duplicate,
-  delete,
-}
+enum _QuoteAction { view, ticket, whatsapp, pdf, download, duplicate, delete }

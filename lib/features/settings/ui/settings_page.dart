@@ -110,16 +110,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     decoration: BoxDecoration(
                       color: scheme.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: AppColors.borderSoft,
-                      ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: scheme.shadow.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
+                      border: Border.all(color: AppColors.borderSoft),
+                      boxShadow: [
+                        BoxShadow(
+                          color: scheme.shadow.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: Row(
                       children: [
@@ -128,9 +126,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           decoration: BoxDecoration(
                             color: AppColors.lightBlueHover,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppColors.borderSoft,
-                            ),
+                            border: Border.all(color: AppColors.borderSoft),
                           ),
                           child: Icon(
                             Icons.settings,
@@ -668,6 +664,7 @@ class _LicenseSummaryDialogContentState
   LicenseInfo? _info;
   String? _source;
   String? _licenseFilePath;
+  String? _businessId;
 
   @override
   void initState() {
@@ -680,12 +677,15 @@ class _LicenseSummaryDialogContentState
       final info = await _licenseStorage.getLastInfo();
       final source = await _licenseStorage.getLastInfoSource();
       final file = await _licenseFileStorage.file();
+      final businessId = await _identityStorage.getBusinessId();
 
       if (!mounted) return;
       setState(() {
         _info = info;
         _source = source;
         _licenseFilePath = file.path;
+        final normalized = (businessId ?? '').trim();
+        _businessId = normalized.isEmpty ? null : normalized;
         _isLoading = false;
       });
     } catch (_) {
@@ -786,11 +786,7 @@ class _LicenseSummaryDialogContentState
       final msg = lastError.isEmpty
           ? 'No se pudo enviar ahora. Quedó en cola para reintento (debug).'
           : 'No se pudo enviar ahora. Motivo: $lastError';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
@@ -903,9 +899,7 @@ class _LicenseSummaryDialogContentState
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
-          Expanded(
-            child: Text(value),
-          ),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -970,13 +964,17 @@ class _LicenseSummaryDialogContentState
                   const SizedBox(height: 12),
                   _infoRow(label: 'Estado', value: _statusText(_info)),
                   _infoRow(
+                    label: 'Business ID',
+                    value: _businessId ?? 'No disponible',
+                  ),
+                  _infoRow(
                     label: 'Tiempo restante',
                     value: _remainingTimeText(_info),
                   ),
                   _infoRow(
                     label: 'Tipo de licencia',
                     value: (_info?.tipo?.trim().isNotEmpty ?? false)
-                        ? _info!.tipo!.trim()
+                        ? _info!.tipo!.trim().toUpperCase()
                         : 'No disponible',
                   ),
                   _infoRow(
@@ -993,18 +991,9 @@ class _LicenseSummaryDialogContentState
                     label: 'Inicio',
                     value: _formatDate(_info?.fechaInicio),
                   ),
-                  _infoRow(
-                    label: 'Vence',
-                    value: _formatDate(_info?.fechaFin),
-                  ),
-                  _infoRow(
-                    label: 'Dispositivos',
-                    value: _devicesText(_info),
-                  ),
-                  _infoRow(
-                    label: 'Origen',
-                    value: _sourceText(_source),
-                  ),
+                  _infoRow(label: 'Vence', value: _formatDate(_info?.fechaFin)),
+                  _infoRow(label: 'Dispositivos', value: _devicesText(_info)),
+                  _infoRow(label: 'Origen', value: _sourceText(_source)),
                   _infoRow(
                     label: 'Ubicación archivo',
                     value: _licenseFilePath ?? 'No disponible',

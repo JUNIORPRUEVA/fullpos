@@ -353,6 +353,8 @@ class AuthzService {
         return perms.canCreateQuotes;
       case 'can_view_quotes':
         return perms.canViewQuotes;
+      case 'can_convert_quotes_to_ticket':
+        return perms.canConvertQuotesToTicket;
       case 'can_access_tools':
         return perms.canAccessTools;
       case 'can_process_returns':

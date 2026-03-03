@@ -19,8 +19,8 @@ final isCashOpenProvider = FutureProvider<bool>((ref) async {
 /// Controlador de sesiones de caja
 final cashSessionControllerProvider =
     StateNotifierProvider<CashSessionController, AsyncValue<CashSessionModel?>>(
-  (ref) => CashSessionController(ref),
-);
+      (ref) => CashSessionController(ref),
+    );
 
 /// Provider para el resumen de la sesión actual
 final cashSummaryProvider = FutureProvider<CashSummaryModel?>((ref) async {
@@ -30,16 +30,18 @@ final cashSummaryProvider = FutureProvider<CashSummaryModel?>((ref) async {
 });
 
 /// Provider para los movimientos de la sesión actual
-final cashMovementsProvider =
-    FutureProvider<List<CashMovementModel>>((ref) async {
+final cashMovementsProvider = FutureProvider<List<CashMovementModel>>((
+  ref,
+) async {
   final sessionId = await CashRepository.getCurrentSessionId();
   if (sessionId == null) return [];
   return await CashRepository.listMovements(sessionId: sessionId);
 });
 
 /// Provider para el historial de sesiones cerradas
-final closedSessionsProvider =
-    FutureProvider<List<CashSessionModel>>((ref) async {
+final closedSessionsProvider = FutureProvider<List<CashSessionModel>>((
+  ref,
+) async {
   return await CashRepository.listClosedSessions(limit: 50);
 });
 

@@ -54,16 +54,19 @@ class BusinessLicenseSync {
   Future<bool> tryPollFromCloudIfDue({
     Duration minInterval = const Duration(minutes: 30),
     Duration networkTimeout = const Duration(seconds: 4),
+    bool ignoreMinInterval = false,
   }) async {
     final businessId = await _identity.getBusinessId();
     if (businessId == null || businessId.trim().isEmpty) return false;
 
     final sp = await SharedPreferences.getInstance();
-    final lastIso = (sp.getString(_kLastPollIso) ?? '').trim();
-    final last = DateTime.tryParse(lastIso);
-    if (last != null) {
-      final age = DateTime.now().difference(last);
-      if (age < minInterval) return false;
+    if (!ignoreMinInterval) {
+      final lastIso = (sp.getString(_kLastPollIso) ?? '').trim();
+      final last = DateTime.tryParse(lastIso);
+      if (last != null) {
+        final age = DateTime.now().difference(last);
+        if (age < minInterval) return false;
+      }
     }
 
     await sp.setString(_kLastPollIso, DateTime.now().toIso8601String());

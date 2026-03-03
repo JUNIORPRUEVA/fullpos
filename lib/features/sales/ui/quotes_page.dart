@@ -7,14 +7,11 @@ import 'package:printing/printing.dart';
 import '../data/quotes_repository.dart';
 import '../data/quote_model.dart';
 import '../data/quote_to_ticket_converter.dart';
-import '../data/sales_repository.dart';
 import '../data/settings_repository.dart';
 import '../../../core/db_hardening/db_hardening.dart';
-import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/printing/quote_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/errors/error_handler.dart';
-import '../../../core/errors/app_exception.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/ui/ui_scale.dart';
@@ -389,7 +386,6 @@ class _QuotesPageState extends State<QuotesPage> {
             quoteDetail: quoteDetail,
             isSelected: isSelected,
             onTap: () => _selectQuote(quoteDetail, showDetails: !isWide),
-            onSell: () => _convertToSale(quoteDetail),
             onWhatsApp: () => _shareWhatsApp(quoteDetail),
             onPdf: () => _viewPDF(quoteDetail),
             onDownload: () => _downloadPDF(quoteDetail),
@@ -448,13 +444,6 @@ class _QuotesPageState extends State<QuotesPage> {
     final quoteId = quote.id;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
     final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
-    final compactPrimaryStyle = _primaryActionButtonStyle().copyWith(
-      padding: const MaterialStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      ),
-      minimumSize: const MaterialStatePropertyAll(Size(double.infinity, 34)),
-      visualDensity: VisualDensity.compact,
-    );
     final compactSecondaryStyle = _secondaryActionButtonStyle().copyWith(
       padding: const MaterialStatePropertyAll(
         EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -841,19 +830,6 @@ class _QuotesPageState extends State<QuotesPage> {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed:
-                    (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
-                    ? null
-                    : () => _convertToSale(quoteDetail),
-                icon: const Icon(Icons.point_of_sale, size: 16),
-                label: const Text('Convertir a venta'),
-                style: compactPrimaryStyle,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed:
                     (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
@@ -998,257 +974,6 @@ class _QuotesPageState extends State<QuotesPage> {
     // Si algo cambió en el diálogo, recargar la lista
     if (changed == true && mounted) {
       await _loadQuotes();
-    }
-  }
-
-  Future<void> _convertToSale(QuoteDetailDto quoteDetail) async {
-    // Validación: Verificar si la cotización ya fue convertida
-    if (quoteDetail.quote.status == 'CONVERTED') {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Esta cotización ya fue convertida a venta'),
-            backgroundColor: _status.warning,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-
-    // Validación: Verificar que hay items en la cotización
-    if (quoteDetail.items.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '❌ No se puede convertir una cotización sin productos',
-            ),
-            backgroundColor: _status.error,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: Icon(Icons.point_of_sale, color: _status.success, size: 48),
-        title: const Text('CONVERTIR A VENTA'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '¿Convertir la cotización COT-${quoteDetail.quote.id!.toString().padLeft(5, '0')} en venta?',
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _status.warning.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _status.warning),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning, color: _status.warning),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Esto descontará el stock de los productos automáticamente',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.check),
-            label: const Text('CONVERTIR A VENTA'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _status.success,
-              foregroundColor: ColorUtils.readableTextColor(_status.success),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        final quote = quoteDetail.quote;
-
-        // Generar código de venta
-        final localCode = await SalesRepository.generateNextLocalCode('sale');
-
-        // Convertir items de cotización a mapas para createSale
-        final saleItems = quoteDetail.items
-            .map(
-              (item) => <String, dynamic>{
-                'product_id': item.productId,
-                'code': item.productCode ?? 'N/A',
-                'description': item.description,
-                'qty': item.qty,
-                'price': item.price,
-                'cost': item.cost,
-                'discount': item.discountLine,
-              },
-            )
-            .toList();
-
-        // Crear la venta (atómica). Si el stock quedaría en negativo, pedir confirmación.
-        int saleId;
-        try {
-          saleId = await SalesRepository.createSale(
-            localCode: localCode,
-            kind: 'sale',
-            items: saleItems,
-            itbisEnabled: quote.itbisEnabled,
-            itbisRate: quote.itbisRate,
-            discountTotal: quote.discountTotal,
-            paymentMethod: 'cash', // Por defecto efectivo
-            customerId: quote.clientId,
-            customerName: quoteDetail.clientName,
-            customerPhone: quoteDetail.clientPhone,
-            customerRnc: quoteDetail.clientRnc,
-            paidAmount: quote.total,
-            changeAmount: 0,
-          );
-        } on AppException catch (e, st) {
-          if (e.code != 'stock_negative') {
-            await ErrorHandler.instance.handle(
-              e,
-              stackTrace: st,
-              context: context,
-              module: 'quotes',
-            );
-            return;
-          }
-
-          final proceed = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Stock insuficiente'),
-              content: Text(e.messageUser),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('CANCELAR'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('CONTINUAR'),
-                ),
-              ],
-            ),
-          );
-          if (proceed != true) return;
-
-          final retry = await ErrorHandler.instance.runSafe<int>(
-            () => SalesRepository.createSale(
-              localCode: localCode,
-              kind: 'sale',
-              items: saleItems,
-              allowNegativeStock: true,
-              itbisEnabled: quote.itbisEnabled,
-              itbisRate: quote.itbisRate,
-              discountTotal: quote.discountTotal,
-              paymentMethod: 'cash',
-              customerId: quote.clientId,
-              customerName: quoteDetail.clientName,
-              customerPhone: quoteDetail.clientPhone,
-              customerRnc: quoteDetail.clientRnc,
-              paidAmount: quote.total,
-              changeAmount: 0,
-            ),
-            context: context,
-            module: 'quotes',
-          );
-          if (retry == null) return;
-          saleId = retry;
-        }
-
-        // Actualizar estado de la cotización
-        await DbHardening.instance.runDbSafe(
-          () => QuotesRepository().updateQuoteStatus(quote.id!, 'CONVERTED'),
-          stage: 'sales/quotes/update_status',
-        );
-
-        await _loadQuotes();
-
-        if (mounted) {
-          // Preguntar si desea imprimir
-          final printTicket = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              icon: Icon(Icons.check_circle, color: _status.success, size: 48),
-              title: const Text('¡VENTA CREADA!'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Código: $localCode'),
-                  Text('Total: \$${quote.total.toStringAsFixed(2)}'),
-                  const SizedBox(height: 16),
-                  const Text('¿Desea imprimir el ticket?'),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('NO'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context, true),
-                  icon: const Icon(Icons.print),
-                  label: const Text('IMPRIMIR'),
-                ),
-              ],
-            ),
-          );
-
-          if (printTicket == true) {
-            final sale = await SalesRepository.getSaleById(saleId);
-            final items = await SalesRepository.getItemsBySaleId(saleId);
-            if (sale != null) {
-              // Obtener nombre del cajero desde la sesión
-              final cashierName =
-                  await SessionManager.displayName() ?? 'Cajero';
-              await UnifiedTicketPrinter.reprintSale(
-                sale: sale,
-                items: items,
-                cashierName: cashierName,
-              );
-            }
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Venta creada: $localCode'),
-              backgroundColor: _status.success,
-            ),
-          );
-        }
-      } catch (e, st) {
-        if (mounted) {
-          await ErrorHandler.instance.handle(
-            e,
-            stackTrace: st,
-            context: context,
-            onRetry: () => _convertToSale(quoteDetail),
-            module: 'sales/quotes/convert',
-          );
-        }
-      }
     }
   }
 

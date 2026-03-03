@@ -94,6 +94,14 @@ class Permissions {
     legacyKey: 'can_view_quotes',
   );
 
+  static final quotesConvertToTicket = Permission.screen(
+    code: 'ventas.cotizaciones.pasar_ticket',
+    title: 'Cotizaciones: pasar a ticket pendiente',
+    description:
+        'Permite convertir una cotización en un ticket pendiente desde el módulo de cotizaciones.',
+    legacyKey: 'can_convert_quotes_to_ticket',
+  );
+
   static final creditsView = Permission.screen(
     code: 'ventas.creditos.ver',
     title: 'Creditos',

@@ -17,6 +17,7 @@ import '../data/license_models.dart';
 import '../models/license_ui_error.dart';
 import 'business_license_api.dart';
 import 'business_license_sync.dart';
+import 'business_license_realtime.dart';
 import 'license_error_mapper.dart';
 import 'license_file_repair.dart';
 import 'license_file_storage.dart';
@@ -86,6 +87,8 @@ class LicenseController extends StateNotifier<LicenseState> {
   final LicenseFileStorage fileStorage;
 
   Timer? _cloudSyncTimer;
+  StreamSubscription<void>? _cloudRealtimeSub;
+  bool _cloudRealtimeReady = false;
   static const Duration _kCloudSyncInterval = Duration(seconds: 15);
 
   LicenseController({
@@ -105,7 +108,50 @@ class LicenseController extends StateNotifier<LicenseState> {
   void dispose() {
     _cloudSyncTimer?.cancel();
     _cloudSyncTimer = null;
+    _cloudRealtimeSub?.cancel();
+    _cloudRealtimeSub = null;
     super.dispose();
+  }
+
+  Future<void> _ensureCloudRealtimeStarted() async {
+    if (_cloudRealtimeSub != null) return;
+
+    final businessId = await BusinessIdentityStorage().getBusinessId();
+    final id = (businessId ?? '').trim();
+    if (id.isEmpty) return;
+
+    _cloudRealtimeSub = BusinessLicenseRealtime()
+        .watch(baseUrl: kLicenseBackendBaseUrl, businessId: id)
+        .listen((signal) async {
+          if (signal == BusinessLicenseRealtimeSignal.ready) {
+            _cloudRealtimeReady = true;
+            return;
+          }
+
+          if (signal == BusinessLicenseRealtimeSignal.disconnected) {
+            _cloudRealtimeReady = false;
+            return;
+          }
+
+          if (signal != BusinessLicenseRealtimeSignal.licenseChanged) return;
+
+          try {
+            final changed = await businessSync.tryPollFromCloudIfDue(
+              minInterval: Duration.zero,
+              ignoreMinInterval: true,
+              networkTimeout: const Duration(seconds: 4),
+            );
+            if (!changed) return;
+
+            bumpLicenseGateRefresh();
+
+            // Avoid UI flicker if a load is already running.
+            if (state.loading) return;
+            await load();
+          } catch (_) {
+            // ignore
+          }
+        });
   }
 
   void _ensureCloudAutoSyncStarted() {
@@ -119,6 +165,9 @@ class LicenseController extends StateNotifier<LicenseState> {
 
     // Primer tick inmediato.
     unawaited(_cloudSyncTick());
+
+    // Real-time (best-effort): if available, updates instantly.
+    unawaited(_ensureCloudRealtimeStarted());
   }
 
   Future<void> _cloudSyncTick() async {
@@ -133,8 +182,14 @@ class LicenseController extends StateNotifier<LicenseState> {
         // Ignorar: es un intento best-effort.
       }
 
+      // If realtime channel is connected, reduce polling frequency to lower load.
+      // Polling still runs as a safety net when SSE is blocked by proxies.
+      final minInterval = _cloudRealtimeReady
+          ? const Duration(minutes: 2)
+          : _kCloudSyncInterval;
+
       final changed = await businessSync.tryPollFromCloudIfDue(
-        minInterval: _kCloudSyncInterval,
+        minInterval: minInterval,
         networkTimeout: const Duration(seconds: 4),
       );
       if (!changed) return;
@@ -176,6 +231,7 @@ class LicenseController extends StateNotifier<LicenseState> {
 
   Future<void> load() async {
     _ensureCloudAutoSyncStarted();
+    unawaited(_ensureCloudRealtimeStarted());
     state = state.copyWith(
       loading: true,
       error: null,

@@ -32,6 +32,10 @@ class BusinessSettings {
   final bool printReceiptAutomatically; // Imprimir recibo automáticamente
   final String defaultChargeOutputMode; // ticket | pdf | none
 
+  // Cotizaciones
+  /// Habilita el flujo completo de cotizaciones (incluye pasar cotización a ticket pendiente).
+  final bool enableFullQuotesFlow;
+
   // Configuraciones avanzadas y características
   final bool enableAutoBackup; // Habilitar backup automático
   final bool enableNotifications; // Habilitar notificaciones
@@ -81,6 +85,7 @@ class BusinessSettings {
     this.showLogoOnReceipt = true,
     this.printReceiptAutomatically = false,
     this.defaultChargeOutputMode = 'ticket',
+    this.enableFullQuotesFlow = false,
     this.enableAutoBackup = true,
     this.enableNotifications = true,
     this.enableInventoryTracking = true,
@@ -149,8 +154,9 @@ class BusinessSettings {
       showLogoOnReceipt: (map['show_logo_on_receipt'] as int? ?? 1) == 1,
       printReceiptAutomatically:
           (map['print_receipt_automatically'] as int? ?? 0) == 1,
-        defaultChargeOutputMode:
+      defaultChargeOutputMode:
           (map['default_charge_output_mode'] as String? ?? 'ticket'),
+      enableFullQuotesFlow: (map['enable_full_quotes_flow'] as int? ?? 0) == 1,
       enableAutoBackup: (map['enable_auto_backup'] as int? ?? 1) == 1,
       enableNotifications: (map['enable_notifications'] as int? ?? 1) == 1,
       enableInventoryTracking:
@@ -182,8 +188,8 @@ class BusinessSettings {
       cloudOwnerAppIosUrl: map['cloud_owner_app_ios_url'] as String?,
       cloudOwnerUsername: map['cloud_owner_username'] as String?,
       cloudCompanyId: map['cloud_company_id'] as String?,
-        createdAt: safeDateTime(map['created_at']),
-        updatedAt: safeDateTime(map['updated_at']),
+      createdAt: safeDateTime(map['created_at']),
+      updatedAt: safeDateTime(map['updated_at']),
     );
   }
 
@@ -212,6 +218,7 @@ class BusinessSettings {
       'show_logo_on_receipt': showLogoOnReceipt ? 1 : 0,
       'print_receipt_automatically': printReceiptAutomatically ? 1 : 0,
       'default_charge_output_mode': defaultChargeOutputMode,
+      'enable_full_quotes_flow': enableFullQuotesFlow ? 1 : 0,
       'enable_auto_backup': enableAutoBackup ? 1 : 0,
       'enable_notifications': enableNotifications ? 1 : 0,
       'enable_inventory_tracking': enableInventoryTracking ? 1 : 0,
@@ -266,6 +273,7 @@ class BusinessSettings {
     bool? showLogoOnReceipt,
     bool? printReceiptAutomatically,
     String? defaultChargeOutputMode,
+    bool? enableFullQuotesFlow,
     bool? enableAutoBackup,
     bool? enableNotifications,
     bool? enableInventoryTracking,
@@ -311,8 +319,9 @@ class BusinessSettings {
       showLogoOnReceipt: showLogoOnReceipt ?? this.showLogoOnReceipt,
       printReceiptAutomatically:
           printReceiptAutomatically ?? this.printReceiptAutomatically,
-        defaultChargeOutputMode:
+      defaultChargeOutputMode:
           defaultChargeOutputMode ?? this.defaultChargeOutputMode,
+      enableFullQuotesFlow: enableFullQuotesFlow ?? this.enableFullQuotesFlow,
       enableAutoBackup: enableAutoBackup ?? this.enableAutoBackup,
       enableNotifications: enableNotifications ?? this.enableNotifications,
       enableInventoryTracking:

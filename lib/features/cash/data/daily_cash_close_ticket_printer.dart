@@ -69,6 +69,7 @@ class DailyCashCloseTicketPrinter {
       ticketNumber: 'DAILY-${cashbox.id}-$businessDate',
       includeLogo: true,
       overrideCopies: settings.copies,
+      layoutOverride: layout,
     );
   }
 

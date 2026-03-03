@@ -47,6 +47,9 @@ class _LicensePageState extends ConsumerState<LicensePage> {
   bool _showSupportDetails = false;
   bool _showQuickGuide = false;
 
+  String? _businessId;
+  DateTime? _lastBusinessIdFetchAt;
+
   String _maskKey(String input) {
     final s = input.trim();
     if (s.isEmpty) return '';
@@ -64,6 +67,41 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     if (currentRole.isNotEmpty) {
       _demoRolNegocioSelected = currentRole;
     }
+
+    unawaited(_refreshBusinessId(force: true));
+  }
+
+  Future<void> _refreshBusinessId({bool force = false}) async {
+    final last = _lastBusinessIdFetchAt;
+    if (!force && last != null) {
+      if (DateTime.now().difference(last) < const Duration(seconds: 10)) return;
+    }
+    _lastBusinessIdFetchAt = DateTime.now();
+
+    try {
+      final id = await BusinessIdentityStorage().getBusinessId();
+      if (!mounted) return;
+      final normalized = (id ?? '').trim();
+      setState(() {
+        _businessId = normalized.isEmpty ? null : normalized;
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  String _formatLocalDateTime(DateTime? dt) {
+    if (dt == null) return '-';
+    final d = dt.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  String _licenseTypeLabel(LicenseInfo? info) {
+    final t = (info?.tipo ?? '').toString().trim();
+    if (t.isNotEmpty) return t.toUpperCase();
+    final code = (info?.code ?? '').toString().trim();
+    return code.isNotEmpty ? code.toUpperCase() : '-';
   }
 
   @override
@@ -252,6 +290,9 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final state = ref.watch(licenseControllerProvider);
     final controller = ref.read(licenseControllerProvider.notifier);
     final info = state.info;
+
+    // Keep business_id updated (best-effort).
+    unawaited(_refreshBusinessId());
 
     ref.listen(licenseControllerProvider, (prev, next) {
       // Si ya se consumió la DEMO en este equipo/cliente, llevar al flujo de compra.
@@ -500,6 +541,95 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                                       ),
                                                 ),
                                               ),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 6,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: scheme.surfaceVariant
+                                                      .withOpacity(0.40),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                  border: Border.all(
+                                                    color: dividerColor,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  'Business ID: ${_businessId ?? '—'}',
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        color: statusFg,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                ),
+                                              ),
+                                              if (licenseActive)
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: scheme.surfaceVariant
+                                                        .withOpacity(0.40),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: dividerColor,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    'Tipo: ${_licenseTypeLabel(info)}',
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodySmall
+                                                        ?.copyWith(
+                                                          color: statusFg,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                ),
+                                              if (licenseActive)
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: scheme.surfaceVariant
+                                                        .withOpacity(0.40),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: dividerColor,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    'Vence: ${_formatLocalDateTime(info?.fechaFin)}',
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodySmall
+                                                        ?.copyWith(
+                                                          color: statusFg,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                ),
                                             ],
                                           ),
                                         ],
@@ -1136,8 +1266,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
+          _kv('Business ID', _businessId ?? '—'),
+          _kv('Tipo', _licenseTypeLabel(info)),
           if (!isTrial) _kv('Device ID', info?.deviceId ?? '-'),
-          _kv('Vence', info?.fechaFin?.toLocal().toString() ?? '-'),
+          _kv('Vence', _formatLocalDateTime(info?.fechaFin)),
         ],
       );
     }
