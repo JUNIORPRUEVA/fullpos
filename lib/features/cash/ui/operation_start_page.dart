@@ -62,6 +62,7 @@ class _OperationStartPageState extends State<OperationStartPage> {
 
       if (state.hasStaleShift) {
         if (!mounted) return;
+        final pageContext = context;
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
@@ -74,7 +75,12 @@ class _OperationStartPageState extends State<OperationStartPage> {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  context.go('/cash?closeShift=1');
+                  // Evitar navegación re-entrante: el diálogo se cierra y
+                  // la navegación ocurre en el siguiente frame.
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    pageContext.go('/cash?closeShift=1');
+                  });
                 },
                 child: const Text('Hacer corte'),
               ),

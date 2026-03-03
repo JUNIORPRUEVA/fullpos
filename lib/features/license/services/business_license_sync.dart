@@ -217,6 +217,9 @@ class BusinessLicenseSync {
         .toString()
         .trim();
 
+    final motivoRaw = payload['motivo'] ?? payload['notas'] ?? payload['reason'];
+    final motivo = motivoRaw == null ? null : motivoRaw.toString().trim();
+
     // No bloqueamos por device_id: si viene, se respeta para compat.
     final deviceId = (payload['device_id'] ?? '').toString().trim();
 
@@ -229,7 +232,7 @@ class BusinessLicenseSync {
       code: 'OK',
       tipo: planOrTipo.trim().isEmpty ? null : planOrTipo.trim(),
       estado: estado.isEmpty ? 'ACTIVA' : estado.toUpperCase(),
-      motivo: null,
+      motivo: (motivo == null || motivo.isEmpty) ? null : motivo,
       fechaInicio: startsAt,
       fechaFin: expiresAt,
       maxDispositivos: _asInt(

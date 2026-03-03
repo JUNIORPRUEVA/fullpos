@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
@@ -5,10 +9,145 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/window/window_service.dart';
+import '../../registration/services/business_identity_storage.dart';
+import '../license_config.dart';
+import '../services/business_license_sync.dart';
 import '../services/license_storage.dart';
+import '../services/license_gate_refresh.dart';
 
-class LicenseBlockedPage extends StatelessWidget {
+class LicenseBlockedPage extends StatefulWidget {
   const LicenseBlockedPage({super.key});
+
+  @override
+  State<LicenseBlockedPage> createState() => _LicenseBlockedPageState();
+}
+
+class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
+  StreamSubscription<String>? _sseSub;
+  HttpClient? _httpClient;
+  bool _disposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startListening();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _stopListening();
+    super.dispose();
+  }
+
+  void _stopListening() {
+    try {
+      _sseSub?.cancel();
+    } catch (_) {}
+    _sseSub = null;
+
+    try {
+      _httpClient?.close(force: true);
+    } catch (_) {}
+    _httpClient = null;
+  }
+
+  Future<void> _startListening() async {
+    final businessId = (await BusinessIdentityStorage().getBusinessId())?.trim();
+    if (businessId == null || businessId.isEmpty) return;
+
+    // Reintentos simples: mientras la pantalla esté montada.
+    Future<void> loop() async {
+      while (!_disposed && mounted) {
+        try {
+          await _connectAndListen(businessId);
+        } catch (_) {
+          // ignore and retry
+        }
+        if (_disposed || !mounted) return;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+
+    unawaited(loop());
+  }
+
+  Future<void> _connectAndListen(String businessId) async {
+    _stopListening();
+    _httpClient = HttpClient();
+    _httpClient!.idleTimeout = const Duration(seconds: 15);
+
+    final base = AppConfig.normalizeBaseUrl(kLicenseBackendBaseUrl);
+
+    // Try new route first, fallback to legacy /api prefix.
+    final paths = <String>[
+      '/businesses/$businessId/license/stream',
+      '/api/businesses/$businessId/license/stream',
+    ];
+
+    HttpClientResponse? response;
+    for (final path in paths) {
+      try {
+        final uri = Uri.parse(base).replace(path: path);
+        final req = await _httpClient!.getUrl(uri);
+        req.headers.set('accept', 'text/event-stream');
+        req.headers.set('cache-control', 'no-cache');
+        response = await req.close();
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          break;
+        }
+      } catch (_) {
+        // try next
+      }
+    }
+
+    if (response == null || response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('SSE connect failed');
+    }
+
+    String? currentEvent;
+    final lines = response
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+
+    _sseSub = lines.listen(
+      (line) async {
+        final trimmed = line.trimRight();
+        if (trimmed.isEmpty) {
+          currentEvent = null;
+          return;
+        }
+        if (trimmed.startsWith('event:')) {
+          currentEvent = trimmed.substring('event:'.length).trim();
+          return;
+        }
+        if (trimmed.startsWith('data:')) {
+          final ev = (currentEvent ?? '').trim();
+          if (ev == 'license_changed') {
+            await _onLicenseChanged();
+          }
+          return;
+        }
+      },
+      onError: (_) {},
+      onDone: () {},
+      cancelOnError: true,
+    );
+  }
+
+  Future<void> _onLicenseChanged() async {
+    // Al recibir el push, refrescar de inmediato desde la nube.
+    final sync = BusinessLicenseSync();
+    final changed = await sync.tryPollFromCloudIfDue(
+      minInterval: Duration.zero,
+      ignoreMinInterval: true,
+      networkTimeout: const Duration(seconds: 2),
+    );
+    if (changed) {
+      bumpLicenseGateRefresh();
+      if (mounted) setState(() {}); // para refrescar el motivo en pantalla
+    }
+  }
 
   static const String _supportPhoneDisplay = '8295319442';
   static const String _supportPhoneWhatsapp = '18295319442';

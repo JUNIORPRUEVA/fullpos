@@ -295,7 +295,7 @@ class UserPermissions {
     canViewCashHistory: false,
     canMakeCashMovements: false,
     canOpenCashbox: false,
-    canCloseCashbox: false,
+    canCloseCashbox: true,
     canOpenShift: true,
     canCloseShift: true,
     canExitWithOpenShift: false,

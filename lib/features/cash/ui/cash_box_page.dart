@@ -300,14 +300,20 @@ class _CashBoxPageState extends State<CashBoxPage> {
         // Si el usuario llegó aquí desde "Iniciar operación" por un corte forzado,
         // al completar el corte regresamos automáticamente a esa pantalla.
         if (widget.autoOpenShiftCut && mounted) {
-          context.go('/operation-start');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.go('/operation-start');
+          });
           return;
         }
 
         // UX: al cerrar el turno, no volver a mostrar el cuadro de “Abrir turno”.
         // Redirigir al flujo oficial de “Iniciar operación”.
         if (mounted) {
-          context.go('/operation-start');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.go('/operation-start');
+          });
           return;
         }
       }

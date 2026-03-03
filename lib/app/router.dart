@@ -59,9 +59,12 @@ _LicenseGateDecision? _licenseGateCached;
 DateTime? _licenseGateCachedAt;
 int _licenseGateCachedEpoch = 0;
 Future<void>? _cloudRevokeCheckInFlight;
+Future<void>? _blockedCloudProbeInFlight;
+DateTime? _blockedCloudProbeAt;
 
 const _kCloudGateMinPollInterval = Duration(seconds: 15);
 const _kActiveGateDecisionCacheWindow = Duration(seconds: 10);
+const _kBlockedGateProbeInterval = Duration(seconds: 5);
 
 void _runCloudRevocationCheckInBackground(BusinessLicenseSync sync) {
   if (_cloudRevokeCheckInFlight != null) return;
@@ -576,6 +579,41 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // Si el token local representa un bloqueo, debe ganar sobre TRIAL.
   final cachedAfterLocal = await storage.getLastInfo();
   if (cachedAfterLocal?.isBlocked == true) {
+    // IMPORTANTE:
+    // Si el admin desbloquea en el servidor, el cliente debe poder “salir” del
+    // bloqueo sin borrar datos locales. Antes, este branch retornaba bloqueado
+    // sin re-consultar la nube, dejando la app atrapada.
+    final now = DateTime.now();
+    final lastProbe = _blockedCloudProbeAt;
+    final canProbe = lastProbe == null || now.difference(lastProbe) >= _kBlockedGateProbeInterval;
+
+    if (canProbe && _blockedCloudProbeInFlight == null) {
+      _blockedCloudProbeAt = now;
+      _blockedCloudProbeInFlight = businessSync
+          .tryPollFromCloudIfDue(
+            minInterval: Duration.zero,
+            ignoreMinInterval: true,
+            networkTimeout: const Duration(seconds: 2),
+          )
+          .catchError((_) => false)
+          .whenComplete(() {
+            _blockedCloudProbeInFlight = null;
+          });
+
+      // Esperar a que termine este intento rápido.
+      await _blockedCloudProbeInFlight;
+    }
+
+    // Si el poll trajo una licencia ACTIVA, salir del bloqueo.
+    final refreshed = await storage.getLastInfo();
+    if (refreshed != null && !refreshed.isBlocked && refreshed.isActive && !refreshed.isExpired) {
+      return const _LicenseGateDecision(
+        isActive: true,
+        isBlocked: false,
+        code: 'OK',
+      );
+    }
+
     return _LicenseGateDecision(
       isActive: false,
       isBlocked: true,
