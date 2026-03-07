@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+import 'dart:typed_data';
 
 import '../data/sales_model.dart';
 import '../data/sales_repository.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
+import '../../../core/printing/invoice_letter_pdf.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../settings/data/printer_settings_repository.dart';
+import '../../settings/data/business_settings_repository.dart';
 import '../../../theme/app_colors.dart';
+import '../../../core/window/window_service.dart';
 
 /// Página de lista de ventas realizadas (Historial completo)
 class SalesListPage extends StatefulWidget {
@@ -265,6 +273,195 @@ class _SalesListPageState extends State<SalesListPage> {
         );
       }
     }
+  }
+
+  Future<List<SaleItemModel>?> _getSaleItemsSafe(SaleModel sale) async {
+    final saleId = sale.id;
+    if (saleId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se puede procesar esta venta: ID inválido'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return null;
+    }
+
+    try {
+      return await SalesRepository.getItemsBySaleId(saleId);
+    } catch (e, st) {
+      if (mounted) {
+        await ErrorHandler.instance.handle(
+          e,
+          stackTrace: st,
+          context: context,
+          onRetry: () => _getSaleItemsSafe(sale),
+          module: 'sales/history/load-items',
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<Uint8List> _buildInvoicePdfBytes({
+    required SaleModel sale,
+    required List<SaleItemModel> items,
+  }) async {
+    final business = await BusinessSettingsRepository().loadSettings();
+    final printerSettings = await PrinterSettingsRepository.getOrCreate();
+    final cashierName = await SessionManager.displayName() ?? 'Cajero';
+
+    return InvoiceLetterPdf.generate(
+      sale: sale,
+      items: items,
+      business: business,
+      brandColorArgb: Theme.of(context).colorScheme.primary.value,
+      cashierName: cashierName,
+      warrantyPolicy: printerSettings.warrantyPolicy,
+      footerMessage: printerSettings.footerMessage,
+    );
+  }
+
+  Future<void> _openInvoicePdfPreview(SaleModel sale) async {
+    final items = await _getSaleItemsSafe(sale);
+    if (items == null) return;
+
+    try {
+      final bytes = await _buildInvoicePdfBytes(sale: sale, items: items);
+      if (!mounted) return;
+
+      final suggestedName = 'FACTURA_${_sanitizeFilePart(sale.localCode)}.pdf';
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+          child: SizedBox(
+            width: 980,
+            height: 720,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Factura (PDF)',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await _savePdfWithDialog(
+                            bytes: bytes,
+                            fileName: suggestedName,
+                          );
+                        },
+                        icon: const Icon(Icons.download, size: 18),
+                        label: const Text('Descargar PDF'),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('Cerrar'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: PdfPreview(
+                    build: (_) async => bytes,
+                    canChangeOrientation: false,
+                    canChangePageFormat: false,
+                    allowPrinting: true,
+                    allowSharing: false,
+                    dynamicLayout: false,
+                    dpi: 96,
+                    initialPageFormat: PdfPageFormat.letter,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e, st) {
+      if (mounted) {
+        await ErrorHandler.instance.handle(
+          e,
+          stackTrace: st,
+          context: context,
+          onRetry: () => _openInvoicePdfPreview(sale),
+          module: 'sales/history/view-pdf',
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadInvoicePdf(SaleModel sale) async {
+    final items = await _getSaleItemsSafe(sale);
+    if (items == null) return;
+
+    try {
+      final bytes = await _buildInvoicePdfBytes(sale: sale, items: items);
+      final fileName = 'FACTURA_${_sanitizeFilePart(sale.localCode)}.pdf';
+      final file = await _savePdfWithDialog(bytes: bytes, fileName: fileName);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Factura descargada: ${file.path}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e, st) {
+      if (mounted) {
+        await ErrorHandler.instance.handle(
+          e,
+          stackTrace: st,
+          context: context,
+          onRetry: () => _downloadInvoicePdf(sale),
+          module: 'sales/history/download-pdf',
+        );
+      }
+    }
+  }
+
+  Future<void> _reprintSaleFromPanel(SaleModel sale) async {
+    final items = await _getSaleItemsSafe(sale);
+    if (items == null) return;
+    await _reprintTicket(sale, items);
+  }
+
+  Future<File> _savePdfWithDialog({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final outputFile = await WindowService.runWithSystemDialog(
+      () => FilePicker.platform.saveFile(
+        dialogTitle: 'Guardar factura PDF',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+      ),
+    );
+
+    if (outputFile == null) {
+      throw Exception('Guardado cancelado por el usuario');
+    }
+
+    final file = File(outputFile);
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  String _sanitizeFilePart(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return 'VENTA';
+    return trimmed.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   }
 
   @override
@@ -643,9 +840,7 @@ class _SalesListPageState extends State<SalesListPage> {
     final saleId = sale.id;
     final isHovered = saleId != null && _hoveredSaleIds.contains(saleId);
 
-    final rowColor = isSelected
-        ? AppColors.lightBlueHover
-        : scheme.surface;
+    final rowColor = isSelected ? AppColors.lightBlueHover : scheme.surface;
     final statusLabel = isCancelled ? 'ANULADA' : 'OK';
     final statusColor = isCancelled ? AppColors.error : AppColors.success;
 
@@ -685,101 +880,105 @@ class _SalesListPageState extends State<SalesListPage> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: Text(
-                  sale.localCode,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textPrimary,
-                    decoration: isCancelled ? TextDecoration.lineThrough : null,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      sale.localCode,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                        decoration: isCancelled
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 5,
-                child: Text(
-                  sale.customerNameSnapshot ?? 'Cliente general',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 5,
+                    child: Text(
+                      sale.customerNameSnapshot ?? 'Cliente general',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  _getPaymentMethodLabel(sale.paymentMethod),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      _getPaymentMethodLabel(sale.paymentMethod),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  DateFormat('dd/MM/yy HH:mm').format(date),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      DateFormat('dd/MM/yy HH:mm').format(date),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  '\$${sale.total.toStringAsFixed(2)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    color: isCancelled
-                        ? AppColors.textSecondary
-                        : AppColors.textPrimary,
-                    decoration: isCancelled ? TextDecoration.lineThrough : null,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      '\$${sale.total.toStringAsFixed(2)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: isCancelled
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary,
+                        decoration: isCancelled
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: statusColor.withOpacity(0.28)),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: statusColor,
-                    letterSpacing: 0.2,
-                    fontSize: 11,
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: statusColor.withOpacity(0.28)),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: statusColor,
+                        letterSpacing: 0.2,
+                        fontSize: 11,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                ],
               ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, color: AppColors.textSecondary),
-            ],
-          ),
             ),
           ),
         ),
@@ -869,6 +1068,38 @@ class _SalesListPageState extends State<SalesListPage> {
                   onPressed: () => _showSaleDetails(sale),
                   icon: const Icon(Icons.open_in_new, size: 18),
                   label: const Text('Abrir detalle'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _openInvoicePdfPreview(sale),
+                  icon: const Icon(Icons.picture_as_pdf, size: 18),
+                  label: const Text('Ver PDF factura'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _downloadInvoicePdf(sale),
+                  icon: const Icon(Icons.download, size: 18),
+                  label: const Text('Descargar PDF factura'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _reprintSaleFromPanel(sale),
+                  icon: const Icon(Icons.print, size: 18),
+                  label: const Text('Reimprimir factura'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: scheme.primary,
                     foregroundColor: scheme.onPrimary,

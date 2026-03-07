@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../data/categories_repository.dart';
 import '../../data/products_repository.dart';
@@ -126,7 +128,7 @@ class _CatalogTabState extends State<CatalogTab> {
       if (!mounted) return;
 
       final message =
-          'Importados: ${importResult.inserted}, actualizados: ${importResult.updated}, omitidos: ${importResult.skipped}, categorías: ${importResult.categoriesUpserted}, suplidores: ${importResult.suppliersUpserted}';
+          'Importados: ${importResult.inserted}, actualizados: ${importResult.updated}, omitidos: ${importResult.skipped} (inválidos: ${importResult.invalidRows}, duplicados en archivo: ${importResult.duplicateRows}), categorías: ${importResult.categoriesUpserted}, suplidores: ${importResult.suppliersUpserted}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: AppColors.success),
       );
@@ -144,6 +146,35 @@ class _CatalogTabState extends State<CatalogTab> {
             ),
             actions: [
               TextButton(
+                onPressed: () async {
+                  try {
+                    final reportFile = await _exportImportErrorsReportCsv(
+                      importResult.errors,
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Reporte de errores exportado: ${reportFile.path}',
+                        ),
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'No se pudo exportar el reporte de errores. Qué hacer: verifica permisos de carpeta Descargas e inténtalo de nuevo. Detalle: $e',
+                        ),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Exportar reporte CSV'),
+              ),
+              TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cerrar'),
               ),
@@ -153,9 +184,31 @@ class _CatalogTabState extends State<CatalogTab> {
       }
     } catch (e) {
       if (!mounted) return;
+      final rawError = e.toString().replaceFirst('Exception: ', '').trim();
+      final lower = rawError.toLowerCase();
+
+      String quickFix =
+          'Revisa el archivo Excel e inténtalo de nuevo. Si persiste, corrige las filas reportadas en el detalle.';
+
+      if (lower.contains('faltan columnas requeridas')) {
+        quickFix =
+            'Agrega todas las columnas obligatorias (Código, Nombre, Precio Venta, Stock, Stock Min) en la primera fila de encabezados.';
+      } else if (lower.contains('precio compra') &&
+          lower.contains('requerida')) {
+        quickFix =
+            'Agrega la columna Precio Compra y coloca valores mayores que 0 en cada producto.';
+      } else if (lower.contains('no se encontró la hoja') ||
+          lower.contains('no se encontro la hoja')) {
+        quickFix =
+            'Renombra la hoja principal como Productos o colócala como primera hoja del archivo.';
+      } else if (lower.contains('no contiene filas')) {
+        quickFix =
+            'Asegura que el Excel tenga encabezados y al menos una fila de productos con datos.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error al importar: $e'),
+          content: Text('Error al importar: $rawError\nQué hacer: $quickFix'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -183,6 +236,60 @@ class _CatalogTabState extends State<CatalogTab> {
     _debounce = Timer(const Duration(milliseconds: 500), () {
       _loadProducts();
     });
+  }
+
+  Future<File> _exportImportErrorsReportCsv(List<String> errors) async {
+    final downloadsDir = await getDownloadsDirectory();
+    if (downloadsDir == null) {
+      throw StateError(
+        'No se pudo acceder al directorio de descargas para guardar el reporte.',
+      );
+    }
+
+    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final file = File(
+      '${downloadsDir.path}/ImportacionProductos_Errores_$ts.csv',
+    );
+
+    final lines = <String>['Fila,Problema,Solucion'];
+    for (final error in errors) {
+      final parsed = _parseImportError(error);
+      lines.add(
+        '${_csvCell(parsed.row)},${_csvCell(parsed.issue)},${_csvCell(parsed.fix)}',
+      );
+    }
+
+    final csv = lines.join('\n');
+    await file.writeAsString(csv, flush: true);
+    return file;
+  }
+
+  ({String row, String issue, String fix}) _parseImportError(String error) {
+    final regex = RegExp(
+      r'^Fila\s+(\d+)\:\s*(.*?)(?:\.\s*Solución\:\s*(.*))?\.?$',
+    );
+    final match = regex.firstMatch(error.trim());
+    if (match == null) {
+      return (
+        row: '',
+        issue: error.trim(),
+        fix:
+            'Revisa este mensaje y corrige el valor en el Excel antes de reintentar.',
+      );
+    }
+
+    final row = match.group(1)?.trim() ?? '';
+    final issue = match.group(2)?.trim() ?? error.trim();
+    final fix = (match.group(3)?.trim().isNotEmpty ?? false)
+        ? match.group(3)!.trim()
+        : 'Corrige esta fila en el Excel y vuelve a importar.';
+
+    return (row: row, issue: issue, fix: fix);
+  }
+
+  String _csvCell(String value) {
+    final escaped = value.replaceAll('"', '""');
+    return '"$escaped"';
   }
 
   Future<void> _loadData() async {

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/utils/color_utils.dart';
 import '../models/product_model.dart';
 
@@ -41,6 +42,10 @@ class ProductFilters {
 
 /// Repositorio para operaciones CRUD de Productos
 class ProductsRepository {
+  void _triggerCloudProductsSyncSoon() {
+    CloudSyncService.instance.scheduleProductsSyncSoon();
+  }
+
   void _validateRequiredForSave(ProductModel product) {
     final code = product.code.trim();
     final name = product.name.trim();
@@ -388,7 +393,7 @@ class ProductsRepository {
       updatedAtMs: now,
     );
 
-    return await db.transaction((txn) async {
+    final createdId = await db.transaction((txn) async {
       await AppDb.deleteDemoProducts(txn);
       await AppDb.deleteDemoCategories(txn);
 
@@ -419,6 +424,9 @@ class ProductsRepository {
         conflictAlgorithm: ConflictAlgorithm.abort,
       );
     });
+
+    _triggerCloudProductsSyncSoon();
+    return createdId;
   }
 
   /// Actualiza un producto existente
@@ -481,6 +489,9 @@ class ProductsRepository {
       await cleanupOrphanProductImages();
     }
 
+    if (updatedRows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
     return updatedRows;
   }
 
@@ -517,6 +528,9 @@ class ProductsRepository {
     await cleanupOrphanProductImages();
     await AppDb.syncDemoCatalog(db);
 
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
     return rows;
   }
 
@@ -536,6 +550,9 @@ class ProductsRepository {
 
     await cleanupOrphanProductImages();
     await AppDb.syncDemoCatalog(db);
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
     return rows;
   }
 
@@ -557,12 +574,16 @@ class ProductsRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.products,
       {'deleted_at_ms': null, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
+    return rows;
   }
 
   /// Elimina permanentemente un producto
@@ -595,6 +616,9 @@ class ProductsRepository {
     await cleanupOrphanProductImages();
     await AppDb.syncDemoCatalog(db);
 
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
     return rows;
   }
 
@@ -604,12 +628,16 @@ class ProductsRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.products,
       {'is_active': isActive ? 1 : 0, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
+    return rows;
   }
 
   /// Actualiza solo el stock de un producto
@@ -622,12 +650,16 @@ class ProductsRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.products,
       {'stock': newStock, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
+    return rows;
   }
 
   /// Cuenta los productos
@@ -784,7 +816,7 @@ class ProductsRepository {
     var inserted = 0;
     var updated = 0;
 
-    return db.transaction((txn) async {
+    final summary = await db.transaction((txn) async {
       await AppDb.deleteDemoProducts(txn);
       await AppDb.deleteDemoCategories(txn);
 
@@ -833,6 +865,12 @@ class ProductsRepository {
 
       return ProductsImportSummary(inserted: inserted, updated: updated);
     });
+
+    if (summary.inserted > 0 || summary.updated > 0) {
+      _triggerCloudProductsSyncSoon();
+    }
+
+    return summary;
   }
 
   /// Resumen de inventario por categoría

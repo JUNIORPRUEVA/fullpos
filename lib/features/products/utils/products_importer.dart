@@ -11,6 +11,8 @@ class ProductsImportResult {
   final int inserted;
   final int updated;
   final int skipped;
+  final int invalidRows;
+  final int duplicateRows;
   final int categoriesUpserted;
   final int suppliersUpserted;
   final List<String> errors;
@@ -19,6 +21,8 @@ class ProductsImportResult {
     required this.inserted,
     required this.updated,
     required this.skipped,
+    required this.invalidRows,
+    required this.duplicateRows,
     required this.categoriesUpserted,
     required this.suppliersUpserted,
     required this.errors,
@@ -47,7 +51,9 @@ class ProductsImporter {
       'Products',
     ], fallbackToFirst: true);
     if (productsSheet == null) {
-      throw StateError('No se encontro la hoja "Productos"');
+      throw StateError(
+        'No se encontró la hoja "Productos". Solución: renombra la hoja del Excel como "Productos" o déjala como primera hoja del archivo.',
+      );
     }
 
     // Importar categorías y suplidores si existen (hojas opcionales).
@@ -142,7 +148,9 @@ class ProductsImporter {
     }
 
     if (productsSheet.rows.isEmpty) {
-      throw StateError('El archivo no contiene filas');
+      throw StateError(
+        'El archivo no contiene filas. Solución: agrega una fila de encabezados y al menos una fila de producto con datos válidos.',
+      );
     }
 
     final header = productsSheet.rows.first
@@ -192,18 +200,22 @@ class ProductsImporter {
     final missing = required.entries.where((e) => e.value < 0).toList();
     if (missing.isNotEmpty) {
       throw StateError(
-        'Faltan columnas requeridas: ${missing.map((e) => e.key).join(', ')}',
+        'Faltan columnas requeridas: ${missing.map((e) => e.key).join(', ')}. Solución: agrega exactamente esas columnas en la fila de encabezados del Excel.',
       );
     }
 
     if (requirePurchasePrice && purchaseIdx < 0) {
-      throw StateError('La columna "Precio Compra" es requerida para importar');
+      throw StateError(
+        'La columna "Precio Compra" es requerida para importar. Solución: agrega esa columna con valores mayores que 0 en cada fila.',
+      );
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final productsByCode = <String, ProductModel>{};
     final errors = <String>[];
     var skipped = 0;
+    var invalidRows = 0;
+    var duplicateRows = 0;
 
     for (var i = 1; i < productsSheet.rows.length; i++) {
       final row = productsSheet.rows[i];
@@ -212,8 +224,15 @@ class ProductsImporter {
       final code = _read(row, codeIdx);
       final name = _read(row, nameIdx);
       if (code.isEmpty || name.isEmpty) {
-        errors.add('Fila $rowNum: codigo/nombre requerido');
+        errors.add(
+          _rowError(
+            rowNum,
+            'código/nombre requerido',
+            'completa ambas celdas (Código y Nombre) en esa fila',
+          ),
+        );
         skipped++;
+        invalidRows++;
         continue;
       }
 
@@ -228,24 +247,52 @@ class ProductsImporter {
       final stockMin = _readDouble(row, stockMinIdx);
 
       if (purchasePrice <= 0 && requirePurchasePrice) {
-        errors.add('Fila $rowNum: precio compra invalido');
+        errors.add(
+          _rowError(
+            rowNum,
+            'precio compra inválido',
+            'coloca un número mayor que 0 en Precio Compra (ej: 25 o 25.50)',
+          ),
+        );
         skipped++;
+        invalidRows++;
         continue;
       }
       if (salePrice <= 0) {
-        errors.add('Fila $rowNum: precio venta invalido');
+        errors.add(
+          _rowError(
+            rowNum,
+            'precio venta inválido',
+            'coloca un número mayor que 0 en Precio Venta',
+          ),
+        );
         skipped++;
+        invalidRows++;
         continue;
       }
       if (stock < 0 || stockMin < 0) {
-        errors.add('Fila $rowNum: stock invalido');
+        errors.add(
+          _rowError(
+            rowNum,
+            'stock inválido',
+            'usa valores de Stock y Stock Min iguales o mayores que 0',
+          ),
+        );
         skipped++;
+        invalidRows++;
         continue;
       }
 
       if (reservedStock < 0) {
-        errors.add('Fila $rowNum: reservado invalido');
+        errors.add(
+          _rowError(
+            rowNum,
+            'reservado inválido',
+            'usa un valor Reservado igual o mayor que 0',
+          ),
+        );
         skipped++;
+        invalidRows++;
         continue;
       }
 
@@ -334,7 +381,14 @@ class ProductsImporter {
       );
 
       if (productsByCode.containsKey(code)) {
-        errors.add('Fila $rowNum: codigo duplicado ($code), se sobrescribe');
+        errors.add(
+          _rowError(
+            rowNum,
+            'código duplicado ($code), se usa la última fila',
+            'deja un solo registro por código o cambia el código para que sea único',
+          ),
+        );
+        duplicateRows++;
       }
       productsByCode[code] = product;
     }
@@ -344,6 +398,8 @@ class ProductsImporter {
         inserted: 0,
         updated: 0,
         skipped: skipped,
+        invalidRows: invalidRows,
+        duplicateRows: duplicateRows,
         categoriesUpserted: categoriesUpserted,
         suppliersUpserted: suppliersUpserted,
         errors: errors,
@@ -358,6 +414,8 @@ class ProductsImporter {
       inserted: summary.inserted,
       updated: summary.updated,
       skipped: skipped,
+      invalidRows: invalidRows,
+      duplicateRows: duplicateRows,
       categoriesUpserted: categoriesUpserted,
       suppliersUpserted: suppliersUpserted,
       errors: errors,
@@ -510,5 +568,9 @@ class ProductsImporter {
         text == '1' ||
         text == 'true' ||
         text == 'activo';
+  }
+
+  static String _rowError(int rowNum, String issue, String fix) {
+    return 'Fila $rowNum: $issue. Solución: $fix.';
   }
 }

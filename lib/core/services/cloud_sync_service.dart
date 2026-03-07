@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'dart:io';
@@ -27,6 +28,10 @@ class CloudSyncService {
 
   static final CloudSyncService instance = CloudSyncService._();
 
+  Timer? _productsSyncDebounce;
+  bool _productsSyncRunning = false;
+  bool _productsSyncPending = false;
+
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
   ///
   /// Útil para diagnóstico en UI.
@@ -36,6 +41,30 @@ class CloudSyncService {
 
   static const int _historyDaysToSync = 90;
   static const int _chunkSize = 200;
+
+  void scheduleProductsSyncSoon({
+    Duration delay = const Duration(milliseconds: 1200),
+  }) {
+    _productsSyncPending = true;
+    _productsSyncDebounce?.cancel();
+    _productsSyncDebounce = Timer(delay, () {
+      _productsSyncDebounce = null;
+      unawaited(_runScheduledProductsSync());
+    });
+  }
+
+  Future<void> _runScheduledProductsSync() async {
+    if (_productsSyncRunning) return;
+    _productsSyncRunning = true;
+    try {
+      while (_productsSyncPending) {
+        _productsSyncPending = false;
+        await syncProductsIfEnabled();
+      }
+    } finally {
+      _productsSyncRunning = false;
+    }
+  }
 
   static const String _prefsKeyUsersLastSyncPrefix =
       'cloud_users_last_sync_at_ms_';
@@ -400,8 +429,13 @@ class CloudSyncService {
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        String body = '';
+        try {
+          body = response.body;
+          if (body.length > 900) body = body.substring(0, 900);
+        } catch (_) {}
         await AppLogger.instance.logWarn(
-          'Cloud sync failed status=${response.statusCode}',
+          'Cloud company config sync failed status=${response.statusCode} baseUrl=$baseUrl body=$body',
           module: 'cloud_sync',
         );
         return;
@@ -523,7 +557,12 @@ class CloudSyncService {
           'price': p.salePrice,
           'cost': p.purchasePrice,
           'stock': p.stock,
-          if (imageUrl != null) 'imageUrl': imageUrl,
+          // IMPORTANT: backend supports `imageUrl: null` to clear previous image.
+          // If the product prefers a color placeholder, we should explicitly clear
+          // any previously synced imageUrl.
+          if (p.prefersImage)
+            if (imageUrl != null) 'imageUrl': imageUrl,
+          if (!p.prefersImage) 'imageUrl': null,
         });
       }
 
@@ -544,8 +583,13 @@ class CloudSyncService {
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        String body = '';
+        try {
+          body = response.body;
+          if (body.length > 900) body = body.substring(0, 900);
+        } catch (_) {}
         await AppLogger.instance.logWarn(
-          'Cloud products sync failed status=${response.statusCode}',
+          'Cloud products sync failed status=${response.statusCode} baseUrl=$baseUrl body=$body',
           module: 'cloud_sync',
         );
         return;
