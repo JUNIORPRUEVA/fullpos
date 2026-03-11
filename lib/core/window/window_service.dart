@@ -94,11 +94,29 @@ class WindowService {
     }
 
     final origin = display.visiblePosition ?? Offset.zero;
+
+    // CRITICAL: Cover entire display including Windows taskbar
+    // display.size.width/height are the work area (visible), not physical resolution
+    // Windows taskbar is typically 40px, but we add extra buffer to be safe
+    // Use negative offset + larger size to ensure full coverage including taskbar edges
+    const int bufferPx = 50;
+
+    final adjustedX = origin.dx - bufferPx;
+    final adjustedY = origin.dy - bufferPx;
+    final adjustedWidth = (display.size.width + (bufferPx * 2)).toDouble();
+    final adjustedHeight = (display.size.height + (bufferPx * 2)).toDouble();
+
+    if (kDebugMode) {
+      debugPrint('[WINDOW] display work area: ${display.size.width}x${display.size.height}');
+      debugPrint('[WINDOW] display origin: ${origin.dx},${origin.dy}');
+      debugPrint('[WINDOW] kiosk bounds (with buffer): $adjustedX,$adjustedY ${adjustedWidth}x${adjustedHeight}');
+    }
+
     return Rect.fromLTWH(
-      origin.dx,
-      origin.dy,
-      display.size.width,
-      display.size.height,
+      adjustedX.toDouble(),
+      adjustedY.toDouble(),
+      adjustedWidth,
+      adjustedHeight,
     );
   }
 
