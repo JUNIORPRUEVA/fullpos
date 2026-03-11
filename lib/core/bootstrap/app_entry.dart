@@ -53,12 +53,16 @@ class _AppEntryState extends ConsumerState<AppEntry> {
         boot.status != BootStatus.ready ||
         (!Platform.isWindows && delay.isLoading);
 
+    final switchDuration = Platform.isWindows
+      ? Duration.zero
+      : const Duration(milliseconds: 350);
+
     final body = showSplash
         ? const FullposBrandScope(child: SplashPage())
         : widget.child;
 
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
+      duration: switchDuration,
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) =>

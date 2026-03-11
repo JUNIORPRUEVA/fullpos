@@ -677,6 +677,18 @@ class CloudSyncService {
         headers['x-cloud-key'] = cloudKey;
       }
 
+      final db = await AppDb.database;
+      final categoryRows = await db.query(
+        DbTables.categories,
+        columns: ['id', 'name'],
+      );
+      final categoryNamesById = <int, String>{
+        for (final row in categoryRows)
+          if (row['id'] is int &&
+              ((row['name'] as String?) ?? '').trim().isNotEmpty)
+            row['id'] as int: (row['name'] as String).trim(),
+      };
+
       final repo = ProductsRepository();
       final allProducts = await repo.getAll(includeDeleted: true);
       final deletedCodes = <String>{};
@@ -764,6 +776,9 @@ class CloudSyncService {
         payloadProducts.add({
           'code': p.code.trim(),
           'name': p.name.trim(),
+          if (p.categoryId != null &&
+              categoryNamesById.containsKey(p.categoryId))
+            'category': categoryNamesById[p.categoryId],
           'price': p.salePrice,
           'cost': p.purchasePrice,
           'stock': p.stock,

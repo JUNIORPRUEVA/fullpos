@@ -200,10 +200,6 @@ class BusinessLicenseSync {
     final expiresAt = DateTime.tryParse(
       (payload['expires_at'] ?? payload['fecha_fin'] ?? '').toString(),
     );
-    if (expiresAt != null && expiresAt.isBefore(DateTime.now())) {
-      return null;
-    }
-
     final startsAt = DateTime.tryParse(
       (payload['starts_at'] ?? payload['fecha_inicio'] ?? '').toString(),
     );
@@ -213,11 +209,19 @@ class BusinessLicenseSync {
 
     final planOrTipo = (payload['plan'] ?? payload['tipo'] ?? '').toString();
 
-    final estado = (payload['estado'] ?? payload['status'] ?? 'ACTIVA')
+    final rawEstado = (payload['estado'] ?? payload['status'] ?? 'ACTIVA')
         .toString()
-        .trim();
+        .trim()
+        .toUpperCase();
 
-    final motivoRaw = payload['motivo'] ?? payload['notas'] ?? payload['reason'];
+    final isExpiredByDate =
+        expiresAt != null && expiresAt.isBefore(DateTime.now());
+    final estado = isExpiredByDate && rawEstado == 'ACTIVA'
+        ? 'VENCIDA'
+        : rawEstado;
+
+    final motivoRaw =
+        payload['motivo'] ?? payload['notas'] ?? payload['reason'];
     final motivo = motivoRaw == null ? null : motivoRaw.toString().trim();
 
     // No bloqueamos por device_id: si viene, se respeta para compat.
@@ -228,10 +232,12 @@ class BusinessLicenseSync {
       licenseKey: licenseKey,
       deviceId: deviceId,
       projectCode: kFullposProjectCode,
-      ok: true,
-      code: 'OK',
+      ok: !isExpiredByDate && estado != 'VENCIDA' && estado != 'EXPIRED',
+      code: isExpiredByDate || estado == 'VENCIDA' || estado == 'EXPIRED'
+          ? 'EXPIRED'
+          : 'OK',
       tipo: planOrTipo.trim().isEmpty ? null : planOrTipo.trim(),
-      estado: estado.isEmpty ? 'ACTIVA' : estado.toUpperCase(),
+      estado: estado.isEmpty ? 'ACTIVA' : estado,
       motivo: (motivo == null || motivo.isEmpty) ? null : motivo,
       fechaInicio: startsAt,
       fechaFin: expiresAt,

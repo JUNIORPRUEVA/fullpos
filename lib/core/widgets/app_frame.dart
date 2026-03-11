@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../debug/render_diagnostics.dart';
 import '../theme/app_gradient_theme.dart';
+import '../window/window_service.dart';
 
 class AppFrame extends ConsumerStatefulWidget {
   const AppFrame({
@@ -30,6 +31,7 @@ class _AppFrameState extends ConsumerState<AppFrame>
   bool _repaintToggle = false;
   int _attempts = 0;
   DateTime? _lastResumeRecoveryAt;
+  bool _windowRecoveryArmed = false;
   bool get _isDesktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
@@ -47,6 +49,7 @@ class _AppFrameState extends ConsumerState<AppFrame>
     }
     _startWatchdog();
     WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstFramePainted());
+    _armWindowRecoveryAfterStartup();
   }
 
   @override
@@ -64,27 +67,27 @@ class _AppFrameState extends ConsumerState<AppFrame>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     unawaited(_diagnostics.logLifecycle(state.name));
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && _windowRecoveryArmed) {
       unawaited(_recoverAfterResume());
     }
   }
 
   @override
   void onWindowRestore() {
-    unawaited(_recoverAfterResume());
+    if (!_windowRecoveryArmed) return;
+    unawaited(_recoverAfterResume(forceSizeNudge: true));
   }
 
-  @override
-  void onWindowFocus() {
-    unawaited(_recoverAfterResume());
+  void _armWindowRecoveryAfterStartup() {
+    if (!_isDesktop) return;
+
+    Future<void>.delayed(const Duration(milliseconds: 1200), () {
+      if (!mounted) return;
+      _windowRecoveryArmed = true;
+    });
   }
 
-  @override
-  void onWindowResized() {
-    unawaited(_recoverAfterResume());
-  }
-
-  Future<void> _recoverAfterResume() async {
+  Future<void> _recoverAfterResume({bool forceSizeNudge = false}) async {
     final now = DateTime.now();
     final last = _lastResumeRecoveryAt;
     if (last != null &&
@@ -94,20 +97,9 @@ class _AppFrameState extends ConsumerState<AppFrame>
     _lastResumeRecoveryAt = now;
 
     _startWatchdog(timeout: const Duration(seconds: 2));
-    if (mounted) {
-      setState(() {
-        _repaintToggle = !_repaintToggle;
-      });
-    }
 
     if (_isDesktop) {
-      try {
-        final isMin = await windowManager.isMinimized();
-        if (isMin) {
-          await windowManager.restore();
-        }
-        await windowManager.focus();
-      } catch (_) {}
+      await WindowService.recoverVisualState(forceSizeNudge: forceSizeNudge);
     }
 
     WidgetsBinding.instance.scheduleFrame();
@@ -192,6 +184,7 @@ class _AppFrameState extends ConsumerState<AppFrame>
         await windowManager.restore();
       }
       await windowManager.focus();
+      await WindowService.recoverVisualState(forceSizeNudge: true);
       WidgetsBinding.instance.scheduleFrame();
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _onFirstFramePainted(),

@@ -79,25 +79,25 @@ class WindowStartupController {
 
     final completer = Completer<void>();
 
-    // Esperar a que el frame post-ready esté pintado.
+    // Esperar un frame extra ya estable antes de mostrar para evitar destellos
+    // visibles entre el bootstrap y el primer layout final.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (kDebugMode) {
-        debugPrint('[WINDOW] show once (after boot ready)');
-      }
-      try {
-        final isMin = await windowManager.isMinimized();
-        if (isMin) {
-          await windowManager.restore();
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (kDebugMode) {
+          debugPrint('[WINDOW] show once (after boot ready)');
         }
-      } catch (_) {}
+        try {
+          final isMin = await windowManager.isMinimized();
+          if (isMin) {
+            await windowManager.restore();
+          }
+        } catch (_) {}
 
-      try {
-        await windowManager.show();
-      } catch (_) {}
-      try {
-        await windowManager.focus();
-      } catch (_) {}
-      completer.complete();
+        try {
+          await windowManager.show();
+        } catch (_) {}
+        completer.complete();
+      });
     });
 
     return completer.future;

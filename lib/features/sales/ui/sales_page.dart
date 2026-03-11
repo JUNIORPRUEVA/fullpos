@@ -437,6 +437,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         loadedCarts.add(cart);
       }
 
+      final ticketCartSignatures = loadedCarts
+          .where((cart) => cart.ticketId != null)
+          .map(_buildCartPersistenceSignature)
+          .toSet();
+
       // Cargar carritos temporales (batch para evitar N queries).
       final cartIds = tempCarts
           .map((m) => m['id'])
@@ -467,6 +472,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         }
 
         cart.items.addAll(tempCartItemsById[id] ?? const <SaleItemModel>[]);
+
+        final signature = _buildCartPersistenceSignature(cart);
+        if (ticketCartSignatures.contains(signature)) {
+          debugPrint(
+            '[SALES] Omitiendo carrito temporal duplicado del ticket tempCartId=$id',
+          );
+          continue;
+        }
+
         loadedCarts.add(cart);
       }
 
@@ -612,6 +626,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
   }
 
+  Future<void> _deletePendingTicketFromDatabase(int? ticketId) async {
+    if (ticketId == null) return;
+    try {
+      await TicketsRepository().deleteTicket(ticketId);
+    } catch (e) {
+      debugPrint('Error eliminando ticket pendiente: $e');
+    }
+  }
+
   Future<void> _runSaleOutputs({
     required int saleId,
     required bool shouldPrint,
@@ -705,6 +728,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (!mounted) return;
     if (_currentCart.items.isEmpty) {
       await _deleteCurrentCartFromDatabase();
+      return;
+    }
+
+    if (_currentCart.ticketId != null) {
+      final staleTempCartId = _currentCart.tempCartId;
+      _currentCart.tempCartId = null;
+      await _deleteTempCartFromDatabase(staleTempCartId);
       return;
     }
 
@@ -1677,7 +1707,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       }
 
       int saleId;
+      _cartPersistenceTimer?.cancel();
+      _cartPersistenceTimer = null;
       final int? tempCartIdToDelete = _currentCart.tempCartId;
+      final int? ticketIdToDelete = _currentCart.ticketId;
       final int cartIndexToRemove = _currentCartIndex;
       try {
         if (isLayaway) {
@@ -1833,6 +1866,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       );
 
       unawaited(_deleteTempCartFromDatabase(tempCartIdToDelete));
+      unawaited(_deletePendingTicketFromDatabase(ticketIdToDelete));
       if (shouldPrint ||
           shouldDownloadInvoicePdf ||
           shouldAutoOpenDrawerOnCharge) {
@@ -1860,6 +1894,32 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         )
         .join(';');
     return 'ticket:${_currentCart.ticketId ?? 'na'}|items:${_currentCart.items.length}|total:${total.toStringAsFixed(2)}|hash:${itemTokens.hashCode.abs()}';
+  }
+
+  String _buildCartPersistenceSignature(_Cart cart) {
+    final sortedItemTokens =
+        cart.items
+            .map(
+              (item) =>
+                  '${item.productId ?? item.productCodeSnapshot}|${item.productCodeSnapshot}|${item.productNameSnapshot}|${item.qty.toStringAsFixed(3)}|${item.unitPrice.toStringAsFixed(2)}|${item.discountLine.toStringAsFixed(2)}|${item.totalLine.toStringAsFixed(2)}',
+            )
+            .toList()
+          ..sort();
+
+    final clientToken = cart.selectedClient?.id?.toString() ?? 'no-client';
+    final nameToken = cart.name.trim().toLowerCase();
+
+    return [
+      nameToken,
+      clientToken,
+      cart.discount.toStringAsFixed(2),
+      cart.itbisEnabled ? 'itbis:1' : 'itbis:0',
+      cart.itbisRate.toStringAsFixed(4),
+      cart.fiscalEnabled ? 'fiscal:1' : 'fiscal:0',
+      cart.discountTotalType ?? 'no-discount-type',
+      (cart.discountTotalValue ?? 0).toStringAsFixed(2),
+      ...sortedItemTokens,
+    ].join('||');
   }
 
   String _buildIdempotentLocalCode(String kind, String paymentRequestId) {

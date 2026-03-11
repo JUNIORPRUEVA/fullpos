@@ -35,19 +35,32 @@ class LicenseInfo {
     this.lastCheckedAt,
   });
 
+  String get normalizedStatus => (estado ?? '').trim().toUpperCase();
+
+  bool get hasExplicitStatus => normalizedStatus.isNotEmpty;
+
   bool get isActive {
     if (!ok) return false;
-    final st = (estado ?? '').toUpperCase();
+    final st = normalizedStatus;
+    if (isBlocked || isExpired) return false;
     if (st.isEmpty) return ok;
-    return st == 'ACTIVA';
+    return st == 'ACTIVA' || st == 'ACTIVE';
   }
 
   bool get isBlocked {
-    final st = (estado ?? '').toUpperCase();
-    return st == 'BLOQUEADA';
+    final st = normalizedStatus;
+    return st == 'BLOQUEADA' || st == 'BLOCKED';
   }
 
   bool get isExpired {
+    final st = normalizedStatus;
+    if (st == 'VENCIDA' ||
+        st == 'VENCIDO' ||
+        st == 'EXPIRADA' ||
+        st == 'EXPIRADO' ||
+        st == 'EXPIRED') {
+      return true;
+    }
     final fin = fechaFin;
     if (fin == null) return false;
     return fin.isBefore(DateTime.now());

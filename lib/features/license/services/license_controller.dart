@@ -248,6 +248,13 @@ class LicenseController extends StateNotifier<LicenseState> {
       unawaited(_refreshOfflineSigningPublicKey());
 
       LicenseInfo? merged = last;
+      final canFallbackToTrial =
+          merged == null ||
+          (merged.licenseKey.trim().isEmpty &&
+              !merged.hasExplicitStatus &&
+              merged.fechaInicio == null &&
+              merged.fechaFin == null &&
+              (merged.code ?? '').trim().isEmpty);
       if (merged != null) {
         merged = LicenseInfo(
           backendBaseUrl: kLicenseBackendBaseUrl,
@@ -284,7 +291,7 @@ class LicenseController extends StateNotifier<LicenseState> {
       // "activo" para que la UI no muestre nuevamente el formulario de demo.
       final hasActiveLicense =
           merged?.isActive == true && merged?.isExpired == false;
-      if (!hasActiveLicense) {
+      if (!hasActiveLicense && canFallbackToTrial) {
         final identityStorage = BusinessIdentityStorage();
         final trialStart = await identityStorage.getTrialStart();
         if (trialStart != null) {

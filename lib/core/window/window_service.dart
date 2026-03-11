@@ -14,6 +14,7 @@ class WindowService {
   static bool _shownOnce = false;
   static bool _isFullScreen = false;
   static bool _postFrameRefreshScheduled = false;
+  static bool _visualRecoveryRunning = false;
   static bool _enforcerInstalled = false;
   static bool _windowsKioskApplied = false;
   static bool _windowsAlwaysOnTopSet = false;
@@ -581,6 +582,49 @@ class WindowService {
       await windowManager.setBounds(bounds);
     } catch (_) {
       // Fallback: nada.
+    }
+  }
+
+  /// Refuerza la recuperación visual cuando Windows restaura o re-activa la
+  /// ventana y Flutter queda sin volver a pintar correctamente.
+  static Future<void> recoverVisualState({
+    bool forceSizeNudge = false,
+    Duration settleDelay = const Duration(milliseconds: 90),
+  }) async {
+    if (!_isInitialized || !Platform.isWindows) return;
+    if (_visualRecoveryRunning) return;
+
+    _visualRecoveryRunning = true;
+    try {
+      if (settleDelay > Duration.zero) {
+        await Future<void>.delayed(settleDelay);
+      }
+
+      try {
+        final isVisible = await windowManager.isVisible();
+        if (!isVisible) {
+          await windowManager.show();
+        }
+      } catch (_) {}
+
+      try {
+        final isMin = await windowManager.isMinimized();
+        if (isMin) {
+          await windowManager.restore();
+        }
+      } catch (_) {}
+
+      try {
+        await _refreshAfterWindowModeChange();
+      } catch (_) {}
+
+      if (forceSizeNudge) {
+        await _forceInitialResizeRefresh();
+      }
+
+      WidgetsBinding.instance.scheduleFrame();
+    } finally {
+      _visualRecoveryRunning = false;
     }
   }
 
