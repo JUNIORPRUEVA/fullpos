@@ -205,6 +205,13 @@ class WindowService {
     await _applyWindowsPosKioskMode(preferCurrentDisplay: preferCurrentDisplay);
   }
 
+  /// Reapply kiosk mode after restore/unmaximize
+  /// Used internally by enforcer to restore kiosk state
+  static Future<void> _reapplyKioskModeAfterRestore() async {
+    if (!Platform.isWindows) return;
+    await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
+  }
+
   /// Ensure window appears on restore/unminimize
   static void _installEnforcer() {
     if (_enforcerInstalled) return;
@@ -453,7 +460,7 @@ class WindowService {
 }
 
 /// Simple enforcer: ensures POS window stays visible and in expected state.
-/// Only restores visibility - does NOT spam maximize.
+/// Reapplies kiosk mode after minimize/restore/unmaximize.
 class _PosWindowEnforcer with WindowListener {
   _PosWindowEnforcer._();
 
@@ -466,12 +473,22 @@ class _PosWindowEnforcer with WindowListener {
     if (_restoreInProgress) return;
     _restoreInProgress = true;
     try {
-      // Ensure window is visible and maximized after restore
-      final isMaxed = await WindowService.isMaximized();
-      if (!isMaxed) {
-        await WindowService.maximize();
+      if (kDebugMode) {
+        debugPrint('[WINDOW] onWindowRestore triggered');
       }
-    } catch (_) {
+
+      // After restore, reapply kiosk mode to ensure it's still configured
+      // (Windows may have reset some settings during minimize/restore)
+      if (Platform.isWindows && WindowService.isFullScreen()) {
+        if (kDebugMode) {
+          debugPrint('[WINDOW] reapplying kiosk mode after restore');
+        }
+        await WindowService._reapplyKioskModeAfterRestore();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] onWindowRestore error: $e');
+      }
     } finally {
       _restoreInProgress = false;
     }
@@ -479,9 +496,23 @@ class _PosWindowEnforcer with WindowListener {
 
   @override
   void onWindowUnmaximize() async {
-    // If user unmaximizes, re-maximize once (POS should stay at full size)
+    if (kDebugMode) {
+      debugPrint('[WINDOW] onWindowUnmaximize triggered');
+    }
+
+    // If user unmaximizes, reapply kiosk mode (POS should stay at full size)
     try {
-      await WindowService.maximize();
-    } catch (_) {}
+      if (Platform.isWindows && WindowService.isFullScreen()) {
+        if (kDebugMode) {
+          debugPrint('[WINDOW] reapplying kiosk mode after unmaximize');
+        }
+        await WindowService._reapplyKioskModeAfterRestore();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] onWindowUnmaximize error: $e');
+      }
+    }
   }
 }
+
