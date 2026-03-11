@@ -1,0 +1,14 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/flutter/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/runner/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/plugins/printing/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/plugins/screen_retriever_windows/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/plugins/share_plus/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/plugins/url_launcher_windows/cmake_install.cmake",
+		"C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/plugins/window_manager/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

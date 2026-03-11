@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\a7d1d0776be09d540bf7604e5b297375\pdfium-download-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\1ace238e4b8b8952aa6057a0ae02b33c\pdfium-download-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\0049c2d11f4262a485f5a4ad54db3f8d\pdfium-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\PC\Desktop\CARPETA FULLPOS\FULLPOS_PROYECTO\FULLPOS\windows\pdfium-download\CMakeFiles\pdfium-download" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{40642F28-2E61-3EC3-B30C-3A06D2631A95}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -35,8 +35,9 @@ class AppEntry extends ConsumerStatefulWidget {
 class _AppEntryState extends ConsumerState<AppEntry> {
   @override
   Widget build(BuildContext context) {
-    // Mostrar ventana SOLO cuando el bootstrap esté READY.
-    // Importante: `ref.listen` debe ejecutarse dentro de `build`.
+    // Show window only when bootstrap is ready and layout is painted.
+    // Dart owns visibility; native never shows it.
+    // This ensures window appears fully formed with no flicker.
     ref.listen<BootStatus>(
       appBootstrapProvider.select((b) => b.snapshot.status),
       (prev, next) {

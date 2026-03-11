@@ -64,6 +64,8 @@ DateTime? _blockedCloudProbeAt;
 
 const _kCloudGateMinPollInterval = Duration(seconds: 15);
 const _kActiveGateDecisionCacheWindow = Duration(seconds: 10);
+const _kInactiveGateDecisionCacheWindow = Duration(seconds: 1);
+const _kInactiveCloudGateMinPollInterval = Duration(seconds: 2);
 const _kBlockedGateProbeInterval = Duration(seconds: 5);
 
 void _runCloudRevocationCheckInBackground(BusinessLicenseSync sync) {
@@ -450,7 +452,7 @@ bool _isGateCacheFresh() {
   // permitir detectar el cambio casi al instante (vía heartbeat + polling).
   final maxAge = (cached?.isActive ?? false)
       ? _kActiveGateDecisionCacheWindow
-      : kLicenseGateFreshWindow;
+      : _kInactiveGateDecisionCacheWindow;
   return age < maxAge;
 }
 
@@ -636,7 +638,7 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
 
   // 2) Sin token local válido: intentar sincronizar desde la nube.
   await businessSync.tryPollFromCloudIfDue(
-    minInterval: _kCloudGateMinPollInterval,
+    minInterval: _kInactiveCloudGateMinPollInterval,
     networkTimeout: const Duration(seconds: 2),
   );
   if (await businessSync.applyLocalLicenseIfValid()) {

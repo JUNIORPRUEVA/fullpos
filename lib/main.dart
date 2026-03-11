@@ -25,13 +25,14 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
-      // Desktop window startup (Windows): ocultar y fijar tamaño ANTES de cualquier init pesado.
-      // Esto reduce al mínimo el “flash” de la ventanita al arrancar.
+      // Desktop window startup (Windows): Apply options before runApp.
+      // This ensures window is configured while hidden, preventing flicker.
+      // No show here - AppEntry controls show when bootstrap is ready.
       try {
         await windowManager.ensureInitialized();
-        await WindowStartupController.instance.applyHiddenStartup();
+        await WindowStartupController.instance.applyStartupOptions();
       } catch (_) {
-        // Ignorar: la app debe poder arrancar igual.
+        // Ignore: app must work even if window startup fails
       }
 
       final diagnostics = RenderDiagnostics.instance;

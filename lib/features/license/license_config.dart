@@ -24,7 +24,7 @@ const kLicenseGateRefreshHours = 6;
 /// Nota: sin un canal push (WebSocket/SSE), el cambio en backend solo puede
 /// reflejarse en el cliente mediante polling. Un valor bajo hace que acciones
 /// como Bloquear/Desbloquear se vean casi al instante.
-const kLicenseGateHeartbeatInterval = Duration(seconds: 5);
+const kLicenseGateHeartbeatInterval = Duration(seconds: 2);
 
 /// Tiempo durante el cual consideramos el estado cacheado como "fresco".
 ///

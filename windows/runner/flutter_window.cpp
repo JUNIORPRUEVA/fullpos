@@ -27,13 +27,16 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
-  });
-
-  // Flutter puede completar el primer frame antes de registrar el callback de
-  // show. ForceRedraw garantiza que haya un frame pendiente para mostrar.
-  flutter_controller_->ForceRedraw();
+  // CRITICAL DESIGN: Dart (WindowStartupController) owns window visibility.
+  // Native code NEVER shows window. This ensures deterministic startup:
+  // 1. Native creates window (stays hidden)
+  // 2. Dart applies options while hidden
+  // 3. Dart shows window exactly once when bootstrap ready
+  //
+  // Removed: SetNextFrameCallback + Show() - causes race with Dart
+  // Removed: ForceRedraw() - causes redraw spam and flicker
+  //
+  // Result: No dual show logic, no black screen, no flicker.
 
   return true;
 }

@@ -1,0 +1,3 @@
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/pdfium-download.dir
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/ALL_BUILD.dir
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/ZERO_CHECK.dir

@@ -1,0 +1,14 @@
+# Target labels
+ pdfium-download
+# Source files and their labels
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/pdfium-download
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/0049c2d11f4262a485f5a4ad54db3f8d/pdfium-download.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/1ace238e4b8b8952aa6057a0ae02b33c/pdfium-download-complete.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-build.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-configure.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-download.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-install.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-mkdir.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-patch.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-test.rule
+C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows/pdfium-download/CMakeFiles/a7d1d0776be09d540bf7604e5b297375/pdfium-download-update.rule

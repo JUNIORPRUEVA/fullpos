@@ -1,30 +1,65 @@
 import 'dart:io';
 import 'dart:ui' show Offset, Rect;
 
-import 'package:flutter/material.dart' show Size;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Servicio para controlar la ventana en aplicaciones Desktop
+/// Window service for desktop applications.
+///
+/// **Design**: Simplified, clear responsibilities.
+/// - Dart owns window visibility (show/hide/maximize)
+/// - One authority per operation
+/// - No retry loops or complex state machine
+/// - Enforcer only restores visibility, doesn't spam re-maximize
 class WindowService {
   static bool _isInitialized = false;
-  static bool _shownOnce = false;
   static bool _isFullScreen = false;
-  static bool _postFrameRefreshScheduled = false;
-  static bool _visualRecoveryRunning = false;
-  static bool _enforcerInstalled = false;
-  static bool _windowsKioskApplied = false;
-  static bool _windowsAlwaysOnTopSet = false;
   static int _systemDialogDepth = 0;
   static bool _restoreAlwaysOnTopAfterDialog = false;
+  static bool _enforcerInstalled = false;
 
-  /// Notificador para reaccionar en UI cuando cambia fullscreen.
+  /// Notifier for UI to react when fullscreen state changes
   static final ValueNotifier<bool> fullScreenListenable = ValueNotifier<bool>(
     false,
   );
+
+  /// Initialize window_manager
+  static Future<void> init() async {
+    if (_isInitialized) return;
+
+    try {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] init');
+      }
+      await windowManager.ensureInitialized();
+      _installEnforcer();
+
+      // Load fullscreen state from preferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (Platform.isWindows) {
+          _isFullScreen = true;
+          fullScreenListenable.value = true;
+          await prefs.setBool('pos_fullscreen', true);
+        } else {
+          _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
+          fullScreenListenable.value = _isFullScreen;
+        }
+      } catch (_) {
+        _isFullScreen = Platform.isWindows;
+        fullScreenListenable.value = _isFullScreen;
+      }
+
+      _isInitialized = true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] init error: $e');
+      }
+    }
+  }
 
   static Future<Rect> _getWindowsKioskBounds({
     bool preferCurrentDisplay = true,
@@ -54,7 +89,7 @@ class WindowService {
           }
         }
       } catch (_) {
-        // Ignorar y usar primary display.
+        // Use primary display on error
       }
     }
 
@@ -67,92 +102,101 @@ class WindowService {
     );
   }
 
+  /// Apply Windows POS kiosk mode: full screen without system fullscreen.
+  /// Called while window is hidden during startup.
+  /// MUST NOT be called frequently - only at startup and after minimize/restore.
   static Future<void> _applyWindowsPosKioskMode({
     bool preferCurrentDisplay = true,
   }) async {
-    // Objetivo: cubrir toda la pantalla (incluida barra de tareas) sin usar
-    // fullscreen del sistema (que en algunos equipos deja pantalla negra).
-    try {
-      await windowManager.setFullScreen(false);
-    } catch (_) {}
-
-    try {
-      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-    } catch (_) {}
-
-    try {
-      await windowManager.setAsFrameless();
-    } catch (_) {}
-
-    // Importante: en frameless, el borde redimensionable puede "robar" clicks
-    // cerca de la esquina superior derecha, haciendo difícil presionar
-    // botones custom (minimizar/cerrar). Desactivamos resize en modo POS.
-    try {
-      await windowManager.setResizable(false);
-    } catch (_) {}
-
-    if (!_windowsAlwaysOnTopSet) {
-      try {
-        await windowManager.setAlwaysOnTop(true);
-        _windowsAlwaysOnTopSet = true;
-      } catch (_) {}
+    if (kDebugMode) {
+      debugPrint('[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay');
     }
 
+    // Step 1: Disable system fullscreen (can leave screen black on some PCs)
+    try {
+      await windowManager.setFullScreen(false);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setFullScreen(false) failed: $e');
+    }
+
+    // Step 2: Hide title bar for full POS mode
+    try {
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setTitleBarStyle failed: $e');
+    }
+
+    // Step 3: Make frameless for maximum usable space
+    try {
+      await windowManager.setAsFrameless();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setAsFrameless failed: $e');
+    }
+
+    // Step 4: Non-resizable to prevent accidental resizing and hit-test issues
+    try {
+      await windowManager.setResizable(false);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setResizable(false) failed: $e');
+    }
+
+    // Step 5: Always on top in POS mode (prevents other windows from covering)
+    try {
+      await windowManager.setAlwaysOnTop(true);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setAlwaysOnTop failed: $e');
+    }
+
+    // Step 6: Set bounds to cover entire display
     try {
       final bounds = await _getWindowsKioskBounds(
         preferCurrentDisplay: preferCurrentDisplay,
       );
 
-      Rect? currentBounds;
-      try {
-        currentBounds = await windowManager.getBounds();
-      } catch (_) {}
-
-      final alreadyCorrect =
-          currentBounds != null &&
-          (currentBounds.left - bounds.left).abs() < 0.5 &&
-          (currentBounds.top - bounds.top).abs() < 0.5 &&
-          (currentBounds.width - bounds.width).abs() < 0.5 &&
-          (currentBounds.height - bounds.height).abs() < 0.5;
-
-      if (!_windowsKioskApplied || !alreadyCorrect) {
-        try {
-          // Para algunos setups, setBounds requiere resizable=true.
-          try {
-            await windowManager.setResizable(true);
-          } catch (_) {}
-          await windowManager.setBounds(bounds);
-        } catch (_) {
-          try {
-            await windowManager.setResizable(true);
-          } catch (_) {}
-
-          try {
-            await windowManager.setBounds(bounds);
-          } catch (_) {}
-
-          try {
-            await windowManager.setResizable(false);
-          } catch (_) {}
-        }
-
-        // Asegurar no-resizable al final (mejor hit-testing de botones).
-        try {
-          await windowManager.setResizable(false);
-        } catch (_) {}
+      if (kDebugMode) {
+        debugPrint('[WINDOW] kiosk bounds: ${bounds.left},${bounds.top} ${bounds.width}x${bounds.height}');
       }
-    } catch (_) {
-      await windowManager.maximize();
+
+      // Try to set bounds directly
+      try {
+        await windowManager.setBounds(bounds);
+        if (kDebugMode) debugPrint('[WINDOW] setBounds succeeded');
+      } catch (e) {
+        if (kDebugMode) debugPrint('[WINDOW] setBounds failed, trying with temp resizable: $e');
+        // setBounds may need temp resizable on some systems
+        try {
+          await windowManager.setResizable(true);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          await windowManager.setBounds(bounds);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          await windowManager.setResizable(false);
+          if (kDebugMode) debugPrint('[WINDOW] setBounds succeeded with temp resizable');
+        } catch (e2) {
+          if (kDebugMode) debugPrint('[WINDOW] setBounds with temp resizable also failed: $e2, trying maximize');
+          // Fallback to maximize if setBounds fails completely
+          try {
+            await windowManager.maximize();
+            if (kDebugMode) debugPrint('[WINDOW] maximize fallback succeeded');
+          } catch (e3) {
+            if (kDebugMode) debugPrint('[WINDOW] maximize also failed: $e3');
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] _getWindowsKioskBounds failed: $e');
+      // Final fallback
+      try {
+        await windowManager.maximize();
+      } catch (_) {}
     }
 
-    await _refreshAfterWindowModeChange();
-    _windowsKioskApplied = true;
+    if (kDebugMode) {
+      debugPrint('[WINDOW] kiosk mode application complete');
+    }
   }
 
-  /// Aplica el modo POS "kiosk" en Windows.
-  ///
-  /// Pensado para usarse ANTES del primer show (ventana oculta) para evitar
-  /// flashes y evitar cambios de tamaño después de mostrar.
+  /// Apply POS kiosk mode while window is hidden (startup only).
+  /// This is the ONLY place kiosk mode is applied at startup.
   static Future<void> applyWindowsPosKioskModeForStartup({
     bool preferCurrentDisplay = false,
   }) async {
@@ -160,292 +204,71 @@ class WindowService {
     await _applyWindowsPosKioskMode(preferCurrentDisplay: preferCurrentDisplay);
   }
 
-  /// Inicializar window_manager
-  static Future<void> init() async {
-    if (_isInitialized) return;
-
-    try {
-      if (kDebugMode) {
-        debugPrint('[WINDOW] init start');
-      }
-      await windowManager.ensureInitialized();
-      _installEnforcer();
-
-      // Nota: el control de arranque (hide/size/show) se centraliza en
-      // WindowStartupController. Aquí solo cargamos estado y dejamos habilitados
-      // los helpers (fullscreen toggle, enforcer, etc.).
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        if (Platform.isWindows) {
-          // POS en Windows: siempre en modo kiosko/pantalla completa.
-          _isFullScreen = true;
-          fullScreenListenable.value = true;
-          await prefs.setBool('pos_fullscreen', true);
-        } else {
-          _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
-          fullScreenListenable.value = _isFullScreen;
-        }
-      } catch (_) {
-        _isFullScreen = Platform.isWindows;
-        fullScreenListenable.value = _isFullScreen;
-      }
-
-      _isInitialized = true;
-    } catch (_) {
-      // Si init falla por cualquier razón, no dejamos la app "colgada" invisible.
-      _isInitialized = false;
-    }
-  }
-
-  /// Agenda un refresh post-frame para corregir casos donde el contenido de
-  /// Flutter inicia con un tamaño incorrecto y solo se arregla al redimensionar.
-  static void scheduleInitialLayoutFix() {
-    if (_postFrameRefreshScheduled) return;
-    _postFrameRefreshScheduled = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Este "nudge" puede causar parpadeo visible en algunas PCs.
-      // Por defecto lo desactivamos en release para un arranque 100% estable.
-      if (!kDebugMode) return;
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      await _forceInitialResizeRefresh();
-    });
-  }
-
-  static bool _showAfterFirstFrameScheduled = false;
-
-  /// Mostrar la ventana SOLO una vez (Windows: después del bootstrap).
-  static Future<void> showOnce({bool focus = true}) async {
-    if (!_isInitialized) return;
-    if (_shownOnce) return;
-    _shownOnce = true;
-
-    if (kDebugMode) {
-      debugPrint('[WINDOW] show once');
-    }
-
-    try {
-      if (Platform.isWindows) {
-        try {
-          final isMin = await windowManager.isMinimized();
-          if (isMin) await windowManager.restore();
-        } catch (_) {}
-      }
-
-      await windowManager.show();
-
-      // Asegurar modo/tamaño final ya visible (sin toggle manual).
-      if (Platform.isWindows) {
-        await _ensureWindowsPosModeAfterShow();
-      } else {
-        await ensureMaximized(force: true);
-      }
-
-      if (focus) {
-        await windowManager.focus();
-      }
-    } catch (_) {
-      // Ignorar.
-    }
-  }
-
-  /// Mostrar/enfocar la ventana una vez Flutter haya pintado el primer frame.
-  static void scheduleShowAfterFirstFrame() {
-    if (_showAfterFirstFrameScheduled) return;
-    _showAfterFirstFrameScheduled = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!_isInitialized) return;
-      try {
-        await showOnce();
-      } catch (_) {
-        // Ignorar.
-      }
-    });
-  }
-
+  /// Ensure window appears on restore/unminimize
   static void _installEnforcer() {
     if (_enforcerInstalled) return;
     _enforcerInstalled = true;
     try {
       windowManager.addListener(_PosWindowEnforcer.instance);
     } catch (_) {
-      // Ignorar.
+      // Ignore
     }
   }
 
-  static Future<void> ensureMaximized({bool force = false}) async {
-    if (!_isInitialized) return;
-    try {
-      if (Platform.isWindows && _isFullScreen) {
-        await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
-        return;
-      }
-
-      if (force || !await windowManager.isMaximized()) {
-        // En Windows, maximizar puede fallar si la ventana estß bloqueada como no-resizable.
-        if (Platform.isWindows) {
-          try {
-            await windowManager.setResizable(true);
-          } catch (_) {}
-
-          try {
-            await windowManager.setFullScreen(false);
-          } catch (_) {}
-
-          try {
-            await windowManager.setTitleBarStyle(
-              _isFullScreen ? TitleBarStyle.hidden : TitleBarStyle.normal,
-            );
-          } catch (_) {}
-        }
-
-        await windowManager.maximize();
-
-        if (Platform.isWindows) {
-          try {
-            await windowManager.setResizable(false);
-          } catch (_) {}
-        }
-      }
-      await _refreshAfterWindowModeChange();
-    } catch (_) {
-      // Ignorar.
-    }
-  }
-
-  static Future<void> _ensureWindowsPosModeAfterShow() async {
-    try {
-      final isMin = await windowManager.isMinimized();
-      if (isMin) await windowManager.restore();
-    } catch (_) {}
-
-    if (_isFullScreen) {
-      await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
-      return;
-    }
-
-    // Reaplica el modo POS en Windows ya con la ventana visible.
-    // Esto soluciona casos donde la app inicia "cortada" y solo se corrige
-    // al hacer un toggle manual de fullscreen/maximize.
-    try {
-      await windowManager.setResizable(true);
-    } catch (_) {}
-
-    try {
-      // Nunca usar fullscreen del sistema en Windows (puede dejar negro).
-      await windowManager.setFullScreen(false);
-    } catch (_) {}
-
-    try {
-      await windowManager.setTitleBarStyle(
-        _isFullScreen ? TitleBarStyle.hidden : TitleBarStyle.normal,
-      );
-    } catch (_) {}
-
-    await windowManager.maximize();
-
-    await _refreshAfterWindowModeChange();
-    await _forceInitialResizeRefresh();
-
-    try {
-      await windowManager.setResizable(false);
-    } catch (_) {}
-  }
-
-  static Future<void> _forceInitialResizeRefresh() async {
-    try {
-      // Un pequeño delta (1px) es suficiente para forzar el refresh sin impacto.
-      final size = await windowManager.getSize();
-      if (size.width <= 0 || size.height <= 0) return;
-      await windowManager.setSize(Size(size.width + 1, size.height));
-      await windowManager.setSize(size);
-    } catch (_) {
-      // No bloquear la app si el plugin falla.
-    }
-  }
-
-  static Future<void> applyBranding({
-    required String businessName,
-    String? logoPath,
-  }) async {
+  /// Set fullscreen state
+  static Future<void> setFullScreen(bool value, {bool savePreference = true}) async {
     if (!_isInitialized) return;
 
-    // CRÍTICO (marca FULLPOS): el branding de ventana NO debe depender de
-    // configuración del cliente. El icono del sistema debe venir fijo desde
-    // los recursos nativos (exe/launcher) generados por build.
-    try {
-      await windowManager.setTitle('FULLPOS');
-    } catch (_) {
-      // Ignorar.
-    }
-  }
-
-  /// Activar/desactivar pantalla completa
-  static Future<void> setFullScreen(
-    bool value, {
-    bool savePreference = true,
-  }) async {
-    if (!_isInitialized) return;
-
-    // En Windows el POS debe permanecer siempre en modo pantalla completa/"kiosk"
-    // para evitar que reaparezca la barra superior y se pierda espacio.
+    // On Windows POS, always maintain fullscreen/kiosk mode
     final effectiveValue = Platform.isWindows ? true : value;
-
     _isFullScreen = effectiveValue;
     fullScreenListenable.value = effectiveValue;
 
-    // En Windows, el fullscreen real a veces deja el contenido en negro.
-    // Usamos un modo POS estable: ocultar barra de título + maximizar.
     if (Platform.isWindows) {
       if (effectiveValue) {
+        // Apply kiosk mode on Windows
         await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
       }
-
-      await _refreshAfterWindowModeChange();
     } else {
+      // Non-Windows platforms: use system fullscreen
       await windowManager.setFullScreen(effectiveValue);
 
       if (effectiveValue) {
-        // En fullscreen, ocultar título pero mantener en taskbar
         await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
         await windowManager.setResizable(false);
       } else {
-        // Normal: mostrar título y permitir redimensionar
         await windowManager.setTitleBarStyle(TitleBarStyle.normal);
         await windowManager.setResizable(true);
-        // Volver a un estado cómodo (normalmente el POS se usa maximizado)
         await windowManager.maximize();
       }
     }
 
-    // Guardar preferencia
+    // Save preference
     if (savePreference) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('pos_fullscreen', effectiveValue);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('pos_fullscreen', effectiveValue);
+      } catch (_) {
+        // Ignore
+      }
     }
   }
 
-  /// Alternar pantalla completa
+  /// Toggle fullscreen
   static Future<void> toggleFullScreen() async {
     if (Platform.isWindows) {
-      // En Windows el POS permanece siempre en modo pantalla completa.
+      // Windows POS always stays in fullscreen
       await setFullScreen(true);
       return;
     }
-
     await setFullScreen(!_isFullScreen);
   }
 
-  /// Obtener estado de pantalla completa
+  /// Get fullscreen state
   static bool isFullScreen() => _isFullScreen;
 
-  /// En Windows, el modo POS usa `alwaysOnTop` para evitar que otras ventanas
-  /// tapen el sistema. Eso puede provocar que los diálogos del sistema (como
-  /// el selector de archivos) se abran "detrás" de la app.
-  ///
-  /// Este helper desactiva temporalmente `alwaysOnTop` mientras se ejecuta una
-  /// operación que abre un diálogo del sistema y luego restaura el estado.
+  /// Run an action while temporarily disabling alwaysOnTop
+  /// (Useful for system file dialogs)
   static Future<T> runWithSystemDialog<T>(Future<T> Function() action) async {
     if (!Platform.isWindows || !_isInitialized) {
       return action();
@@ -457,9 +280,8 @@ class WindowService {
       if (_restoreAlwaysOnTopAfterDialog) {
         try {
           await windowManager.setAlwaysOnTop(false);
+          await Future<void>.delayed(const Duration(milliseconds: 75));
         } catch (_) {}
-        // Dar tiempo a Windows a actualizar el z-order antes de abrir el diálogo.
-        await Future<void>.delayed(const Duration(milliseconds: 75));
       }
     }
 
@@ -473,7 +295,6 @@ class WindowService {
             await windowManager.setAlwaysOnTop(true);
           } catch (_) {}
         }
-
         try {
           await windowManager.focus();
         } catch (_) {}
@@ -481,13 +302,7 @@ class WindowService {
     }
   }
 
-  /// En Windows POS, la app puede estar en modo "always on top". Para abrir
-  /// una aplicación externa (por ejemplo WhatsApp Web/Desktop o el navegador),
-  /// conviene desactivar temporalmente el `alwaysOnTop` para que el usuario
-  /// pueda interactuar con la ventana externa.
-  ///
-  /// A diferencia de [runWithSystemDialog], este helper NO fuerza focus de
-  /// vuelta al POS al final.
+  /// Temporarily disable alwaysOnTop for external application
   static Future<T> runWithExternalApplication<T>(
     Future<T> Function() action, {
     Duration restoreDelay = const Duration(milliseconds: 900),
@@ -496,23 +311,19 @@ class WindowService {
       return action();
     }
 
-    // Solo aplica si estamos en modo POS (fullscreen lógico).
     final shouldRestore = _isFullScreen;
 
     if (shouldRestore) {
       try {
         await windowManager.setAlwaysOnTop(false);
+        await Future<void>.delayed(const Duration(milliseconds: 75));
       } catch (_) {}
-      // Dar tiempo a Windows a actualizar el z-order.
-      await Future<void>.delayed(const Duration(milliseconds: 75));
     }
 
     try {
       return await action();
     } finally {
       if (shouldRestore) {
-        // Restaurar luego de un breve delay. Si el POS fue minimizado, esto
-        // no interfiere con la app externa; al volver, recupera el comportamiento.
         Future<void>.delayed(restoreDelay, () async {
           try {
             await windowManager.setAlwaysOnTop(true);
@@ -522,37 +333,43 @@ class WindowService {
     }
   }
 
-  /// Establecer ventana siempre visible (opcional)
+  // Simple window operations (delegated to windowManager)
+
   static Future<void> setAlwaysOnTop(bool value) async {
     if (!_isInitialized) return;
-    await windowManager.setAlwaysOnTop(value);
+    try {
+      await windowManager.setAlwaysOnTop(value);
+    } catch (_) {}
   }
 
-  /// Prevenir cierre de ventana (opcional)
   static Future<void> setPreventClose(bool value) async {
     if (!_isInitialized) return;
-    await windowManager.setPreventClose(value);
+    try {
+      await windowManager.setPreventClose(value);
+    } catch (_) {}
   }
 
-  /// Mostrar/ocultar ventana
   static Future<void> show() async {
     if (!_isInitialized) return;
-    await windowManager.show();
+    try {
+      await windowManager.show();
+    } catch (_) {}
   }
 
-  /// Minimizar ventana
   static Future<void> minimize() async {
     if (!_isInitialized) return;
-    await windowManager.minimize();
+    try {
+      await windowManager.minimize();
+    } catch (_) {}
   }
 
-  /// Maximizar ventana
   static Future<void> maximize() async {
     if (!_isInitialized) return;
-    await windowManager.maximize();
+    try {
+      await windowManager.maximize();
+    } catch (_) {}
   }
 
-  /// Saber si la ventana está maximizada
   static Future<bool> isMaximized() async {
     if (!_isInitialized) return false;
     try {
@@ -562,44 +379,49 @@ class WindowService {
     }
   }
 
-  /// Alternar maximizado/restaurar
   static Future<void> toggleMaximize() async {
     if (!_isInitialized) return;
-    final maximized = await isMaximized();
-    if (maximized) {
-      await windowManager.restore();
-    } else {
-      await windowManager.maximize();
-    }
-
-    await _refreshAfterWindowModeChange();
-  }
-
-  static Future<void> _refreshAfterWindowModeChange() async {
-    // Forzar un refresh sin “nudge” visible: setBounds con los mismos bounds.
     try {
-      final bounds = await windowManager.getBounds();
-      await windowManager.setBounds(bounds);
-    } catch (_) {
-      // Fallback: nada.
-    }
-  }
-
-  /// Refuerza la recuperación visual cuando Windows restaura o re-activa la
-  /// ventana y Flutter queda sin volver a pintar correctamente.
-  static Future<void> recoverVisualState({
-    bool forceSizeNudge = false,
-    Duration settleDelay = const Duration(milliseconds: 90),
-  }) async {
-    if (!_isInitialized || !Platform.isWindows) return;
-    if (_visualRecoveryRunning) return;
-
-    _visualRecoveryRunning = true;
-    try {
-      if (settleDelay > Duration.zero) {
-        await Future<void>.delayed(settleDelay);
+      final maximized = await isMaximized();
+      if (maximized) {
+        await windowManager.restore();
+      } else {
+        await windowManager.maximize();
       }
+    } catch (_) {}
+  }
 
+  static Future<void> restore() async {
+    if (!_isInitialized) return;
+    try {
+      await windowManager.restore();
+    } catch (_) {}
+  }
+
+  static Future<void> close() async {
+    if (!_isInitialized) return;
+    try {
+      await windowManager.close();
+    } catch (_) {}
+  }
+
+  static Future<void> applyBranding({
+    required String businessName,
+    String? logoPath,
+  }) async {
+    if (!_isInitialized) return;
+    try {
+      await windowManager.setTitle('FULLPOS');
+    } catch (_) {}
+  }
+
+  /// Recover visual state after app resume (minimize/restore cycle)
+  /// Ensures window is visible, not minimized, and layout is refreshed
+  static Future<void> recoverVisualState({bool forceSizeNudge = false}) async {
+    if (!_isInitialized || !Platform.isWindows) return;
+
+    try {
+      // Ensure window is visible
       try {
         final isVisible = await windowManager.isVisible();
         if (!isVisible) {
@@ -607,6 +429,7 @@ class WindowService {
         }
       } catch (_) {}
 
+      // Restore if minimized
       try {
         final isMin = await windowManager.isMinimized();
         if (isMin) {
@@ -614,57 +437,51 @@ class WindowService {
         }
       } catch (_) {}
 
+      // Refresh bounds to trigger layout
       try {
-        await _refreshAfterWindowModeChange();
+        final bounds = await windowManager.getBounds();
+        await windowManager.setBounds(bounds);
       } catch (_) {}
 
-      if (forceSizeNudge) {
-        await _forceInitialResizeRefresh();
-      }
-
+      // Schedule frame repaint
       WidgetsBinding.instance.scheduleFrame();
-    } finally {
-      _visualRecoveryRunning = false;
+    } catch (_) {
+      // Ignore recovery errors - don't block app
     }
-  }
-
-  /// Restaurar tamaño ventana
-  static Future<void> restore() async {
-    if (!_isInitialized) return;
-    await windowManager.restore();
-  }
-
-  /// Cerrar aplicación
-  static Future<void> close() async {
-    if (!_isInitialized) return;
-    await windowManager.close();
   }
 }
 
+/// Simple enforcer: ensures POS window stays visible and in expected state.
+/// Only restores visibility - does NOT spam maximize.
 class _PosWindowEnforcer with WindowListener {
   _PosWindowEnforcer._();
 
   static final _PosWindowEnforcer instance = _PosWindowEnforcer._();
 
-  bool _running = false;
+  bool _restoreInProgress = false;
 
-  Future<void> _enforceMaximized() async {
-    if (_running) return;
-    _running = true;
+  @override
+  void onWindowRestore() async {
+    if (_restoreInProgress) return;
+    _restoreInProgress = true;
     try {
-      await WindowService.ensureMaximized(force: true);
+      // Ensure window is visible and maximized after restore
+      final isMaxed = await WindowService.isMaximized();
+      if (!isMaxed) {
+        await WindowService.maximize();
+      }
+    } catch (_) {
     } finally {
-      _running = false;
+      _restoreInProgress = false;
     }
   }
 
   @override
-  void onWindowRestore() {
-    _enforceMaximized();
-  }
-
-  @override
-  void onWindowUnmaximize() {
-    _enforceMaximized();
+  void onWindowUnmaximize() async {
+    // If user unmaximizes, re-maximize once (POS should stay at full size)
+    try {
+      await WindowService.maximize();
+    } catch (_) {}
   }
 }
+

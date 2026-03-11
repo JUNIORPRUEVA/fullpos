@@ -56,6 +56,7 @@ class CloudSyncService {
   Timer? _outboxPollingTimer;
   bool _outboxRunning = false;
   bool _engineStarted = false;
+  final Map<String, ({bool ok, int checkedAtMs})> _imageHealthCache = {};
 
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
   ///
@@ -758,16 +759,32 @@ class CloudSyncService {
             );
           }
         } else if (imageUrl != null && _isUploadsUrl(imageUrl, baseUrl)) {
-          if (!p.prefersImage) {
-            await _deleteProductImage(
-              baseUrl: baseUrl,
-              imageUrl: imageUrl,
-              cloudKey: cloudKey,
+          final imageAlive = await _isRemoteImageAlive(imageUrl);
+          if (!imageAlive) {
+            await AppLogger.instance.logWarn(
+              'Broken remote product image detected code=${p.code} url=$imageUrl',
+              module: 'cloud_sync',
             );
             if (p.id != null) {
               try {
                 await repo.update(p.copyWith(imageUrl: null));
               } catch (_) {}
+            }
+            imageUrl = null;
+          }
+
+          if (!p.prefersImage) {
+            if (imageUrl != null) {
+              await _deleteProductImage(
+                baseUrl: baseUrl,
+                imageUrl: imageUrl,
+                cloudKey: cloudKey,
+              );
+              if (p.id != null) {
+                try {
+                  await repo.update(p.copyWith(imageUrl: null));
+                } catch (_) {}
+              }
             }
             imageUrl = null;
           }
@@ -1646,6 +1663,33 @@ class CloudSyncService {
       final base = Uri.parse(baseUrl);
       return parsed.host == base.host;
     } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _isRemoteImageAlive(String url) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final cached = _imageHealthCache[url];
+    if (cached != null) {
+      final ttlMs = cached.ok ? 30 * 60 * 1000 : 5 * 60 * 1000;
+      if (now - cached.checkedAtMs < ttlMs) {
+        return cached.ok;
+      }
+    }
+
+    try {
+      final request = await http
+          .head(Uri.parse(url), headers: const {'Accept': 'image/*,*/*;q=0.8'})
+          .timeout(const Duration(seconds: 5));
+      final contentType = (request.headers['content-type'] ?? '').toLowerCase();
+      final ok =
+          request.statusCode >= 200 &&
+          request.statusCode < 300 &&
+          contentType.startsWith('image/');
+      _imageHealthCache[url] = (ok: ok, checkedAtMs: now);
+      return ok;
+    } catch (_) {
+      _imageHealthCache[url] = (ok: false, checkedAtMs: now);
       return false;
     }
   }
