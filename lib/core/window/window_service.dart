@@ -95,28 +95,24 @@ class WindowService {
 
     final origin = display.visiblePosition ?? Offset.zero;
 
-    // CRITICAL: Cover entire display including Windows taskbar
-    // display.size.width/height are the work area (visible), not physical resolution
-    // Windows taskbar is typically 40px, but we add extra buffer to be safe
-    // Use negative offset + larger size to ensure full coverage including taskbar edges
-    const int bufferPx = 50;
-
-    final adjustedX = origin.dx - bufferPx;
-    final adjustedY = origin.dy - bufferPx;
-    final adjustedWidth = (display.size.width + (bufferPx * 2)).toDouble();
-    final adjustedHeight = (display.size.height + (bufferPx * 2)).toDouble();
+    // CRITICAL: Get PHYSICAL screen resolution, not work area
+    // display.size gives work area (visible region excluding taskbar)
+    // Windows taskbar is typically 40px (vertical) or 40px (horizontal)
+    // So physical resolution = work_area + taskbar_size
+    final physicalWidth = display.size.width;
+    final physicalHeight = display.size.height + 50; // +50px to cover taskbar
 
     if (kDebugMode) {
-      debugPrint('[WINDOW] display work area: ${display.size.width}x${display.size.height}');
-      debugPrint('[WINDOW] display origin: ${origin.dx},${origin.dy}');
-      debugPrint('[WINDOW] kiosk bounds (with buffer): $adjustedX,$adjustedY ${adjustedWidth}x${adjustedHeight}');
+      debugPrint('[WINDOW] display.size (work area): ${display.size.width}x${display.size.height}');
+      debugPrint('[WINDOW] estimated physical resolution: ${physicalWidth}x${physicalHeight}');
+      debugPrint('[WINDOW] origin: ${origin.dx},${origin.dy}');
     }
 
     return Rect.fromLTWH(
-      adjustedX.toDouble(),
-      adjustedY.toDouble(),
-      adjustedWidth,
-      adjustedHeight,
+      0, // Start from 0,0 (physical screen coordinate)
+      0,
+      physicalWidth,
+      physicalHeight,
     );
   }
 
@@ -151,29 +147,79 @@ class WindowService {
       if (kDebugMode) debugPrint('[WINDOW] setAsFrameless failed: $e');
     }
 
-    // Step 4: Non-resizable to prevent accidental resizing and hit-test issues
-    try {
-      await windowManager.setResizable(false);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setResizable(false) failed: $e');
+  /// Apply Windows POS kiosk mode: full screen without system fullscreen.
+  /// Called while window is hidden during startup.
+  /// MUST NOT be called frequently - only at startup and after minimize/restore.
+  static Future<void> _applyWindowsPosKioskMode({
+    bool preferCurrentDisplay = true,
+  }) async {
+    if (kDebugMode) {
+      debugPrint('[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay');
     }
 
-    // Step 5: Always on top in POS mode (prevents other windows from covering)
+    // Step 1: Disable system fullscreen (can leave screen black on some PCs)
+    try {
+      await windowManager.setFullScreen(false);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setFullScreen(false) failed: $e');
+    }
+
+    // Step 2: Hide title bar for full POS mode
+    try {
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setTitleBarStyle failed: $e');
+    }
+
+    // Step 3: Make frameless for maximum usable space
+    try {
+      await windowManager.setAsFrameless();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WINDOW] setAsFrameless failed: $e');
+    }
+
+    // Step 4: Always on top in POS mode (prevents other windows from covering)
     try {
       await windowManager.setAlwaysOnTop(true);
     } catch (e) {
       if (kDebugMode) debugPrint('[WINDOW] setAlwaysOnTop failed: $e');
     }
 
-    // Step 6: CRITICAL - Maximize to cover entire work area including taskbar
-    // Windows doesn't allow arbitrary setBounds to cover taskbar.
-    // But maximize() AFTER applying frameless + hidden title WILL cover the taskbar.
-    // This is the key: the order matters. We apply visual changes first, then maximize.
+    // Step 5: CRITICAL - Set bounds to physical screen resolution
+    // Windows doesn't allow non-resizable windows to set arbitrary bounds.
+    // So we must be resizable to set bounds, then make non-resizable after.
     try {
-      await windowManager.maximize();
-      if (kDebugMode) debugPrint('[WINDOW] maximize succeeded - kiosk window now covers full display');
+      // Temporarily allow resizing so we can set bounds
+      await windowManager.setResizable(true);
+      if (kDebugMode) debugPrint('[WINDOW] temporarily set resizable=true');
+
+      // Get physical resolution bounds
+      final bounds = await _getWindowsKioskBounds(
+        preferCurrentDisplay: preferCurrentDisplay,
+      );
+
+      // Set bounds to cover entire physical screen including taskbar
+      await windowManager.setBounds(bounds);
+      if (kDebugMode) {
+        debugPrint('[WINDOW] setBounds to: ${bounds.left},${bounds.top} ${bounds.width}x${bounds.height}');
+      }
+
+      // Small delay to ensure bounds are applied
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Now disable resizing to lock the window in kiosk mode
+      await windowManager.setResizable(false);
+      if (kDebugMode) debugPrint('[WINDOW] set resizable=false (locked)');
     } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] maximize failed: $e');
+      if (kDebugMode) debugPrint('[WINDOW] setBounds failed: $e');
+      // Fallback: just maximize and hope it covers most of the screen
+      try {
+        await windowManager.setResizable(false);
+        await windowManager.maximize();
+        if (kDebugMode) debugPrint('[WINDOW] fallback to maximize');
+      } catch (e2) {
+        if (kDebugMode) debugPrint('[WINDOW] fallback maximize also failed: $e2');
+      }
     }
 
     if (kDebugMode) {
