@@ -3,6 +3,7 @@ import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/validation/business_rules.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'sales_repository.dart';
 import 'sales_model.dart';
 import 'sale_item_model.dart' as new_models;
@@ -46,7 +47,8 @@ class LayawayRepository {
     bool enforceLocalCodeIdempotency = false,
   }) async {
     // Validar abono inicial mínimo 30%
-    final effectiveTotal = totalOverride ??
+    final effectiveTotal =
+        totalOverride ??
         (() {
           double tmp = 0;
           for (final item in items) {
@@ -60,7 +62,8 @@ class LayawayRepository {
             }
           }
           final subtotal = tmp - discountTotal;
-          final itbisAmountCalc = itbisAmountOverride ??
+          final itbisAmountCalc =
+              itbisAmountOverride ??
               (itbisEnabled ? (subtotal * itbisRate) : 0.0);
           return subtotal + itbisAmountCalc;
         })();
@@ -70,7 +73,8 @@ class LayawayRepository {
         code: 'layaway_min_down_payment',
         messageUser:
             'El abono inicial debe ser al menos el 30% (${minDown.toStringAsFixed(2)})',
-        messageDev: 'Layaway initial payment below 30%: $initialPayment < $minDown',
+        messageDev:
+            'Layaway initial payment below 30%: $initialPayment < $minDown',
       );
     }
 
@@ -122,119 +126,131 @@ class LayawayRepository {
     int? userId,
     int? sessionId,
   }) async {
-    return DbHardening.instance.runDbSafe<LayawayPaymentResult>(() async {
-      final db = await AppDb.database;
-      final now = DateTime.now().millisecondsSinceEpoch;
+    final result = await DbHardening.instance.runDbSafe<LayawayPaymentResult>(
+      () async {
+        final db = await AppDb.database;
+        final now = DateTime.now().millisecondsSinceEpoch;
 
-      return db.transaction((txn) async {
-        final saleRows = await txn.query(
-          DbTables.sales,
-          where: 'id = ?',
-          whereArgs: [saleId],
-          limit: 1,
-        );
-        if (saleRows.isEmpty) {
-          throw BusinessRuleException(
-            code: 'sale_not_found',
-            messageUser: 'No se encontrÃ³ el apartado.',
-            messageDev: 'Layaway sale not found: saleId=$saleId',
+        return db.transaction((txn) async {
+          final saleRows = await txn.query(
+            DbTables.sales,
+            where: 'id = ?',
+            whereArgs: [saleId],
+            limit: 1,
           );
-        }
+          if (saleRows.isEmpty) {
+            throw BusinessRuleException(
+              code: 'sale_not_found',
+              messageUser: 'No se encontrÃ³ el apartado.',
+              messageDev: 'Layaway sale not found: saleId=$saleId',
+            );
+          }
 
-        final sale = saleRows.first;
-        final resolvedClientId =
-            clientId ?? (sale['customer_id'] as int?);
-        final resolvedSessionId =
-            sessionId ??
-            (sale['cash_session_id'] as int?) ??
-            (sale['session_id'] as int?);
-        if (resolvedSessionId == null) {
-          throw BusinessRuleException(
-            code: 'layaway_no_session',
-            messageUser: 'Debe abrir caja para registrar abonos de apartado.',
-            messageDev: 'No cash session for layaway payment saleId=$saleId',
-          );
-        }
+          final sale = saleRows.first;
+          final resolvedClientId = clientId ?? (sale['customer_id'] as int?);
+          final resolvedSessionId =
+              sessionId ??
+              (sale['cash_session_id'] as int?) ??
+              (sale['session_id'] as int?);
+          if (resolvedSessionId == null) {
+            throw BusinessRuleException(
+              code: 'layaway_no_session',
+              messageUser: 'Debe abrir caja para registrar abonos de apartado.',
+              messageDev: 'No cash session for layaway payment saleId=$saleId',
+            );
+          }
 
-        final paymentId = await txn.insert(DbTables.layawayPayments, {
-          'sale_id': saleId,
-          'client_id': resolvedClientId,
-          'amount': amount,
-          'method': method,
-          'note': note,
-          'created_at_ms': now,
-          'user_id': userId,
-        });
+          final paymentId = await txn.insert(DbTables.layawayPayments, {
+            'sale_id': saleId,
+            'client_id': resolvedClientId,
+            'amount': amount,
+            'method': method,
+            'note': note,
+            'created_at_ms': now,
+            'user_id': userId,
+          });
 
-        final payments = await txn.rawQuery(
-          '''
+          final payments = await txn.rawQuery(
+            '''
           SELECT SUM(amount) as total
           FROM ${DbTables.layawayPayments}
           WHERE sale_id = ?
         ''',
-          [saleId],
-        );
-        final totalPaid =
-            (payments.first['total'] as num?)?.toDouble() ?? 0.0;
-        final totalDue = (sale['total'] as num?)?.toDouble() ?? 0.0;
-        final pending = totalDue - totalPaid;
-
-        await txn.update(
-          DbTables.sales,
-          {'paid_amount': totalPaid, 'updated_at_ms': now},
-          where: 'id = ?',
-          whereArgs: [saleId],
-        );
-
-        // Estado legible para tickets: PENDIENTE/PAGADO
-        var status = pending > 0 ? 'PENDIENTE' : 'PAGADO';
-
-        final sessionRows = await txn.query(
-          DbTables.cashSessions,
-          columns: ['status'],
-          where: 'id = ?',
-          whereArgs: [resolvedSessionId],
-          limit: 1,
-        );
-        final statusSession = sessionRows.isNotEmpty
-            ? (sessionRows.first['status'] as String?) ?? ''
-            : '';
-        if (statusSession != 'OPEN') {
-          throw BusinessRuleException(
-            code: 'layaway_session_closed',
-            messageUser: 'La sesión de caja no está abierta.',
-            messageDev: 'Cash session not open for layaway payment saleId=$saleId',
+            [saleId],
           );
-        }
+          final totalPaid =
+              (payments.first['total'] as num?)?.toDouble() ?? 0.0;
+          final totalDue = (sale['total'] as num?)?.toDouble() ?? 0.0;
+          final pending = totalDue - totalPaid;
 
-        await txn.insert(DbTables.cashMovements, {
-          'session_id': resolvedSessionId,
-          'type': 'IN',
-          'amount': amount,
-          'note': note,
-          'created_at_ms': now,
-          'reason': 'Abono apartado #${sale['local_code'] ?? saleId}',
-          'user_id': userId ?? 1,
-        });
+          await txn.update(
+            DbTables.sales,
+            {'paid_amount': totalPaid, 'updated_at_ms': now},
+            where: 'id = ?',
+            whereArgs: [saleId],
+          );
 
-        if (pending <= 0) {
-          await _finalizeLayaway(
-            txn: txn,
-            saleId: saleId,
-            saleCode: (sale['local_code'] as String?) ?? saleId.toString(),
+          // Estado legible para tickets: PENDIENTE/PAGADO
+          var status = pending > 0 ? 'PENDIENTE' : 'PAGADO';
+
+          final sessionRows = await txn.query(
+            DbTables.cashSessions,
+            columns: ['status'],
+            where: 'id = ?',
+            whereArgs: [resolvedSessionId],
+            limit: 1,
+          );
+          final statusSession = sessionRows.isNotEmpty
+              ? (sessionRows.first['status'] as String?) ?? ''
+              : '';
+          if (statusSession != 'OPEN') {
+            throw BusinessRuleException(
+              code: 'layaway_session_closed',
+              messageUser: 'La sesión de caja no está abierta.',
+              messageDev:
+                  'Cash session not open for layaway payment saleId=$saleId',
+            );
+          }
+
+          await txn.insert(DbTables.cashMovements, {
+            'session_id': resolvedSessionId,
+            'type': 'IN',
+            'amount': amount,
+            'note': note,
+            'created_at_ms': now,
+            'reason': 'Abono apartado #${sale['local_code'] ?? saleId}',
+            'user_id': userId ?? 1,
+          });
+
+          if (pending <= 0) {
+            await _finalizeLayaway(
+              txn: txn,
+              saleId: saleId,
+              saleCode: (sale['local_code'] as String?) ?? saleId.toString(),
+              totalPaid: totalPaid,
+            );
+            status = 'PAGADO';
+          }
+
+          return LayawayPaymentResult(
+            paymentId: paymentId,
             totalPaid: totalPaid,
+            pendingAmount: pending > 0 ? pending : 0,
+            status: status,
           );
-          status = 'PAGADO';
-        }
+        });
+      },
+      stage: 'layaway_register_payment',
+    );
 
-        return LayawayPaymentResult(
-          paymentId: paymentId,
-          totalPaid: totalPaid,
-          pendingAmount: pending > 0 ? pending : 0,
-          status: status,
-        );
-      });
-    }, stage: 'layaway_register_payment');
+    if (result.status == 'PAGADO') {
+      CloudSyncService.instance.scheduleProductsSyncSoon();
+      CloudSyncService.instance.scheduleSalesSyncSoon(
+        reason: 'layaway_payment_applied',
+      );
+    }
+
+    return result;
   }
 
   static Future<void> _finalizeLayaway({
@@ -280,8 +296,7 @@ class LayawayRepository {
           (productRows.first['stock'] as num?)?.toDouble() ?? 0.0;
       final newStock = currentStock - qty;
       if (newStock < 0) {
-        final code =
-            (productRows.first['code'] as String?)?.trim() ?? 'N/A';
+        final code = (productRows.first['code'] as String?)?.trim() ?? 'N/A';
         final name =
             (productRows.first['name'] as String?)?.trim() ?? 'Producto';
         throw BusinessRuleException(
@@ -326,8 +341,7 @@ class LayawayRepository {
   static Future<List<Map<String, dynamic>>> listLayawaySales() async {
     final db = await AppDb.database;
 
-    final result = await db.rawQuery(
-      '''
+    final result = await db.rawQuery('''
       SELECT s.*,
              COALESCE(SUM(lp.amount), 0) as amount_paid,
              (s.total - COALESCE(SUM(lp.amount), 0)) as amount_pending,
@@ -340,8 +354,7 @@ class LayawayRepository {
       WHERE s.payment_method = 'layaway'
       GROUP BY s.id
       ORDER BY s.created_at_ms DESC
-    ''',
-    );
+    ''');
 
     return result;
   }

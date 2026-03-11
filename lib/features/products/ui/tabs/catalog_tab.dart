@@ -22,6 +22,7 @@ import '../../../settings/data/user_model.dart';
 import '../../utils/products_exporter.dart';
 import '../../utils/products_importer.dart';
 import '../../utils/catalog_pdf_launcher.dart';
+import '../../../../core/sync/product_sync_event_bus.dart';
 import '../dialogs/product_details_dialog.dart';
 import '../dialogs/product_filters_dialog.dart';
 import '../dialogs/product_form_dialog.dart';
@@ -45,6 +46,8 @@ class _CatalogTabState extends State<CatalogTab> {
 
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
+  Timer? _syncRefreshDebounce;
+  StreamSubscription<ProductSyncChange>? _syncSubscription;
 
   List<ProductModel> _products = [];
   ProductModel? _selectedProduct;
@@ -222,12 +225,21 @@ class _CatalogTabState extends State<CatalogTab> {
     super.initState();
     _loadData();
     _searchController.addListener(_onSearchChanged);
+    _syncSubscription = ProductSyncEventBus.instance.stream.listen((_) {
+      _syncRefreshDebounce?.cancel();
+      _syncRefreshDebounce = Timer(
+        const Duration(milliseconds: 200),
+        _loadProducts,
+      );
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _debounce?.cancel();
+    _syncRefreshDebounce?.cancel();
+    _syncSubscription?.cancel();
     super.dispose();
   }
 

@@ -1,5 +1,6 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'sales_model.dart';
 
 class ReturnsRepository {
@@ -29,7 +30,7 @@ class ReturnsRepository {
 
     final original = SaleModel.fromMap(originalSaleRows.first);
 
-    return await db.transaction((txn) async {
+    final returnSaleId = await db.transaction((txn) async {
       final now = DateTime.now().millisecondsSinceEpoch;
 
       // Calcular totales de devolución
@@ -145,6 +146,11 @@ class ReturnsRepository {
 
       return returnSaleId;
     });
+
+    CloudSyncService.instance.scheduleProductsSyncSoon();
+    CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'return_applied');
+
+    return returnSaleId;
   }
 
   /// Lista devoluciones con filtros

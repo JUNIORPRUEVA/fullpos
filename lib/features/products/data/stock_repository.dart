@@ -2,10 +2,19 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/logging/app_logger.dart';
+import '../../../core/sync/product_sync_event_bus.dart';
+import '../../../core/sync/product_sync_outbox_repository.dart';
+import '../../../core/sync/product_sync_service.dart';
+import '../../settings/data/business_settings_repository.dart';
+import '../models/product_model.dart';
 import '../models/stock_movement_model.dart';
 
 /// Repositorio para operaciones de movimientos de stock
 class StockRepository {
+  final ProductSyncOutboxRepository _productOutbox =
+      ProductSyncOutboxRepository();
+
   Future<Set<String>> _tableColumns(DatabaseExecutor db, String table) async {
     final pragma = await db.rawQuery('PRAGMA table_info($table)');
     return pragma
@@ -92,7 +101,25 @@ class StockRepository {
     }
 
     final db = await AppDb.database;
+    final settings = await BusinessSettingsRepository().loadSettings();
+    final businessId = (() {
+      final cloudCompanyId = settings.cloudCompanyId?.trim();
+      if (cloudCompanyId != null && cloudCompanyId.isNotEmpty) {
+        return cloudCompanyId;
+      }
+      final rnc = settings.rnc?.trim();
+      if (rnc != null && rnc.isNotEmpty) return rnc;
+      return null;
+    })();
+    final lastModifiedBy = (() {
+      final cloudUsername = settings.cloudOwnerUsername?.trim();
+      if (cloudUsername != null && cloudUsername.isNotEmpty) {
+        return cloudUsername;
+      }
+      return 'fullpos_local';
+    })();
     int movementId = 0;
+    ProductModel? updatedProduct;
 
     // Usar transacción para garantizar atomicidad
     await db.transaction((txn) async {
@@ -107,6 +134,8 @@ class StockRepository {
       if (productMaps.isEmpty) {
         throw ArgumentError('No existe un producto con ID $productId');
       }
+
+      final currentProduct = ProductModel.fromMap(productMaps.first);
 
       final currentStock =
           (productMaps.first['stock'] as num?)?.toDouble() ?? 0.0;
@@ -136,10 +165,31 @@ class StockRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       await txn.update(
         DbTables.products,
-        {'stock': newStock, 'updated_at_ms': now},
+        {
+          'stock': newStock,
+          'sync_status': 'pending',
+          'local_updated_at_ms': now,
+          'last_modified_by': lastModifiedBy,
+          'last_sync_error': null,
+          'needs_sync': 1,
+          'updated_at_ms': now,
+        },
         where: 'id = ?',
         whereArgs: [productId],
       );
+
+      updatedProduct = ProductModel.fromMap({
+        ...currentProduct.toMap(),
+        'id': currentProduct.id,
+        'business_id': businessId,
+        'stock': newStock,
+        'sync_status': 'pending',
+        'local_updated_at_ms': now,
+        'last_modified_by': lastModifiedBy,
+        'last_sync_error': null,
+        'needs_sync': 1,
+        'updated_at_ms': now,
+      });
 
       // 4. Registrar el movimiento de stock
       // Para ajustes, guardamos el delta (diferencia)
@@ -165,8 +215,52 @@ class StockRepository {
       } catch (_) {
         movementId = 0;
       }
+
+      if (updatedProduct != null) {
+        await _productOutbox.enqueue(
+          executor: txn,
+          entityId: updatedProduct!.id ?? 0,
+          operationType: 'stock',
+          priority: 100,
+          payload: {
+            'clientMutationId':
+                'product-${updatedProduct!.id}-${DateTime.now().microsecondsSinceEpoch}',
+            'localProductId': updatedProduct!.id,
+            'serverProductId': updatedProduct!.serverId,
+            'operationType': 'stock',
+            'baseVersion': updatedProduct!.version,
+            'occurredAt': updatedProduct!.localUpdatedAt.toUtc().toIso8601String(),
+            'lastModifiedBy': updatedProduct!.lastModifiedBy,
+            'product': {
+              'businessId': updatedProduct!.businessId,
+              'code': updatedProduct!.code,
+              'name': updatedProduct!.name,
+              'price': updatedProduct!.salePrice,
+              'cost': updatedProduct!.purchasePrice,
+              'stock': updatedProduct!.stock,
+              'imageUrl': updatedProduct!.imageUrl,
+              'isActive': updatedProduct!.isActive,
+              'deletedAt': updatedProduct!.deletedAt?.toUtc().toIso8601String(),
+            },
+          },
+        );
+      }
     });
 
+    if (updatedProduct != null) {
+      await AppLogger.instance.logInfo(
+        'Local write productId=${updatedProduct!.id} stock=${updatedProduct!.stock} reason=stock',
+        module: 'product_sync',
+      );
+      ProductSyncEventBus.instance.emit(
+        ProductSyncChange(
+          localProductId: updatedProduct!.id ?? 0,
+          serverProductId: updatedProduct!.serverId,
+          reason: 'stock',
+        ),
+      );
+      ProductSyncService.instance.scheduleProcessing();
+    }
     return movementId;
   }
 

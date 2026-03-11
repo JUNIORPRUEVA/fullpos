@@ -6,8 +6,13 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import '../../../core/sync/product_sync_event_bus.dart';
+import '../../../core/sync/product_sync_outbox_repository.dart';
+import '../../../core/sync/product_sync_service.dart';
 import '../../../core/utils/color_utils.dart';
+import '../../settings/data/business_settings_repository.dart';
 import '../models/product_model.dart';
 
 /// Filtros para búsqueda de productos
@@ -42,8 +47,130 @@ class ProductFilters {
 
 /// Repositorio para operaciones CRUD de Productos
 class ProductsRepository {
+  final ProductSyncOutboxRepository _productOutbox =
+      ProductSyncOutboxRepository();
+
   void _triggerCloudProductsSyncSoon() {
     CloudSyncService.instance.scheduleProductsSyncSoon();
+  }
+
+  Future<_ProductSyncContext> _loadSyncContext() async {
+    final settings = await BusinessSettingsRepository().loadSettings();
+    final businessId = (() {
+      final cloudCompanyId = settings.cloudCompanyId?.trim();
+      if (cloudCompanyId != null && cloudCompanyId.isNotEmpty) {
+        return cloudCompanyId;
+      }
+      final rnc = settings.rnc?.trim();
+      if (rnc != null && rnc.isNotEmpty) return rnc;
+      return null;
+    })();
+    final lastModifiedBy = (() {
+      final cloudUsername = settings.cloudOwnerUsername?.trim();
+      if (cloudUsername != null && cloudUsername.isNotEmpty) {
+        return cloudUsername;
+      }
+      return 'fullpos_local';
+    })();
+    return _ProductSyncContext(
+      businessId: businessId,
+      lastModifiedBy: lastModifiedBy,
+    );
+  }
+
+  ProductModel _withPendingSync(
+    ProductModel product, {
+    required _ProductSyncContext context,
+    required int now,
+  }) {
+    final map = product
+        .copyWith(
+          businessId: context.businessId,
+          syncStatus: 'pending',
+          localUpdatedAtMs: now,
+          lastModifiedBy: context.lastModifiedBy,
+          needsSync: true,
+          updatedAtMs: now,
+        )
+        .toMap();
+    map['last_sync_error'] = null;
+    return ProductModel.fromMap(map);
+  }
+
+  String _clientMutationId(int productId) {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    return 'product-$productId-$now';
+  }
+
+  Map<String, dynamic> _buildSyncPayload(
+    ProductModel product, {
+    required String operationType,
+  }) {
+    final deletedAt = product.deletedAtMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(product.deletedAtMs!)
+            .toUtc()
+            .toIso8601String()
+        : null;
+    return {
+      'clientMutationId': _clientMutationId(product.id ?? 0),
+      'localProductId': product.id,
+      'serverProductId': product.serverId,
+      'operationType': operationType,
+      'baseVersion': product.version,
+      'occurredAt': product.localUpdatedAt.toUtc().toIso8601String(),
+      'lastModifiedBy': product.lastModifiedBy,
+      'product': {
+        'businessId': product.businessId,
+        'code': product.code.trim(),
+        'name': product.name.trim(),
+        'price': product.salePrice,
+        'cost': product.purchasePrice,
+        'stock': product.stock,
+        'imageUrl': product.imageUrl,
+        'isActive': product.isActive,
+        'deletedAt': deletedAt,
+      },
+    };
+  }
+
+  Future<void> _enqueueProductSync(
+    DatabaseExecutor txn,
+    ProductModel product, {
+    required String operationType,
+    required bool highPriority,
+  }) async {
+    await _productOutbox.enqueue(
+      executor: txn,
+      entityId: product.id ?? 0,
+      operationType: operationType,
+      payload: _buildSyncPayload(product, operationType: operationType),
+      priority: highPriority ? 100 : 50,
+    );
+  }
+
+  Future<void> _notifyLocalProductMutation(
+    ProductModel product, {
+    required String reason,
+    required bool highPriority,
+  }) async {
+    await AppLogger.instance.logInfo(
+      'Local write productId=${product.id} code=${product.code} syncStatus=${product.syncStatus} reason=$reason',
+      module: 'product_sync',
+    );
+    await AppLogger.instance.logInfo(
+      'Outbox insert productId=${product.id} operation=$reason',
+      module: 'product_sync',
+    );
+    ProductSyncEventBus.instance.emit(
+      ProductSyncChange(
+        localProductId: product.id ?? 0,
+        serverProductId: product.serverId,
+        reason: reason,
+      ),
+    );
+    ProductSyncService.instance.scheduleProcessing(
+      delay: highPriority ? Duration.zero : const Duration(milliseconds: 150),
+    );
   }
 
   void _validateRequiredForSave(ProductModel product) {
@@ -375,6 +502,7 @@ class ProductsRepository {
   /// Crea un nuevo producto
   Future<int> create(ProductModel product) async {
     final db = await AppDb.database;
+    final syncContext = await _loadSyncContext();
 
     final prepared = _withPlaceholderDefaults(product);
     _validateRequiredForSave(prepared);
@@ -388,45 +516,76 @@ class ProductsRepository {
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final productToInsert = prepared.copyWith(
-      createdAtMs: now,
-      updatedAtMs: now,
+    final productToInsert = _withPendingSync(
+      prepared.copyWith(
+        businessId: syncContext.businessId,
+        createdAtMs: now,
+        updatedAtMs: now,
+      ),
+      context: syncContext,
+      now: now,
     );
 
-    final createdId = await db.transaction((txn) async {
+    final createdProduct = await db.transaction<ProductModel>((txn) async {
       await AppDb.deleteDemoProducts(txn);
       await AppDb.deleteDemoCategories(txn);
 
-      // Si existe un producto eliminado con el mismo cÃ³digo, reactivarlo y actualizarlo.
       final deletedRows = await txn.query(
         DbTables.products,
-        columns: ['id'],
         where: 'code = ? AND deleted_at_ms IS NOT NULL',
         whereArgs: [prepared.code],
         limit: 1,
       );
+
       if (deletedRows.isNotEmpty) {
-        final id = deletedRows.first['id'] as int;
-        final revived = productToInsert.copyWith(id: id).toMap()
-          ..['deleted_at_ms'] = null;
+        final previous = ProductModel.fromMap(deletedRows.first);
+        final revived = _withPendingSync(
+          productToInsert.copyWith(
+            id: previous.id,
+            serverId: previous.serverId,
+            version: previous.version,
+            deletedAtMs: null,
+          ),
+          context: syncContext,
+          now: now,
+        );
+        final revivedMap = revived.toMap()..['deleted_at_ms'] = null;
         await txn.update(
           DbTables.products,
-          revived,
+          revivedMap,
           where: 'id = ?',
-          whereArgs: [id],
+          whereArgs: [previous.id],
         );
-        return id;
+        await _enqueueProductSync(
+          txn,
+          revived,
+          operationType: 'upsert',
+          highPriority: false,
+        );
+        return revived;
       }
 
-      return await txn.insert(
+      final createdId = await txn.insert(
         DbTables.products,
         productToInsert.toMap(),
         conflictAlgorithm: ConflictAlgorithm.abort,
       );
+      final created = productToInsert.copyWith(id: createdId);
+      await _enqueueProductSync(
+        txn,
+        created,
+        operationType: 'upsert',
+        highPriority: false,
+      );
+      return created;
     });
 
-    _triggerCloudProductsSyncSoon();
-    return createdId;
+    await _notifyLocalProductMutation(
+      createdProduct,
+      reason: 'upsert',
+      highPriority: false,
+    );
+    return createdProduct.id ?? 0;
   }
 
   /// Actualiza un producto existente
@@ -436,6 +595,7 @@ class ProductsRepository {
     }
 
     final db = await AppDb.database;
+  final syncContext = await _loadSyncContext();
     final prepared = _withPlaceholderDefaults(product);
 
     _validateRequiredForSave(prepared);
@@ -466,14 +626,29 @@ class ProductsRepository {
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final productToUpdate = prepared.copyWith(updatedAtMs: now);
-
-    final updatedRows = await db.update(
-      DbTables.products,
-      productToUpdate.toMap(),
-      where: 'id = ?',
-      whereArgs: [prepared.id],
+    final productToUpdate = _withPendingSync(
+      prepared.copyWith(updatedAtMs: now),
+      context: syncContext,
+      now: now,
     );
+
+    final updatedRows = await db.transaction<int>((txn) async {
+      final rows = await txn.update(
+        DbTables.products,
+        productToUpdate.toMap(),
+        where: 'id = ?',
+        whereArgs: [prepared.id],
+      );
+      if (rows > 0) {
+        await _enqueueProductSync(
+          txn,
+          productToUpdate,
+          operationType: 'upsert',
+          highPriority: false,
+        );
+      }
+      return rows;
+    });
 
     final newImagePath = productToUpdate.imagePath;
     final oldTrimmed = oldImagePath?.trim();
@@ -490,7 +665,11 @@ class ProductsRepository {
     }
 
     if (updatedRows > 0) {
-      _triggerCloudProductsSyncSoon();
+      await _notifyLocalProductMutation(
+        productToUpdate,
+        reason: 'upsert',
+        highPriority: false,
+      );
     }
     return updatedRows;
   }
@@ -498,6 +677,7 @@ class ProductsRepository {
   /// Elimina lógicamente (soft delete) un producto
   Future<int> softDelete(int id) async {
     final db = await AppDb.database;
+    final syncContext = await _loadSyncContext();
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
@@ -517,19 +697,50 @@ class ProductsRepository {
       // Ignorar
     }
 
-    final rows = await db.update(
-      DbTables.products,
-      {'deleted_at_ms': now, 'updated_at_ms': now, 'image_path': null},
-      where: 'id = ?',
-      whereArgs: [id],
+    final existing = await getById(id);
+    if (existing == null) {
+      throw ArgumentError('Producto no encontrado');
+    }
+
+    final pendingDelete = _withPendingSync(
+      existing.copyWith(
+        deletedAtMs: now,
+        imagePath: null,
+        isActive: false,
+        updatedAtMs: now,
+      ),
+      context: syncContext,
+      now: now,
     );
+
+    final rows = await db.transaction<int>((txn) async {
+      final affected = await txn.update(
+        DbTables.products,
+        pendingDelete.toMap()..['image_path'] = null,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (affected > 0) {
+        await _enqueueProductSync(
+          txn,
+          pendingDelete,
+          operationType: 'delete',
+          highPriority: false,
+        );
+      }
+      return affected;
+    });
 
     await _deleteImageFileIfUnused(db, oldImagePath, excludeProductId: id);
     await cleanupOrphanProductImages();
     await AppDb.syncDemoCatalog(db);
 
     if (rows > 0) {
-      _triggerCloudProductsSyncSoon();
+      await _notifyLocalProductMutation(
+        pendingDelete,
+        reason: 'delete',
+        highPriority: false,
+      );
     }
     return rows;
   }
@@ -559,6 +770,7 @@ class ProductsRepository {
   /// Restaura un producto eliminado
   Future<int> restore(int id) async {
     final db = await AppDb.database;
+    final syncContext = await _loadSyncContext();
 
     final existing = await getById(id);
     if (existing == null) {
@@ -573,15 +785,35 @@ class ProductsRepository {
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-
-    final rows = await db.update(
-      DbTables.products,
-      {'deleted_at_ms': null, 'updated_at_ms': now},
-      where: 'id = ?',
-      whereArgs: [id],
+    final restored = _withPendingSync(
+      existing.copyWith(deletedAtMs: null, isActive: true, updatedAtMs: now),
+      context: syncContext,
+      now: now,
     );
+
+    final rows = await db.transaction<int>((txn) async {
+      final affected = await txn.update(
+        DbTables.products,
+        restored.toMap()..['deleted_at_ms'] = null,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (affected > 0) {
+        await _enqueueProductSync(
+          txn,
+          restored,
+          operationType: 'upsert',
+          highPriority: false,
+        );
+      }
+      return affected;
+    });
     if (rows > 0) {
-      _triggerCloudProductsSyncSoon();
+      await _notifyLocalProductMutation(
+        restored,
+        reason: 'upsert',
+        highPriority: false,
+      );
     }
     return rows;
   }
@@ -625,17 +857,42 @@ class ProductsRepository {
   /// Activa o desactiva un producto
   Future<int> toggleActive(int id, bool isActive) async {
     final db = await AppDb.database;
+    final syncContext = await _loadSyncContext();
 
     final now = DateTime.now().millisecondsSinceEpoch;
-
-    final rows = await db.update(
-      DbTables.products,
-      {'is_active': isActive ? 1 : 0, 'updated_at_ms': now},
-      where: 'id = ?',
-      whereArgs: [id],
+    final existing = await getById(id);
+    if (existing == null) {
+      throw ArgumentError('Producto no encontrado');
+    }
+    final toggled = _withPendingSync(
+      existing.copyWith(isActive: isActive, updatedAtMs: now),
+      context: syncContext,
+      now: now,
     );
+
+    final rows = await db.transaction<int>((txn) async {
+      final affected = await txn.update(
+        DbTables.products,
+        toggled.toMap(),
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (affected > 0) {
+        await _enqueueProductSync(
+          txn,
+          toggled,
+          operationType: 'status',
+          highPriority: false,
+        );
+      }
+      return affected;
+    });
     if (rows > 0) {
-      _triggerCloudProductsSyncSoon();
+      await _notifyLocalProductMutation(
+        toggled,
+        reason: 'status',
+        highPriority: false,
+      );
     }
     return rows;
   }
@@ -643,21 +900,46 @@ class ProductsRepository {
   /// Actualiza solo el stock de un producto
   Future<int> updateStock(int id, double newStock) async {
     final db = await AppDb.database;
+    final syncContext = await _loadSyncContext();
 
     if (newStock < 0) {
       throw ArgumentError('El stock no puede ser negativo');
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
-
-    final rows = await db.update(
-      DbTables.products,
-      {'stock': newStock, 'updated_at_ms': now},
-      where: 'id = ?',
-      whereArgs: [id],
+    final existing = await getById(id);
+    if (existing == null) {
+      throw ArgumentError('Producto no encontrado');
+    }
+    final updated = _withPendingSync(
+      existing.copyWith(stock: newStock, updatedAtMs: now),
+      context: syncContext,
+      now: now,
     );
+
+    final rows = await db.transaction<int>((txn) async {
+      final affected = await txn.update(
+        DbTables.products,
+        updated.toMap(),
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (affected > 0) {
+        await _enqueueProductSync(
+          txn,
+          updated,
+          operationType: 'stock',
+          highPriority: true,
+        );
+      }
+      return affected;
+    });
     if (rows > 0) {
-      _triggerCloudProductsSyncSoon();
+      await _notifyLocalProductMutation(
+        updated,
+        reason: 'stock',
+        highPriority: true,
+      );
     }
     return rows;
   }
@@ -940,6 +1222,16 @@ class ProductsRepository {
     ''');
     return rows;
   }
+}
+
+class _ProductSyncContext {
+  const _ProductSyncContext({
+    required this.businessId,
+    required this.lastModifiedBy,
+  });
+
+  final String? businessId;
+  final String lastModifiedBy;
 }
 
 class ProductsImportSummary {

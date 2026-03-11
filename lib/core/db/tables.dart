@@ -55,6 +55,8 @@ class DbTables {
   static const String auditLog = 'audit_log';
   static const String backupHistory = 'backup_history';
   static const String dangerActionsLog = 'danger_actions_log';
+  static const String syncOutbox = 'sync_outbox';
+  static const String productSyncOutbox = 'product_sync_outbox';
 
   // Futuros modulos
   static const String pawn = 'pawn';

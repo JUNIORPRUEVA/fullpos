@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/utils/app_event_bus.dart';
 import '../../../core/validation/business_rules.dart';
 import 'sales_model.dart';
@@ -407,7 +408,7 @@ class SalesRepository {
     return DbHardening.instance.runDbSafe<int>(() async {
       final db = await AppDb.database;
 
-      return await db.transaction((txn) async {
+      final createdSaleId = await db.transaction((txn) async {
         final now = DateTime.now().millisecondsSinceEpoch;
 
         final saleId = await txn.insert(DbTables.sales, {
@@ -609,6 +610,13 @@ class SalesRepository {
 
         return saleId;
       });
+
+      if (stockUpdateMode != StockUpdateMode.none) {
+        CloudSyncService.instance.scheduleProductsSyncSoon();
+      }
+      CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'sale_saved');
+
+      return createdSaleId;
     }, stage: 'save_sale_with_items');
   }
 
@@ -1104,7 +1112,7 @@ class SalesRepository {
   static Future<bool> cancelSale(int saleId, {String? reason}) async {
     final db = await AppDb.database;
 
-    return await db.transaction((txn) async {
+    final cancelled = await db.transaction((txn) async {
       final now = DateTime.now().millisecondsSinceEpoch;
 
       // Obtener la venta
@@ -1165,6 +1173,13 @@ class SalesRepository {
 
       return true;
     });
+
+    if (cancelled) {
+      CloudSyncService.instance.scheduleProductsSyncSoon();
+      CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'sale_deleted');
+    }
+
+    return cancelled;
   }
 
   static bool _isLocalCodeUniqueConstraint(DatabaseException e) {

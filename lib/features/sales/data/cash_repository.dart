@@ -1,5 +1,6 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'cash_session_model.dart';
 import 'cash_movement_model.dart';
 
@@ -14,7 +15,7 @@ class CashRepository {
     String? notes,
   }) async {
     final db = await AppDb.database;
-    
+
     // Verificar que no haya sesión abierta
     final openSessions = await getOpenSessions();
     if (openSessions.isNotEmpty) {
@@ -32,7 +33,11 @@ class CashRepository {
       note: notes,
     );
 
-    return await db.insert(DbTables.cashSessions, session.toMap());
+    final id = await db.insert(DbTables.cashSessions, session.toMap());
+    CloudSyncService.instance.scheduleCashSyncSoon(
+      reason: 'legacy_cash_session_opened',
+    );
+    return id;
   }
 
   /// Cierra la sesión actual
@@ -43,7 +48,7 @@ class CashRepository {
     String? notes,
   }) async {
     final db = await AppDb.database;
-    
+
     final session = await getById(sessionId);
     if (session == null) {
       throw Exception('Sesión no encontrada');
@@ -53,13 +58,12 @@ class CashRepository {
 
     await db.update(
       DbTables.cashSessions,
-      {
-        'closed_at_ms': now,
-        'closed_by_user_id': userId,
-        'note': notes,
-      },
+      {'closed_at_ms': now, 'closed_by_user_id': userId, 'note': notes},
       where: 'id = ?',
       whereArgs: [sessionId],
+    );
+    CloudSyncService.instance.scheduleCashSyncSoon(
+      reason: 'legacy_cash_session_closed',
     );
   }
 
@@ -83,7 +87,11 @@ class CashRepository {
       createdAtMs: now,
     );
 
-    return await db.insert(DbTables.cashMovements, movement.toMap());
+    final id = await db.insert(DbTables.cashMovements, movement.toMap());
+    CloudSyncService.instance.scheduleCashSyncSoon(
+      reason: 'legacy_cash_movement_added',
+    );
+    return id;
   }
 
   /// Obtiene la sesión actual abierta
@@ -122,10 +130,10 @@ class CashRepository {
     int limit = 50,
   }) async {
     final db = await AppDb.database;
-    
+
     String where = '1=1';
     List<dynamic> args = [];
-    
+
     if (userId != null) {
       where += ' AND opened_by_user_id = ?';
       args.add(userId);
@@ -138,7 +146,7 @@ class CashRepository {
       where += ' AND opened_at_ms <= ?';
       args.add(toDate.millisecondsSinceEpoch);
     }
-    
+
     final maps = await db.query(
       DbTables.cashSessions,
       where: where,
@@ -146,12 +154,14 @@ class CashRepository {
       orderBy: 'opened_at_ms DESC',
       limit: limit,
     );
-    
+
     return maps.map((m) => CashSessionModel.fromMap(m)).toList();
   }
 
   /// Obtiene movimientos de una sesión
-  static Future<List<CashMovementModel>> getMovementsBySession(int sessionId) async {
+  static Future<List<CashMovementModel>> getMovementsBySession(
+    int sessionId,
+  ) async {
     final db = await AppDb.database;
     final maps = await db.query(
       DbTables.cashMovements,
@@ -163,7 +173,9 @@ class CashRepository {
   }
 
   /// Calcula totales de una sesión
-  static Future<Map<String, double>> calculateSessionTotals(int sessionId) async {
+  static Future<Map<String, double>> calculateSessionTotals(
+    int sessionId,
+  ) async {
     final movements = await getMovementsBySession(sessionId);
     double totalIn = 0.0;
     double totalOut = 0.0;

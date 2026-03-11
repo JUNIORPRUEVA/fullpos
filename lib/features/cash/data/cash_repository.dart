@@ -5,6 +5,7 @@ import '../../../core/db/app_db.dart';
 import '../../../core/db/auto_repair.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import 'cash_session_model.dart';
 import 'cash_movement_model.dart';
@@ -112,6 +113,10 @@ class CashRepository {
         DbTables.cashSessions,
         session.toMap(),
         conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+
+      CloudSyncService.instance.scheduleCashSyncSoon(
+        reason: 'cash_session_opened',
       );
 
       return id;
@@ -265,6 +270,10 @@ class CashRepository {
           }
         }
       });
+
+      CloudSyncService.instance.scheduleCashSyncSoon(
+        reason: 'cash_session_closed',
+      );
     }, stage: 'cash_close_session');
   }
 
@@ -366,6 +375,10 @@ class CashRepository {
         DbTables.cashMovements,
         movement.toMap(),
         conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+
+      CloudSyncService.instance.scheduleCashSyncSoon(
+        reason: 'cash_movement_added',
       );
 
       return id;

@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../models/category_model.dart';
 
 /// Repositorio para operaciones CRUD de Categorías
@@ -58,16 +59,16 @@ class CategoriesRepository {
         where: 'id = ?',
         whereArgs: [id],
       );
+      CloudSyncService.instance.scheduleCategoriesSyncSoon(
+        reason: 'category_upsert_import',
+      );
       return id;
     }
 
     // Fallback tolerante: evitar duplicados por acentos/guiones/puntos.
     final wanted = _normalizeForMatch(trimmed);
     if (wanted.isNotEmpty) {
-      final rows = await db.query(
-        DbTables.categories,
-        columns: ['id', 'name'],
-      );
+      final rows = await db.query(DbTables.categories, columns: ['id', 'name']);
       for (final row in rows) {
         final id = row['id'] as int?;
         final name = row['name'] as String?;
@@ -84,18 +85,25 @@ class CategoriesRepository {
             where: 'id = ?',
             whereArgs: [id],
           );
+          CloudSyncService.instance.scheduleCategoriesSyncSoon(
+            reason: 'category_upsert_import',
+          );
           return id;
         }
       }
     }
 
-    return await db.insert(DbTables.categories, {
+    final id = await db.insert(DbTables.categories, {
       'name': trimmed,
       'is_active': isActive ? 1 : 0,
       'deleted_at_ms': null,
       'created_at_ms': now,
       'updated_at_ms': now,
     }, conflictAlgorithm: ConflictAlgorithm.abort);
+    CloudSyncService.instance.scheduleCategoriesSyncSoon(
+      reason: 'category_upsert_import',
+    );
+    return id;
   }
 
   /// Obtiene todas las categorías activas
@@ -182,7 +190,7 @@ class CategoriesRepository {
       updatedAtMs: now,
     );
 
-    return await db.transaction((txn) async {
+    final id = await db.transaction((txn) async {
       await AppDb.deleteDemoCategories(txn);
       await AppDb.deleteDemoProducts(txn);
       return await txn.insert(
@@ -191,6 +199,10 @@ class CategoriesRepository {
         conflictAlgorithm: ConflictAlgorithm.abort,
       );
     });
+    CloudSyncService.instance.scheduleCategoriesSyncSoon(
+      reason: 'category_created',
+    );
+    return id;
   }
 
   /// Actualiza una categoría existente
@@ -204,12 +216,18 @@ class CategoriesRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
     final categoryToUpdate = category.copyWith(updatedAtMs: now);
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.categories,
       categoryToUpdate.toMap(),
       where: 'id = ?',
       whereArgs: [category.id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleCategoriesSyncSoon(
+        reason: 'category_updated',
+      );
+    }
+    return rows;
   }
 
   /// Elimina lógicamente (soft delete) una categoría
@@ -225,6 +243,11 @@ class CategoriesRepository {
       whereArgs: [id],
     );
     await AppDb.syncDemoCatalog(db);
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleCategoriesSyncSoon(
+        reason: 'category_deleted',
+      );
+    }
     return rows;
   }
 
@@ -241,6 +264,11 @@ class CategoriesRepository {
     }, where: 'deleted_at_ms IS NULL');
 
     await AppDb.syncDemoCatalog(db);
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleCategoriesSyncSoon(
+        reason: 'category_deleted_all',
+      );
+    }
     return rows;
   }
 
@@ -250,12 +278,18 @@ class CategoriesRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.categories,
       {'deleted_at_ms': null, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleCategoriesSyncSoon(
+        reason: 'category_restored',
+      );
+    }
+    return rows;
   }
 
   /// Elimina permanentemente una categoría

@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'business_settings_model.dart';
 
 /// Repositorio para la configuración del negocio
@@ -222,6 +223,9 @@ class BusinessSettingsRepository {
       }
 
       await db.update(_tableName, filteredMap, where: 'id = ?', whereArgs: [1]);
+      CloudSyncService.instance.scheduleCompanyConfigSyncSoon(
+        reason: 'business_settings_saved',
+      );
     });
   }
 
@@ -233,6 +237,9 @@ class BusinessSettingsRepository {
         {field: value, 'updated_at': DateTime.now().toIso8601String()},
         where: 'id = ?',
         whereArgs: [1],
+      );
+      CloudSyncService.instance.scheduleCompanyConfigSyncSoon(
+        reason: 'business_settings_field_updated',
       );
     });
   }
@@ -246,5 +253,8 @@ class BusinessSettingsRepository {
   /// Resetear a valores por defecto
   Future<void> resetToDefault() async {
     await saveSettings(BusinessSettings.defaultSettings);
+    CloudSyncService.instance.scheduleCompanyConfigSyncSoon(
+      reason: 'business_settings_reset',
+    );
   }
 }

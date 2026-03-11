@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/business_settings_model.dart';
 import '../providers/business_settings_provider.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import '../../../core/sync/product_sync_service.dart';
 import 'settings_layout.dart';
 
 class CloudSettingsPage extends ConsumerStatefulWidget {
@@ -17,6 +19,8 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
   final _formKey = GlobalKey<FormState>();
   late BusinessSettings _settings;
   bool _loading = true;
+  late Future<List<Map<String, dynamic>>> _syncStatusFuture;
+  late Future<Map<String, dynamic>> _productSyncDebugFuture;
 
   @override
   void initState() {
@@ -24,6 +28,8 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final settings = ref.read(businessSettingsProvider);
       _settings = settings;
+      _syncStatusFuture = CloudSyncService.instance.readSyncStatusRows();
+      _productSyncDebugFuture = _loadProductSyncDebug();
       setState(() => _loading = false);
     });
   }
@@ -42,6 +48,44 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
         const SnackBar(content: Text('Configuración de nube guardada')),
       );
     }
+  }
+
+  Future<void> _reloadSyncStatus() async {
+    setState(() {
+      _syncStatusFuture = CloudSyncService.instance.readSyncStatusRows();
+      _productSyncDebugFuture = _loadProductSyncDebug();
+    });
+  }
+
+  Future<void> _retryFailedSyncJobs() async {
+    await CloudSyncService.instance.retryAllFailedSyncNow();
+    await ProductSyncService.instance.retryFailedNow();
+    await _reloadSyncStatus();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reintento de sincronización encolado')),
+    );
+  }
+
+  Future<Map<String, dynamic>> _loadProductSyncDebug() async {
+    final rows = await ProductSyncService.instance.readStatusRows();
+    final pendingCount = await ProductSyncService.instance.pendingCount();
+    final lastSuccessAtMs = await ProductSyncService.instance.lastSuccessAtMs();
+    final failedItems = rows
+        .where((row) => (row['status'] as String?) == 'failed')
+        .toList(growable: false);
+    return {
+      'rows': rows,
+      'pendingCount': pendingCount,
+      'lastSuccessAtMs': lastSuccessAtMs,
+      'failedItems': failedItems,
+    };
+  }
+
+  String _formatTs(int? value) {
+    if (value == null || value <= 0) return '-';
+    final date = DateTime.fromMillisecondsSinceEpoch(value);
+    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -114,6 +158,210 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
                                 _settings = _settings.copyWith(cloudEnabled: v),
                           );
                         },
+                      ),
+                      const SizedBox(height: 12),
+                      if (kDebugMode) ...[
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Debug sync de productos',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 8),
+                                ValueListenableBuilder<String>(
+                                  valueListenable:
+                                      ProductSyncService.instance.connectionState,
+                                  builder: (context, connectionState, _) {
+                                    return Text(
+                                      'WebSocket: $connectionState',
+                                      style: const TextStyle(fontSize: 12),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                FutureBuilder<Map<String, dynamic>>(
+                                  future: _productSyncDebugFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const Padding(
+                                        padding: EdgeInsets.all(8),
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    }
+
+                                    final data = snapshot.data ?? const {};
+                                    final pendingCount =
+                                        (data['pendingCount'] as int?) ?? 0;
+                                    final lastSuccessAtMs =
+                                        data['lastSuccessAtMs'] as int?;
+                                    final failedItems =
+                                        (data['failedItems'] as List?) ?? const [];
+                                    final rows =
+                                        (data['rows'] as List?) ?? const [];
+
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Pendientes en outbox: $pendingCount',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Último sync exitoso: ${_formatTs(lastSuccessAtMs)}',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Fallidos: ${failedItems.length}',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        if (rows.isEmpty)
+                                          const Text(
+                                            'No hay ítems de productos en el outbox.',
+                                            style: TextStyle(fontSize: 12),
+                                          )
+                                        else
+                                          ...rows.take(8).map((item) {
+                                            final status =
+                                                (item['status'] as String?) ??
+                                                'unknown';
+                                            final entityId =
+                                                item['entity_id']?.toString() ??
+                                                '-';
+                                            final operation =
+                                                (item['operation_type']
+                                                        as String?) ??
+                                                'n/a';
+                                            final error =
+                                                (item['last_error'] as String?) ??
+                                                '-';
+                                            return Container(
+                                              width: double.infinity,
+                                              margin: const EdgeInsets.only(
+                                                bottom: 8,
+                                              ),
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: Colors.black12,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                'Producto local: $entityId\nOperación: $operation\nEstado: $status\nError: $error',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Card(
+                        margin: EdgeInsets.zero,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Monitor de sincronización',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _reloadSyncStatus,
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Actualizar'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: _retryFailedSyncJobs,
+                                    icon: const Icon(Icons.replay),
+                                    label: const Text('Reintentar fallidos'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              FutureBuilder<List<Map<String, dynamic>>>(
+                                future: _syncStatusFuture,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Padding(
+                                      padding: EdgeInsets.all(8),
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  }
+
+                                  final rows = snapshot.data ?? const [];
+                                  if (rows.isEmpty) {
+                                    return const Text(
+                                      'No hay trabajos de sync en outbox todavía.',
+                                      style: TextStyle(fontSize: 12),
+                                    );
+                                  }
+
+                                  return Column(
+                                    children: rows.map((row) {
+                                      final target =
+                                          (row['target'] as String?) ?? 'n/a';
+                                      final status =
+                                          (row['status'] as String?) ??
+                                          'unknown';
+                                      final attempts =
+                                          (row['attempt_count'] as int?) ?? 0;
+                                      final lastError =
+                                          (row['last_error'] as String?) ?? '-';
+                                      final lastSuccess =
+                                          row['last_success_at_ms'] as int?;
+
+                                      return Container(
+                                        width: double.infinity,
+                                        margin: const EdgeInsets.only(
+                                          bottom: 8,
+                                        ),
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: Colors.black12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Tabla: $target\nEstado: $status\nIntentos: $attempts\nÚltimo éxito: ${_formatTs(lastSuccess)}\nÚltimo error: $lastError',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Card(

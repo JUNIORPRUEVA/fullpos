@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart';
 import '../db/app_db.dart';
 import '../db/tables.dart';
 import '../network/api_client.dart';
+import '../sync/sync_outbox_repository.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/products/data/products_repository.dart';
@@ -23,14 +24,38 @@ import '../logging/app_logger.dart';
 import '../storage/prefs_safe.dart';
 import '../theme/app_themes.dart';
 
+enum CloudSyncTarget {
+  users('users'),
+  companyConfig('company_config'),
+  clients('clients'),
+  categories('categories'),
+  suppliers('suppliers'),
+  products('products'),
+  sales('sales'),
+  cash('cash'),
+  quotes('quotes');
+
+  const CloudSyncTarget(this.value);
+  final String value;
+
+  static CloudSyncTarget? tryParse(String value) {
+    for (final target in CloudSyncTarget.values) {
+      if (target.value == value) return target;
+    }
+    return null;
+  }
+}
+
 class CloudSyncService {
   CloudSyncService._();
 
   static final CloudSyncService instance = CloudSyncService._();
 
-  Timer? _productsSyncDebounce;
-  bool _productsSyncRunning = false;
-  bool _productsSyncPending = false;
+  final SyncOutboxRepository _outbox = SyncOutboxRepository();
+  Timer? _outboxDispatchDebounce;
+  Timer? _outboxPollingTimer;
+  bool _outboxRunning = false;
+  bool _engineStarted = false;
 
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
   ///
@@ -42,27 +67,208 @@ class CloudSyncService {
   static const int _historyDaysToSync = 90;
   static const int _chunkSize = 200;
 
-  void scheduleProductsSyncSoon({
-    Duration delay = const Duration(milliseconds: 1200),
+  void startRealtimeSyncEngine() {
+    if (_engineStarted) return;
+    _engineStarted = true;
+
+    _outboxPollingTimer?.cancel();
+    _outboxPollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      unawaited(_drainOutbox());
+    });
+    unawaited(_drainOutbox());
+  }
+
+  void scheduleUsersSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'users_changed',
   }) {
-    _productsSyncPending = true;
-    _productsSyncDebounce?.cancel();
-    _productsSyncDebounce = Timer(delay, () {
-      _productsSyncDebounce = null;
-      unawaited(_runScheduledProductsSync());
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.users, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleCompanyConfigSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'company_config_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(
+        CloudSyncTarget.companyConfig,
+        delay: delay,
+        reason: reason,
+      ),
+    );
+  }
+
+  void scheduleClientsSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'clients_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.clients, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleCategoriesSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'categories_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.categories, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleSuppliersSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'suppliers_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.suppliers, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleProductsSyncSoon({
+    Duration delay = const Duration(milliseconds: 800),
+    String reason = 'products_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.products, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleSalesSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'sales_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.sales, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleCashSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'cash_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.cash, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleQuotesSyncSoon({
+    Duration delay = const Duration(milliseconds: 600),
+    String reason = 'quotes_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.quotes, delay: delay, reason: reason),
+    );
+  }
+
+  Future<void> retryAllFailedSyncNow() async {
+    await _outbox.retryAllFailedNow();
+    _kickOutboxDispatcher();
+  }
+
+  Future<List<Map<String, dynamic>>> readSyncStatusRows() {
+    return _outbox.listStatusRows();
+  }
+
+  Future<void> _enqueueTarget(
+    CloudSyncTarget target, {
+    required Duration delay,
+    required String reason,
+  }) async {
+    await _outbox.enqueue(target: target.value, reason: reason, delay: delay);
+    await AppLogger.instance.logInfo(
+      'Sync job queued target=${target.value} reason=$reason delayMs=${delay.inMilliseconds}',
+      module: 'cloud_sync',
+    );
+    _kickOutboxDispatcher();
+  }
+
+  void _kickOutboxDispatcher() {
+    _outboxDispatchDebounce?.cancel();
+    _outboxDispatchDebounce = Timer(const Duration(milliseconds: 250), () {
+      _outboxDispatchDebounce = null;
+      unawaited(_drainOutbox());
     });
   }
 
-  Future<void> _runScheduledProductsSync() async {
-    if (_productsSyncRunning) return;
-    _productsSyncRunning = true;
+  Future<void> _drainOutbox() async {
+    if (_outboxRunning) return;
+    _outboxRunning = true;
     try {
-      while (_productsSyncPending) {
-        _productsSyncPending = false;
-        await syncProductsIfEnabled();
+      while (true) {
+        final dueTargets = await _outbox.listDueTargets(limit: 8);
+        if (dueTargets.isEmpty) break;
+
+        for (final rawTarget in dueTargets) {
+          final target = CloudSyncTarget.tryParse(rawTarget);
+          if (target == null) continue;
+
+          await _outbox.markSyncing(target.value);
+          final startedAt = DateTime.now().millisecondsSinceEpoch;
+          await AppLogger.instance.logInfo(
+            'Sync started target=${target.value}',
+            module: 'cloud_sync',
+          );
+
+          final success = await _runTargetSync(target);
+          final duration = DateTime.now().millisecondsSinceEpoch - startedAt;
+
+          if (success) {
+            await _outbox.markSuccess(target.value, durationMs: duration);
+            await AppLogger.instance.logInfo(
+              'Sync success target=${target.value} durationMs=$duration',
+              module: 'cloud_sync',
+            );
+            continue;
+          }
+
+          final attempts = (await _outbox.getAttemptCount(target.value)) + 1;
+          final retryDelay = _retryDelayForAttempt(attempts);
+          await _outbox.markFailure(
+            target.value,
+            error: 'sync_failed',
+            attemptCount: attempts,
+            retryDelay: retryDelay,
+          );
+          await AppLogger.instance.logWarn(
+            'Sync failed target=${target.value} attempts=$attempts retryInMs=${retryDelay.inMilliseconds}',
+            module: 'cloud_sync',
+          );
+        }
       }
     } finally {
-      _productsSyncRunning = false;
+      _outboxRunning = false;
+    }
+  }
+
+  Duration _retryDelayForAttempt(int attempts) {
+    final safe = attempts < 1 ? 1 : attempts;
+    final seconds = min(300, 1 << min(8, safe));
+    return Duration(seconds: seconds);
+  }
+
+  Future<bool> _runTargetSync(CloudSyncTarget target) {
+    switch (target) {
+      case CloudSyncTarget.users:
+        return syncUsersIfEnabled(force: true);
+      case CloudSyncTarget.companyConfig:
+        return syncCompanyConfigIfEnabled();
+      case CloudSyncTarget.clients:
+        return syncClientsIfEnabled();
+      case CloudSyncTarget.categories:
+        return syncCategoriesIfEnabled();
+      case CloudSyncTarget.suppliers:
+        return syncSuppliersIfEnabled();
+      case CloudSyncTarget.products:
+        return syncProductsIfEnabled();
+      case CloudSyncTarget.sales:
+        return syncSalesIfEnabled();
+      case CloudSyncTarget.cash:
+        return syncCashIfEnabled();
+      case CloudSyncTarget.quotes:
+        return syncQuotesIfEnabled();
     }
   }
 
@@ -123,26 +329,26 @@ class CloudSyncService {
     }
   }
 
-  Future<void> syncUsersIfEnabled({bool force = false}) async {
+  Future<bool> syncUsersIfEnabled({bool force = false}) async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return;
+      if (!settings.cloudEnabled) return true;
 
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return;
+        return false;
       }
 
       final prefs = await PrefsSafe.getInstance();
-      if (prefs == null) return;
+      if (prefs == null) return false;
       final key = _syncKeyForCompany(rnc: rnc, cloudCompanyId: cloudCompanyId);
       final now = DateTime.now().millisecondsSinceEpoch;
       final last = prefs.getInt(key);
       if (!force &&
           last != null &&
           (now - last) < const Duration(minutes: 1).inMilliseconds) {
-        return;
+        return true;
       }
 
       final baseUrl = _resolveBaseUrl(settings);
@@ -216,7 +422,7 @@ class CloudSyncService {
 
       if (users.isEmpty) {
         await prefs.setInt(key, now);
-        return;
+        return true;
       }
 
       await AppLogger.instance.logInfo(
@@ -250,7 +456,7 @@ class CloudSyncService {
           'Cloud users sync failed status=${response.statusCode} body=$body',
           module: 'cloud_sync',
         );
-        return;
+        return false;
       }
 
       await prefs.setInt(key, now);
@@ -258,11 +464,13 @@ class CloudSyncService {
         'Cloud users sync ok count=${users.length}',
         module: 'cloud_sync',
       );
+      return true;
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud users sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+      return false;
     }
   }
 
@@ -402,14 +610,14 @@ class CloudSyncService {
     }
   }
 
-  Future<void> syncCompanyConfigIfEnabled() async {
+  Future<bool> syncCompanyConfigIfEnabled() async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return;
+      if (!settings.cloudEnabled) return true;
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return;
+        return false;
       }
 
       final baseUrl = _resolveBaseUrl(settings);
@@ -438,26 +646,28 @@ class CloudSyncService {
           'Cloud company config sync failed status=${response.statusCode} baseUrl=$baseUrl body=$body',
           module: 'cloud_sync',
         );
-        return;
+        return false;
       }
 
       await AppLogger.instance.logInfo('Cloud sync ok', module: 'cloud_sync');
+      return true;
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+      return false;
     }
   }
 
-  Future<void> syncProductsIfEnabled() async {
+  Future<bool> syncProductsIfEnabled() async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return;
+      if (!settings.cloudEnabled) return true;
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return;
+        return false;
       }
 
       final baseUrl = _resolveBaseUrl(settings);
@@ -592,29 +802,281 @@ class CloudSyncService {
           'Cloud products sync failed status=${response.statusCode} baseUrl=$baseUrl body=$body',
           module: 'cloud_sync',
         );
-        return;
+        return false;
       }
 
       await AppLogger.instance.logInfo(
         'Cloud products sync ok',
         module: 'cloud_sync',
       );
+      return true;
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud products sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+      return false;
     }
   }
 
-  Future<void> syncSalesIfEnabled() async {
+  Future<bool> syncClientsIfEnabled() async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return;
+      if (!settings.cloudEnabled) return true;
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return;
+        return false;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final db = await AppDb.database;
+      final rows = await db.query(
+        DbTables.clients,
+        orderBy: 'updated_at_ms ASC',
+      );
+      final payloadClients = rows
+          .map(
+            (c) => {
+              'localId': c['id'],
+              'nombre': (c['nombre'] as String?) ?? '',
+              'telefono': c['telefono'] as String?,
+              'direccion': c['direccion'] as String?,
+              'rnc': c['rnc'] as String?,
+              'cedula': c['cedula'] as String?,
+              'isActive': ((c['is_active'] as int?) ?? 1) == 1,
+              'hasCredit': ((c['has_credit'] as int?) ?? 0) == 1,
+              'updatedAt': DateTime.fromMillisecondsSinceEpoch(
+                (c['updated_at_ms'] as int?) ??
+                    DateTime.now().millisecondsSinceEpoch,
+              ).toUtc().toIso8601String(),
+              if ((c['created_at_ms'] as int?) != null)
+                'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                  c['created_at_ms'] as int,
+                ).toUtc().toIso8601String(),
+              if ((c['deleted_at_ms'] as int?) != null)
+                'deletedAt': DateTime.fromMillisecondsSinceEpoch(
+                  c['deleted_at_ms'] as int,
+                ).toUtc().toIso8601String(),
+            },
+          )
+          .toList(growable: false);
+
+      final payload = {
+        if (rnc.isNotEmpty) 'companyRnc': rnc,
+        if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+          'companyCloudId': cloudCompanyId,
+        'clients': payloadClients,
+      };
+
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/clients/sync/by-rnc',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 15),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await AppLogger.instance.logWarn(
+          'Cloud clients sync failed status=${response.statusCode}',
+          module: 'cloud_sync',
+        );
+        return false;
+      }
+
+      await AppLogger.instance.logInfo(
+        'Cloud clients sync ok',
+        module: 'cloud_sync',
+      );
+      return true;
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud clients sync error: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> syncCategoriesIfEnabled() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return true;
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return false;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final db = await AppDb.database;
+      final rows = await db.query(
+        DbTables.categories,
+        orderBy: 'updated_at_ms ASC',
+      );
+      final payloadCategories = rows
+          .map(
+            (c) => {
+              'localId': c['id'],
+              'name': (c['name'] as String?) ?? '',
+              'isActive': ((c['is_active'] as int?) ?? 1) == 1,
+              'updatedAt': DateTime.fromMillisecondsSinceEpoch(
+                (c['updated_at_ms'] as int?) ??
+                    DateTime.now().millisecondsSinceEpoch,
+              ).toUtc().toIso8601String(),
+              if ((c['created_at_ms'] as int?) != null)
+                'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                  c['created_at_ms'] as int,
+                ).toUtc().toIso8601String(),
+              if ((c['deleted_at_ms'] as int?) != null)
+                'deletedAt': DateTime.fromMillisecondsSinceEpoch(
+                  c['deleted_at_ms'] as int,
+                ).toUtc().toIso8601String(),
+            },
+          )
+          .toList(growable: false);
+
+      final payload = {
+        if (rnc.isNotEmpty) 'companyRnc': rnc,
+        if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+          'companyCloudId': cloudCompanyId,
+        'categories': payloadCategories,
+      };
+
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/categories/sync/by-rnc',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 15),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await AppLogger.instance.logWarn(
+          'Cloud categories sync failed status=${response.statusCode}',
+          module: 'cloud_sync',
+        );
+        return false;
+      }
+
+      await AppLogger.instance.logInfo(
+        'Cloud categories sync ok',
+        module: 'cloud_sync',
+      );
+      return true;
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud categories sync error: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> syncSuppliersIfEnabled() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return true;
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return false;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final db = await AppDb.database;
+      final rows = await db.query(
+        DbTables.suppliers,
+        orderBy: 'updated_at_ms ASC',
+      );
+      final payloadSuppliers = rows
+          .map(
+            (s) => {
+              'localId': s['id'],
+              'name': (s['name'] as String?) ?? '',
+              'phone': s['phone'] as String?,
+              'note': s['note'] as String?,
+              'isActive': ((s['is_active'] as int?) ?? 1) == 1,
+              'updatedAt': DateTime.fromMillisecondsSinceEpoch(
+                (s['updated_at_ms'] as int?) ??
+                    DateTime.now().millisecondsSinceEpoch,
+              ).toUtc().toIso8601String(),
+              if ((s['created_at_ms'] as int?) != null)
+                'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                  s['created_at_ms'] as int,
+                ).toUtc().toIso8601String(),
+              if ((s['deleted_at_ms'] as int?) != null)
+                'deletedAt': DateTime.fromMillisecondsSinceEpoch(
+                  s['deleted_at_ms'] as int,
+                ).toUtc().toIso8601String(),
+            },
+          )
+          .toList(growable: false);
+
+      final payload = {
+        if (rnc.isNotEmpty) 'companyRnc': rnc,
+        if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+          'companyCloudId': cloudCompanyId,
+        'suppliers': payloadSuppliers,
+      };
+
+      final api = ApiClient(baseUrl: baseUrl);
+      final response = await api.postJson(
+        '/api/suppliers/sync/by-rnc',
+        headers: headers,
+        body: payload,
+        timeout: const Duration(seconds: 15),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await AppLogger.instance.logWarn(
+          'Cloud suppliers sync failed status=${response.statusCode}',
+          module: 'cloud_sync',
+        );
+        return false;
+      }
+
+      await AppLogger.instance.logInfo(
+        'Cloud suppliers sync ok',
+        module: 'cloud_sync',
+      );
+      return true;
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud suppliers sync error: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> syncSalesIfEnabled() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return true;
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return false;
       }
 
       final baseUrl = _resolveBaseUrl(settings);
@@ -737,7 +1199,7 @@ class CloudSyncService {
             'Cloud sales sync failed status=${response.statusCode}',
             module: 'cloud_sync',
           );
-          return;
+          return false;
         }
       }
 
@@ -745,22 +1207,24 @@ class CloudSyncService {
         'Cloud sales sync ok',
         module: 'cloud_sync',
       );
+      return true;
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud sales sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+      return false;
     }
   }
 
-  Future<void> syncCashIfEnabled() async {
+  Future<bool> syncCashIfEnabled() async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return;
+      if (!settings.cloudEnabled) return true;
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return;
+        return false;
       }
 
       final baseUrl = _resolveBaseUrl(settings);
@@ -850,29 +1314,31 @@ class CloudSyncService {
           'Cloud cash sync failed status=${response.statusCode}',
           module: 'cloud_sync',
         );
-        return;
+        return false;
       }
 
       await AppLogger.instance.logInfo(
         'Cloud cash sync ok',
         module: 'cloud_sync',
       );
+      return true;
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud cash sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+      return false;
     }
   }
 
-  Future<void> syncQuotesIfEnabled() async {
+  Future<bool> syncQuotesIfEnabled() async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
-      if (!settings.cloudEnabled) return;
+      if (!settings.cloudEnabled) return true;
       final rnc = settings.rnc?.trim() ?? '';
       final cloudCompanyId = await _ensureCloudCompanyId(settings);
       if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
-        return;
+        return false;
       }
 
       final baseUrl = _resolveBaseUrl(settings);
@@ -977,7 +1443,7 @@ class CloudSyncService {
             'Cloud quotes sync failed status=${response.statusCode}',
             module: 'cloud_sync',
           );
-          return;
+          return false;
         }
       }
 
@@ -985,11 +1451,13 @@ class CloudSyncService {
         'Cloud quotes sync ok',
         module: 'cloud_sync',
       );
+      return true;
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud quotes sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
+      return false;
     }
   }
 

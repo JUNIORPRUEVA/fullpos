@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../utils/phone_validator.dart';
 import 'client_model.dart';
 
@@ -95,6 +96,10 @@ class ClientsRepository {
             whereArgs: [existingClient.id],
           );
 
+          CloudSyncService.instance.scheduleClientsSyncSoon(
+            reason: 'client_restored_on_create',
+          );
+
           return existingClient.id!;
         }
 
@@ -120,11 +125,13 @@ class ClientsRepository {
       updatedAtMs: updatedAt,
     );
 
-    return await db.insert(
+    final id = await db.insert(
       DbTables.clients,
       clientData.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    CloudSyncService.instance.scheduleClientsSyncSoon(reason: 'client_created');
+    return id;
   }
 
   /// Actualiza un cliente existente
@@ -157,12 +164,18 @@ class ClientsRepository {
       updatedAtMs: now,
     );
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.clients,
       clientData.toMap(),
       where: 'id = ?',
       whereArgs: [client.id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleClientsSyncSoon(
+        reason: 'client_updated',
+      );
+    }
+    return rows;
   }
 
   /// Elimina un cliente (soft delete)
@@ -170,12 +183,18 @@ class ClientsRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.clients,
       {'deleted_at_ms': now, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleClientsSyncSoon(
+        reason: 'client_deleted',
+      );
+    }
+    return rows;
   }
 
   /// Restaura un cliente eliminado
@@ -183,12 +202,18 @@ class ClientsRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.clients,
       {'deleted_at_ms': null, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleClientsSyncSoon(
+        reason: 'client_restored',
+      );
+    }
+    return rows;
   }
 
   /// Cambia el estado activo de un cliente
@@ -196,12 +221,18 @@ class ClientsRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.clients,
       {'is_active': value ? 1 : 0, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleClientsSyncSoon(
+        reason: 'client_active_toggled',
+      );
+    }
+    return rows;
   }
 
   /// Cambia el estado de crédito de un cliente
@@ -209,12 +240,18 @@ class ClientsRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.clients,
       {'has_credit': value ? 1 : 0, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleClientsSyncSoon(
+        reason: 'client_credit_toggled',
+      );
+    }
+    return rows;
   }
 
   /// Obtiene todos los clientes

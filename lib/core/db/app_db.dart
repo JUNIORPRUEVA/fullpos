@@ -42,7 +42,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 31;
+  static const int _dbVersion = 33;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -747,6 +747,7 @@ class AppDb {
       DbTables.auditLog,
       DbTables.backupHistory,
       DbTables.dangerActionsLog,
+      DbTables.syncOutbox,
       DbTables.pawn,
       DbTables.services,
     ];
@@ -1991,6 +1992,82 @@ class AppDb {
       // - Guardar snapshots (código/nombre) en el detalle.
       await _migratePurchaseOrderItemsToSnapshots(db);
     }
+
+    if (oldVersion < 32) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ${DbTables.syncOutbox} (
+          target TEXT PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'pending',
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at_ms INTEGER NOT NULL DEFAULT 0,
+          last_attempt_at_ms INTEGER,
+          last_success_at_ms INTEGER,
+          last_error TEXT,
+          reason TEXT,
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          last_duration_ms INTEGER
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_sync_outbox_status_next
+        ON ${DbTables.syncOutbox}(status, next_attempt_at_ms)
+      ''');
+    }
+
+    if (oldVersion < 33) {
+      await _addColumnIfMissing(db, DbTables.products, 'business_id', 'TEXT');
+      await _addColumnIfMissing(db, DbTables.products, 'server_id', 'INTEGER');
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'sync_status',
+        "TEXT NOT NULL DEFAULT 'synced'",
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'local_updated_at_ms',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'server_updated_at_ms',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'version',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'last_modified_by',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'last_sync_error',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'needs_sync',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'last_synced_at_ms',
+        'INTEGER',
+      );
+      await _ensureProductSyncOutboxTable(db);
+    }
   }
 
   static Future<void> _migratePurchaseOrderItemsToSnapshots(
@@ -2543,6 +2620,8 @@ class AppDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT NOT NULL,
         name TEXT NOT NULL,
+        business_id TEXT,
+        server_id INTEGER,
         image_path TEXT,
         image_url TEXT,
         placeholder_color_hex TEXT,
@@ -2555,6 +2634,14 @@ class AppDb {
         reserved_stock REAL NOT NULL DEFAULT 0.0,
         stock_min REAL NOT NULL DEFAULT 0.0,
         is_active INTEGER NOT NULL DEFAULT 1,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        local_updated_at_ms INTEGER NOT NULL DEFAULT 0,
+        server_updated_at_ms INTEGER,
+        version INTEGER NOT NULL DEFAULT 0,
+        last_modified_by TEXT,
+        last_sync_error TEXT,
+        needs_sync INTEGER NOT NULL DEFAULT 0,
+        last_synced_at_ms INTEGER,
         deleted_at_ms INTEGER,
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
@@ -2582,6 +2669,10 @@ class AppDb {
     await db.execute('''
       CREATE INDEX idx_products_is_active 
       ON ${DbTables.products}(is_active)
+    ''');
+    await db.execute('''
+      CREATE INDEX idx_products_server_id
+      ON ${DbTables.products}(server_id)
     ''');
 
     // Movimientos de stock
@@ -3217,6 +3308,7 @@ class AppDb {
 
     await _ensureSecurityTables(db);
     await _ensureBackupTables(db);
+    await _ensureProductSyncOutboxTable(db);
   }
 
   static Future<void> _ensureSecurityTables(DatabaseExecutor db) async {
@@ -3404,6 +3496,53 @@ class AppDb {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_danger_actions_empresa
       ON ${DbTables.dangerActionsLog}(empresa_id, created_at)
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${DbTables.syncOutbox} (
+        target TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at_ms INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at_ms INTEGER,
+        last_success_at_ms INTEGER,
+        last_error TEXT,
+        reason TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        last_duration_ms INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sync_outbox_status_next
+      ON ${DbTables.syncOutbox}(status, next_attempt_at_ms)
+    ''');
+  }
+
+  static Future<void> _ensureProductSyncOutboxTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${DbTables.productSyncOutbox} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        operation_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        priority INTEGER NOT NULL DEFAULT 0,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at_ms INTEGER NOT NULL DEFAULT 0,
+        locked_at_ms INTEGER,
+        last_attempt_at_ms INTEGER,
+        last_success_at_ms INTEGER,
+        last_error TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        UNIQUE(entity_type, entity_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_product_sync_outbox_status_next
+      ON ${DbTables.productSyncOutbox}(status, priority DESC, next_attempt_at_ms)
     ''');
   }
 
@@ -4555,6 +4694,8 @@ class AppDb {
 
     // products
     if (await _tableExists(db, DbTables.products)) {
+      await _addColumnIfMissing(db, DbTables.products, 'business_id', 'TEXT');
+      await _addColumnIfMissing(db, DbTables.products, 'server_id', 'INTEGER');
       await _addColumnIfMissing(db, DbTables.products, 'image_path', 'TEXT');
       await _addColumnIfMissing(db, DbTables.products, 'image_url', 'TEXT');
       await _addColumnIfMissing(
@@ -4575,7 +4716,61 @@ class AppDb {
         'placeholder_type',
         "TEXT NOT NULL DEFAULT 'image'",
       );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'sync_status',
+        "TEXT NOT NULL DEFAULT 'synced'",
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'local_updated_at_ms',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'server_updated_at_ms',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'version',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'last_modified_by',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'last_sync_error',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'needs_sync',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'last_synced_at_ms',
+        'INTEGER',
+      );
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_products_server_id
+        ON ${DbTables.products}(server_id)
+      ''');
     }
+
+    await _ensureProductSyncOutboxTable(db);
 
     // pos_tickets (tickets pendientes)
     if (await _tableExists(db, DbTables.posTickets)) {

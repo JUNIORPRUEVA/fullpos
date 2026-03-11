@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import '../../models/product_model.dart';
 import '../../models/stock_movement_model.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../settings/data/user_model.dart';
+import '../../../../core/sync/product_sync_event_bus.dart';
 import '../../../../theme/app_colors.dart';
 import '../dialogs/product_details_dialog.dart';
 import '../dialogs/stock_adjust_dialog.dart';
@@ -26,6 +28,8 @@ class InventoryTab extends StatefulWidget {
 class _InventoryTabState extends State<InventoryTab> {
   final ProductsRepository _productsRepo = ProductsRepository();
   final StockRepository _stockRepo = StockRepository();
+  Timer? _syncRefreshDebounce;
+  StreamSubscription<ProductSyncChange>? _syncSubscription;
 
   bool _isLoading = false;
   bool _isAdmin = false;
@@ -47,10 +51,24 @@ class _InventoryTabState extends State<InventoryTab> {
   @override
   void initState() {
     super.initState();
+    _syncSubscription = ProductSyncEventBus.instance.stream.listen((_) {
+      _syncRefreshDebounce?.cancel();
+      _syncRefreshDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _loadInventoryData,
+      );
+    });
     Future.microtask(() async {
       await _loadPermissions();
       await _loadInventoryData();
     });
+  }
+
+  @override
+  void dispose() {
+    _syncRefreshDebounce?.cancel();
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadPermissions() async {

@@ -1,10 +1,14 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'quote_model.dart';
 import 'package:sqflite/sqflite.dart';
 
 class QuotesRepository {
-  Future<Set<String>> _getTableColumns(DatabaseExecutor executor, String table) async {
+  Future<Set<String>> _getTableColumns(
+    DatabaseExecutor executor,
+    String table,
+  ) async {
     final info = await executor.rawQuery('PRAGMA table_info($table)');
     return info.map((row) => row['name']).whereType<String>().toSet();
   }
@@ -54,7 +58,7 @@ class QuotesRepository {
     final database = await AppDb.database;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    return await database.transaction((txn) async {
+    final quoteId = await database.transaction((txn) async {
       // Insertar quote
       final quoteId = await txn.insert(DbTables.quotes, {
         'client_id': clientId,
@@ -85,6 +89,9 @@ class QuotesRepository {
 
       return quoteId;
     });
+
+    CloudSyncService.instance.scheduleQuotesSyncSoon(reason: 'quote_created');
+    return quoteId;
   }
 
   /// Lista todas las cotizaciones con datos del cliente
@@ -194,6 +201,9 @@ class QuotesRepository {
       where: 'id = ?',
       whereArgs: [quoteId],
     );
+    CloudSyncService.instance.scheduleQuotesSyncSoon(
+      reason: 'quote_status_updated',
+    );
   }
 
   /// Elimina una cotización (CASCADE borrará items automáticamente)
@@ -204,6 +214,7 @@ class QuotesRepository {
       where: 'id = ?',
       whereArgs: [quoteId],
     );
+    CloudSyncService.instance.scheduleQuotesSyncSoon(reason: 'quote_deleted');
   }
 
   /// Duplica una cotización con todos sus items
@@ -213,7 +224,7 @@ class QuotesRepository {
     if (original == null) throw Exception('Cotización no encontrada');
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    return await database.transaction((txn) async {
+    final newQuoteId = await database.transaction((txn) async {
       // Crear nueva cotización basada en la original
       final newQuoteId = await txn.insert(DbTables.quotes, {
         'client_id': original.quote.clientId,
@@ -244,6 +255,11 @@ class QuotesRepository {
 
       return newQuoteId;
     });
+
+    CloudSyncService.instance.scheduleQuotesSyncSoon(
+      reason: 'quote_duplicated',
+    );
+    return newQuoteId;
   }
 
   /// Actualiza una cotización existente
@@ -293,7 +309,10 @@ class QuotesRepository {
         );
 
         // Insertar nuevos items
-        final quoteItemColumns = await _getTableColumns(txn, DbTables.quoteItems);
+        final quoteItemColumns = await _getTableColumns(
+          txn,
+          DbTables.quoteItems,
+        );
         for (var item in items) {
           await _insertQuoteItem(
             txn,
@@ -304,5 +323,7 @@ class QuotesRepository {
         }
       }
     });
+
+    CloudSyncService.instance.scheduleQuotesSyncSoon(reason: 'quote_updated');
   }
 }

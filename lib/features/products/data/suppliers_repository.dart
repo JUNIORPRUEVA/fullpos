@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../models/supplier_model.dart';
 
 /// Repositorio para operaciones CRUD de Suplidores
@@ -65,6 +66,9 @@ class SuppliersRepository {
         where: 'id = ?',
         whereArgs: [id],
       );
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        reason: 'supplier_upsert_import',
+      );
       return id;
     }
 
@@ -94,12 +98,15 @@ class SuppliersRepository {
             where: 'id = ?',
             whereArgs: [id],
           );
+          CloudSyncService.instance.scheduleSuppliersSyncSoon(
+            reason: 'supplier_upsert_import',
+          );
           return id;
         }
       }
     }
 
-    return await db.insert(DbTables.suppliers, {
+    final id = await db.insert(DbTables.suppliers, {
       'name': trimmed,
       'phone': (normalizedPhone?.isNotEmpty ?? false) ? normalizedPhone : null,
       'note': (normalizedNote?.isNotEmpty ?? false) ? normalizedNote : null,
@@ -108,6 +115,10 @@ class SuppliersRepository {
       'created_at_ms': now,
       'updated_at_ms': now,
     }, conflictAlgorithm: ConflictAlgorithm.abort);
+    CloudSyncService.instance.scheduleSuppliersSyncSoon(
+      reason: 'supplier_upsert_import',
+    );
+    return id;
   }
 
   /// Obtiene todos los suplidores
@@ -194,11 +205,15 @@ class SuppliersRepository {
       updatedAtMs: now,
     );
 
-    return await db.insert(
+    final id = await db.insert(
       DbTables.suppliers,
       supplierToInsert.toMap(),
       conflictAlgorithm: ConflictAlgorithm.abort,
     );
+    CloudSyncService.instance.scheduleSuppliersSyncSoon(
+      reason: 'supplier_created',
+    );
+    return id;
   }
 
   /// Actualiza un suplidor existente
@@ -212,12 +227,18 @@ class SuppliersRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
     final supplierToUpdate = supplier.copyWith(updatedAtMs: now);
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.suppliers,
       supplierToUpdate.toMap(),
       where: 'id = ?',
       whereArgs: [supplier.id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        reason: 'supplier_updated',
+      );
+    }
+    return rows;
   }
 
   /// Elimina lógicamente (soft delete) un suplidor
@@ -226,12 +247,18 @@ class SuppliersRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.suppliers,
       {'deleted_at_ms': now, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        reason: 'supplier_deleted',
+      );
+    }
+    return rows;
   }
 
   /// Restaura un suplidor eliminado
@@ -240,23 +267,35 @@ class SuppliersRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.suppliers,
       {'deleted_at_ms': null, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        reason: 'supplier_restored',
+      );
+    }
+    return rows;
   }
 
   /// Elimina permanentemente un suplidor
   Future<int> hardDelete(int id) async {
     final db = await AppDb.database;
 
-    return await db.delete(
+    final rows = await db.delete(
       DbTables.suppliers,
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        reason: 'supplier_hard_deleted',
+      );
+    }
+    return rows;
   }
 
   /// Activa o desactiva un suplidor
@@ -265,12 +304,18 @@ class SuppliersRepository {
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    return await db.update(
+    final rows = await db.update(
       DbTables.suppliers,
       {'is_active': isActive ? 1 : 0, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (rows > 0) {
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        reason: 'supplier_active_toggled',
+      );
+    }
+    return rows;
   }
 
   /// Cuenta los suplidores

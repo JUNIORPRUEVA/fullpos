@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../data/cash_model.dart';
 
@@ -17,15 +18,12 @@ class CashBoxRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
     final resolvedUserId = userId ?? await SessionManager.userId() ?? 1;
 
-    final id = await db.insert(
-      DbTables.cashSessions,
-      {
-        'opened_by_user_id': resolvedUserId,
-        'opened_at_ms': now,
-        'initial_amount': openingBalance,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final id = await db.insert(DbTables.cashSessions, {
+      'opened_by_user_id': resolvedUserId,
+      'opened_at_ms': now,
+      'initial_amount': openingBalance,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    CloudSyncService.instance.scheduleCashSyncSoon(reason: 'cash_box_opened');
 
     final cashBox = CashBoxModel(
       id: id,
@@ -91,19 +89,15 @@ class CashBoxRepository {
 
     await db.update(
       DbTables.cashSessions,
-      {
-        'closed_at_ms': now,
-        'note': notes,
-      },
+      {'closed_at_ms': now, 'note': notes},
       where: 'id = ?',
       whereArgs: [cashBoxId],
     );
+    CloudSyncService.instance.scheduleCashSyncSoon(reason: 'cash_box_closed');
   }
 
   /// Obtener historial de cajas (últimas N cajas cerradas)
-  static Future<List<CashBoxModel>> getCashBoxHistory({
-    int limit = 50,
-  }) async {
+  static Future<List<CashBoxModel>> getCashBoxHistory({int limit = 50}) async {
     final db = await AppDb.database;
     final userId = await SessionManager.userId();
 

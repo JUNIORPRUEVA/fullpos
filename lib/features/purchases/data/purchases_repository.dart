@@ -1,5 +1,6 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../products/models/stock_movement_model.dart';
 import 'purchase_order_models.dart';
 import 'package:sqflite/sqflite.dart';
@@ -165,6 +166,8 @@ class PurchasesRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
+    var touchedProducts = false;
+
     await db.transaction((txn) async {
       final orderRows = await txn.query(
         DbTables.purchaseOrders,
@@ -216,6 +219,7 @@ class PurchasesRepository {
           where: 'id = ?',
           whereArgs: [productId],
         );
+        touchedProducts = true;
 
         await txn.insert(DbTables.stockMovements, {
           'product_id': productId,
@@ -243,6 +247,10 @@ class PurchasesRepository {
         whereArgs: [orderId],
       );
     });
+
+    if (touchedProducts) {
+      CloudSyncService.instance.scheduleProductsSyncSoon();
+    }
   }
 
   /// Actualiza una orden PENDIENTE (cabecera + detalle). No modifica inventario.
@@ -354,6 +362,8 @@ class PurchasesRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
+    var touchedProducts = false;
+
     await db.transaction((txn) async {
       final orderRows = await txn.query(
         DbTables.purchaseOrders,
@@ -443,6 +453,7 @@ class PurchasesRepository {
         where: 'id = ?',
         whereArgs: [productId],
       );
+      touchedProducts = true;
 
       await txn.insert(DbTables.stockMovements, {
         'product_id': productId,
@@ -487,6 +498,10 @@ class PurchasesRepository {
         );
       }
     });
+
+    if (touchedProducts) {
+      CloudSyncService.instance.scheduleProductsSyncSoon();
+    }
   }
 
   /// Vincula un producto existente a un ítem de orden de compra.
@@ -559,6 +574,8 @@ class PurchasesRepository {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
+    var touchedProducts = false;
+
     await db.transaction((txn) async {
       final orderRows = await txn.query(
         DbTables.purchaseOrders,
@@ -626,6 +643,7 @@ class PurchasesRepository {
               where: 'id = ?',
               whereArgs: [productId],
             );
+            touchedProducts = true;
 
             await txn.insert(DbTables.stockMovements, {
               'product_id': productId,
@@ -656,6 +674,10 @@ class PurchasesRepository {
         whereArgs: [orderId],
       );
     });
+
+    if (touchedProducts) {
+      CloudSyncService.instance.scheduleProductsSyncSoon();
+    }
   }
 
   /// Elimina una orden PENDIENTE (cabecera + detalle). No modifica inventario.

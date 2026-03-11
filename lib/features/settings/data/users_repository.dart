@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'user_model.dart';
 
 /// Repositorio para gestión de usuarios
@@ -139,7 +140,8 @@ class UsersRepository {
         final deletedRows = await txn.query(
           DbTables.users,
           columns: ['id', 'created_at_ms'],
-          where: 'company_id = ? AND username = ? AND deleted_at_ms IS NOT NULL',
+          where:
+              'company_id = ? AND username = ? AND deleted_at_ms IS NOT NULL',
           whereArgs: [companyFilter, normalized],
           limit: 1,
         );
@@ -165,6 +167,9 @@ class UsersRepository {
             where: 'id = ?',
             whereArgs: [id],
           );
+          CloudSyncService.instance.scheduleUsersSyncSoon(
+            reason: 'user_restored_on_create',
+          );
           return id;
         }
 
@@ -175,7 +180,9 @@ class UsersRepository {
           ..['updated_at_ms'] = updatedAt
           ..['deleted_at_ms'] = null;
 
-        return txn.insert(DbTables.users, data);
+        final id = await txn.insert(DbTables.users, data);
+        CloudSyncService.instance.scheduleUsersSyncSoon(reason: 'user_created');
+        return id;
       });
     }, stage: 'users/create');
   }
@@ -188,12 +195,16 @@ class UsersRepository {
       data['updated_at_ms'] = now;
       data['username'] = _normalizeUsername(user.username);
 
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
         data,
         where: 'id = ?',
         whereArgs: [user.id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(reason: 'user_updated');
+      }
+      return rows;
     }, stage: 'users/update');
   }
 
@@ -201,16 +212,16 @@ class UsersRepository {
   static Future<int> delete(int id) async {
     return _dbSafe((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'deleted_at_ms': now,
-          'is_active': 0,
-          'updated_at_ms': now,
-        },
+        {'deleted_at_ms': now, 'is_active': 0, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(reason: 'user_deleted');
+      }
+      return rows;
     }, stage: 'users/delete');
   }
 
@@ -219,19 +230,19 @@ class UsersRepository {
     return _dbSafe((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      final rows = await db.query(
+      final userRows = await db.query(
         DbTables.users,
         columns: ['username', 'company_id'],
         where: 'id = ?',
         whereArgs: [id],
         limit: 1,
       );
-      if (rows.isEmpty) {
+      if (userRows.isEmpty) {
         throw ArgumentError('Usuario no encontrado');
       }
 
-      final username = rows.first['username'] as String;
-      final companyId = rows.first['company_id'] as int? ?? 1;
+      final username = userRows.first['username'] as String;
+      final companyId = userRows.first['company_id'] as int? ?? 1;
 
       final conflict = await db.query(
         DbTables.users,
@@ -247,27 +258,35 @@ class UsersRepository {
         );
       }
 
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'deleted_at_ms': null,
-          'is_active': 1,
-          'updated_at_ms': now,
-        },
+        {'deleted_at_ms': null, 'is_active': 1, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_restored',
+        );
+      }
+      return rows;
     }, stage: 'users/restore');
   }
 
   /// Eliminar permanentemente un usuario
   static Future<int> hardDelete(int id) async {
     return _dbSafe((db) async {
-      return db.delete(
+      final rows = await db.delete(
         DbTables.users,
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_hard_deleted',
+        );
+      }
+      return rows;
     }, stage: 'users/hard_delete');
   }
 
@@ -275,15 +294,18 @@ class UsersRepository {
   static Future<int> toggleActive(int id, bool active) async {
     return _dbSafe((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'is_active': active ? 1 : 0,
-          'updated_at_ms': now,
-        },
+        {'is_active': active ? 1 : 0, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_active_toggled',
+        );
+      }
+      return rows;
     }, stage: 'users/toggle_active');
   }
 
@@ -293,15 +315,18 @@ class UsersRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       final passwordHash = hashPassword(newPassword);
 
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'password_hash': passwordHash,
-          'updated_at_ms': now,
-        },
+        {'password_hash': passwordHash, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_password_changed',
+        );
+      }
+      return rows;
     }, stage: 'users/change_password');
   }
 
@@ -309,15 +334,18 @@ class UsersRepository {
   static Future<int> changePin(int id, String? newPin) async {
     return _dbSafe((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'pin': newPin,
-          'updated_at_ms': now,
-        },
+        {'pin': newPin, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_pin_changed',
+        );
+      }
+      return rows;
     }, stage: 'users/change_pin');
   }
 
@@ -325,31 +353,40 @@ class UsersRepository {
   static Future<int> changeRole(int id, String role) async {
     return _dbSafe((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'role': role,
-          'updated_at_ms': now,
-        },
+        {'role': role, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_role_changed',
+        );
+      }
+      return rows;
     }, stage: 'users/change_role');
   }
 
   /// Guardar permisos personalizados
-  static Future<int> savePermissions(int id, UserPermissions permissions) async {
+  static Future<int> savePermissions(
+    int id,
+    UserPermissions permissions,
+  ) async {
     return _dbSafe((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      return db.update(
+      final rows = await db.update(
         DbTables.users,
-        {
-          'permissions': jsonEncode(permissions.toMap()),
-          'updated_at_ms': now,
-        },
+        {'permissions': jsonEncode(permissions.toMap()), 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [id],
       );
+      if (rows > 0) {
+        CloudSyncService.instance.scheduleUsersSyncSoon(
+          reason: 'user_permissions_saved',
+        );
+      }
+      return rows;
     }, stage: 'users/save_permissions');
   }
 
@@ -357,7 +394,7 @@ class UsersRepository {
   static Future<UserPermissions> getPermissions(int userId) async {
     final user = await getById(userId);
     if (user == null) return UserPermissions.cashier();
-    
+
     // Admin tiene todos los permisos
     if (user.isAdmin) return UserPermissions.admin();
 
@@ -365,7 +402,7 @@ class UsersRepository {
     if (user.isSupervisor) {
       return UserPermissions.admin().copyWith(canManageUsers: false);
     }
-    
+
     // Si tiene permisos personalizados
     if (user.permissions != null && user.permissions!.isNotEmpty) {
       try {
@@ -375,7 +412,7 @@ class UsersRepository {
         return UserPermissions.cashier();
       }
     }
-    
+
     // Permisos por defecto según rol
     return UserPermissions.cashier();
   }
@@ -418,7 +455,7 @@ class UsersRepository {
       WHERE deleted_at_ms IS NULL AND is_active = 1
       GROUP BY role
     ''');
-    
+
       final counts = <String, int>{'admin': 0, 'cashier': 0};
       for (final row in result) {
         final role = row['role'] as String;
