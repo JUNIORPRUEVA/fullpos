@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/sync/product_sync_event_bus.dart';
 import '../../../core/sync/product_sync_outbox_repository.dart';
 import '../../../core/sync/product_sync_service.dart';
@@ -260,6 +261,10 @@ class StockRepository {
         ),
       );
       ProductSyncService.instance.scheduleProcessing();
+      CloudSyncService.instance.scheduleProductsSyncSoon(
+        delay: const Duration(milliseconds: 150),
+        reason: 'stock_adjusted_fallback',
+      );
     }
     return movementId;
   }

@@ -171,6 +171,12 @@ class ProductsRepository {
     ProductSyncService.instance.scheduleProcessing(
       delay: highPriority ? Duration.zero : const Duration(milliseconds: 150),
     );
+    CloudSyncService.instance.scheduleProductsSyncSoon(
+      delay: highPriority
+          ? const Duration(milliseconds: 150)
+          : const Duration(milliseconds: 600),
+      reason: 'product_fallback_$reason',
+    );
   }
 
   void _validateRequiredForSave(ProductModel product) {
