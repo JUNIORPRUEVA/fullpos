@@ -68,10 +68,13 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       _demoRolNegocioSelected = currentRole;
     }
 
-    unawaited(_refreshBusinessId(force: true));
+    unawaited(_refreshBusinessId(force: true, ensureExists: true));
   }
 
-  Future<void> _refreshBusinessId({bool force = false}) async {
+  Future<void> _refreshBusinessId({
+    bool force = false,
+    bool ensureExists = false,
+  }) async {
     final last = _lastBusinessIdFetchAt;
     if (!force && last != null) {
       if (DateTime.now().difference(last) < const Duration(seconds: 10)) return;
@@ -79,7 +82,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     _lastBusinessIdFetchAt = DateTime.now();
 
     try {
-      final id = await BusinessIdentityStorage().getBusinessId();
+  final storage = BusinessIdentityStorage();
+  final id = ensureExists
+      ? await storage.ensureBusinessId()
+      : await storage.getBusinessId();
       if (!mounted) return;
       final normalized = (id ?? '').trim();
       setState(() {
@@ -123,13 +129,17 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         type: FileType.custom,
         allowedExtensions: const ['json'],
         withData: true,
+        lockParentWindow: true,
       ),
     );
     if (!mounted) return;
     if (result == null || result.files.isEmpty) return;
 
     final file = result.files.single;
-    _licenseFileName = file.name;
+    setState(() {
+      _licenseFileName = file.name;
+      _licenseFileStatus = 'Leyendo archivo...';
+    });
 
     String raw;
     if (file.bytes != null) {
@@ -142,6 +152,11 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         _licenseFileStatus = 'No se pudo leer el archivo seleccionado';
       });
       return;
+    }
+
+    raw = raw.trimLeft();
+    if (raw.startsWith('\uFEFF')) {
+      raw = raw.substring(1);
     }
 
     dynamic decoded;
@@ -162,11 +177,23 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       return;
     }
 
+    final normalizedFile = _normalizeUploadedLicenseFile(
+      decoded.cast<String, dynamic>(),
+    );
+    if (normalizedFile == null) {
+      if (!mounted) return;
+      setState(() {
+        _licenseFileStatus =
+            'Formato inválido: el JSON debe incluir payload y signature';
+      });
+      return;
+    }
+
     setState(() {
       _licenseFileStatus = 'Verificando archivo...';
     });
 
-    await controller.applyOfflineLicenseFile(decoded.cast<String, dynamic>());
+    await controller.applyOfflineLicenseFile(normalizedFile);
 
     if (!mounted) return;
 
@@ -189,6 +216,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         info?.ok == true &&
         info?.isExpired == false;
     if (isSuccess) {
+      unawaited(_refreshBusinessId(force: true, ensureExists: true));
       // Redirigir de inmediato de forma confiable: navegar en el próximo frame.
       // Usamos /sales: si no hay sesión, el router enviará a /login.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -196,6 +224,38 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         context.go('/sales');
       });
     }
+  }
+
+  Map<String, dynamic>? _normalizeUploadedLicenseFile(
+    Map<String, dynamic> input,
+  ) {
+    final directPayload = input['payload'];
+    final directSignature = (input['signature'] ?? '').toString().trim();
+    if (directPayload is Map && directSignature.isNotEmpty) {
+      return {
+        'payload': directPayload.cast<String, dynamic>(),
+        'signature': directSignature,
+        'alg': (input['alg'] ?? 'Ed25519').toString().trim(),
+      };
+    }
+
+    final nested = input['license'];
+    if (nested is Map) {
+      final nestedMap = nested.cast<String, dynamic>();
+      final payload = nestedMap['payload'];
+      final signature = (nestedMap['signature'] ?? '').toString().trim();
+      if (payload is Map && signature.isNotEmpty) {
+        return {
+          'payload': payload.cast<String, dynamic>(),
+          'signature': signature,
+          'alg': (nestedMap['alg'] ?? input['alg'] ?? 'Ed25519')
+              .toString()
+              .trim(),
+        };
+      }
+    }
+
+    return null;
   }
 
   Future<void> _openWhatsapp({String? supportCode}) async {
@@ -292,7 +352,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final info = state.info;
 
     // Keep business_id updated (best-effort).
-    unawaited(_refreshBusinessId());
+    unawaited(_refreshBusinessId(ensureExists: true));
 
     ref.listen(licenseControllerProvider, (prev, next) {
       // Si ya se consumió la DEMO en este equipo/cliente, llevar al flujo de compra.
@@ -541,33 +601,58 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                                       ),
                                                 ),
                                               ),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 6,
+                                              ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      maxWidth: 320,
                                                     ),
-                                                decoration: BoxDecoration(
-                                                  color: scheme.surfaceVariant
-                                                      .withOpacity(0.40),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
                                                       ),
-                                                  border: Border.all(
-                                                    color: dividerColor,
+                                                  decoration: BoxDecoration(
+                                                    color: scheme.surfaceVariant
+                                                        .withOpacity(0.40),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: dividerColor,
+                                                    ),
                                                   ),
-                                                ),
-                                                child: Text(
-                                                  'Business ID: ${_businessId ?? '—'}',
-                                                  style: theme
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color: statusFg,
-                                                        fontWeight:
-                                                            FontWeight.w700,
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          'Business ID: ${_businessId ?? '—'}',
+                                                          maxLines: 1,
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                          style: theme
+                                                              .textTheme
+                                                              .bodySmall
+                                                              ?.copyWith(
+                                                                color:
+                                                                    statusFg,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                              ),
+                                                        ),
                                                       ),
+                                                      const SizedBox(width: 6),
+                                                      _buildBusinessIdCopyIcon(
+                                                        context,
+                                                        color: statusFg,
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                               if (licenseActive)
@@ -1207,6 +1292,46 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     ).showSnackBar(const SnackBar(content: Text('Código copiado.')));
   }
 
+  Future<void> _copyBusinessId(BuildContext context) async {
+    final businessId = (_businessId ?? '').trim();
+    if (businessId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business ID no disponible todavía.')),
+      );
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: businessId));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Business ID copiado.')),
+    );
+  }
+
+  Widget _buildBusinessIdCopyIcon(
+    BuildContext context, {
+    Color? color,
+  }) {
+    final enabled = (_businessId ?? '').trim().isNotEmpty;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: enabled
+          ? () async {
+              await _copyBusinessId(context);
+            }
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Icon(
+          Icons.copy_rounded,
+          size: 15,
+          color: enabled ? color : (color ?? Colors.white).withOpacity(0.45),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDemoSection(BuildContext context, LicenseInfo? info) {
     final active = info?.isActive == true && info?.isExpired == false;
 
@@ -1266,7 +1391,11 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          _kv('Business ID', _businessId ?? '—'),
+          _kv(
+            'Business ID',
+            _businessId ?? '—',
+            trailing: _buildBusinessIdCopyIcon(context),
+          ),
           _kv('Tipo', _licenseTypeLabel(info)),
           if (!isTrial) _kv('Device ID', info?.deviceId ?? '-'),
           _kv('Vence', _formatLocalDateTime(info?.fechaFin)),
@@ -1330,11 +1459,16 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Sube tu archivo de licencia (JSON).',
+          'Sube tu archivo de licencia (JSON) para activar esta instalación.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         const SizedBox(height: 12),
         _kv('Proyecto', kFullposProjectCode),
+        _kv(
+          'Business ID',
+          _businessId ?? 'Generando...',
+          trailing: _buildBusinessIdCopyIcon(context),
+        ),
         _kv('Device ID', info?.deviceId ?? '-'),
         if (_licenseFileName != null) _kv('Archivo', _licenseFileName!),
         if (_licenseFileStatus != null) ...[
@@ -1364,7 +1498,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     );
   }
 
-  Widget _kv(String k, String v) {
+  Widget _kv(String k, String v, {Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -1378,6 +1512,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             ),
           ),
           Expanded(child: Text(v)),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing,
+          ],
         ],
       ),
     );

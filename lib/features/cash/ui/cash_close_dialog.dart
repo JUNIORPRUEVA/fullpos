@@ -77,6 +77,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   _SelectionKind? _selectedKind;
   List<CategoryCashSummary> _categorySummary = [];
   List<RefundItemByCategory> _refundItemsByCategory = [];
+  List<TransferItemByCategory> _transferItemsByCategory = [];
   bool _loadingCategorySummary = true;
 
   @override
@@ -220,13 +221,16 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       final results = await Future.wait([
         CashRepository.listCategorySummaryForSession(widget.sessionId),
         CashRepository.listRefundItemsByCategoryForSession(widget.sessionId),
+        CashRepository.listTransferItemsByCategoryForSession(widget.sessionId),
       ]);
       final summary = results[0] as List<CategoryCashSummary>;
       final refundItems = results[1] as List<RefundItemByCategory>;
+      final transferItems = results[2] as List<TransferItemByCategory>;
       if (!mounted) return;
       setState(() {
         _categorySummary = summary;
         _refundItemsByCategory = refundItems;
+        _transferItemsByCategory = transferItems;
         _loadingCategorySummary = false;
       });
     } catch (e, st) {
@@ -370,6 +374,11 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         : await CashRepository.listRefundItemsByCategoryForSession(
             widget.sessionId,
           );
+    final transferItemsByCategory = _transferItemsByCategory.isNotEmpty
+      ? _transferItemsByCategory
+      : await CashRepository.listTransferItemsByCategoryForSession(
+        widget.sessionId,
+        );
     final settings = await PrinterSettingsRepository.getOrCreate();
     final layout = TicketLayoutConfig.fromPrinterSettings(settings);
     final company = await CompanyInfoRepository.getCurrentCompanyInfo();
@@ -389,6 +398,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       refunds: refunds,
       categorySummary: categorySummary,
       refundItemsByCategory: refundItemsByCategory,
+      transferItemsByCategory: transferItemsByCategory,
       cashboxInitialAmount: _cashboxDaily?.initialAmount,
     );
 
@@ -425,6 +435,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     required List<Map<String, dynamic>> refunds,
     required List<CategoryCashSummary> categorySummary,
     required List<RefundItemByCategory> refundItemsByCategory,
+    required List<TransferItemByCategory> transferItemsByCategory,
     double? cashboxInitialAmount,
   }) {
     final w = layout.maxCharsPerLine;
@@ -444,14 +455,56 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
 
     String twoCols(String left, String right) {
-      final rightWidth = 14.clamp(6, w - 2);
-      final leftWidth = (w - rightWidth - 1).clamp(0, w);
+      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
+      final leftWidth = (w - rightWidth - 1).clamp(8, w);
       final leftText = ReceiptText.padRight(sanitize(left), leftWidth);
       final rightText = ReceiptText.padLeft(sanitize(right), rightWidth);
       return ReceiptText.fitText('$leftText $rightText', w);
     }
 
+    void addKeyValue(String left, String right, {String prefix = '<BL>'}) {
+      final cleanLeft = sanitize(left);
+      final cleanRight = sanitize(right);
+      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
+      final leftWidth = (w - rightWidth - 1).clamp(8, w).toInt();
+
+      if (cleanLeft.length <= leftWidth && cleanRight.length <= rightWidth) {
+        lines.add('$prefix${twoCols(cleanLeft, cleanRight)}');
+        return;
+      }
+
+      final leftLines = ReceiptText.wrapText(cleanLeft, leftWidth);
+      if (cleanRight.length <= rightWidth) {
+        for (final extraLeft in leftLines.take(math.max(0, leftLines.length - 1))) {
+          lines.add(fit(extraLeft));
+        }
+        final lastLeft = leftLines.isEmpty ? '' : leftLines.last;
+        final leftText = ReceiptText.padRight(lastLeft, leftWidth);
+        final rightText = ReceiptText.padLeft(cleanRight, rightWidth);
+        lines.add('$prefix$leftText $rightText');
+        return;
+      }
+
+      for (final leftLine in leftLines) {
+        lines.add(fit(leftLine));
+      }
+      final rightLines = ReceiptText.wrapText(cleanRight, w);
+      for (final rightLine in rightLines) {
+        lines.add('$prefix${ReceiptText.padLeft(rightLine, w)}');
+      }
+    }
+
     String money(double value) => 'RD\$ ${ReceiptText.money(value)}';
+
+    String qtyText(double qty) {
+      final isWhole = (qty - qty.roundToDouble()).abs() < 0.001;
+      return isWhole ? qty.toInt().toString() : qty.toStringAsFixed(2);
+    }
+
+    bool isTransferMethod(String? method) {
+      final normalized = (method ?? '').trim().toLowerCase();
+      return normalized == 'transfer' || normalized == 'transferencia';
+    }
 
     String fmtDuration(Duration d) {
       final totalMinutes = d.inMinutes;
@@ -476,7 +529,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
 
     lines.add(line());
-    lines.add('<H2C>CORTE DE CAJA');
+    lines.add('<H2C>CORTE DE TURNO');
     lines.add(line());
     lines.add('<BL>${twoCols('Sesion', '#${session.id ?? ''}')}');
     lines.add('<BL>${twoCols('Cajero', session.userName)}');
@@ -492,49 +545,31 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     lines.add(line());
 
     if (cashboxInitialAmount != null) {
-      lines.add('<BL>${twoCols('Apertura caja', money(cashboxInitialAmount))}');
+      addKeyValue('Apertura caja', money(cashboxInitialAmount));
     }
-    lines.add('<BL>${twoCols('Apertura turno', money(summary.openingAmount))}');
-    lines.add(
-      '<BL>${twoCols('Ventas efectivo', money(summary.salesCashTotal))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas tarjeta', money(summary.salesCardTotal))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas transferencia', money(summary.salesTransferTotal))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas credito', money(summary.salesCreditTotal))}',
-    );
+    addKeyValue('Apertura turno', money(summary.openingAmount));
+    addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
+    addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
+    addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
+    addKeyValue('Ventas credito', money(summary.salesCreditTotal));
     if (summary.refundsCash > 0) {
-      lines.add('<BL>${twoCols('Devoluciones', money(summary.refundsCash))}');
+      addKeyValue('Devoluciones', money(summary.refundsCash));
     }
     if (summary.creditAbonos > 0) {
-      lines.add(
-        '<BL>${twoCols('Abonos crédito', money(summary.creditAbonos))}',
-      );
+      addKeyValue('Abonos credito', money(summary.creditAbonos));
     }
     if (summary.layawayAbonos > 0) {
-      lines.add(
-        '<BL>${twoCols('Abonos apartado', money(summary.layawayAbonos))}',
-      );
+      addKeyValue('Abonos apartado', money(summary.layawayAbonos));
     }
     final manualNoAbonos =
         (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
             .clamp(0.0, double.infinity);
-    lines.add('<BL>${twoCols('Entradas manuales', money(manualNoAbonos))}');
-    lines.add(
-      '<BL>${twoCols('Retiros manuales', money(summary.cashOutManual))}',
-    );
+    addKeyValue('Entradas manuales', money(manualNoAbonos));
+    addKeyValue('Retiros manuales', money(summary.cashOutManual));
     lines.add(line());
-    lines.add(
-      '<BL>${twoCols('Efectivo esperado', money(summary.expectedCash))}',
-    );
-    lines.add('<BL>${twoCols('Efectivo contado', money(closingAmount))}');
-    lines.add(
-      '<BL>${twoCols('Diferencia', money(closingAmount - summary.expectedCash))}',
-    );
+    addKeyValue('Efectivo esperado', money(summary.expectedCash));
+    addKeyValue('Efectivo contado', money(closingAmount));
+    addKeyValue('Diferencia', money(closingAmount - summary.expectedCash));
     lines.add(line());
 
     if (note.trim().isNotEmpty) {
@@ -559,15 +594,11 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         final sign = m.isIn ? '+' : '-';
         final right = '$sign${money(m.amount)}';
         final left = '${timeFmt.format(m.createdAt)} ${m.reason}';
-        lines.add(twoCols(left, right));
+        addKeyValue(left, right, prefix: '');
       }
       lines.add(line());
-      lines.add(
-        '<BL>${twoCols('Total entradas', money(summary.cashInManual))}',
-      );
-      lines.add(
-        '<BL>${twoCols('Total retiros', money(summary.cashOutManual))}',
-      );
+      addKeyValue('Total entradas', money(summary.cashInManual));
+      addKeyValue('Total retiros', money(summary.cashOutManual));
     }
 
     String methodAbbr(String? method) {
@@ -604,7 +635,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       // Formato: HH:mm  NOMBRE...............  MET  RD$ 000.00
       final timeWidth = 5;
       final methodWidth = 3;
-      final int totalWidth = (14).clamp(10, w - 10).toInt();
+        final int totalWidth = (18).clamp(12, w - 10).toInt();
       final int nameWidth = (w - timeWidth - methodWidth - totalWidth - 3)
           .clamp(8, w)
           .toInt();
@@ -647,7 +678,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             : (itemCount - 1);
         final suffix = remaining > 0 ? ' (+$remaining)' : '';
         final left = '${timeFmt.format(when)} $productLabel$suffix';
-        lines.add(twoCols(left, money(amount)));
+        addKeyValue(left, money(amount), prefix: '');
 
         final customerParts = [
           if (customerName.isNotEmpty) customerName,
@@ -686,21 +717,21 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       lines.add(line());
     }
 
+    final sortedSales = [...sales]
+      ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+
     lines.add('<H2C>VENTAS DEL TURNO');
     lines.add(line());
     if (sales.isEmpty) {
       lines.add(center('Sin ventas registradas'));
     } else {
-      final sorted = [...sales]
-        ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
-
       lines.add(
         '<BL>${saleRow(time: 'HORA', name: 'PRODUCTO', method: 'MET', total: 'TOTAL')}',
       );
       lines.add(ReceiptText.line(char: '=', width: w));
 
       final timeFmt = _timeOnlyFormat;
-      for (final sale in sorted) {
+      for (final sale in sortedSales) {
         final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
         final items = saleItemsBySaleId[sale.id ?? -1];
         final firstItemName = (items != null && items.isNotEmpty)
@@ -722,6 +753,51 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
     lines.add(line());
 
+    final transferSales = sortedSales
+        .where((sale) =>
+            sale.kind != 'return' && isTransferMethod(sale.paymentMethod))
+        .toList(growable: false);
+    if (transferSales.isNotEmpty) {
+      lines.add('<H2C>DETALLE TRANSFERENCIAS');
+      lines.add(line());
+      final timeFmt = _timeOnlyFormat;
+      for (final sale in transferSales) {
+        final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
+        addKeyValue(
+          '${timeFmt.format(when)} ${sale.localCode}',
+          money(sale.total),
+          prefix: '',
+        );
+
+        final customer = (sale.customerNameSnapshot ?? '').trim();
+        if (customer.isNotEmpty) {
+          final customerLines = ReceiptText.wrapText(
+            sanitize('  Cliente: $customer'),
+            (w - 2).clamp(8, w),
+          );
+          for (final customerLine in customerLines) {
+            lines.add(fit(customerLine));
+          }
+        }
+
+        final items = saleItemsBySaleId[sale.id ?? -1] ?? const <SaleItemModel>[];
+        if (items.isEmpty) {
+          lines.add(fit('  Producto: Sin detalle'));
+        } else {
+          for (final item in items) {
+            addKeyValue(
+              '  ${item.productNameSnapshot} x${qtyText(item.qty)}',
+              money(item.totalLine),
+              prefix: '',
+            );
+          }
+        }
+        lines.add(ReceiptText.line(char: '.', width: w));
+      }
+      addKeyValue('Total transferencias', money(summary.salesTransferTotal));
+      lines.add(line());
+    }
+
     addRefundsSection();
 
     if (categorySummary.isNotEmpty) {
@@ -729,24 +805,53 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       for (final item in refundItemsByCategory) {
         refundMap.putIfAbsent(item.category, () => []).add(item);
       }
-
-      String qtyText(double qty) {
-        final isWhole = (qty - qty.roundToDouble()).abs() < 0.001;
-        return isWhole ? qty.toInt().toString() : qty.toStringAsFixed(2);
+      final transferMap = <String, List<TransferItemByCategory>>{};
+      for (final item in transferItemsByCategory) {
+        transferMap.putIfAbsent(item.category, () => []).add(item);
       }
 
       lines.add('<H2C>CIERRE POR CATEGORIA');
       lines.add(line());
       for (final cat in categorySummary) {
         lines.add(fit(cat.category));
-        lines.add(twoCols('Ventas', money(cat.salesTotal)));
-        if (cat.refundTotal > 0) {
-          lines.add(twoCols('Devoluciones', money(cat.refundTotal)));
+        addKeyValue(
+          'Total ventas efectivo',
+          money(cat.cashSalesTotal),
+          prefix: '',
+        );
+        if (cat.cardSalesTotal > 0) {
+          addKeyValue('Total tarjeta', money(cat.cardSalesTotal), prefix: '');
         }
-        lines.add(twoCols('Neto', money(cat.netTotal)));
-        lines.add(twoCols('Items vendidos', qtyText(cat.itemsSold)));
+        if (cat.transferSalesTotal > 0) {
+          addKeyValue(
+            'Total transferido',
+            money(cat.transferSalesTotal),
+            prefix: '',
+          );
+        }
+        if (cat.creditSalesTotal > 0) {
+          addKeyValue('Total credito', money(cat.creditSalesTotal), prefix: '');
+        }
+        addKeyValue('Items vendidos', qtyText(cat.itemsSold), prefix: '');
+        if (cat.refundTotal > 0) {
+          addKeyValue('Devoluciones', money(cat.refundTotal), prefix: '');
+        }
+        addKeyValue('Total vendido', money(cat.netTotal), prefix: '');
         if (cat.itemsRefunded > 0) {
-          lines.add(twoCols('Items devueltos', qtyText(cat.itemsRefunded)));
+          addKeyValue(
+            'Items devueltos',
+            qtyText(cat.itemsRefunded),
+            prefix: '',
+          );
+        }
+
+        final transferItems = transferMap[cat.category];
+        if (transferItems != null && transferItems.isNotEmpty) {
+          lines.add(fit('Transferencias por producto:'));
+          for (final item in transferItems) {
+            final label = '${item.productName} x${qtyText(item.qty)}';
+            addKeyValue('  $label', money(item.total), prefix: '');
+          }
         }
 
         final refundItems = refundMap[cat.category];
@@ -754,21 +859,46 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           lines.add(fit('Reembolsos:'));
           for (final item in refundItems) {
             final label = '${item.productName} x${qtyText(item.qty)}';
-            lines.add(twoCols('  $label', money(item.total.abs())));
+            addKeyValue('  $label', money(item.total.abs()), prefix: '');
           }
         }
         lines.add(line());
       }
     }
 
-    // Totales grandes (más legibles)
-    lines.add('<H2C>TOTALES');
+    final netSalesAfterRefunds = summary.totalSales - summary.refundsCash;
+
+    lines.add('<H2C>GRAN TOTALES GENERALES');
     lines.add(line());
-    lines.add('<BL>${twoCols('Tickets', summary.totalTickets.toString())}');
-    lines.add('<BL>${twoCols('Total ventas', money(summary.totalSales))}');
+    addKeyValue('Tickets', summary.totalTickets.toString());
+    addKeyValue('Devoluciones', summary.totalRefunds.toString());
+    addKeyValue('Total ventas', money(summary.totalSales));
+    addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
+    addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
+    addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
+    addKeyValue('Ventas credito', money(summary.salesCreditTotal));
+    if (summary.refundsCash > 0) {
+      addKeyValue('Monto devoluciones', money(summary.refundsCash));
+    }
+    if (manualNoAbonos > 0) {
+      addKeyValue('Entradas manuales', money(manualNoAbonos));
+    }
+    if (summary.creditAbonos > 0) {
+      addKeyValue('Abonos credito', money(summary.creditAbonos));
+    }
+    if (summary.layawayAbonos > 0) {
+      addKeyValue('Abonos apartado', money(summary.layawayAbonos));
+    }
+    if (summary.cashOutManual > 0) {
+      addKeyValue('Retiros manuales', money(summary.cashOutManual));
+    }
+    addKeyValue('Total neto general', money(netSalesAfterRefunds));
     lines.add('');
     lines.add('<H2C>TOTAL VENTAS');
     lines.add('<H1C>${money(summary.totalSales)}');
+    lines.add('');
+    lines.add('<H2C>TOTAL TRANSFERENCIAS');
+    lines.add('<H1C>${money(summary.salesTransferTotal)}');
     lines.add('');
     lines.add('<H2C>EFECTIVO ESPERADO');
     lines.add('<H1C>${money(summary.expectedCash)}');
@@ -912,7 +1042,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Corte de caja',
+                              'Corte de turno',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: headerText,
                                 fontWeight: FontWeight.w800,

@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'dart:math' as math;
 
 import '../../../core/printing/models/company_info.dart';
 import '../../../core/printing/models/receipt_text_utils.dart';
@@ -113,11 +114,43 @@ class DailyCashCloseTicketPrinter {
     }
 
     String twoCols(String left, String right) {
-      final rightWidth = 14.clamp(6, w - 2);
-      final leftWidth = (w - rightWidth - 1).clamp(0, w);
+      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
+      final leftWidth = (w - rightWidth - 1).clamp(8, w);
       final leftText = ReceiptText.padRight(sanitize(left), leftWidth);
       final rightText = ReceiptText.padLeft(sanitize(right), rightWidth);
       return ReceiptText.fitText('$leftText $rightText', w);
+    }
+
+    void addKeyValue(String left, String right, {String prefix = '<BL>'}) {
+      final cleanLeft = sanitize(left);
+      final cleanRight = sanitize(right);
+      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
+      final leftWidth = (w - rightWidth - 1).clamp(8, w).toInt();
+
+      if (cleanLeft.length <= leftWidth && cleanRight.length <= rightWidth) {
+        lines.add('$prefix${twoCols(cleanLeft, cleanRight)}');
+        return;
+      }
+
+      final leftLines = ReceiptText.wrapText(cleanLeft, leftWidth);
+      if (cleanRight.length <= rightWidth) {
+        for (final extraLeft in leftLines.take(math.max(0, leftLines.length - 1))) {
+          lines.add(fit(extraLeft));
+        }
+        final lastLeft = leftLines.isEmpty ? '' : leftLines.last;
+        final leftText = ReceiptText.padRight(lastLeft, leftWidth);
+        final rightText = ReceiptText.padLeft(cleanRight, rightWidth);
+        lines.add('$prefix$leftText $rightText');
+        return;
+      }
+
+      for (final leftLine in leftLines) {
+        lines.add(fit(leftLine));
+      }
+      final rightLines = ReceiptText.wrapText(cleanRight, w);
+      for (final rightLine in rightLines) {
+        lines.add('$prefix${ReceiptText.padLeft(rightLine, w)}');
+      }
     }
 
     String money(double value) => 'RD\$ ${ReceiptText.money(value)}';
@@ -162,38 +195,36 @@ class DailyCashCloseTicketPrinter {
     }
     lines.add(line());
 
-    lines.add('<BL>${twoCols('Fondo inicial', money(openingAmount))}');
-    lines.add('<BL>${twoCols('Tickets', totalTickets.toString())}');
+    addKeyValue('Fondo inicial', money(openingAmount));
+    addKeyValue('Tickets', totalTickets.toString());
 
     lines.add(line());
     lines.add('<H2C>VENTAS DEL DIA');
     lines.add(line());
-    lines.add('<BL>${twoCols('Ventas efectivo', money(salesCashTotal))}');
-    lines.add('<BL>${twoCols('Ventas tarjeta', money(salesCardTotal))}');
-    lines.add(
-      '<BL>${twoCols('Ventas transferencia', money(salesTransferTotal))}',
-    );
-    lines.add('<BL>${twoCols('Ventas credito', money(salesCreditTotal))}');
+    addKeyValue('Ventas efectivo', money(salesCashTotal));
+    addKeyValue('Ventas tarjeta', money(salesCardTotal));
+    addKeyValue('Ventas transferencia', money(salesTransferTotal));
+    addKeyValue('Ventas credito', money(salesCreditTotal));
     if (refundsCash > 0) {
-      lines.add('<BL>${twoCols('Devoluciones', money(refundsCash))}');
+      addKeyValue('Devoluciones', money(refundsCash));
     }
 
     if (creditAbonos > 0) {
-      lines.add('<BL>${twoCols('Abonos crédito', money(creditAbonos))}');
+      addKeyValue('Abonos credito', money(creditAbonos));
     }
     if (layawayAbonos > 0) {
-      lines.add('<BL>${twoCols('Abonos apartado', money(layawayAbonos))}');
+      addKeyValue('Abonos apartado', money(layawayAbonos));
     }
 
     final manualNoAbonos = (cashInManual - creditAbonos - layawayAbonos).clamp(
       0.0,
       double.infinity,
     );
-    lines.add('<BL>${twoCols('Entradas manuales', money(manualNoAbonos))}');
-    lines.add('<BL>${twoCols('Retiros manuales', money(cashOutManual))}');
+    addKeyValue('Entradas manuales', money(manualNoAbonos));
+    addKeyValue('Retiros manuales', money(cashOutManual));
 
     lines.add(line());
-    lines.add('<BL>${twoCols('Efectivo esperado', money(expectedCash))}');
+    addKeyValue('Efectivo esperado', money(expectedCash));
     lines.add(line());
 
     if ((note ?? '').trim().isNotEmpty) {
@@ -220,11 +251,11 @@ class DailyCashCloseTicketPrinter {
         final right = '$sign${money(m.amount)}';
         final left =
             '${timeFmt.format(m.createdAt)} (#${m.sessionId}) ${m.reason}';
-        lines.add(twoCols(left, right));
+        addKeyValue(left, right, prefix: '');
       }
       lines.add(line());
-      lines.add('<BL>${twoCols('Total entradas', money(cashInManual))}');
-      lines.add('<BL>${twoCols('Total retiros', money(cashOutManual))}');
+      addKeyValue('Total entradas', money(cashInManual));
+      addKeyValue('Total retiros', money(cashOutManual));
     }
 
     if (layout.autoCut) {

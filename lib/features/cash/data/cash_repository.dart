@@ -993,6 +993,10 @@ class CashRepository {
         SELECT
           category,
           COALESCE(SUM(sales_total), 0) as sales_total,
+          COALESCE(SUM(cash_sales_total), 0) as cash_sales_total,
+          COALESCE(SUM(card_sales_total), 0) as card_sales_total,
+          COALESCE(SUM(transfer_sales_total), 0) as transfer_sales_total,
+          COALESCE(SUM(credit_sales_total), 0) as credit_sales_total,
           COALESCE(SUM(refund_total), 0) as refund_total,
           COALESCE(SUM(items_sold), 0) as items_sold,
           COALESCE(SUM(items_refunded), 0) as items_refunded
@@ -1000,6 +1004,46 @@ class CashRepository {
           SELECT
             COALESCE(c.name, 'Sin categoria') as category,
             COALESCE(SUM(si.total_line), 0) as sales_total,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN LOWER(COALESCE(s.payment_method, '')) IN ('cash', 'efectivo')
+                  THEN si.total_line
+                  ELSE 0
+                END
+              ),
+              0
+            ) as cash_sales_total,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN LOWER(COALESCE(s.payment_method, '')) IN ('card', 'tarjeta')
+                  THEN si.total_line
+                  ELSE 0
+                END
+              ),
+              0
+            ) as card_sales_total,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN LOWER(COALESCE(s.payment_method, '')) IN ('transfer', 'transferencia')
+                  THEN si.total_line
+                  ELSE 0
+                END
+              ),
+              0
+            ) as transfer_sales_total,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN LOWER(COALESCE(s.payment_method, '')) IN ('credit', 'credito')
+                  THEN si.total_line
+                  ELSE 0
+                END
+              ),
+              0
+            ) as credit_sales_total,
             0 as refund_total,
             COALESCE(SUM(si.qty), 0) as items_sold,
             0 as items_refunded
@@ -1021,6 +1065,10 @@ class CashRepository {
           SELECT
             COALESCE(c.name, 'Sin categoria') as category,
             0 as sales_total,
+            0 as cash_sales_total,
+            0 as card_sales_total,
+            0 as transfer_sales_total,
+            0 as credit_sales_total,
             COALESCE(SUM(ri.total), 0) as refund_total,
             0 as items_sold,
             COALESCE(SUM(ri.qty), 0) as items_refunded
@@ -1046,6 +1094,14 @@ class CashRepository {
             (row) => CategoryCashSummary(
               category: row['category'] as String? ?? 'Sin categoria',
               salesTotal: (row['sales_total'] as num?)?.toDouble() ?? 0.0,
+              cashSalesTotal:
+                (row['cash_sales_total'] as num?)?.toDouble() ?? 0.0,
+              cardSalesTotal:
+                (row['card_sales_total'] as num?)?.toDouble() ?? 0.0,
+              transferSalesTotal:
+                  (row['transfer_sales_total'] as num?)?.toDouble() ?? 0.0,
+              creditSalesTotal:
+                (row['credit_sales_total'] as num?)?.toDouble() ?? 0.0,
               refundTotal: (row['refund_total'] as num?)?.toDouble() ?? 0.0,
               itemsSold: (row['items_sold'] as num?)?.toDouble() ?? 0.0,
               itemsRefunded: (row['items_refunded'] as num?)?.toDouble() ?? 0.0,
@@ -1053,6 +1109,51 @@ class CashRepository {
           )
           .toList();
     }, stage: 'cash_category_summary');
+  }
+
+  /// Items vendidos por transferencia agrupados por categoria para una sesion.
+  static Future<List<TransferItemByCategory>>
+  listTransferItemsByCategoryForSession(int sessionId) async {
+    return DbHardening.instance.runDbSafe<List<TransferItemByCategory>>(() async {
+      final db = await AppDb.database;
+      final rows = await db.rawQuery(
+        '''
+        SELECT
+          COALESCE(c.name, 'Sin categoria') as category,
+          COALESCE(si.product_name_snapshot, p.name, 'Item') as product_name,
+          COALESCE(SUM(si.qty), 0) as qty,
+          COALESCE(SUM(si.total_line), 0) as total
+        FROM ${DbTables.saleItems} si
+        INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
+        LEFT JOIN ${DbTables.products} p
+          ON (si.product_id = p.id)
+          OR (
+            si.product_id IS NULL
+            AND TRIM(si.product_code_snapshot) COLLATE NOCASE = TRIM(p.code) COLLATE NOCASE
+          )
+        LEFT JOIN ${DbTables.categories} c ON p.category_id = c.id
+        WHERE (s.cash_session_id = ? OR s.session_id = ?)
+          AND s.kind IN ('invoice', 'sale')
+          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+          AND LOWER(COALESCE(s.payment_method, '')) IN ('transfer', 'transferencia')
+          AND s.deleted_at_ms IS NULL
+        GROUP BY category, product_name
+        ORDER BY category ASC, total DESC, product_name ASC
+        ''',
+        [sessionId, sessionId],
+      );
+
+      return rows
+          .map(
+            (row) => TransferItemByCategory(
+              category: row['category'] as String? ?? 'Sin categoria',
+              productName: row['product_name'] as String? ?? 'Item',
+              qty: (row['qty'] as num?)?.toDouble() ?? 0.0,
+              total: (row['total'] as num?)?.toDouble() ?? 0.0,
+            ),
+          )
+          .toList();
+    }, stage: 'cash_category_transfer_items');
   }
 
   /// Items reembolsados por categoria para una sesion de caja.
@@ -1100,6 +1201,10 @@ class CashRepository {
 class CategoryCashSummary {
   final String category;
   final double salesTotal;
+  final double cashSalesTotal;
+  final double cardSalesTotal;
+  final double transferSalesTotal;
+  final double creditSalesTotal;
   final double refundTotal;
   final double itemsSold;
   final double itemsRefunded;
@@ -1107,6 +1212,10 @@ class CategoryCashSummary {
   CategoryCashSummary({
     required this.category,
     required this.salesTotal,
+    required this.cashSalesTotal,
+    required this.cardSalesTotal,
+    required this.transferSalesTotal,
+    required this.creditSalesTotal,
     required this.refundTotal,
     required this.itemsSold,
     required this.itemsRefunded,
@@ -1122,6 +1231,20 @@ class RefundItemByCategory {
   final double total;
 
   RefundItemByCategory({
+    required this.category,
+    required this.productName,
+    required this.qty,
+    required this.total,
+  });
+}
+
+class TransferItemByCategory {
+  final String category;
+  final String productName;
+  final double qty;
+  final double total;
+
+  TransferItemByCategory({
     required this.category,
     required this.productName,
     required this.qty,
