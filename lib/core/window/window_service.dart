@@ -104,7 +104,7 @@ class WindowService {
 
     if (kDebugMode) {
       debugPrint('[WINDOW] display.size (work area): ${display.size.width}x${display.size.height}');
-      debugPrint('[WINDOW] estimated physical resolution: ${physicalWidth}x${physicalHeight}');
+      debugPrint('[WINDOW] estimated physical resolution: $physicalWidth x $physicalHeight');
       debugPrint('[WINDOW] origin: ${origin.dx},${origin.dy}');
     }
 
@@ -115,37 +115,6 @@ class WindowService {
       physicalHeight,
     );
   }
-
-  /// Apply Windows POS kiosk mode: full screen without system fullscreen.
-  /// Called while window is hidden during startup.
-  /// MUST NOT be called frequently - only at startup and after minimize/restore.
-  static Future<void> _applyWindowsPosKioskMode({
-    bool preferCurrentDisplay = true,
-  }) async {
-    if (kDebugMode) {
-      debugPrint('[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay');
-    }
-
-    // Step 1: Disable system fullscreen (can leave screen black on some PCs)
-    try {
-      await windowManager.setFullScreen(false);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setFullScreen(false) failed: $e');
-    }
-
-    // Step 2: Hide title bar for full POS mode
-    try {
-      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setTitleBarStyle failed: $e');
-    }
-
-    // Step 3: Make frameless for maximum usable space
-    try {
-      await windowManager.setAsFrameless();
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setAsFrameless failed: $e');
-    }
 
   /// Apply Windows POS kiosk mode: full screen without system fullscreen.
   /// Called while window is hidden during startup.
@@ -516,4 +485,3 @@ class _PosWindowEnforcer with WindowListener {
     } catch (_) {}
   }
 }
-
