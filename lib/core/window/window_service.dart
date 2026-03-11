@@ -165,47 +165,15 @@ class WindowService {
       if (kDebugMode) debugPrint('[WINDOW] setAlwaysOnTop failed: $e');
     }
 
-    // Step 6: Set bounds to cover entire display
+    // Step 6: CRITICAL - Maximize to cover entire work area including taskbar
+    // Windows doesn't allow arbitrary setBounds to cover taskbar.
+    // But maximize() AFTER applying frameless + hidden title WILL cover the taskbar.
+    // This is the key: the order matters. We apply visual changes first, then maximize.
     try {
-      final bounds = await _getWindowsKioskBounds(
-        preferCurrentDisplay: preferCurrentDisplay,
-      );
-
-      if (kDebugMode) {
-        debugPrint('[WINDOW] kiosk bounds: ${bounds.left},${bounds.top} ${bounds.width}x${bounds.height}');
-      }
-
-      // Try to set bounds directly
-      try {
-        await windowManager.setBounds(bounds);
-        if (kDebugMode) debugPrint('[WINDOW] setBounds succeeded');
-      } catch (e) {
-        if (kDebugMode) debugPrint('[WINDOW] setBounds failed, trying with temp resizable: $e');
-        // setBounds may need temp resizable on some systems
-        try {
-          await windowManager.setResizable(true);
-          await Future<void>.delayed(const Duration(milliseconds: 20));
-          await windowManager.setBounds(bounds);
-          await Future<void>.delayed(const Duration(milliseconds: 20));
-          await windowManager.setResizable(false);
-          if (kDebugMode) debugPrint('[WINDOW] setBounds succeeded with temp resizable');
-        } catch (e2) {
-          if (kDebugMode) debugPrint('[WINDOW] setBounds with temp resizable also failed: $e2, trying maximize');
-          // Fallback to maximize if setBounds fails completely
-          try {
-            await windowManager.maximize();
-            if (kDebugMode) debugPrint('[WINDOW] maximize fallback succeeded');
-          } catch (e3) {
-            if (kDebugMode) debugPrint('[WINDOW] maximize also failed: $e3');
-          }
-        }
-      }
+      await windowManager.maximize();
+      if (kDebugMode) debugPrint('[WINDOW] maximize succeeded - kiosk window now covers full display');
     } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] _getWindowsKioskBounds failed: $e');
-      // Final fallback
-      try {
-        await windowManager.maximize();
-      } catch (_) {}
+      if (kDebugMode) debugPrint('[WINDOW] maximize failed: $e');
     }
 
     if (kDebugMode) {
