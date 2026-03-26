@@ -51,6 +51,9 @@ class SalesRepository {
     double? itbisAmountOverride,
     double? totalOverride,
     String? paymentMethod,
+    double? paymentCashAmount,
+    double? paymentCardAmount,
+    double? paymentTransferAmount,
     int? sessionId,
     int? customerId,
     String? ncfFull,
@@ -255,6 +258,18 @@ class SalesRepository {
 
     // Validaciones mínimas para evitar datos inconsistentes.
     BusinessRules.requireNonNegative(discountTotal, 'discount_total');
+    BusinessRules.requireNonNegative(
+      paymentCashAmount ?? 0.0,
+      'payment_cash_amount',
+    );
+    BusinessRules.requireNonNegative(
+      paymentCardAmount ?? 0.0,
+      'payment_card_amount',
+    );
+    BusinessRules.requireNonNegative(
+      paymentTransferAmount ?? 0.0,
+      'payment_transfer_amount',
+    );
     for (final item in convertedItems) {
       final qty = (item['qty'] as num?)?.toDouble() ?? 0.0;
       final unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
@@ -306,6 +321,9 @@ class SalesRepository {
           itbisAmount: itbisAmount,
           total: total,
           paymentMethod: paymentMethod,
+          paymentCashAmount: paymentCashAmount ?? 0.0,
+          paymentCardAmount: paymentCardAmount ?? 0.0,
+          paymentTransferAmount: paymentTransferAmount ?? 0.0,
           paidAmount: paidAmount ?? total,
           changeAmount: changeAmount ?? 0.0,
           creditInterestRate: creditInterestRate,
@@ -388,6 +406,9 @@ class SalesRepository {
     required double itbisAmount,
     required double total,
     required String? paymentMethod,
+    required double paymentCashAmount,
+    required double paymentCardAmount,
+    required double paymentTransferAmount,
     required double paidAmount,
     required double changeAmount,
     required double creditInterestRate,
@@ -426,6 +447,9 @@ class SalesRepository {
           'itbis_amount': itbisAmount,
           'total': total,
           'payment_method': paymentMethod,
+          'payment_cash_amount': paymentCashAmount,
+          'payment_card_amount': paymentCardAmount,
+          'payment_transfer_amount': paymentTransferAmount,
           'paid_amount': paidAmount,
           'change_amount': changeAmount,
           'credit_interest_rate': creditInterestRate,

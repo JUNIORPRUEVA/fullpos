@@ -195,51 +195,20 @@ class AppActions {
     requiresOverrideByDefault: false,
   );
 
-  // Caja
-  static const openCash = AppAction(
+  // Sesión operativa
+  static const startSession = AppAction(
     code: 'cash.open_session',
-    name: 'Abrir sesión (legacy)',
-    description: 'Compatibilidad con flujo legacy de sesión/caja.',
+    name: 'Iniciar sesión',
+    description: 'Abrir la sesión operativa única del usuario y la caja.',
     category: AppActionCategory.cash,
-    risk: ActionRisk.medium,
-    requiresOverrideByDefault: false,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
   );
-  static const closeCash = AppAction(
+  static const closeSession = AppAction(
     code: 'cash.close_session',
-    name: 'Cerrar sesión (legacy)',
-    description: 'Compatibilidad con flujo legacy de sesión/caja.',
-    category: AppActionCategory.cash,
-    risk: ActionRisk.high,
-    requiresOverrideByDefault: true,
-  );
-  static const openCashbox = AppAction(
-    code: 'cash.open_cashbox',
-    name: 'Abrir caja diaria',
-    description: 'Apertura de caja del día (estado diario de la caja física).',
-    category: AppActionCategory.cash,
-    risk: ActionRisk.high,
-    requiresOverrideByDefault: true,
-  );
-  static const closeCashbox = AppAction(
-    code: 'cash.close_cashbox',
-    name: 'Cerrar caja diaria',
-    description: 'Cierre de caja del día, solo sin turnos abiertos.',
-    category: AppActionCategory.cash,
-    risk: ActionRisk.high,
-    requiresOverrideByDefault: true,
-  );
-  static const openShift = AppAction(
-    code: 'cash.open_shift',
-    name: 'Abrir turno',
-    description: 'Apertura de turno de cajero sobre caja diaria abierta.',
-    category: AppActionCategory.cash,
-    risk: ActionRisk.medium,
-    requiresOverrideByDefault: false,
-  );
-  static const closeShift = AppAction(
-    code: 'cash.close_shift',
-    name: 'Cerrar turno',
-    description: 'Cierre obligatorio del turno del cajero.',
+    name: 'Cerrar sesión',
+    description:
+        'Cerrar la sesión operativa única, emitir el cierre y finalizar la sesión del usuario.',
     category: AppActionCategory.cash,
     risk: ActionRisk.high,
     requiresOverrideByDefault: true,
@@ -342,12 +311,8 @@ class AppActions {
     createProduct,
     updateProduct,
     importProducts,
-    openCashbox,
-    closeCashbox,
-    openShift,
-    closeShift,
-    openCash,
-    closeCash,
+    startSession,
+    closeSession,
     cashMovement,
     updateTaxes,
     switchCompany,

@@ -27,7 +27,9 @@ class UserDetailDialog extends StatelessWidget {
       return UserPermissions.cashier();
     }
     try {
-      return UserPermissions.fromMap(jsonDecode(user.permissions!) as Map<String, dynamic>);
+      return UserPermissions.fromMap(
+        jsonDecode(user.permissions!) as Map<String, dynamic>,
+      );
     } catch (_) {
       return UserPermissions.cashier();
     }
@@ -71,7 +73,10 @@ class UserDetailDialog extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 2,
+                      ),
                     ),
                     child: Center(
                       child: Text(
@@ -106,7 +111,10 @@ class UserDetailDialog extends StatelessWidget {
                             if (!user.isActiveUser) ...[
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.red,
                                   borderRadius: BorderRadius.circular(4),
@@ -133,7 +141,10 @@ class UserDetailDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(20),
@@ -142,7 +153,9 @@ class UserDetailDialog extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                user.isAdmin ? Icons.admin_panel_settings : Icons.point_of_sale,
+                                user.isAdmin
+                                    ? Icons.admin_panel_settings
+                                    : Icons.point_of_sale,
                                 size: 16,
                                 color: Colors.white,
                               ),
@@ -178,53 +191,68 @@ class UserDetailDialog extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Información básica
-                    _buildSection(
-                      'Información General',
-                      Icons.info_outline,
-                      [
-                        _buildInfoRow('Usuario', '@${user.username}'),
-                        _buildInfoRow('Nombre', user.displayName ?? 'No especificado'),
-                        _buildInfoRow('Rol', user.roleLabel),
-                        _buildInfoRow('Estado', user.isActiveUser ? 'Activo' : 'Inactivo',
-                            valueColor: user.isActiveUser ? Colors.green : Colors.red),
-                      ],
-                    ),
+                    _buildSection('Información General', Icons.info_outline, [
+                      _buildInfoRow('Usuario', '@${user.username}'),
+                      _buildInfoRow(
+                        'Nombre',
+                        user.displayName ?? 'No especificado',
+                      ),
+                      _buildInfoRow('Rol', user.roleLabel),
+                      _buildInfoRow(
+                        'Estado',
+                        user.isActiveUser ? 'Activo' : 'Inactivo',
+                        valueColor: user.isActiveUser
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    ]),
 
                     const SizedBox(height: 16),
 
                     // Seguridad
-                    _buildSection(
-                      'Seguridad',
-                      Icons.security,
-                      [
-                        _buildInfoRow(
-                          'Contraseña',
-                          user.hasPassword ? '••••••••' : 'Sin contraseña',
-                          trailing: user.hasPassword
-                              ? const Icon(Icons.check_circle, color: Colors.green, size: 18)
-                              : const Icon(Icons.warning, color: Colors.orange, size: 18),
-                        ),
-                        _buildInfoRow(
-                          'PIN de acceso rápido',
-                          user.pin != null ? '••••' : 'No configurado',
-                          trailing: user.pin != null
-                              ? const Icon(Icons.check_circle, color: Colors.green, size: 18)
-                              : const Icon(Icons.info_outline, color: Colors.grey, size: 18),
-                        ),
-                      ],
-                    ),
+                    _buildSection('Seguridad', Icons.security, [
+                      _buildInfoRow(
+                        'Contraseña',
+                        user.hasPassword ? '••••••••' : 'Sin contraseña',
+                        trailing: user.hasPassword
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 18,
+                              )
+                            : const Icon(
+                                Icons.warning,
+                                color: Colors.orange,
+                                size: 18,
+                              ),
+                      ),
+                      _buildInfoRow(
+                        'PIN de acceso rápido',
+                        user.pin != null ? '••••' : 'No configurado',
+                        trailing: user.pin != null
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 18,
+                              )
+                            : const Icon(
+                                Icons.info_outline,
+                                color: Colors.grey,
+                                size: 18,
+                              ),
+                      ),
+                    ]),
 
                     const SizedBox(height: 16),
 
                     // Fechas
-                    _buildSection(
-                      'Registro',
-                      Icons.calendar_today,
-                      [
-                        _buildInfoRow('Creado', dateFormat.format(createdAt)),
-                        _buildInfoRow('Última modificación', dateFormat.format(updatedAt)),
-                      ],
-                    ),
+                    _buildSection('Registro', Icons.calendar_today, [
+                      _buildInfoRow('Creado', dateFormat.format(createdAt)),
+                      _buildInfoRow(
+                        'Última modificación',
+                        dateFormat.format(updatedAt),
+                      ),
+                    ]),
 
                     const SizedBox(height: 16),
 
@@ -328,7 +356,12 @@ class UserDetailDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {Color? valueColor, Widget? trailing}) {
+  Widget _buildInfoRow(
+    String label,
+    String value, {
+    Color? valueColor,
+    Widget? trailing,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -337,10 +370,7 @@ class UserDetailDialog extends StatelessWidget {
             flex: 2,
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
           ),
           Expanded(
@@ -368,7 +398,7 @@ class UserDetailDialog extends StatelessWidget {
 
   Widget _buildPermissionsSection() {
     final perms = _permissions;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -434,8 +464,8 @@ class UserDetailDialog extends StatelessWidget {
               ]),
               const Divider(height: 24),
               _buildPermissionCategory('Caja', [
-                _PermissionItem('Abrir caja', perms.canOpenCash),
-                _PermissionItem('Cerrar caja', perms.canCloseCash),
+                _PermissionItem('Iniciar sesión de caja', perms.canOpenCash),
+                _PermissionItem('Cerrar sesión de caja', perms.canCloseCash),
                 _PermissionItem('Ver historial caja', perms.canViewCashHistory),
                 _PermissionItem('Movimientos', perms.canMakeCashMovements),
               ]),
@@ -468,7 +498,9 @@ class UserDetailDialog extends StatelessWidget {
         Wrap(
           spacing: 8,
           runSpacing: 6,
-          children: items.map((item) => _buildPermissionChip(item.name, item.enabled)).toList(),
+          children: items
+              .map((item) => _buildPermissionChip(item.name, item.enabled))
+              .toList(),
         ),
       ],
     );

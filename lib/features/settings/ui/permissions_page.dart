@@ -300,16 +300,16 @@ class _PermissionsPageState extends State<PermissionsPage> {
     _UserPermissionCategory.cash: [
       _PermissionDef(
         id: 'caja.abrir',
-        title: 'Abrir caja',
-        description: 'Puede iniciar una sesión de caja.',
+        title: 'Iniciar sesión de caja',
+        description: 'Puede abrir caja e iniciar la sesión operativa.',
         riskLevel: _RiskLevel.high,
         read: (p) => p.canOpenCash,
         write: (p, v) => p.copyWith(canOpenCash: v),
       ),
       _PermissionDef(
         id: 'caja.cerrar',
-        title: 'Cerrar caja',
-        description: 'Puede realizar el cierre de caja.',
+        title: 'Cerrar sesión de caja',
+        description: 'Puede cerrar la sesión operativa y emitir el cierre.',
         riskLevel: _RiskLevel.high,
         read: (p) => p.canCloseCash,
         write: (p, v) => p.copyWith(canCloseCash: v),

@@ -17,6 +17,9 @@ class SaleModel {
   final double itbisAmount;
   final double total;
   final String? paymentMethod; // 'cash' | 'transfer' | 'card' | 'mixed'
+  final double paymentCashAmount;
+  final double paymentCardAmount;
+  final double paymentTransferAmount;
   final double paidAmount;
   final double changeAmount;
   final double creditInterestRate;
@@ -51,6 +54,9 @@ class SaleModel {
     required this.itbisAmount,
     required this.total,
     this.paymentMethod,
+    this.paymentCashAmount = 0.0,
+    this.paymentCardAmount = 0.0,
+    this.paymentTransferAmount = 0.0,
     this.paidAmount = 0.0,
     this.changeAmount = 0.0,
     this.creditInterestRate = 0.0,
@@ -84,6 +90,50 @@ class SaleModel {
   bool get isCompleted => status == SaleStatus.completed;
   bool get isDraft => status == SaleStatus.draft;
   bool get isCancelled => status == SaleStatus.cancelled;
+  bool get isMixedPayment => (paymentMethod ?? '').trim().toLowerCase() == 'mixed';
+
+  List<String> get paymentBreakdownParts {
+    final parts = <String>[];
+    if (paymentCashAmount > 0.009) {
+      parts.add('Efectivo RD\$ ${paymentCashAmount.toStringAsFixed(2)}');
+    }
+    if (paymentCardAmount > 0.009) {
+      parts.add('Tarjeta RD\$ ${paymentCardAmount.toStringAsFixed(2)}');
+    }
+    if (paymentTransferAmount > 0.009) {
+      parts.add('Transferencia RD\$ ${paymentTransferAmount.toStringAsFixed(2)}');
+    }
+    return parts;
+  }
+
+  String get paymentBreakdownLabel => paymentBreakdownParts.join(' + ');
+
+  String get paymentMethodDisplayLabel {
+    final base = paymentMethod == null
+        ? ''
+        : PaymentMethod.getDescription(paymentMethod!);
+    if (!isMixedPayment || paymentBreakdownParts.isEmpty) {
+      return base;
+    }
+    return 'Mixto ($paymentBreakdownLabel)';
+  }
+
+  String get paymentMethodCompactLabel {
+    if (!isMixedPayment) {
+      return switch ((paymentMethod ?? '').trim().toLowerCase()) {
+        'cash' || 'efectivo' => 'EFE',
+        'card' || 'tarjeta' => 'TAR',
+        'transfer' || 'transferencia' => 'TRF',
+        'credit' || 'credito' => 'CRE',
+        'layaway' || 'apartado' => 'APA',
+        'mixed' || 'mixto' => 'MIX',
+        _ => 'PAG',
+      };
+    }
+    if (paymentCardAmount > 0.009) return 'EFE+TAR';
+    if (paymentTransferAmount > 0.009) return 'EFE+TRF';
+    return 'MIX';
+  }
 
   /// Ganancia total estimada
   double get profit {
@@ -108,6 +158,12 @@ class SaleModel {
       itbisAmount: (map['itbis_amount'] as num).toDouble(),
       total: (map['total'] as num).toDouble(),
       paymentMethod: map['payment_method'] as String?,
+        paymentCashAmount:
+          (map['payment_cash_amount'] as num?)?.toDouble() ?? 0.0,
+        paymentCardAmount:
+          (map['payment_card_amount'] as num?)?.toDouble() ?? 0.0,
+        paymentTransferAmount:
+          (map['payment_transfer_amount'] as num?)?.toDouble() ?? 0.0,
       paidAmount: (map['paid_amount'] as num?)?.toDouble() ?? 0.0,
       changeAmount: (map['change_amount'] as num?)?.toDouble() ?? 0.0,
       creditInterestRate:
@@ -143,6 +199,9 @@ class SaleModel {
       'itbis_amount': itbisAmount,
       'total': total,
       'payment_method': paymentMethod,
+      'payment_cash_amount': paymentCashAmount,
+      'payment_card_amount': paymentCardAmount,
+      'payment_transfer_amount': paymentTransferAmount,
       'paid_amount': paidAmount,
       'change_amount': changeAmount,
       'credit_interest_rate': creditInterestRate,
@@ -176,6 +235,9 @@ class SaleModel {
     double? itbisAmount,
     double? total,
     String? paymentMethod,
+    double? paymentCashAmount,
+    double? paymentCardAmount,
+    double? paymentTransferAmount,
     double? paidAmount,
     double? changeAmount,
     double? creditInterestRate,
@@ -209,6 +271,10 @@ class SaleModel {
       itbisAmount: itbisAmount ?? this.itbisAmount,
       total: total ?? this.total,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+        paymentCashAmount: paymentCashAmount ?? this.paymentCashAmount,
+        paymentCardAmount: paymentCardAmount ?? this.paymentCardAmount,
+        paymentTransferAmount:
+          paymentTransferAmount ?? this.paymentTransferAmount,
       paidAmount: paidAmount ?? this.paidAmount,
       changeAmount: changeAmount ?? this.changeAmount,
       creditInterestRate: creditInterestRate ?? this.creditInterestRate,

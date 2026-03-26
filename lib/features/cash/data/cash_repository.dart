@@ -131,6 +131,9 @@ class CashRepository {
     required CashSummaryModel summary,
     int? expectedUserId,
     int? expectedCashboxDailyId,
+    bool closeCashboxDaily = false,
+    String? cashboxCloseNote,
+    int? cashboxClosedByUserId,
   }) {
     // FULLPOS DB HARDENING: asegurar el cierre de caja antes de comprometer cambios.
     return DbHardening.instance.runDbSafe<void>(() async {
@@ -189,6 +192,7 @@ class CashRepository {
           DbTables.cashSessions,
           {
             'closed_at_ms': now,
+            'closed_by_user_id': actorUserId,
             'closing_amount': closingAmount,
             'expected_cash': summary.expectedCash,
             'difference': difference,
@@ -241,6 +245,42 @@ class CashRepository {
           throw Exception(
             'No hay caja diaria abierta para actualizar el efectivo.',
           );
+        }
+
+        if (closeCashboxDaily) {
+          final otherOpenRows = await txn.query(
+            DbTables.cashSessions,
+            columns: ['id'],
+            where: '''
+              status = 'OPEN'
+              AND closed_at_ms IS NULL
+              AND id <> ?
+              AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+            ''',
+            whereArgs: [sessionId, resolvedCashboxDailyId, businessDate],
+            limit: 1,
+          );
+          if (otherOpenRows.isNotEmpty) {
+            throw Exception(
+              'No se puede cerrar la caja porque todavía existe otra sesión activa.',
+            );
+          }
+
+          final cashboxNote = (cashboxCloseNote ?? note).trim();
+          final closedCashbox = await txn.update(
+            DbTables.cashboxDaily,
+            {
+              'status': 'CLOSED',
+              'closed_at_ms': now,
+              'closed_by_user_id': cashboxClosedByUserId ?? actorUserId,
+              'note': cashboxNote.isEmpty ? null : cashboxNote,
+            },
+            where: 'id = ? AND status = ?',
+            whereArgs: [resolvedCashboxDailyId, 'OPEN'],
+          );
+          if (closedCashbox != 1) {
+            throw Exception('No fue posible cerrar la caja diaria.');
+          }
         }
 
         // UX / consistencia operativa:
@@ -511,6 +551,27 @@ class CashRepository {
     return '(${List.filled(count, '?').join(', ')})';
   }
 
+  static String _paymentAmountSql({
+    required String fallbackMethod,
+    required String column,
+    List<String> fallbackAliases = const <String>[],
+  }) {
+    final aliases = <String>[fallbackMethod, ...fallbackAliases]
+        .map((value) => "'${value.toLowerCase()}'")
+        .join(', ');
+    return '''
+      CASE
+        WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'mixed'
+          THEN COALESCE($column, 0)
+        WHEN COALESCE($column, 0) > 0
+          THEN COALESCE($column, 0)
+        WHEN LOWER(TRIM(COALESCE(payment_method, ''))) IN ($aliases)
+          THEN total
+        ELSE 0
+      END
+    ''';
+  }
+
   static Future<CashSummaryModel> _buildDailySummaryUnsafe({
     required int cashboxDailyId,
     required String businessDate,
@@ -612,12 +673,11 @@ class CashRepository {
     // porque paid_amount puede incluir el efectivo entregado por el cliente antes de devolver
     // el cambio/devuelta.
     final cashSalesResult = await db.rawQuery('''
-      SELECT COALESCE(SUM(total), 0) as total
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'cash', column: 'payment_cash_amount', fallbackAliases: ['efectivo'])}), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
         AND kind = 'invoice'
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND payment_method = 'cash'
         AND deleted_at_ms IS NULL
     ''', doubleSessionArgs);
     final salesCashTotal =
@@ -625,12 +685,11 @@ class CashRepository {
 
     // Ventas con tarjeta
     final cardSalesResult = await db.rawQuery('''
-      SELECT COALESCE(SUM(total), 0) as total
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'card', column: 'payment_card_amount', fallbackAliases: ['tarjeta'])}), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
         AND kind = 'invoice'
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND payment_method = 'card'
         AND deleted_at_ms IS NULL
     ''', doubleSessionArgs);
     final salesCardTotal =
@@ -638,12 +697,11 @@ class CashRepository {
 
     // Ventas por transferencia
     final transferSalesResult = await db.rawQuery('''
-      SELECT COALESCE(SUM(total), 0) as total
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'transfer', column: 'payment_transfer_amount', fallbackAliases: ['transferencia'])}), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
         AND kind = 'invoice'
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND payment_method = 'transfer'
         AND deleted_at_ms IS NULL
     ''', doubleSessionArgs);
     final salesTransferTotal =
@@ -783,12 +841,11 @@ class CashRepository {
     // porque paid_amount puede incluir la devuelta/cambio.
     final cashSalesResult = await db.rawQuery(
       '''
-      SELECT COALESCE(SUM(total), 0) as total
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'cash', column: 'payment_cash_amount', fallbackAliases: ['efectivo'])}), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id = ? OR session_id = ?)
         AND kind = 'invoice'
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND payment_method = 'cash'
         AND deleted_at_ms IS NULL
     ''',
       [sessionId, sessionId],
@@ -799,12 +856,11 @@ class CashRepository {
     // Ventas con tarjeta
     final cardSalesResult = await db.rawQuery(
       '''
-      SELECT COALESCE(SUM(total), 0) as total
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'card', column: 'payment_card_amount', fallbackAliases: ['tarjeta'])}), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id = ? OR session_id = ?)
         AND kind = 'invoice'
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND payment_method = 'card'
         AND deleted_at_ms IS NULL
     ''',
       [sessionId, sessionId],
@@ -815,12 +871,11 @@ class CashRepository {
     // Ventas por transferencia
     final transferSalesResult = await db.rawQuery(
       '''
-      SELECT COALESCE(SUM(total), 0) as total
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'transfer', column: 'payment_transfer_amount', fallbackAliases: ['transferencia'])}), 0) as total
       FROM ${DbTables.sales}
       WHERE (cash_session_id = ? OR session_id = ?)
         AND kind = 'invoice'
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND payment_method = 'transfer'
         AND deleted_at_ms IS NULL
     ''',
       [sessionId, sessionId],
@@ -1095,13 +1150,13 @@ class CashRepository {
               category: row['category'] as String? ?? 'Sin categoria',
               salesTotal: (row['sales_total'] as num?)?.toDouble() ?? 0.0,
               cashSalesTotal:
-                (row['cash_sales_total'] as num?)?.toDouble() ?? 0.0,
+                  (row['cash_sales_total'] as num?)?.toDouble() ?? 0.0,
               cardSalesTotal:
-                (row['card_sales_total'] as num?)?.toDouble() ?? 0.0,
+                  (row['card_sales_total'] as num?)?.toDouble() ?? 0.0,
               transferSalesTotal:
                   (row['transfer_sales_total'] as num?)?.toDouble() ?? 0.0,
               creditSalesTotal:
-                (row['credit_sales_total'] as num?)?.toDouble() ?? 0.0,
+                  (row['credit_sales_total'] as num?)?.toDouble() ?? 0.0,
               refundTotal: (row['refund_total'] as num?)?.toDouble() ?? 0.0,
               itemsSold: (row['items_sold'] as num?)?.toDouble() ?? 0.0,
               itemsRefunded: (row['items_refunded'] as num?)?.toDouble() ?? 0.0,
@@ -1114,10 +1169,11 @@ class CashRepository {
   /// Items vendidos por transferencia agrupados por categoria para una sesion.
   static Future<List<TransferItemByCategory>>
   listTransferItemsByCategoryForSession(int sessionId) async {
-    return DbHardening.instance.runDbSafe<List<TransferItemByCategory>>(() async {
-      final db = await AppDb.database;
-      final rows = await db.rawQuery(
-        '''
+    return DbHardening.instance.runDbSafe<List<TransferItemByCategory>>(
+      () async {
+        final db = await AppDb.database;
+        final rows = await db.rawQuery(
+          '''
         SELECT
           COALESCE(c.name, 'Sin categoria') as category,
           COALESCE(si.product_name_snapshot, p.name, 'Item') as product_name,
@@ -1140,20 +1196,22 @@ class CashRepository {
         GROUP BY category, product_name
         ORDER BY category ASC, total DESC, product_name ASC
         ''',
-        [sessionId, sessionId],
-      );
+          [sessionId, sessionId],
+        );
 
-      return rows
-          .map(
-            (row) => TransferItemByCategory(
-              category: row['category'] as String? ?? 'Sin categoria',
-              productName: row['product_name'] as String? ?? 'Item',
-              qty: (row['qty'] as num?)?.toDouble() ?? 0.0,
-              total: (row['total'] as num?)?.toDouble() ?? 0.0,
-            ),
-          )
-          .toList();
-    }, stage: 'cash_category_transfer_items');
+        return rows
+            .map(
+              (row) => TransferItemByCategory(
+                category: row['category'] as String? ?? 'Sin categoria',
+                productName: row['product_name'] as String? ?? 'Item',
+                qty: (row['qty'] as num?)?.toDouble() ?? 0.0,
+                total: (row['total'] as num?)?.toDouble() ?? 0.0,
+              ),
+            )
+            .toList();
+      },
+      stage: 'cash_category_transfer_items',
+    );
   }
 
   /// Items reembolsados por categoria para una sesion de caja.

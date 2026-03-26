@@ -478,10 +478,10 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
         );
 
         final hasActiveFilters =
-          _searchQuery.trim().isNotEmpty ||
-          _selectedFilter != DateFilter.thisMonth ||
-          (_selectedFilter == DateFilter.custom &&
-            (_customDateFrom != null || _customDateTo != null));
+            _searchQuery.trim().isNotEmpty ||
+            _selectedFilter != DateFilter.thisMonth ||
+            (_selectedFilter == DateFilter.custom &&
+                (_customDateFrom != null || _customDateTo != null));
 
         final tabToggle = ToggleButtons(
           isSelected: [_activeTab == 0, _activeTab == 1],
@@ -1227,7 +1227,9 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
             onPressed: () => _showSaleDetails(sale),
             icon: const Icon(Icons.visibility_outlined, size: 18),
             label: const Text('Ver ticket'),
-            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(42)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(42),
+            ),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -1396,7 +1398,10 @@ class _ReturnsListPageState extends State<ReturnsListPage> {
     required TextStyle? smallStyle,
   }) {
     final whole = amount.truncate();
-    final decimal = ((amount - whole) * 100).round().abs().toString().padLeft(2, '0');
+    final decimal = ((amount - whole) * 100).round().abs().toString().padLeft(
+      2,
+      '0',
+    );
     final formatter = NumberFormat.decimalPattern('es_DO');
 
     return RichText(
@@ -2073,10 +2078,10 @@ class _RefundDialogState extends State<_RefundDialog> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Ticket de otro turno'),
+        title: const Text('Ticket de otra sesión'),
         content: Text(
-          'Este ticket se creó en el turno #$originalId ($originalUser).\n'
-          'Tu turno actual es #${currentSession.id} (${currentSession.userName}).\n\n'
+          'Este ticket se creó en la sesión #$originalId ($originalUser).\n'
+          'Tu sesión actual es #${currentSession.id} (${currentSession.userName}).\n\n'
           '¿Deseas anularlo de todos modos?',
         ),
         actions: [

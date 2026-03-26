@@ -1,5 +1,6 @@
 // ignore_for_file: unused_element
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +17,7 @@ import '../../../core/security/app_actions.dart';
 import '../../../core/security/authz/authz_service.dart';
 import '../../../core/security/authz/permission.dart' as authz_perm;
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../auth/services/logout_flow_service.dart';
 import '../../sales/data/sales_repository.dart';
 import '../../sales/data/sales_model.dart' show SaleModel, SaleItemModel;
 import '../../settings/data/printer_settings_repository.dart';
@@ -30,17 +32,41 @@ import '../providers/cash_providers.dart';
 
 enum _SelectionKind { refund, movement }
 
-/// Diálogo para cerrar caja
+/// Diálogo para cerrar la sesión operativa.
 class CashCloseDialog extends ConsumerStatefulWidget {
   final int sessionId;
+  final bool logoutAfterClose;
+  final CashSummaryModel? initialSummary;
+  final CashSessionModel? initialSession;
+  final List<CashMovementModel>? initialMovements;
 
-  const CashCloseDialog({super.key, required this.sessionId});
+  const CashCloseDialog({
+    super.key,
+    required this.sessionId,
+    this.logoutAfterClose = true,
+    this.initialSummary,
+    this.initialSession,
+    this.initialMovements,
+  });
 
-  static Future<bool?> show(BuildContext context, {required int sessionId}) {
+  static Future<bool?> show(
+    BuildContext context, {
+    required int sessionId,
+    bool logoutAfterClose = true,
+    CashSummaryModel? initialSummary,
+    CashSessionModel? initialSession,
+    List<CashMovementModel>? initialMovements,
+  }) {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => CashCloseDialog(sessionId: sessionId),
+      builder: (context) => CashCloseDialog(
+        sessionId: sessionId,
+        logoutAfterClose: logoutAfterClose,
+        initialSummary: initialSummary,
+        initialSession: initialSession,
+        initialMovements: initialMovements,
+      ),
     );
   }
 
@@ -66,7 +92,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   bool _loadingSummary = true;
   CashSessionModel? _session;
   CashboxDailyModel? _cashboxDaily;
-  bool _loadingSession = true;
   List<Map<String, dynamic>> _refunds = [];
   bool _loadingRefunds = true;
   int? _selectedRefundIndex;
@@ -83,10 +108,24 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   @override
   void initState() {
     super.initState();
-    _loadSummary();
-    _loadSession();
+    _summary = widget.initialSummary;
+    _session = widget.initialSession;
+    _movements = widget.initialMovements == null
+        ? []
+        : List<CashMovementModel>.from(widget.initialMovements!);
+    _loadingSummary = widget.initialSummary == null;
+    _loadingMovements = widget.initialMovements == null;
+
+    if (_loadingSummary) {
+      _loadSummary();
+    }
+    if (widget.initialSession == null) {
+      _loadSession();
+    }
     _loadRefunds();
-    _loadMovements();
+    if (_loadingMovements) {
+      _loadMovements();
+    }
     _loadCategorySummary();
   }
 
@@ -100,10 +139,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       setState(() {
         _session = session;
         _cashboxDaily = cashboxDaily;
-        _loadingSession = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loadingSession = false);
+      if (mounted) setState(() {});
     }
   }
 
@@ -272,9 +310,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
     final ok = await AuthzService.runGuardedCurrent<bool>(
       context,
-      authz_perm.Permission.action(AppActions.closeShift),
+      authz_perm.Permission.action(AppActions.closeSession),
       () async => true,
-      reason: 'Cerrar turno',
+      reason: 'Cerrar sesión',
       resourceType: 'cash_session',
       resourceId: widget.sessionId.toString(),
     );
@@ -284,13 +322,13 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     setState(() => _isLoading = true);
 
     try {
-      await ref
-          .read(cashSessionControllerProvider.notifier)
-          .closeSession(
-            sessionId: widget.sessionId,
-            closingAmount: _closingAmount,
-            note: _noteController.text.trim(),
-          );
+      final closeNote = _noteController.text.trim();
+      await OperationFlowService.closeActiveSession(
+        sessionId: widget.sessionId,
+        closingAmount: _closingAmount,
+        note: closeNote,
+      );
+      await ref.read(activeSessionControllerProvider.notifier).refresh();
 
       // Imprimir ticket automáticamente al hacer el corte.
       // Importante: un fallo de impresión NO debe impedir que el corte se complete.
@@ -302,13 +340,13 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         await _printClosingTicket(
           summary: summaryForPrint,
           closingAmount: _closingAmount,
-          note: _noteController.text.trim(),
+          note: closeNote,
         );
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Corte hecho, pero no se pudo imprimir: $e'),
+              content: Text('La sesión se cerró, pero no se pudo imprimir: $e'),
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
@@ -317,12 +355,16 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
       if (mounted) {
         final rootContext = Navigator.of(context, rootNavigator: true).context;
-        final messenger = ScaffoldMessenger.of(rootContext);
         Navigator.of(context).pop(true);
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          messenger.showSnackBar(
+          if (widget.logoutAfterClose) {
+            unawaited(LogoutFlowService.defaultPerformLogout(rootContext));
+            return;
+          }
+
+          ScaffoldMessenger.of(rootContext).showSnackBar(
             SnackBar(
-              content: const Text('Corte de caja realizado correctamente'),
+              content: const Text('Sesión cerrada correctamente'),
               backgroundColor: Theme.of(rootContext).colorScheme.primary,
             ),
           );
@@ -375,10 +417,10 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             widget.sessionId,
           );
     final transferItemsByCategory = _transferItemsByCategory.isNotEmpty
-      ? _transferItemsByCategory
-      : await CashRepository.listTransferItemsByCategoryForSession(
-        widget.sessionId,
-        );
+        ? _transferItemsByCategory
+        : await CashRepository.listTransferItemsByCategoryForSession(
+            widget.sessionId,
+          );
     final settings = await PrinterSettingsRepository.getOrCreate();
     final layout = TicketLayoutConfig.fromPrinterSettings(settings);
     final company = await CompanyInfoRepository.getCurrentCompanyInfo();
@@ -475,7 +517,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
       final leftLines = ReceiptText.wrapText(cleanLeft, leftWidth);
       if (cleanRight.length <= rightWidth) {
-        for (final extraLeft in leftLines.take(math.max(0, leftLines.length - 1))) {
+        for (final extraLeft in leftLines.take(
+          math.max(0, leftLines.length - 1),
+        )) {
           lines.add(fit(extraLeft));
         }
         final lastLeft = leftLines.isEmpty ? '' : leftLines.last;
@@ -506,6 +550,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       return normalized == 'transfer' || normalized == 'transferencia';
     }
 
+    double transferAmountOf(SaleModel sale) {
+      if (sale.paymentTransferAmount > 0.009) {
+        return sale.paymentTransferAmount;
+      }
+      return sale.kind != 'return' && isTransferMethod(sale.paymentMethod)
+          ? sale.total
+          : 0.0;
+    }
+
     String fmtDuration(Duration d) {
       final totalMinutes = d.inMinutes;
       final hours = totalMinutes ~/ 60;
@@ -529,7 +582,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
 
     lines.add(line());
-    lines.add('<H2C>CORTE DE TURNO');
+    lines.add('<H2C>CIERRE DE SESION Y CAJA');
     lines.add(line());
     lines.add('<BL>${twoCols('Sesion', '#${session.id ?? ''}')}');
     lines.add('<BL>${twoCols('Cajero', session.userName)}');
@@ -547,7 +600,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     if (cashboxInitialAmount != null) {
       addKeyValue('Apertura caja', money(cashboxInitialAmount));
     }
-    addKeyValue('Apertura turno', money(summary.openingAmount));
+    addKeyValue('Apertura sesion', money(summary.openingAmount));
     addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
     addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
     addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
@@ -584,7 +637,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       lines.add(line());
     }
 
-    lines.add('<H2C>MOVIMIENTOS DEL TURNO');
+    lines.add('<H2C>MOVIMIENTOS DE LA SESION');
     lines.add(line());
     if (movements.isEmpty) {
       lines.add(center('Sin movimientos'));
@@ -601,29 +654,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       addKeyValue('Total retiros', money(summary.cashOutManual));
     }
 
-    String methodAbbr(String? method) {
-      final m = (method ?? '').trim().toLowerCase();
-      switch (m) {
-        case 'cash':
-        case 'efectivo':
-          return 'EFE';
-        case 'card':
-        case 'tarjeta':
-          return 'TAR';
-        case 'transfer':
-        case 'transferencia':
-          return 'TRF';
-        case 'credit':
-        case 'credito':
-          return 'CRE';
-        case 'mixed':
-        case 'mixto':
-          return 'MIX';
-        default:
-          if (m.isEmpty) return '---';
-          final up = sanitize(m.toUpperCase());
-          return up.substring(0, math.min(3, up.length));
-      }
+    String methodAbbr(SaleModel sale) {
+      return sale.paymentMethodCompactLabel;
     }
 
     String saleRow({
@@ -635,7 +667,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       // Formato: HH:mm  NOMBRE...............  MET  RD$ 000.00
       final timeWidth = 5;
       final methodWidth = 3;
-        final int totalWidth = (18).clamp(12, w - 10).toInt();
+      final int totalWidth = (18).clamp(12, w - 10).toInt();
       final int nameWidth = (w - timeWidth - methodWidth - totalWidth - 3)
           .clamp(8, w)
           .toInt();
@@ -720,7 +752,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final sortedSales = [...sales]
       ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
 
-    lines.add('<H2C>VENTAS DEL TURNO');
+    lines.add('<H2C>VENTAS DE LA SESION');
     lines.add(line());
     if (sales.isEmpty) {
       lines.add(center('Sin ventas registradas'));
@@ -745,17 +777,27 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           saleRow(
             time: timeFmt.format(when),
             name: displayName.isNotEmpty ? displayName : 'Venta',
-            method: methodAbbr(sale.paymentMethod),
+            method: methodAbbr(sale),
             total: money(sale.total),
           ),
         );
+        if (sale.isMixedPayment && sale.paymentBreakdownLabel.isNotEmpty) {
+          final wrapped = ReceiptText.wrapText(
+            sanitize('  ${sale.paymentBreakdownLabel}'),
+            (w - 2).clamp(8, w),
+          );
+          for (final line in wrapped) {
+            lines.add(ReceiptText.fitText(line, w));
+          }
+        }
       }
     }
     lines.add(line());
 
     final transferSales = sortedSales
-        .where((sale) =>
-            sale.kind != 'return' && isTransferMethod(sale.paymentMethod))
+        .where(
+          (sale) => sale.kind != 'return' && transferAmountOf(sale) > 0.009,
+        )
         .toList(growable: false);
     if (transferSales.isNotEmpty) {
       lines.add('<H2C>DETALLE TRANSFERENCIAS');
@@ -765,7 +807,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
         addKeyValue(
           '${timeFmt.format(when)} ${sale.localCode}',
-          money(sale.total),
+          money(transferAmountOf(sale)),
           prefix: '',
         );
 
@@ -780,7 +822,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           }
         }
 
-        final items = saleItemsBySaleId[sale.id ?? -1] ?? const <SaleItemModel>[];
+        final items =
+            saleItemsBySaleId[sale.id ?? -1] ?? const <SaleItemModel>[];
         if (items.isEmpty) {
           lines.add(fit('  Producto: Sin detalle'));
         } else {
@@ -953,326 +996,297 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final scheme = theme.colorScheme;
     final settings = ref.watch(themeProvider);
     final viewInsets = MediaQuery.of(context).viewInsets;
-    const targetWidth = 980.0;
-    const targetHeight = 740.0;
-    final safeWidth = (screenSize.width - 32).clamp(360.0, 1600.0);
-    final safeHeight = (screenSize.height - viewInsets.vertical - 32).clamp(
-      560.0,
-      1200.0,
+    final safeWidth = (screenSize.width - 20).clamp(260.0, 520.0);
+    final safeHeight = (screenSize.height - viewInsets.vertical - 20).clamp(
+      240.0,
+      420.0,
     );
-    final dialogWidth = targetWidth.clamp(360.0, safeWidth);
-    final dialogHeight = targetHeight.clamp(560.0, safeHeight);
-    final outerPad = (math.min(dialogWidth, dialogHeight) * 0.03).clamp(
-      16.0,
-      26.0,
+    final dialogWidth = (screenSize.width * 0.20).clamp(260.0, safeWidth);
+    final dialogHeight = (screenSize.height * 0.30).clamp(250.0, safeHeight);
+    final sidebarColor = settings.sidebarColor;
+    final sidebarAccent = settings.sidebarActiveColor;
+    final sidebarText = ColorUtils.ensureReadableColor(
+      settings.sidebarTextColor,
+      sidebarColor,
     );
-
-    final gradientTheme = theme.extension<AppGradientTheme>();
-    final headerGradient =
-        gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.error, scheme.errorContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-    final headerText = ColorUtils.ensureReadableColor(
-      scheme.onError,
-      scheme.errorContainer,
-    );
-    Color readableOn(Color bg) => ColorUtils.readableTextColor(bg);
+    final money = NumberFormat.currency(locale: 'en_US', symbol: '\$');
+    final summary = _summary;
+    final session = _session;
+    final expectedCash = money.format(summary?.expectedCash ?? 0.0);
+    final totalSales = money.format(summary?.totalSales ?? 0.0);
+    final tickets = '${summary?.totalTickets ?? 0}';
+    final openedAt = session == null
+        ? '--'
+        : _dateTimeShortFormat.format(session.openedAt);
 
     return DialogKeyboardShortcuts(
       onSubmit: _isLoading ? null : _closeCash,
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.symmetric(
-          horizontal: (screenSize.width * 0.05).clamp(16.0, 56.0),
-          vertical: (screenSize.height * 0.05).clamp(16.0, 56.0),
+          horizontal: (screenSize.width * 0.02).clamp(10.0, 28.0),
+          vertical: (screenSize.height * 0.02).clamp(10.0, 24.0),
         ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: dialogWidth,
-            maxHeight: dialogHeight,
-            minWidth: math.min(360.0, dialogWidth),
-            minHeight: math.min(560.0, dialogHeight),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: scheme.outlineVariant.withOpacity(0.55),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.shadowColor.withOpacity(0.22),
-                  blurRadius: 24,
-                  offset: const Offset(0, 14),
-                ),
-              ],
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.92, end: 1.0),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) {
+            return Opacity(
+              opacity: value,
+              child: Transform.scale(scale: value, child: child),
+            );
+          },
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: dialogWidth,
+              maxHeight: dialogHeight,
+              minWidth: 260,
+              minHeight: 250,
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
-                  decoration: BoxDecoration(gradient: headerGradient),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: headerText.withOpacity(0.14),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: headerText.withOpacity(0.18),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.lock_outline,
-                          color: headerText,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: sidebarAccent.withOpacity(0.34),
+                  width: 1.2,
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color.alphaBlend(
+                      sidebarColor.withOpacity(0.24),
+                      scheme.surface,
+                    ),
+                    Color.alphaBlend(
+                      sidebarAccent.withOpacity(0.10),
+                      scheme.surface,
+                    ),
+                    scheme.surface,
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: sidebarColor.withOpacity(0.22),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _loadingSummary
+                  ? Center(
+                      child: CircularProgressIndicator(color: sidebarAccent),
+                    )
+                  : Form(
+                      key: _formKey,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Corte de turno',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: headerText,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Cerrar turno, revisar resumen e imprimir comprobante',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: headerText.withOpacity(0.82),
-                                height: 1.15,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => Navigator.pop(context),
-                        icon: Icon(Icons.close, color: headerText),
-                        tooltip: 'Cerrar',
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Content
-                Flexible(
-                  child: Padding(
-                    padding: EdgeInsets.all(outerPad),
-                    child: _loadingSummary
-                        ? Center(
-                            child: CircularProgressIndicator(
-                              color: scheme.error,
-                            ),
-                          )
-                        : Form(
-                            key: _formKey,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            Row(
                               children: [
-                                // Info del turno
-                                Builder(
-                                  builder: (context) {
-                                    if (_loadingSession) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 16,
-                                        ),
-                                        child: Text(
-                                          'Cargando información del turno…',
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: scheme.onSurface
-                                                    .withOpacity(0.65),
-                                              ),
-                                        ),
-                                      );
-                                    }
-
-                                    final s = _session;
-                                    if (s == null) {
-                                      return const SizedBox(height: 0);
-                                    }
-
-                                    final end = s.closedAt ?? DateTime.now();
-                                    final duration = end.difference(s.openedAt);
-                                    final fmt = _dateTimeFormat;
-
-                                    return Container(
-                                      width: double.infinity,
-                                      margin: const EdgeInsets.only(bottom: 16),
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: scheme.surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: scheme.outlineVariant
-                                              .withOpacity(0.6),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'Cajero: ${s.userName}',
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            'Apertura: ${fmt.format(s.openedAt)}',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: scheme.onSurface
-                                                      .withOpacity(0.7),
-                                                ),
-                                          ),
-                                          Text(
-                                            'Tiempo con caja abierta: ${_formatDuration(duration)}',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: scheme.onSurface
-                                                      .withOpacity(0.7),
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: Color.alphaBlend(
+                                      sidebarAccent.withOpacity(0.16),
+                                      scheme.surface,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: Icon(
+                                    Icons.task_alt_rounded,
+                                    color: sidebarAccent,
+                                    size: 22,
+                                  ),
                                 ),
-
+                                const SizedBox(width: 10),
                                 Expanded(
-                                  child: LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final isWide =
-                                          constraints.maxWidth >= 860;
-                                      final gap = (outerPad * 0.65).clamp(
-                                        12.0,
-                                        18.0,
-                                      );
-
-                                      final summary = _buildSummarySection(
-                                        fontFamily: settings.fontFamily,
-                                      );
-                                      final closing = _buildClosingSection(
-                                        fontFamily: settings.fontFamily,
-                                      );
-
-                                      if (!isWide) {
-                                        return Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            summary,
-                                            SizedBox(height: gap),
-                                            closing,
-                                          ],
-                                        );
-                                      }
-
-                                      return Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(flex: 6, child: summary),
-                                          SizedBox(width: gap),
-                                          Expanded(flex: 5, child: closing),
-                                        ],
-                                      );
-                                    },
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Confirmar corte',
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              color: scheme.onSurface,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Resumen simple del cierre.',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: scheme.onSurface
+                                                  .withOpacity(0.66),
+                                              fontSize: 10.5,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: _isLoading
+                                      ? null
+                                      : () => Navigator.pop(context),
+                                  icon: Icon(
+                                    Icons.close,
+                                    color: scheme.onSurface.withOpacity(0.64),
+                                    size: 18,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Color.alphaBlend(
+                                  sidebarColor.withOpacity(0.12),
+                                  scheme.surfaceContainerHighest,
+                                ),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: sidebarAccent.withOpacity(0.18),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    expectedCash,
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                          color: scheme.onSurface,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Efectivo esperado para el corte',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurface.withOpacity(0.66),
+                                      fontSize: 10.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _buildStatChip(
+                                  session?.userName ?? 'Cajero',
+                                  'Cajero',
+                                  sidebarAccent,
+                                  fg: sidebarText,
+                                  fontFamily: settings.fontFamily,
+                                ),
+                                _buildStatChip(
+                                  tickets,
+                                  'Tickets',
+                                  sidebarAccent,
+                                  fg: sidebarText,
+                                  fontFamily: settings.fontFamily,
+                                ),
+                                _buildStatChip(
+                                  totalSales,
+                                  'Ventas',
+                                  scheme.tertiary,
+                                  fg: sidebarText,
+                                  fontFamily: settings.fontFamily,
+                                ),
+                                _buildStatChip(
+                                  openedAt,
+                                  'Apertura',
+                                  scheme.secondary,
+                                  fg: sidebarText,
+                                  fontFamily: settings.fontFamily,
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: _isLoading
+                                        ? null
+                                        : () => Navigator.pop(context),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: scheme.onSurface,
+                                      side: BorderSide(
+                                        color: scheme.outlineVariant,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _isLoading ? null : _closeCash,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: sidebarAccent,
+                                      foregroundColor:
+                                          ColorUtils.readableTextColor(
+                                            sidebarAccent,
+                                          ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    icon: _isLoading
+                                        ? SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    ColorUtils.readableTextColor(
+                                                      sidebarAccent,
+                                                    ),
+                                                  ),
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 16,
+                                          ),
+                                    label: const Text(
+                                      'Hacer corte',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                  ),
-                ),
-
-                // Footer
-                Container(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceVariant.withOpacity(0.25),
-                    border: Border(
-                      top: BorderSide(
-                        color: scheme.outlineVariant.withOpacity(0.55),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isLoading
-                              ? null
-                              : () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, size: 18),
-                          label: const Text('Cancelar'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: scheme.onSurface,
-                            side: BorderSide(color: scheme.outlineVariant),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _closeCash,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: scheme.error,
-                            foregroundColor: readableOn(scheme.error),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: _isLoading
-                              ? SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      readableOn(scheme.error),
-                                    ),
-                                  ),
-                                )
-                              : const Icon(Icons.lock, size: 18),
-                          label: const Text(
-                            'Hacer corte',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ),
@@ -1341,7 +1355,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             ),
           ),
           const SizedBox(height: 6),
-          row('Apertura turno', summary.openingAmount, color: fg),
+          row('Apertura sesión', summary.openingAmount, color: fg),
           row('Ventas efectivo', summary.salesCashTotal, color: fg),
           row('Entradas manuales', summary.cashInManual, color: fg),
           row('Retiros manuales', summary.cashOutManual, color: scheme.error),
@@ -1401,7 +1415,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             children: [
               Expanded(
                 child: Text(
-                  'DEVOLUCIONES DEL TURNO',
+                  'DEVOLUCIONES DE LA SESION',
                   style: theme.textTheme.labelLarge?.copyWith(
                     letterSpacing: 1,
                     fontWeight: FontWeight.w800,
@@ -1431,7 +1445,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             )
           else if (_refunds.isEmpty)
             Text(
-              'No hay devoluciones registradas en este turno.',
+              'No hay devoluciones registradas en esta sesión.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: fg.withOpacity(0.7),
                 fontFamily: fontFamily,
@@ -1472,7 +1486,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             children: [
               Expanded(
                 child: Text(
-                  'MOVIMIENTOS DEL TURNO',
+                  'MOVIMIENTOS DE LA SESION',
                   style: theme.textTheme.labelLarge?.copyWith(
                     letterSpacing: 1,
                     fontWeight: FontWeight.w800,
@@ -1502,7 +1516,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             )
           else if (_movements.isEmpty)
             Text(
-              'No hay movimientos (entradas/retiros) en este turno.',
+              'No hay movimientos (entradas/retiros) en esta sesión.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: fg.withOpacity(0.7),
                 fontFamily: fontFamily,
@@ -1570,7 +1584,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
         ),
         child: Text(
-          'No hay datos por categoria en este turno.',
+          'No hay datos por categoría en esta sesión.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: fg.withOpacity(0.7),
             fontFamily: fontFamily,

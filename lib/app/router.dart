@@ -17,7 +17,6 @@ import '../features/auth/services/first_run_auth_flags.dart';
 import '../features/cash/ui/cash_box_page.dart';
 import '../features/cash/ui/cash_history_page.dart';
 import '../features/cash/ui/expenses_overview_page.dart';
-import '../features/cash/ui/operation_start_page.dart';
 import '../features/cash/data/operation_flow_service.dart';
 import '../features/clients/ui/clients_page.dart';
 import '../features/products/ui/products_page.dart';
@@ -123,7 +122,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnPublicLicense = path == '/license';
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
-      final isOnOperationStart = path == '/operation-start';
       final isOnSales = path == '/sales';
 
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
@@ -150,13 +148,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
       if (isOnBlocked) {
-        return isLoggedIn ? '/operation-start' : '/login';
+        return isLoggedIn ? '/sales' : '/login';
       }
       if (isOnPublicLicense || isOnSettingsLicense) {
         // En debug permitimos abrir la pantalla de licencia desde Configuración
         // para poder resetear TRIAL/licencia en esta misma PC.
         if (kDebugMode) return null;
-        return isLoggedIn ? '/operation-start' : '/login';
+        return isLoggedIn ? '/sales' : '/login';
       }
 
       assert(() {
@@ -182,30 +180,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       } else {
-        if (isOnForceChangePassword) return '/operation-start';
+        if (isOnForceChangePassword) return '/sales';
       }
 
-      // Mantener UI idéntica: no redirigir por permisos.
       if (isOnLogin) return '/sales';
 
-      // Flujo profesional: Login -> Iniciar operación -> Ventas.
-      // Bloquea entrada a ventas sin turno abierto.
-      OperationGateState? opGateCache;
-      Future<OperationGateState> loadOpGate() async {
-        opGateCache ??= await OperationFlowService.loadGateState();
-        return opGateCache!;
+      ActiveSession? activeSessionCache;
+      Future<ActiveSession?> loadActiveSession() async {
+        activeSessionCache ??= await OperationFlowService.loadActiveSession();
+        return activeSessionCache;
       }
 
-      if (isOnSales) {
-        final opGate = await loadOpGate();
-        if (!opGate.canOperate) return '/operation-start';
-      }
-
-      // Si ya puedes operar, no mostrar nuevamente /operation-start al reingresar.
-      if (isOnOperationStart) {
-        final opGate = await loadOpGate();
-        if (opGate.canOperate) return '/sales';
-        return null;
+      final activeSession = await loadActiveSession();
+      if (activeSession == null && !isOnSales) {
+        return '/sales';
       }
 
       return null;
@@ -219,11 +207,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/force-change-password',
         builder: (context, state) =>
             FullposBrandScope(child: ForceChangePasswordPage()),
-      ),
-      GoRoute(
-        path: '/operation-start',
-        builder: (context, state) =>
-            const FullposBrandScope(child: OperationStartPage()),
       ),
       GoRoute(
         path: '/license',
@@ -376,11 +359,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/cash',
-            builder: (context, state) {
-              final qp = state.uri.queryParameters;
-              final autoCut = qp['closeShift'] == '1' || qp['action'] == 'cut';
-              return CashBoxPage(autoOpenShiftCut: autoCut);
-            },
+            builder: (context, state) => const CashBoxPage(),
           ),
           GoRoute(
             path: '/cash/history',
@@ -587,7 +566,9 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
     // sin re-consultar la nube, dejando la app atrapada.
     final now = DateTime.now();
     final lastProbe = _blockedCloudProbeAt;
-    final canProbe = lastProbe == null || now.difference(lastProbe) >= _kBlockedGateProbeInterval;
+    final canProbe =
+        lastProbe == null ||
+        now.difference(lastProbe) >= _kBlockedGateProbeInterval;
 
     if (canProbe && _blockedCloudProbeInFlight == null) {
       _blockedCloudProbeAt = now;
@@ -608,7 +589,10 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
 
     // Si el poll trajo una licencia ACTIVA, salir del bloqueo.
     final refreshed = await storage.getLastInfo();
-    if (refreshed != null && !refreshed.isBlocked && refreshed.isActive && !refreshed.isExpired) {
+    if (refreshed != null &&
+        !refreshed.isBlocked &&
+        refreshed.isActive &&
+        !refreshed.isExpired) {
       return const _LicenseGateDecision(
         isActive: true,
         isBlocked: false,

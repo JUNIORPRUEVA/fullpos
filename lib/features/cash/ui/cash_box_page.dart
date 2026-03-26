@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import '../data/cash_repository.dart';
 import '../data/cash_session_model.dart';
 import '../data/cashbox_daily_model.dart';
-import '../data/daily_cash_close_ticket_printer.dart';
 import '../data/operation_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../settings/data/user_model.dart' show UserPermissions;
@@ -16,11 +15,7 @@ import 'cash_panel_sheet.dart';
 
 /// Pagina principal de gestion de Caja
 class CashBoxPage extends StatefulWidget {
-  const CashBoxPage({super.key, this.autoOpenShiftCut = false});
-
-  /// Si es true, al entrar a la pantalla intentará abrir automáticamente
-  /// el diálogo de "Corte" (cierre de turno) cuando exista un turno abierto.
-  final bool autoOpenShiftCut;
+  const CashBoxPage({super.key});
 
   @override
   State<CashBoxPage> createState() => _CashBoxPageState();
@@ -32,8 +27,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
   List<CashSessionModel> _history = const [];
   bool _isLoading = true;
   bool _canOpenCashbox = false;
-  bool _canCloseCashbox = false;
-  bool _canOpenShift = false;
   bool _canCloseShift = false;
   bool _isMutating = false;
 
@@ -62,216 +55,51 @@ class _CashBoxPageState extends State<CashBoxPage> {
       _cashboxToday = gate.cashboxToday;
       _history = history;
       _canOpenCashbox = perms.canOpenCashbox || perms.canOpenCash;
-      _canCloseCashbox = perms.canCloseCashbox;
-      _canOpenShift = perms.canOpenShift || perms.canOpenCash;
       _canCloseShift = perms.canCloseShift || perms.canCloseCash;
       _isLoading = false;
     });
-
-    // Si esta pantalla fue abierta específicamente para hacer el corte,
-    // abrir el diálogo automáticamente (post-frame) para llevar al usuario
-    // directo al flujo correcto.
-    if (!mounted) return;
-    if (widget.autoOpenShiftCut && !_isMutating) {
-      final sessionId = _session?.id;
-      if (sessionId != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          if (_isMutating) return;
-          // Solo si todavía hay sesión abierta.
-          if (_session?.id != sessionId) return;
-          unawaited(_closeCashDialog());
-        });
-      }
-    }
   }
 
   Future<void> _openCashDialog() async {
+    if (_cashboxToday?.isOpen == true) {
+      try {
+        await OperationFlowService.ensureActiveSessionForCurrentUser(
+          openingAmount: 0,
+          note: 'Reanudación desde módulo Caja',
+        );
+        if (mounted) context.go('/sales');
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(e.toString())));
+        }
+      }
+      return;
+    }
+
     final amount = await CashboxOpenDialog.show(
       context: context,
       canOpen: _canOpenCashbox,
-      title: 'Abrir caja del día',
-      subtitle:
-          'Registra el fondo inicial para habilitar los turnos de trabajo.',
+      title: 'Abrir caja',
+      subtitle: 'Registra el fondo inicial para comenzar a trabajar.',
       confirmLabel: 'Abrir caja',
       deniedMessage: 'Requiere supervisor/admin para abrir caja.',
     );
     if (amount == null) return;
 
     try {
-      await OperationFlowService.openDailyCashboxToday(
+      await OperationFlowService.ensureActiveSessionForCurrentUser(
         openingAmount: amount,
         note: 'Apertura manual desde módulo Caja',
       );
-      await _loadData();
+      if (mounted) context.go('/sales');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
-    }
-  }
-
-  Future<void> _closeDailyCashbox() async {
-    if (_isMutating) return;
-    if (!mounted) return;
-
-    if (!_canCloseCashbox) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No tienes permiso para cerrar caja del día.'),
-        ),
-      );
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cerrar caja (fin del día)'),
-        content: const Text(
-          'Este proceso cierra la caja del día y bloquea operar hasta abrir una nueva caja. ¿Deseas continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Cerrar caja'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    if (!mounted) return;
-
-    final shouldPrint = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Imprimir ticket'),
-        content: const Text(
-          '¿Deseas imprimir el ticket de cierre de caja del día?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No imprimir'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Imprimir'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-
-    final businessDate = OperationFlowService.businessDateOf();
-    final cashboxBefore = await OperationFlowService.getDailyCashbox(
-      businessDate,
-    );
-    final cashboxId = cashboxBefore?.id;
-
-    if (!mounted) return;
-
-    setState(() => _isMutating = true);
-    try {
-      await OperationFlowService.closeDailyCashboxToday(
-        note: 'Cierre diario desde módulo Caja',
-      );
-
-      if (shouldPrint == true && cashboxId != null) {
-        try {
-          await DailyCashCloseTicketPrinter.printDailyCloseTicket(
-            cashboxDailyId: cashboxId,
-            businessDate: businessDate,
-            note: 'Cierre diario desde módulo Caja',
-          );
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Caja cerrada, pero no se pudo imprimir: $e'),
-              ),
-            );
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _session = null;
-          _cashboxToday = null;
-        });
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Caja diaria cerrada correctamente.')),
-        );
-      }
-      await _loadData();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
-      }
-    } finally {
-      if (mounted) setState(() => _isMutating = false);
-    }
-  }
-
-  Future<void> _openShiftDialog() async {
-    final amountCtrl = TextEditingController(text: '0.00');
-    try {
-      final result = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Abrir turno'),
-          content: TextField(
-            controller: amountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Monto inicial turno',
-              prefixText: 'RD\$ ',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: _canOpenShift
-                  ? () async {
-                      final amount =
-                          double.tryParse(amountCtrl.text.trim()) ?? 0;
-                      await OperationFlowService.openShiftForCurrentUser(
-                        openingAmount: amount,
-                      );
-                      if (context.mounted) Navigator.pop(context, true);
-                    }
-                  : null,
-              child: const Text('Iniciar turno'),
-            ),
-          ],
-        ),
-      );
-      if (result == true) {
-        await _loadData();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
-      }
-    } finally {
-      amountCtrl.dispose();
     }
   }
 
@@ -283,7 +111,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No tienes permiso para hacer corte de turno.'),
+            content: Text('No tienes permiso para cerrar la sesión.'),
           ),
         );
       }
@@ -292,30 +120,15 @@ class _CashBoxPageState extends State<CashBoxPage> {
     if (!mounted) return;
     setState(() => _isMutating = true);
     try {
-      final result = await CashCloseDialog.show(context, sessionId: sessionId);
+      final result = await CashCloseDialog.show(
+        context,
+        sessionId: sessionId,
+        logoutAfterClose: false,
+      );
       if (result == true && mounted) {
         setState(() => _session = null);
         await _loadData();
-
-        // Si el usuario llegó aquí desde "Iniciar operación" por un corte forzado,
-        // al completar el corte regresamos automáticamente a esa pantalla.
-        if (widget.autoOpenShiftCut && mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            context.go('/operation-start');
-          });
-          return;
-        }
-
-        // UX: al cerrar el turno, no volver a mostrar el cuadro de “Abrir turno”.
-        // Redirigir al flujo oficial de “Iniciar operación”.
-        if (mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            context.go('/operation-start');
-          });
-          return;
-        }
+        return;
       }
     } finally {
       if (mounted) setState(() => _isMutating = false);
@@ -340,7 +153,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Caja y Corte'),
+        title: const Text('Sesión de Caja'),
         actions: [
           TextButton.icon(
             onPressed: () => context.push('/cash/history'),
@@ -446,12 +259,12 @@ class _CashBoxPageState extends State<CashBoxPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Paso 1: abrir caja diaria',
+                'Abrir caja para trabajar',
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
               Text(
-                'Primero abre la caja del día para habilitar la apertura de turno y el corte.',
+                'La caja y el turno ahora funcionan como una sola sesión. Abre caja y entra directo al POS.',
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -461,7 +274,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
                 icon: const Icon(Icons.add),
                 label: Text(
                   _canOpenCashbox
-                      ? 'Abrir Caja del Día'
+                      ? 'Abrir Caja y Entrar'
                       : 'Requiere Supervisor/Admin',
                 ),
               ),
@@ -498,7 +311,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
                 Icon(Icons.lock_open, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Caja diaria abierta',
+                  'Caja activa',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -515,7 +328,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
             if (session != null) ...[
               const SizedBox(height: 6),
               Text(
-                'Monto inicial turno: RD\$ ${_formatAmount(session.openingAmount)}',
+                'Monto inicial sesión: RD\$ ${_formatAmount(session.openingAmount)}',
                 style: theme.textTheme.bodyMedium,
               ),
             ],
@@ -527,26 +340,26 @@ class _CashBoxPageState extends State<CashBoxPage> {
             if (session != null) ...[
               const SizedBox(height: 6),
               Text(
-                'Turno activo: ${session.userName}',
+                'Sesión activa: ${session.userName}',
                 style: theme.textTheme.bodyMedium,
               ),
             ] else ...[
               const SizedBox(height: 6),
               Text(
-                'Paso 2: no hay turno abierto. Abre un turno para vender.',
+                'Caja abierta sin sesión activa. Entra al POS para restaurarla.',
                 style: theme.textTheme.bodyMedium,
               ),
             ],
             const SizedBox(height: 12),
             Text(
-              'Turno (Corte cajero): abrir/cerrar turno del usuario actual.',
+              'La caja y el turno se manejan como una sola sesión operativa.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.75),
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              'Caja (Fin del día): solo supervisor/admin y únicamente sin turnos abiertos.',
+              'Al cerrar la sesión se cierra la caja, se imprime el cierre y el usuario sale del sistema.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.75),
               ),
@@ -557,48 +370,35 @@ class _CashBoxPageState extends State<CashBoxPage> {
               runSpacing: 12,
               children: [
                 Tooltip(
-                  message: 'Turno: iniciar o gestionar corte del cajero actual',
+                  message: 'Abrir caja y continuar con la sesión activa',
                   child: ElevatedButton.icon(
                     onPressed: _isMutating
                         ? null
                         : session == null
-                        ? (_canOpenShift ? _openShiftDialog : null)
+                        ? _openCashDialog
                         : _openPanel,
                     icon: Icon(
                       session == null ? Icons.play_arrow : Icons.point_of_sale,
                     ),
                     label: Text(
                       session == null
-                          ? (_canOpenShift
-                                ? 'Abrir turno'
-                                : 'Sin permiso para abrir turno')
-                          : 'Panel de turno',
+                          ? (_canOpenCashbox
+                                ? 'Entrar al POS'
+                                : 'Sin permiso para abrir caja')
+                          : 'Panel de sesión',
                     ),
                   ),
                 ),
                 Tooltip(
-                  message: 'Turno: registrar cierre del turno del cajero',
+                  message:
+                      'Cerrar la sesión activa, la caja y salir del sistema',
                   child: OutlinedButton.icon(
                     onPressed:
                         (_isMutating || session == null || !_canCloseShift)
                         ? null
                         : _closeCashDialog,
                     icon: const Icon(Icons.lock_outline),
-                    label: const Text('Hacer corte de turno'),
-                  ),
-                ),
-                Tooltip(
-                  message:
-                      'Caja diaria: cierre de fin de día (sin turnos abiertos)',
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        (_isMutating || !(_canCloseCashbox && session == null))
-                        ? null
-                        : _closeDailyCashbox,
-                    icon: const Icon(Icons.lock_clock),
-                    label: Text(
-                      _isMutating ? 'Procesando...' : 'Cerrar caja del día',
-                    ),
+                    label: const Text('Cerrar sesión'),
                   ),
                 ),
                 OutlinedButton.icon(

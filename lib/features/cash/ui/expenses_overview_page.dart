@@ -243,7 +243,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                   runSpacing: AppSizes.spaceS,
                   children: [
                     _pill('Tipo: ${isIncome ? 'Entrada' : 'Salida'}', scheme),
-                    _pill('Turno: #${movement.sessionId}', scheme),
+                    _pill('Sesión: #${movement.sessionId}', scheme),
                     _pill('Usuario: #${movement.userId}', scheme),
                     _pill(
                       'Fecha: ${dateFmt.format(movement.createdAt)}',
@@ -381,26 +381,26 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
             SizedBox(
               height: 42,
               child: ElevatedButton.icon(
-              onPressed: _pickRange,
-              icon: const Icon(Icons.calendar_month, size: 18),
-              label: Text(
-                '${dateFormat.format(_range.start)} — ${dateFormat.format(_range.end)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              style: ElevatedButton.styleFrom(
-                elevation: 0,
-                backgroundColor: AppColors.brandBlue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                onPressed: _pickRange,
+                icon: const Icon(Icons.calendar_month, size: 18),
+                label: Text(
+                  '${dateFormat.format(_range.start)} — ${dateFormat.format(_range.end)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textStyle: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.8,
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: AppColors.brandBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  textStyle: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.8,
+                  ),
                 ),
-              ),
               ),
             ),
             const SizedBox(width: 10),
@@ -419,7 +419,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     });
                   },
                   decoration: InputDecoration(
-                    hintText: 'Buscar motivo o turno (#)',
+                    hintText: 'Buscar motivo o sesión (#)',
                     prefixIcon: const Icon(Icons.search, size: 18),
                     filled: true,
                     fillColor: AppColors.surfaceLightVariant,
@@ -430,11 +430,15 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(color: AppColors.surfaceLightBorder),
+                      borderSide: BorderSide(
+                        color: AppColors.surfaceLightBorder,
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(color: AppColors.surfaceLightBorder),
+                      borderSide: BorderSide(
+                        color: AppColors.surfaceLightBorder,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -719,10 +723,11 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: (isIncome
-                            ? AppColors.successLight
-                            : AppColors.errorLight)
-                        .withOpacity(0.9),
+                    color:
+                        (isIncome
+                                ? AppColors.successLight
+                                : AppColors.errorLight)
+                            .withOpacity(0.9),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -765,7 +770,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
               children: [
                 Expanded(
                   child: _DetailMetric(
-                    label: 'Turno',
+                    label: 'Sesión',
                     value: '#${movement.sessionId}',
                     color: AppColors.textDark,
                     backgroundColor: AppColors.surfaceLightVariant,
@@ -833,7 +838,7 @@ class _MovementsHeaderRow extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               flex: 2,
-              child: Text('Turno', style: labelStyle, maxLines: 1),
+              child: Text('Sesión', style: labelStyle, maxLines: 1),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -931,10 +936,11 @@ class _CompactMovementRowState extends State<_CompactMovementRow> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: (isIncome
-                            ? AppColors.successLight
-                            : AppColors.errorLight)
-                        .withOpacity(0.9),
+                    color:
+                        (isIncome
+                                ? AppColors.successLight
+                                : AppColors.errorLight)
+                            .withOpacity(0.9),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1051,7 +1057,8 @@ class _DetailMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: backgroundColor ??
+        color:
+            backgroundColor ??
             (emphasize
                 ? AppColors.surfaceLightVariant
                 : AppColors.surfaceLight),

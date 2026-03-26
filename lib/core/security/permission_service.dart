@@ -38,12 +38,18 @@ class PermissionService {
     SecurityConfig? config,
   }) async {
     final resolvedUserId = userId ?? await SessionManager.userId();
-    final resolvedRole = normalizeRole(role ?? (await SessionManager.role()) ?? roleCashier);
-    final resolvedCompanyId = companyId ?? await SessionManager.companyId() ?? 1;
+    final resolvedRole = normalizeRole(
+      role ?? (await SessionManager.role()) ?? roleCashier,
+    );
+    final resolvedCompanyId =
+        companyId ?? await SessionManager.companyId() ?? 1;
     final action = AppActions.findByCode(actionCode);
     if (resolvedUserId == null) {
-      final requiresOverride =
-          await SecurityConfigRepository.requiresOverride(actionCode, companyId: resolvedCompanyId, cached: config);
+      final requiresOverride = await SecurityConfigRepository.requiresOverride(
+        actionCode,
+        companyId: resolvedCompanyId,
+        cached: config,
+      );
       return PermissionDecision(
         allowed: false,
         overrideAllowed: action?.overrideAllowed ?? true,
@@ -58,8 +64,11 @@ class PermissionService {
       userId: resolvedUserId,
       role: resolvedRole,
     );
-    final requiresOverride =
-        await SecurityConfigRepository.requiresOverride(actionCode, companyId: resolvedCompanyId, cached: config);
+    final requiresOverride = await SecurityConfigRepository.requiresOverride(
+      actionCode,
+      companyId: resolvedCompanyId,
+      cached: config,
+    );
 
     return PermissionDecision(
       allowed: allowed,
@@ -114,18 +123,14 @@ class PermissionService {
   }) async {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.insert(
-      DbTables.userPermissions,
-      {
-        'company_id': companyId,
-        'user_id': userId,
-        'action_code': actionCode,
-        'allowed': allowed ? 1 : 0,
-        'created_at_ms': now,
-        'updated_at_ms': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert(DbTables.userPermissions, {
+      'company_id': companyId,
+      'user_id': userId,
+      'action_code': actionCode,
+      'allowed': allowed ? 1 : 0,
+      'created_at_ms': now,
+      'updated_at_ms': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static Future<Map<String, bool>> effectivePermissions({
@@ -176,12 +181,8 @@ class PermissionService {
         AppActions.deleteProduct.code,
         AppActions.createProduct.code,
         AppActions.importProducts.code,
-        AppActions.openCash.code,
-        AppActions.closeCash.code,
-        AppActions.openCashbox.code,
-        AppActions.closeCashbox.code,
-        AppActions.openShift.code,
-        AppActions.closeShift.code,
+        AppActions.startSession.code,
+        AppActions.closeSession.code,
         AppActions.cashMovement.code,
         AppActions.configureScanner.code,
       };
@@ -192,10 +193,8 @@ class PermissionService {
       AppActions.applyDiscount.code,
       AppActions.chargeSale.code,
       AppActions.createQuote.code,
-      AppActions.openCash.code,
-      AppActions.closeCash.code,
-      AppActions.openShift.code,
-      AppActions.closeShift.code,
+      AppActions.startSession.code,
+      AppActions.closeSession.code,
       AppActions.configureScanner.code,
     };
   }

@@ -528,7 +528,7 @@ const List<TrainingDoc> _trainingDocs = [
         title: 'Inicio rápido (día a día)',
         bullets: [
           'Inicia sesión con tu usuario.',
-          'Si aplica, abre caja (turno) y verifica el monto inicial.',
+          'Si no hay sesión activa, abre caja e ingresa el monto inicial.',
           'Verifica impresora y conexión si vas a imprimir.',
           'Crea/abre un ticket y comienza a facturar.',
         ],
@@ -554,7 +554,7 @@ const List<TrainingDoc> _trainingDocs = [
       TrainingSection(
         title: 'Cierre de caja',
         bullets: [
-          'Registra entradas/salidas durante el turno si corresponde.',
+          'Registra entradas/salidas durante la sesión si corresponde.',
           'Al cerrar, cuenta efectivo y compara con el sistema.',
           'Si hay diferencia, valida: devoluciones, pagos mixtos, errores de cambio, tickets pendientes.',
           'Guarda reporte/corte como respaldo interno.',
@@ -623,7 +623,7 @@ const List<TrainingDoc> _trainingDocs = [
       TrainingSection(
         title: 'Caja',
         bullets: [
-          'Abrir/cerrar caja por turno y registrar movimientos.',
+          'Abrir una sesión de caja, registrar movimientos y cerrarla al finalizar.',
           'Ver totales por método de pago y controlar diferencias.',
         ],
       ),

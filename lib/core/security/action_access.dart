@@ -32,7 +32,10 @@ class ActionAccess {
     }
   }
 
-  static bool _allowedBySalesModule(AppAction action, UserPermissions permissions) {
+  static bool _allowedBySalesModule(
+    AppAction action,
+    UserPermissions permissions,
+  ) {
     switch (action.code) {
       case 'sales.cancel_sale':
         return permissions.canVoidSale;
@@ -59,7 +62,10 @@ class ActionAccess {
     return false;
   }
 
-  static bool _allowedByInventoryModule(AppAction action, UserPermissions permissions) {
+  static bool _allowedByInventoryModule(
+    AppAction action,
+    UserPermissions permissions,
+  ) {
     switch (action.code) {
       case 'inventory.adjust_stock':
         return permissions.canAdjustStock;
@@ -77,7 +83,10 @@ class ActionAccess {
     return false;
   }
 
-  static bool _allowedByCashModule(AppAction action, UserPermissions permissions) {
+  static bool _allowedByCashModule(
+    AppAction action,
+    UserPermissions permissions,
+  ) {
     switch (action.code) {
       case 'cash.open_cashbox':
         return permissions.canOpenCashbox;
@@ -88,9 +97,13 @@ class ActionAccess {
       case 'cash.close_shift':
         return permissions.canCloseShift;
       case 'cash.open_session':
-        return permissions.canOpenCash;
+        return permissions.canOpenCash ||
+            permissions.canOpenCashbox ||
+            permissions.canOpenShift;
       case 'cash.close_session':
-        return permissions.canCloseCash;
+        return permissions.canCloseCash ||
+            permissions.canCloseCashbox ||
+            permissions.canCloseShift;
       case 'cash.manual_movement':
         return permissions.canMakeCashMovements;
     }

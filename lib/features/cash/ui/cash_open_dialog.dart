@@ -11,7 +11,7 @@ import '../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../data/operation_flow_service.dart';
 import '../providers/cash_providers.dart';
 
-/// Diálogo para abrir turno (compatibilidad con flujo legacy de caja).
+/// Diálogo para abrir caja y crear la sesión activa.
 class CashOpenDialog extends ConsumerStatefulWidget {
   const CashOpenDialog({super.key});
 
@@ -51,16 +51,19 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
     try {
       final authorized = await requireAuthorizationIfNeeded(
         context: context,
-        action: AppActions.openShift,
-        resourceType: 'cash_session',
+        action: AppActions.startSession,
+        resourceType: 'cashbox_daily',
         resourceId: 'new',
-        reason: 'Abrir turno',
+        reason: 'Iniciar sesión',
       );
       if (!authorized || !mounted) return;
 
       final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
-      await OperationFlowService.openShiftForCurrentUser(openingAmount: amount);
-      await ref.read(cashSessionControllerProvider.notifier).refresh();
+      await OperationFlowService.startActiveSession(
+        openingAmount: amount,
+        note: _noteController.text.trim(),
+      );
+      await ref.read(activeSessionControllerProvider.notifier).refresh();
 
       if (mounted) {
         final rootContext = Navigator.of(context, rootNavigator: true).context;
@@ -68,7 +71,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           ScaffoldMessenger.of(rootContext).showSnackBar(
             SnackBar(
-              content: Text('Turno abierto con \$${amount.toStringAsFixed(2)}'),
+              content: Text(
+                'Sesión iniciada con \$${amount.toStringAsFixed(2)}',
+              ),
               backgroundColor: Theme.of(rootContext).colorScheme.primary,
             ),
           );
@@ -188,7 +193,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Abrir turno',
+                              'Abrir caja',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: headerText,
                                 fontWeight: FontWeight.w800,
@@ -196,7 +201,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Iniciar tu turno para registrar ventas y movimientos',
+                              'Iniciar la caja y entrar directo al POS',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: headerText.withOpacity(0.82),
                                 height: 1.15,
@@ -228,7 +233,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Monto inicial turno',
+                            'Monto inicial de la sesión',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                               fontWeight: FontWeight.w700,
@@ -311,7 +316,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                                 color: scheme.onSurface,
                               ),
                               decoration: InputDecoration(
-                                hintText: 'Ej: Apertura de turno manana',
+                                hintText: 'Ej: Apertura de caja de la mañana',
                                 hintStyle: TextStyle(
                                   color: scheme.onSurfaceVariant.withOpacity(
                                     0.8,

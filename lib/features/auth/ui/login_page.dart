@@ -153,7 +153,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
         final rootCtx = ErrorHandler.navigatorKey.currentContext ?? context;
         GoRouter.of(rootCtx).refresh();
-        GoRouter.of(rootCtx).go('/operation-start');
+        GoRouter.of(rootCtx).go('/sales');
       } else {
         if (!mounted) return;
         setState(() {

@@ -141,7 +141,7 @@ class TicketTemplate {
         (sale.paymentMethod ?? '').isNotEmpty) {
       lines.add(
         _center(
-          'Pago: ${_translatePaymentMethod(sale.paymentMethod!)}',
+          'Pago: ${sale.paymentMethodDisplayLabel}',
           width,
         ),
       );

@@ -9,42 +9,74 @@ import 'cash_session_model.dart';
 import 'cash_summary_model.dart';
 import 'cashbox_daily_model.dart';
 
-// Flujo actual detectado:
-// - `cash_sessions` se usaba como una sola "caja/turno" por usuario.
-// - Ventas dependían de la sesión abierta del usuario (overlay en Sales),
-//   sin una entidad diaria separada para la caja física.
-// Problemas encontrados:
-// - Riesgo de inconsistencias si se cierra caja con turnos abiertos.
-// - Posibilidad de discrepancia UI/DB si faltan validaciones de estado al cerrar.
-// - Necesidad de bloquear operación ante turno anterior sin cerrar.
-// Plan de corrección:
-// - Separar CAJA diaria (`cashbox_daily`) de TURNO (`cash_sessions`).
-// - Forzar validación post-login mediante "Iniciar operación".
-// - Endurecer validaciones transaccionales en apertura/cierre.
-// Compatibilidad y migración:
-// - Se mantiene `cash_sessions` y reportes existentes; se añaden columnas
-//   `business_date`/`cashbox_daily_id` con backfill gradual.
+class ActiveSession {
+  final int userId;
+  final int cashId;
+  final int shiftId;
+  final int openedAt;
+  final String status;
+  final String userName;
+  final String businessDate;
+
+  const ActiveSession({
+    required this.userId,
+    required this.cashId,
+    required this.shiftId,
+    required this.openedAt,
+    required this.status,
+    required this.userName,
+    required this.businessDate,
+  });
+
+  bool get isOpen => status == CashSessionStatus.open;
+
+  factory ActiveSession.fromModels({
+    required CashboxDailyModel cashbox,
+    required CashSessionModel shift,
+  }) {
+    final shiftId = shift.id;
+    final cashId = cashbox.id;
+    if (shiftId == null || cashId == null) {
+      throw StateError('La sesión activa no tiene identificadores válidos.');
+    }
+
+    return ActiveSession(
+      userId: shift.userId,
+      cashId: cashId,
+      shiftId: shiftId,
+      openedAt: shift.openedAtMs,
+      status: shift.status,
+      userName: shift.userName,
+      businessDate: cashbox.businessDate,
+    );
+  }
+}
+
+// Arquitectura actual:
+// - La UI opera sobre una única `ActiveSession`.
+// - `cashbox_daily` y `cash_sessions` se preservan como detalles internos
+//   de persistencia para no romper ventas ni reportes existentes.
+// - La apertura/cierre visible del sistema siempre ocurre como una sola sesión.
 
 class OperationGateState {
   final String businessDate;
   final CashboxDailyModel? cashboxToday;
   final CashSessionModel? userOpenShift;
   final CashSessionModel? staleOpenShift;
+  final ActiveSession? activeSession;
 
   const OperationGateState({
     required this.businessDate,
     required this.cashboxToday,
     required this.userOpenShift,
     required this.staleOpenShift,
+    required this.activeSession,
   });
 
   bool get hasCashboxTodayOpen => cashboxToday?.isOpen == true;
   bool get hasUserShiftOpen => userOpenShift?.isOpen == true;
   bool get hasStaleShift => staleOpenShift != null;
-  // Regla operativa:
-  // - Puede operar si tiene turno abierto vigente.
-  // - Si el turno abierto excede 48 horas, debe hacer el corte antes de operar.
-  bool get canOperate => hasUserShiftOpen && !hasStaleShift;
+  bool get canOperate => activeSession?.isOpen == true;
 }
 
 class OperationFlowService {
@@ -82,13 +114,26 @@ class OperationFlowService {
     final stale = (userShift != null && _isShiftOverMaxAge(userShift, nowMs))
         ? userShift
         : null;
+    final activeSession =
+        cashbox != null &&
+            cashbox.isOpen &&
+            userShift != null &&
+            userShift.isOpen
+        ? ActiveSession.fromModels(cashbox: cashbox, shift: userShift)
+        : null;
 
     return OperationGateState(
       businessDate: today,
       cashboxToday: cashbox,
       userOpenShift: userShift,
       staleOpenShift: stale,
+      activeSession: activeSession,
     );
+  }
+
+  static Future<ActiveSession?> loadActiveSession() async {
+    final gate = await loadGateState();
+    return gate.activeSession;
   }
 
   static Future<List<CashSessionModel>> listOpenShiftsForDailyCashbox({
@@ -372,6 +417,26 @@ class OperationFlowService {
         return;
       }
 
+      final otherOpenRows = await txn.query(
+        DbTables.cashSessions,
+        columns: ['id', 'opened_by_user_id', 'user_name'],
+        where: '''
+          status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+        ''',
+        whereArgs: [cashbox.id, businessDate],
+        limit: 1,
+      );
+      if (otherOpenRows.isNotEmpty) {
+        final row = otherOpenRows.first;
+        final ownerId = row['opened_by_user_id'];
+        final ownerName = row['user_name'] ?? 'otro usuario';
+        throw Exception(
+          'La caja ya tiene una sesión activa (#${row['id']}) de $ownerName (usuario $ownerId).',
+        );
+      }
+
       id = await txn.insert(DbTables.cashSessions, {
         'opened_by_user_id': userId,
         'user_name': userName,
@@ -393,6 +458,195 @@ class OperationFlowService {
     return shift;
   }
 
+  static Future<ActiveSession> startActiveSession({
+    required double openingAmount,
+    String? note,
+  }) async {
+    final gate = await loadGateState();
+    final existing = gate.activeSession;
+    if (existing != null) {
+      return existing;
+    }
+
+    final businessDate = businessDateOf();
+    final userId = await SessionManager.userId() ?? 1;
+    final userName =
+        await SessionManager.displayName() ??
+        await SessionManager.username() ??
+        'Usuario';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final db = await AppDb.database;
+
+    ActiveSession? result;
+    await db.transaction((txn) async {
+      final currentCashboxRows = await txn.query(
+        DbTables.cashboxDaily,
+        where: 'business_date = ?',
+        whereArgs: [businessDate],
+        limit: 1,
+      );
+
+      Map<String, dynamic>? cashboxRow = currentCashboxRows.isEmpty
+          ? null
+          : currentCashboxRows.first;
+      if (cashboxRow == null) {
+        final cashboxId = await txn.insert(DbTables.cashboxDaily, {
+          'business_date': businessDate,
+          'opened_at_ms': now,
+          'opened_by_user_id': userId,
+          'initial_amount': openingAmount,
+          'current_amount': openingAmount,
+          'status': 'OPEN',
+          'note': note,
+        }, conflictAlgorithm: ConflictAlgorithm.abort);
+        final inserted = await txn.query(
+          DbTables.cashboxDaily,
+          where: 'id = ?',
+          whereArgs: [cashboxId],
+          limit: 1,
+        );
+        cashboxRow = inserted.first;
+      } else if ((cashboxRow['status'] as String? ?? 'OPEN').toUpperCase() !=
+          'OPEN') {
+        await txn.update(
+          DbTables.cashboxDaily,
+          {
+            'opened_at_ms': now,
+            'opened_by_user_id': userId,
+            'initial_amount': openingAmount,
+            'current_amount': openingAmount,
+            'status': 'OPEN',
+            'closed_at_ms': null,
+            'closed_by_user_id': null,
+            'note': note,
+          },
+          where: 'id = ?',
+          whereArgs: [cashboxRow['id']],
+        );
+        final reopened = await txn.query(
+          DbTables.cashboxDaily,
+          where: 'id = ?',
+          whereArgs: [cashboxRow['id']],
+          limit: 1,
+        );
+        cashboxRow = reopened.first;
+      }
+
+      final cashbox = CashboxDailyModel.fromMap(cashboxRow);
+      final currentUserRows = await txn.query(
+        DbTables.cashSessions,
+        where: '''
+          status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND opened_by_user_id = ?
+        ''',
+        whereArgs: [userId],
+        orderBy: 'opened_at_ms DESC',
+        limit: 1,
+      );
+
+      if (currentUserRows.isNotEmpty) {
+        final shift = CashSessionModel.fromMap(currentUserRows.first);
+        result = ActiveSession.fromModels(cashbox: cashbox, shift: shift);
+        return;
+      }
+
+      final otherOpenRows = await txn.query(
+        DbTables.cashSessions,
+        columns: ['id', 'opened_by_user_id', 'user_name'],
+        where: '''
+          status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+        ''',
+        whereArgs: [cashbox.id, businessDate],
+        limit: 1,
+      );
+      if (otherOpenRows.isNotEmpty) {
+        final row = otherOpenRows.first;
+        throw Exception(
+          'La caja ya tiene una sesión activa (#${row['id']}) de ${row['user_name'] ?? 'otro usuario'}.',
+        );
+      }
+
+      var resolvedOpeningAmount = openingAmount;
+      if (cashbox.isOpen && resolvedOpeningAmount.abs() < 1e-9) {
+        resolvedOpeningAmount = cashbox.currentAmount;
+      }
+
+      final shiftId = await txn.insert(DbTables.cashSessions, {
+        'opened_by_user_id': userId,
+        'user_name': userName,
+        'opened_at_ms': now,
+        'initial_amount': resolvedOpeningAmount,
+        'cashbox_daily_id': cashbox.id,
+        'business_date': businessDate,
+        'requires_closure': 0,
+        'status': 'OPEN',
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      result = ActiveSession(
+        userId: userId,
+        cashId: cashbox.id!,
+        shiftId: shiftId,
+        openedAt: now,
+        status: CashSessionStatus.open,
+        userName: userName,
+        businessDate: businessDate,
+      );
+    });
+
+    if (result == null) {
+      throw Exception('No fue posible iniciar la sesión activa.');
+    }
+    return result!;
+  }
+
+  static Future<ActiveSession> ensureActiveSessionForCurrentUser({
+    required double openingAmount,
+    String? note,
+  }) {
+    return startActiveSession(openingAmount: openingAmount, note: note);
+  }
+
+  static Future<CashSummaryModel> closeActiveSession({
+    required int sessionId,
+    required double closingAmount,
+    String note = '',
+  }) async {
+    final userId = await SessionManager.userId();
+    final session = await CashRepository.getSessionById(sessionId);
+    if (session == null || session.id == null) {
+      throw Exception('No existe una sesión activa para cerrar.');
+    }
+
+    final summary = await CashRepository.buildSummary(sessionId: sessionId);
+    await CashRepository.closeSession(
+      sessionId: sessionId,
+      closingAmount: closingAmount,
+      note: note,
+      summary: summary,
+      expectedUserId: userId,
+      expectedCashboxDailyId: session.cashboxDailyId,
+      closeCashboxDaily: true,
+      cashboxCloseNote: note,
+      cashboxClosedByUserId: userId,
+    );
+    return summary;
+  }
+
+  static Future<CashSummaryModel> closeSessionAndCashbox({
+    required int sessionId,
+    required double closingAmount,
+    String note = '',
+  }) {
+    return closeActiveSession(
+      sessionId: sessionId,
+      closingAmount: closingAmount,
+      note: note,
+    );
+  }
+
   static Future<void> closeOpenShiftForCurrentUser({
     required double closingAmount,
     required String note,
@@ -403,14 +657,10 @@ class OperationFlowService {
       return;
     }
 
-    final summary = await CashRepository.buildSummary(sessionId: openShift.id!);
-    await CashRepository.closeSession(
+    await closeActiveSession(
       sessionId: openShift.id!,
       closingAmount: closingAmount,
       note: note,
-      summary: summary,
-      expectedUserId: userId,
-      expectedCashboxDailyId: openShift.cashboxDailyId,
     );
   }
 
@@ -423,5 +673,11 @@ class OperationFlowService {
     final shift = await CashRepository.getOpenSession();
     if (shift?.id == null) return null;
     return CashRepository.buildSummary(sessionId: shift!.id!);
+  }
+
+  static Future<CashSummaryModel?> buildActiveSessionSummary() async {
+    final activeSession = await loadActiveSession();
+    if (activeSession == null) return null;
+    return CashRepository.buildSummary(sessionId: activeSession.shiftId);
   }
 }

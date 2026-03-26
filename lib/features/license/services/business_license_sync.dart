@@ -220,9 +220,8 @@ class BusinessLicenseSync {
         ? 'VENCIDA'
         : rawEstado;
 
-    final motivoRaw =
-        payload['motivo'] ?? payload['notas'] ?? payload['reason'];
-    final motivo = motivoRaw == null ? null : motivoRaw.toString().trim();
+    final motivoRaw = payload['motivo'] ?? payload['notas'] ?? payload['reason'];
+    final motivo = motivoRaw?.toString().trim();
 
     // No bloqueamos por device_id: si viene, se respeta para compat.
     final deviceId = (payload['device_id'] ?? '').toString().trim();

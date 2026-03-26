@@ -120,7 +120,7 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
       }
 
       await ref
-          .read(cashSessionControllerProvider.notifier)
+          .read(activeSessionControllerProvider.notifier)
           .addMovement(
             sessionId: widget.sessionId,
             type: widget.type,
@@ -188,130 +188,82 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
         backgroundColor: scheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: dialogWidth,
-          maxHeight: dialogHeight,
-          minWidth: 320,
-          minHeight: 320,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withAlpha(51),
-                        borderRadius: BorderRadius.circular(10),
+          constraints: BoxConstraints(
+            maxWidth: dialogWidth,
+            maxHeight: dialogHeight,
+            minWidth: 320,
+            minHeight: 320,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withAlpha(51),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: primaryColor, size: 24),
                       ),
-                      child: Icon(icon, color: primaryColor, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: scheme.onSurface,
+                      const SizedBox(width: 12),
+                      Text(
+                        title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: scheme.onSurface,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () => Navigator.pop(context),
-                      icon: Icon(Icons.close, color: scheme.onSurface),
-                      splashRadius: 20,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.pop(context),
+                        icon: Icon(Icons.close, color: scheme.onSurface),
+                        splashRadius: 20,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
 
-                // Campo de monto
-                Text(
-                  'Monto',
-                  style: TextStyle(
-                    color: scheme.onSurface.withAlpha(179),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d*\.?\d{0,2}'),
+                  // Campo de monto
+                  Text(
+                    'Monto',
+                    style: TextStyle(
+                      color: scheme.onSurface.withAlpha(179),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
-                  ],
-                  autofocus: true,
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
                   ),
-                  decoration: InputDecoration(
-                    prefixText: '\$ ',
-                    prefixStyle: TextStyle(
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _amountController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,2}'),
+                      ),
+                    ],
+                    autofocus: true,
+                    style: TextStyle(
                       color: primaryColor,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
-                    filled: true,
-                    fillColor: scheme.surfaceContainerHighest,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: primaryColor, width: 1),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Ingrese el monto';
-                    }
-                    final amount = double.tryParse(value);
-                    if (amount == null || amount <= 0) {
-                      return 'Monto debe ser mayor a 0';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Campo de motivo
-                Text(
-                  'Motivo',
-                  style: TextStyle(
-                    color: scheme.onSurface.withAlpha(179),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: TextFormField(
-                    controller: _reasonController,
-                    maxLines: 2,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurface,
-                    ),
                     decoration: InputDecoration(
-                      hintText: isIncome
-                          ? 'Ej: Cambio adicional, ajuste...'
-                          : 'Ej: Pago de proveedor, gastos...',
-                      hintStyle: TextStyle(
-                        color: scheme.onSurface.withAlpha(128),
+                      prefixText: '\$ ',
+                      prefixStyle: TextStyle(
+                        color: primaryColor,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
                       filled: true,
                       fillColor: scheme.surfaceContainerHighest,
@@ -319,72 +271,120 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide.none,
                       ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: primaryColor, width: 1),
+                      ),
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Ingrese el motivo';
+                      if (value == null || value.isEmpty) {
+                        return 'Ingrese el monto';
+                      }
+                      final amount = double.tryParse(value);
+                      if (amount == null || amount <= 0) {
+                        return 'Monto debe ser mayor a 0';
                       }
                       return null;
                     },
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
-                // Botones
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () => Navigator.pop(context),
-                      child: Text(
-                        'Cancelar',
-                        style: TextStyle(
-                          color: scheme.onSurface.withAlpha(179),
-                        ),
-                      ),
+                  // Campo de motivo
+                  Text(
+                    'Motivo',
+                    style: TextStyle(
+                      color: scheme.onSurface.withAlpha(179),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _saveMovement,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        foregroundColor: onPrimaryColor,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _reasonController,
+                      maxLines: 2,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurface,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: isIncome
+                            ? 'Ej: Cambio adicional, ajuste...'
+                            : 'Ej: Pago de proveedor, gastos...',
+                        hintStyle: TextStyle(
+                          color: scheme.onSurface.withAlpha(128),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                        filled: true,
+                        fillColor: scheme.surfaceContainerHighest,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
                         ),
                       ),
-                      icon: _isLoading
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  onPrimaryColor,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Ingrese el motivo';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Botones
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => Navigator.pop(context),
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(
+                            color: scheme.onSurface.withAlpha(179),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _saveMovement,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          foregroundColor: onPrimaryColor,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: _isLoading
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    onPrimaryColor,
+                                  ),
                                 ),
-                              ),
-                            )
-                          : Icon(icon, size: 18),
-                      label: Text(
-                        isIncome ? 'REGISTRAR ENTRADA' : 'REGISTRAR RETIRO',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                              )
+                            : Icon(icon, size: 18),
+                        label: Text(
+                          isIncome ? 'REGISTRAR ENTRADA' : 'REGISTRAR RETIRO',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
         ),
       ),
     );

@@ -42,7 +42,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 33;
+  static const int _dbVersion = 35;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -1208,6 +1208,9 @@ class AppDb {
           itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
+          payment_cash_amount REAL NOT NULL DEFAULT 0,
+          payment_card_amount REAL NOT NULL DEFAULT 0,
+          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -2068,6 +2071,55 @@ class AppDb {
       );
       await _ensureProductSyncOutboxTable(db);
     }
+
+    if (oldVersion < 35) {
+      await _ensureSalesPaymentBreakdownColumns(db);
+    }
+  }
+
+  static Future<void> _ensureSalesPaymentBreakdownColumns(
+    DatabaseExecutor db,
+  ) async {
+    if (!await _tableExists(db, DbTables.sales)) return;
+
+    await _addColumnIfMissing(
+      db,
+      DbTables.sales,
+      'payment_cash_amount',
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.sales,
+      'payment_card_amount',
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.sales,
+      'payment_transfer_amount',
+      'REAL NOT NULL DEFAULT 0',
+    );
+
+    await db.execute('''
+      UPDATE ${DbTables.sales}
+      SET payment_cash_amount = CASE
+            WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash' THEN total
+            ELSE COALESCE(payment_cash_amount, 0)
+          END,
+          payment_card_amount = CASE
+            WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'card' THEN total
+            ELSE COALESCE(payment_card_amount, 0)
+          END,
+          payment_transfer_amount = CASE
+            WHEN LOWER(TRIM(COALESCE(payment_method, ''))) IN ('transfer', 'transferencia')
+              THEN total
+            ELSE COALESCE(payment_transfer_amount, 0)
+          END
+      WHERE COALESCE(payment_cash_amount, 0) = 0
+        AND COALESCE(payment_card_amount, 0) = 0
+        AND COALESCE(payment_transfer_amount, 0) = 0
+    ''');
   }
 
   static Future<void> _migratePurchaseOrderItemsToSnapshots(
@@ -2913,6 +2965,7 @@ class AppDb {
       CREATE INDEX idx_cash_session_status 
       ON ${DbTables.cashSessions}(status)
     ''');
+    await _ensureCashSessionIntegrityIndexes(db);
 
     // Movimientos de caja
     await db.execute('''
@@ -2955,6 +3008,9 @@ class AppDb {
         itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
+          payment_cash_amount REAL NOT NULL DEFAULT 0,
+          payment_card_amount REAL NOT NULL DEFAULT 0,
+          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -3998,6 +4054,9 @@ class AppDb {
         itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
+          payment_cash_amount REAL NOT NULL DEFAULT 0,
+          payment_card_amount REAL NOT NULL DEFAULT 0,
+          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -4302,6 +4361,8 @@ class AppDb {
         SET business_date = strftime('%Y-%m-%d', opened_at_ms / 1000, 'unixepoch', 'localtime')
         WHERE business_date IS NULL OR TRIM(business_date) = ''
       ''');
+      await _normalizeActiveCashSessions(db);
+      await _ensureCashSessionIntegrityIndexes(db);
     }
 
     // cash_movements
@@ -4353,6 +4414,7 @@ class AppDb {
         DbTables.sales,
         'cash_session_id',
       );
+      await _ensureSalesPaymentBreakdownColumns(db);
     }
 
     // printer_settings
@@ -5189,6 +5251,9 @@ class AppDb {
         // No romper apertura por integridad.
       }
     }
+
+    await _normalizeActiveCashSessions(db);
+    await _ensureCashSessionIntegrityIndexes(db);
   }
 
   static Future<bool> _tableExists(DatabaseExecutor db, String table) async {
@@ -5240,6 +5305,83 @@ class AppDb {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS $indexName ON $table($columns)',
     );
+  }
+
+  static Future<void> _ensureCashSessionIntegrityIndexes(
+    DatabaseExecutor db,
+  ) async {
+    if (!await _tableExists(db, DbTables.cashSessions)) return;
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_sessions_one_open_user
+      ON ${DbTables.cashSessions}(opened_by_user_id)
+      WHERE status = 'OPEN' AND closed_at_ms IS NULL
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_sessions_one_open_cashbox
+      ON ${DbTables.cashSessions}(cashbox_daily_id)
+      WHERE cashbox_daily_id IS NOT NULL
+        AND status = 'OPEN'
+        AND closed_at_ms IS NULL
+    ''');
+  }
+
+  static Future<void> _normalizeActiveCashSessions(DatabaseExecutor db) async {
+    if (!await _tableExists(db, DbTables.cashSessions)) return;
+
+    final rows = await db.query(
+      DbTables.cashSessions,
+      columns: [
+        'id',
+        'opened_by_user_id',
+        'cashbox_daily_id',
+        'business_date',
+        'opened_at_ms',
+        'initial_amount',
+      ],
+      where: "status = 'OPEN' AND closed_at_ms IS NULL",
+      orderBy: 'opened_at_ms DESC',
+    );
+    if (rows.length <= 1) return;
+
+    final seenUsers = <int>{};
+    final seenCashboxes = <String>{};
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    for (final row in rows) {
+      final id = row['id'] as int?;
+      final userId = row['opened_by_user_id'] as int?;
+      if (id == null || userId == null) continue;
+
+      final cashboxId = row['cashbox_daily_id'] as int?;
+      final businessDate = (row['business_date'] as String? ?? '').trim();
+      final cashKey = cashboxId != null
+          ? 'cash:$cashboxId'
+          : 'date:$businessDate';
+
+      if (!seenUsers.contains(userId) && !seenCashboxes.contains(cashKey)) {
+        seenUsers.add(userId);
+        seenCashboxes.add(cashKey);
+        continue;
+      }
+
+      final openingAmount = (row['initial_amount'] as num?)?.toDouble() ?? 0.0;
+      await db.update(
+        DbTables.cashSessions,
+        {
+          'status': 'CLOSED',
+          'closed_at_ms': now,
+          'closed_by_user_id': userId,
+          'closing_amount': openingAmount,
+          'expected_cash': openingAmount,
+          'difference': 0.0,
+          'note': 'Cierre automático por migración a sesión única',
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
   }
 
   /// Cierra la base de datos

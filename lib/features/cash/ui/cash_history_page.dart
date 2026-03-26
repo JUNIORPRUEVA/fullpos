@@ -93,29 +93,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     );
   }
 
-  String _paymentMethodShortLabel(String? method) {
-    switch ((method ?? '').toLowerCase()) {
-      case 'cash':
-      case 'efectivo':
-        return 'EFE';
-      case 'card':
-      case 'tarjeta':
-        return 'TAR';
-      case 'transfer':
-      case 'transferencia':
-        return 'TRF';
-      case 'mixed':
-      case 'mixto':
-        return 'MIX';
-      case 'credit':
-      case 'credito':
-        return 'CRE';
-      case 'layaway':
-      case 'apartado':
-        return 'APA';
-      default:
-        return 'PAG';
-    }
+  String _paymentMethodShortLabel(SaleModel sale) {
+    return sale.paymentMethodCompactLabel;
   }
 
   EdgeInsets _contentPadding(BoxConstraints constraints) {
@@ -257,7 +236,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             fontSize: 12,
           ),
           tabs: const [
-            Tab(text: 'Turnos'),
+            Tab(text: 'Sesiones'),
             Tab(text: 'Movimientos'),
           ],
         ),
@@ -309,7 +288,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             border: Border.all(color: scheme.outlineVariant),
           ),
           child: Text(
-            'Turnos: ${_filteredSessions.length}',
+            'Sesiones: ${_filteredSessions.length}',
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w800,
               color: scheme.onSurface,
@@ -464,7 +443,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                       Row(
                         children: [
                           Text(
-                            'Turno #${session.id ?? '-'}',
+                            'Sesión #${session.id ?? '-'}',
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -502,7 +481,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                       _detailGrid(theme, money, data),
                       const SizedBox(height: 16),
                       Text(
-                        'Ventas del turno',
+                        'Ventas de la sesión',
                         style: theme.textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
@@ -633,9 +612,10 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final displayName = firstItemName.isNotEmpty
         ? firstItemName
         : (sale.customerNameSnapshot?.trim() ?? 'Venta');
-    final methodLabel = _paymentMethodShortLabel(sale.paymentMethod);
+    final methodLabel = _paymentMethodShortLabel(sale);
+    final breakdown = sale.isMixedPayment ? sale.paymentBreakdownLabel : '';
     return SizedBox(
-      height: 40,
+      height: breakdown.isEmpty ? 40 : 54,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -648,14 +628,30 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                height: 1.2,
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
+                ),
+                if (breakdown.isNotEmpty)
+                  Text(
+                    breakdown,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 10,
+                      color: scheme.onSurface.withOpacity(0.72),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
@@ -1064,29 +1060,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       );
     }
 
-    String methodAbbr(String? method) {
-      final m = (method ?? '').trim().toLowerCase();
-      switch (m) {
-        case 'cash':
-        case 'efectivo':
-          return 'EFE';
-        case 'card':
-        case 'tarjeta':
-          return 'TAR';
-        case 'transfer':
-        case 'transferencia':
-          return 'TRF';
-        case 'credit':
-        case 'credito':
-          return 'CRE';
-        case 'mixed':
-        case 'mixto':
-          return 'MIX';
-        default:
-          if (m.isEmpty) return '---';
-          final up = sanitize(m.toUpperCase());
-          return up.substring(0, math.min(3, up.length));
-      }
+    String methodAbbr(SaleModel sale) {
+      return sale.paymentMethodCompactLabel;
     }
 
     String saleRow({
@@ -1137,10 +1112,19 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           saleRow(
             time: timeFmt.format(when),
             name: displayName.isNotEmpty ? displayName : 'Venta',
-            method: methodAbbr(sale.paymentMethod),
+            method: methodAbbr(sale),
             total: money(sale.total),
           ),
         );
+        if (sale.isMixedPayment && sale.paymentBreakdownLabel.isNotEmpty) {
+          final wrapped = ReceiptText.wrapText(
+            sanitize('  ${sale.paymentBreakdownLabel}'),
+            (w - 2).clamp(8, w),
+          );
+          for (final line in wrapped) {
+            lines.add(ReceiptText.fitText(line, w));
+          }
+        }
       }
     }
     lines.add(line());

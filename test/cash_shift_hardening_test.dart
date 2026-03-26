@@ -8,6 +8,7 @@ import 'package:fullpos/core/session/session_manager.dart';
 import 'package:fullpos/features/cash/data/cash_repository.dart';
 import 'package:fullpos/features/cash/data/cash_summary_model.dart';
 import 'package:fullpos/features/cash/data/operation_flow_service.dart';
+import 'package:fullpos/features/sales/data/sales_repository.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -66,6 +67,11 @@ Future<void> _seedUsers(Database db) async {
 
 Future<void> _cleanCashTables(Database db) async {
   await db.delete(DbTables.cashMovements);
+  await db.delete(DbTables.returnItems);
+  await db.delete(DbTables.returns);
+  await db.delete(DbTables.saleItems);
+  await db.delete(DbTables.creditPayments);
+  await db.delete(DbTables.layawayPayments);
   await db.delete(DbTables.sales);
   await db.delete(DbTables.posTicketItems);
   await db.delete(DbTables.posTickets);
@@ -158,50 +164,186 @@ void main() {
     await _seedUsers(db);
   });
 
-  group('Cash/Shift hardening', () {
-    test('gate only forces cut after 48 hours', () async {
-      final db = await AppDb.database;
-      final cashboxId = await _insertCashboxToday(db);
+  group('Single-session hardening', () {
+    test(
+      'login with closed session requires starting a new active session',
+      () async {
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
 
-      await SessionManager.login(
-        userId: 1,
-        username: 'admin',
-        displayName: 'Admin',
-        role: 'admin',
-      );
+        expect(await OperationFlowService.loadActiveSession(), isNull);
 
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final activeSession = await OperationFlowService.startActiveSession(
+          openingAmount: 125.0,
+          note: 'login bootstrap',
+        );
 
-      // Caso 1: turno abierto hace 47h -> debe permitir operar.
-      await _insertOpenShift(
-        db,
-        userId: 1,
-        userName: 'Admin',
-        cashboxId: cashboxId,
-        openedAtMs: nowMs - const Duration(hours: 47).inMilliseconds,
-      );
-      var gate = await OperationFlowService.loadGateState();
-      expect(gate.hasUserShiftOpen, isTrue);
-      expect(gate.hasStaleShift, isFalse);
-      expect(gate.canOperate, isTrue);
-
-      // Caso 2: turno abierto hace 49h -> debe forzar corte antes de operar.
-      await db.delete(DbTables.cashSessions);
-      await _insertOpenShift(
-        db,
-        userId: 1,
-        userName: 'Admin',
-        cashboxId: cashboxId,
-        openedAtMs: nowMs - const Duration(hours: 49).inMilliseconds,
-      );
-      gate = await OperationFlowService.loadGateState();
-      expect(gate.hasUserShiftOpen, isTrue);
-      expect(gate.hasStaleShift, isTrue);
-      expect(gate.canOperate, isFalse);
-    });
+        expect(activeSession.userId, 1);
+        expect(activeSession.isOpen, isTrue);
+        expect(await OperationFlowService.loadActiveSession(), isNotNull);
+      },
+    );
 
     test(
-      'getOpenSession ignores legacy-closed shift (status OPEN but closed_at_ms set)',
+      'login with open session restores direct access immediately',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxToday(db);
+        final shiftId = await _insertOpenShift(
+          db,
+          userId: 1,
+          userName: 'Admin',
+          cashboxId: cashboxId,
+        );
+
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final gate = await OperationFlowService.loadGateState();
+        final activeSession = await OperationFlowService.loadActiveSession();
+
+        expect(gate.canOperate, isTrue);
+        expect(activeSession, isNotNull);
+        expect(activeSession?.shiftId, shiftId);
+        expect(activeSession?.cashId, cashboxId);
+      },
+    );
+
+    test(
+      'recovery after crash restores the same active session on next login',
+      () async {
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final started = await OperationFlowService.startActiveSession(
+          openingAmount: 200.0,
+          note: 'session before crash',
+        );
+
+        await SessionManager.logout();
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final restored = await OperationFlowService.loadActiveSession();
+        expect(restored, isNotNull);
+        expect(restored?.shiftId, started.shiftId);
+        expect(restored?.cashId, started.cashId);
+      },
+    );
+
+    test(
+      'mixed payment splits cash and card correctly in cash summary',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
+        final shiftId = await _insertOpenShift(
+          db,
+          userId: 1,
+          userName: 'Admin',
+          cashboxId: cashboxId,
+        );
+
+        await SalesRepository.createSale(
+          localCode: 'V-MIXED-TEST-001',
+          kind: 'invoice',
+          items: [
+            {
+              'product_code_snapshot': 'P-001',
+              'product_name_snapshot': 'Producto mixto',
+              'qty': 1.0,
+              'unit_price': 100.0,
+              'purchase_price_snapshot': 50.0,
+              'discount_line': 0.0,
+              'total_line': 100.0,
+            },
+          ],
+          itbisEnabled: false,
+          subtotalOverride: 100.0,
+          itbisAmountOverride: 0.0,
+          totalOverride: 100.0,
+          paymentMethod: 'mixed',
+          paymentCashAmount: 40.0,
+          paymentCardAmount: 60.0,
+          paymentTransferAmount: 0.0,
+          sessionId: shiftId,
+          paidAmount: 100.0,
+          changeAmount: 0.0,
+        );
+
+        final CashSummaryModel summary = await CashRepository.buildSummary(
+          sessionId: shiftId,
+        );
+
+        expect(summary.salesCashTotal, 40.0);
+        expect(summary.salesCardTotal, 60.0);
+        expect(summary.salesTransferTotal, 0.0);
+        expect(summary.expectedCash, 40.0);
+      },
+    );
+
+    test(
+      'gate marks stale shift but keeps the active session restorable',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxToday(db);
+
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+        // Caso 1: sesión abierta hace 47h -> debe permitir operar.
+        await _insertOpenShift(
+          db,
+          userId: 1,
+          userName: 'Admin',
+          cashboxId: cashboxId,
+          openedAtMs: nowMs - const Duration(hours: 47).inMilliseconds,
+        );
+        var gate = await OperationFlowService.loadGateState();
+        expect(gate.hasUserShiftOpen, isTrue);
+        expect(gate.hasStaleShift, isFalse);
+        expect(gate.canOperate, isTrue);
+
+        // Caso 2: sesión abierta hace 49h -> se marca stale, pero sigue siendo
+        // una sesión activa restorable tras reinicio/corte eléctrico.
+        await db.delete(DbTables.cashSessions);
+        await _insertOpenShift(
+          db,
+          userId: 1,
+          userName: 'Admin',
+          cashboxId: cashboxId,
+          openedAtMs: nowMs - const Duration(hours: 49).inMilliseconds,
+        );
+        gate = await OperationFlowService.loadGateState();
+        expect(gate.hasUserShiftOpen, isTrue);
+        expect(gate.hasStaleShift, isTrue);
+        expect(gate.canOperate, isTrue);
+      },
+    );
+
+    test(
+      'getOpenSession ignores a legacy-closed session (status OPEN but closed_at_ms set)',
       () async {
         final db = await AppDb.database;
         final cashboxId = await _insertCashboxToday(db);
@@ -241,7 +383,7 @@ void main() {
     );
 
     test(
-      'openShiftForCurrentUser uses daily cashbox initial amount when openingAmount=0 (no carry-forward)',
+      'closing the active session closes cash and the next login requires a new opening amount',
       () async {
         final db = await AppDb.database;
         await _insertCashboxTodayWithAmount(db, 3000.0);
@@ -253,20 +395,33 @@ void main() {
           role: 'admin',
         );
 
-        final shift1 = await OperationFlowService.openShiftForCurrentUser(
-          openingAmount: 0,
+        final activeSession = await OperationFlowService.startActiveSession(
+          openingAmount: 3000.0,
+          note: 'apertura inicial',
         );
-        expect(shift1.openingAmount, 3000.0);
+        final shift1 = await CashRepository.getSessionById(
+          activeSession.shiftId,
+        );
+        expect(shift1, isNotNull);
+        expect(shift1?.openingAmount, 3000.0);
 
-        await OperationFlowService.closeOpenShiftForCurrentUser(
+        await OperationFlowService.closeActiveSession(
+          sessionId: activeSession.shiftId,
           closingAmount: 3100.0,
           note: 'cierre 1',
         );
 
-        final shift2 = await OperationFlowService.openShiftForCurrentUser(
-          openingAmount: 0,
+        expect(await OperationFlowService.getOpenDailyCashboxToday(), isNull);
+
+        final reopenedSession = await OperationFlowService.startActiveSession(
+          openingAmount: 3000.0,
+          note: 'reapertura',
         );
-        expect(shift2.openingAmount, 3000.0);
+        final shift2 = await CashRepository.getSessionById(
+          reopenedSession.shiftId,
+        );
+        expect(shift2, isNotNull);
+        expect(shift2?.openingAmount, 3000.0);
       },
     );
 
@@ -737,7 +892,7 @@ void main() {
     );
 
     test(
-      'openShiftForCurrentUser allows another user open shift in same cashbox',
+      'openShiftForCurrentUser rejects another user opening a second active session in the same cashbox',
       () async {
         final db = await AppDb.database;
         final cashboxId = await _insertCashboxToday(db);
@@ -755,10 +910,16 @@ void main() {
           role: 'admin',
         );
 
-        final shift = await OperationFlowService.openShiftForCurrentUser();
-        expect(shift.isOpen, isTrue);
-        expect(shift.userId, 1);
-        expect(shift.cashboxDailyId, cashboxId);
+        await expectLater(
+          OperationFlowService.openShiftForCurrentUser(),
+          throwsA(
+            isA<Exception>().having(
+              (error) => error.toString(),
+              'message',
+              contains('sesión activa'),
+            ),
+          ),
+        );
       },
     );
 
@@ -768,6 +929,7 @@ void main() {
         final db = await AppDb.database;
         final cashboxId = await _insertCashboxToday(db);
         final businessDate = OperationFlowService.businessDateOf();
+        final now = DateTime.now().millisecondsSinceEpoch;
 
         final session1 = await _insertOpenShift(
           db,
@@ -775,6 +937,25 @@ void main() {
           userName: 'Admin',
           cashboxId: cashboxId,
           businessDate: businessDate,
+        );
+        await CashRepository.addMovement(
+          sessionId: session1,
+          type: 'IN',
+          amount: 10.0,
+          reason: 'Entrada test',
+          userId: 1,
+        );
+        await db.update(
+          DbTables.cashSessions,
+          {
+            'status': 'CLOSED',
+            'closed_at_ms': now,
+            'closing_amount': 50.0,
+            'expected_cash': 50.0,
+            'difference': 0.0,
+          },
+          where: 'id = ?',
+          whereArgs: [session1],
         );
         final session2 = await _insertOpenShift(
           db,
@@ -784,7 +965,6 @@ void main() {
           businessDate: businessDate,
         );
 
-        final now = DateTime.now().millisecondsSinceEpoch;
         await db.insert(DbTables.sales, {
           'local_code': 'TEST-SALE-1',
           'kind': 'invoice',
@@ -814,13 +994,6 @@ void main() {
           'deleted_at_ms': null,
         }, conflictAlgorithm: ConflictAlgorithm.abort);
 
-        await CashRepository.addMovement(
-          sessionId: session1,
-          type: 'IN',
-          amount: 10.0,
-          reason: 'Entrada test',
-          userId: 1,
-        );
         await CashRepository.addMovement(
           sessionId: session2,
           type: 'OUT',

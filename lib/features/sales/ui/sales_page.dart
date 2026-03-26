@@ -31,7 +31,6 @@ import '../../../theme/app_colors.dart';
 import '../../../core/widgets/branded_loading_view.dart';
 import '../../cash/providers/cash_providers.dart';
 import '../../cash/data/cash_movement_model.dart';
-import '../../cash/data/cash_repository.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
 import '../../cash/ui/cash_open_dialog.dart';
 import '../../clients/data/client_model.dart';
@@ -160,6 +159,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   bool? _previousCashOpen;
   int _initialLoadToken = 0;
   bool _loggedFirstBuild = false;
+  bool _sessionBootstrapScheduled = false;
   final Set<int> _hoveredProductIndexes = <int>{};
   final Set<String> _processedPaymentRequestIds = <String>{};
   bool _isProcessingSaleExecution = false;
@@ -216,7 +216,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     // Evitar modificar providers durante el build inicial (Riverpod lo prohíbe).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _refreshCashSession();
+      unawaited(_refreshCashSession());
+      unawaited(_ensureSessionBootstrap());
     });
     _loadScannerConfig();
     _globalShortcutHandler = _handleGlobalShortcutKey;
@@ -529,15 +530,37 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Future<void> _refreshCashSession() async {
-    await ref.read(cashSessionControllerProvider.notifier).refresh();
+    await ref.read(activeSessionControllerProvider.notifier).refresh();
   }
 
   int? get _activeSessionId =>
-      ref.read(cashSessionControllerProvider).valueOrNull?.id;
+      ref.read(activeSessionControllerProvider).valueOrNull?.shiftId;
+
+  Future<void> _ensureSessionBootstrap({bool force = false}) async {
+    if (_sessionBootstrapScheduled && !force) return;
+    _sessionBootstrapScheduled = true;
+    try {
+      await _refreshCashSession();
+      final activeSession = ref
+          .read(activeSessionControllerProvider)
+          .valueOrNull;
+      if (activeSession != null || !mounted) return;
+
+      final opened = await CashOpenDialog.show(context);
+      if (opened == true) {
+        await _refreshCashSession();
+      }
+    } finally {
+      _sessionBootstrapScheduled = false;
+    }
+  }
 
   Future<int?> _ensureActiveShiftOrRedirect({bool showMessage = true}) async {
     await _refreshCashSession();
-    final liveSessionId = await CashRepository.getCurrentSessionId();
+    final liveSessionId = ref
+        .read(activeSessionControllerProvider)
+        .valueOrNull
+        ?.shiftId;
     if (liveSessionId != null) {
       return liveSessionId;
     }
@@ -546,13 +569,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
-            'Turno/caja cerrado. Debes iniciar operación para continuar.',
+            'No hay una sesión activa. Debes abrir caja para continuar.',
           ),
           backgroundColor: scheme.error,
         ),
       );
     }
-    context.go('/operation-start');
     return null;
   }
 
@@ -1673,6 +1695,28 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       };
 
       final bool isLayaway = method == payment.PaymentMethod.layaway;
+      final mixedCashInput = (paymentResult['cash'] as num?)?.toDouble() ?? 0.0;
+      final mixedCardInput = (paymentResult['card'] as num?)?.toDouble() ?? 0.0;
+      final mixedTransferInput =
+          (paymentResult['transfer'] as num?)?.toDouble() ?? 0.0;
+      final paymentCashAmount = switch (method) {
+        payment.PaymentMethod.cash => total,
+        payment.PaymentMethod.mixed => math.max(
+          0.0,
+          mixedCashInput - changeAmount,
+        ),
+        _ => 0.0,
+      };
+      final paymentCardAmount = switch (method) {
+        payment.PaymentMethod.card => total,
+        payment.PaymentMethod.mixed => mixedCardInput,
+        _ => 0.0,
+      };
+      final paymentTransferAmount = switch (method) {
+        payment.PaymentMethod.transfer => total,
+        payment.PaymentMethod.mixed => mixedTransferInput,
+        _ => 0.0,
+      };
 
       final productsRepo = ProductsRepository();
       final List<SaleItemModel> itemsPayload = [];
@@ -1748,6 +1792,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             itbisAmountOverride: itbisAmount,
             totalOverride: total,
             paymentMethod: paymentMethodStr,
+            paymentCashAmount: paymentCashAmount,
+            paymentCardAmount: paymentCardAmount,
+            paymentTransferAmount: paymentTransferAmount,
             sessionId: activeShiftIdAfterDialog,
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
@@ -1804,6 +1851,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             itbisAmountOverride: itbisAmount,
             totalOverride: total,
             paymentMethod: paymentMethodStr,
+            paymentCashAmount: paymentCashAmount,
+            paymentCardAmount: paymentCardAmount,
+            paymentTransferAmount: paymentTransferAmount,
             sessionId: activeShiftIdAfterDialog,
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
@@ -2064,8 +2114,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         '[SALES] sales-first-build t=${DateTime.now().toIso8601String()}',
       );
     }
-    final cashSessionState = ref.watch(cashSessionControllerProvider);
-    final currentSessionId = cashSessionState.valueOrNull?.id;
+    final cashSessionState = ref.watch(activeSessionControllerProvider);
+    final currentSessionId = cashSessionState.valueOrNull?.shiftId;
     final isCashSessionResolved = cashSessionState is AsyncData;
     final cashIsOpen = currentSessionId != null;
     final showCashClosedOverlay = isCashSessionResolved && !cashIsOpen;
@@ -2554,7 +2604,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'TURNO NO INICIADO',
+                  'SESIÓN NO INICIADA',
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontSize: 24,
@@ -2563,7 +2613,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Debes completar "Iniciar operación"\nantes de poder realizar ventas.',
+                  'Debes abrir caja para iniciar tu sesión\nantes de poder realizar ventas.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: scheme.onSurface.withOpacity(0.45),
@@ -2575,7 +2625,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      context.go('/operation-start');
+                      await _ensureSessionBootstrap(force: true);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: scheme.secondary,
@@ -2587,7 +2637,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     ),
                     icon: const Icon(Icons.lock_open, size: 20),
                     label: const Text(
-                      'INICIAR OPERACIÓN',
+                      'ABRIR CAJA',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,

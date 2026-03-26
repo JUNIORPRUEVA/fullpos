@@ -1,41 +1,45 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/session/session_manager.dart';
 import '../data/cash_repository.dart';
-import '../data/cash_session_model.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_summary_model.dart';
+import '../data/cash_session_model.dart';
+import '../data/operation_flow_service.dart';
 
 // ===================== PROVIDERS PRINCIPALES =====================
 
-/// Provider para la sesión de caja abierta actual
-final openCashSessionProvider = FutureProvider<CashSessionModel?>((ref) async {
-  return await CashRepository.getOpenSession();
+/// Provider para la sesión activa del usuario actual.
+final activeSessionProvider = FutureProvider<ActiveSession?>((ref) async {
+  return OperationFlowService.loadActiveSession();
 });
 
-/// Provider para verificar si hay caja abierta
-final isCashOpenProvider = FutureProvider<bool>((ref) async {
-  return await CashRepository.hasOpenSession();
+/// Provider para verificar si la sesión operativa está abierta.
+final isSessionActiveProvider = FutureProvider<bool>((ref) async {
+  return (await OperationFlowService.loadActiveSession()) != null;
 });
 
-/// Controlador de sesiones de caja
-final cashSessionControllerProvider =
-    StateNotifierProvider<CashSessionController, AsyncValue<CashSessionModel?>>(
-      (ref) => CashSessionController(ref),
+/// Estado global de la sesión operativa activa.
+final activeSessionControllerProvider =
+    StateNotifierProvider<ActiveSessionController, AsyncValue<ActiveSession?>>(
+      (ref) => ActiveSessionController(ref),
     );
 
 /// Provider para el resumen de la sesión actual
 final cashSummaryProvider = FutureProvider<CashSummaryModel?>((ref) async {
-  final sessionId = await CashRepository.getCurrentSessionId();
-  if (sessionId == null) return null;
-  return await CashRepository.buildSummary(sessionId: sessionId);
+  final activeSession = await ref.watch(activeSessionProvider.future);
+  if (activeSession == null) return null;
+  return CashRepository.buildSummary(sessionId: activeSession.shiftId);
 });
 
 /// Provider para los movimientos de la sesión actual
 final cashMovementsProvider = FutureProvider<List<CashMovementModel>>((
   ref,
 ) async {
-  final sessionId = await CashRepository.getCurrentSessionId();
-  if (sessionId == null) return [];
-  return await CashRepository.listMovements(sessionId: sessionId);
+  final activeSession = await ref.watch(activeSessionProvider.future);
+  if (activeSession == null) return [];
+  return CashRepository.listMovements(sessionId: activeSession.shiftId);
 });
 
 /// Provider para el historial de sesiones cerradas
@@ -47,19 +51,25 @@ final closedSessionsProvider = FutureProvider<List<CashSessionModel>>((
 
 // ===================== CONTROLADOR STATE NOTIFIER =====================
 
-class CashSessionController
-    extends StateNotifier<AsyncValue<CashSessionModel?>> {
+class ActiveSessionController
+    extends StateNotifier<AsyncValue<ActiveSession?>> {
   final Ref _ref;
+  StreamSubscription<void>? _sessionSubscription;
 
-  CashSessionController(this._ref) : super(const AsyncValue.loading()) {
-    _loadSession();
+  ActiveSessionController(this._ref) : super(const AsyncValue.loading()) {
+    _sessionSubscription = SessionManager.changes.listen((_) {
+      unawaited(refresh());
+    });
+    _ref.onDispose(() {
+      _sessionSubscription?.cancel();
+    });
+    refresh();
   }
 
-  /// Cargar sesión actual
   Future<void> _loadSession() async {
     state = const AsyncValue.loading();
     try {
-      final session = await CashRepository.getOpenSession();
+      final session = await OperationFlowService.loadActiveSession();
       state = AsyncValue.data(session);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
@@ -69,54 +79,37 @@ class CashSessionController
   /// Refrescar sesión
   Future<void> refresh() async {
     await _loadSession();
-    // Invalidar providers relacionados
-    _ref.invalidate(openCashSessionProvider);
-    _ref.invalidate(isCashOpenProvider);
+    _ref.invalidate(activeSessionProvider);
+    _ref.invalidate(isSessionActiveProvider);
     _ref.invalidate(cashSummaryProvider);
     _ref.invalidate(cashMovementsProvider);
   }
 
-  /// Abrir nueva sesión de caja
-  Future<int> openSession({
-    required int userId,
-    required String userName,
+  Future<ActiveSession> startSession({
     required double openingAmount,
+    String? note,
   }) async {
-    try {
-      final id = await CashRepository.openSession(
-        userId: userId,
-        userName: userName,
-        openingAmount: openingAmount,
-      );
-      await refresh();
-      return id;
-    } catch (e) {
-      rethrow;
-    }
+    final session = await OperationFlowService.startActiveSession(
+      openingAmount: openingAmount,
+      note: note,
+    );
+    await refresh();
+    return session;
   }
 
-  /// Cerrar sesión de caja
   Future<void> closeSession({
     required int sessionId,
     required double closingAmount,
     required String note,
   }) async {
-    try {
-      // Obtener resumen antes de cerrar
-      final summary = await CashRepository.buildSummary(sessionId: sessionId);
+    await OperationFlowService.closeActiveSession(
+      sessionId: sessionId,
+      closingAmount: closingAmount,
+      note: note,
+    );
 
-      await CashRepository.closeSession(
-        sessionId: sessionId,
-        closingAmount: closingAmount,
-        note: note,
-        summary: summary,
-      );
-
-      await refresh();
-      _ref.invalidate(closedSessionsProvider);
-    } catch (e) {
-      rethrow;
-    }
+    await refresh();
+    _ref.invalidate(closedSessionsProvider);
   }
 
   /// Agregar movimiento de caja
@@ -147,12 +140,10 @@ class CashSessionController
   Future<CashSummaryModel?> getSummary() async {
     final session = state.valueOrNull;
     if (session == null) return null;
-    return await CashRepository.buildSummary(sessionId: session.id!);
+    return CashRepository.buildSummary(sessionId: session.shiftId);
   }
 
-  /// Helper: verificar si la caja está abierta
   bool get isOpen => state.valueOrNull != null;
 
-  /// Helper: obtener ID de sesión actual
-  int? get currentSessionId => state.valueOrNull?.id;
+  int? get currentSessionId => state.valueOrNull?.shiftId;
 }

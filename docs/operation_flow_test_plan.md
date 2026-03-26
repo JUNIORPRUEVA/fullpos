@@ -1,41 +1,37 @@
-# FULLPOS - Pruebas mínimas flujo "Iniciar operación"
+# FULLPOS - Pruebas mínimas de sesión única
 
 ## Objetivo
-Validar separación CAJA (día) vs TURNO (cajero) con compatibilidad de datos existentes.
+Validar el flujo único de sesión operativa sin pasos intermedios ni acciones separadas.
 
 ## Casos obligatorios
 
-1. Login -> caja cerrada -> sin permiso de abrir caja
-   - Entrar con usuario cajero sin `can_open_cashbox`.
-   - Ir a `Iniciar operación`.
-   - Resultado esperado: botón "Abrir caja" deshabilitado y mensaje "Requiere supervisor/admin".
+1. Login -> sin sesión activa -> sin permiso de apertura
+   - Entrar con usuario cajero sin permiso para iniciar sesión.
+   - Resultado esperado: se muestra el modal de apertura y la confirmación queda bloqueada.
 
-2. Login -> caja cerrada -> con permiso
+2. Login -> sin sesión activa -> con permiso
    - Entrar con admin/supervisor.
-   - Abrir caja diaria con fondo inicial.
-   - Abrir turno del usuario.
-   - Resultado esperado: permite entrar a ventas.
+   - Abrir caja con fondo inicial.
+   - Resultado esperado: se crea `ActiveSession` y permite entrar a ventas.
 
-3. Ventas sin turno
-   - Con sesión iniciada pero sin turno abierto.
+3. Ventas sin sesión
+   - Con usuario logueado y sin sesión activa.
    - Intentar cobrar en ventas.
-   - Resultado esperado: bloqueo + redirección a `Iniciar operación`.
+   - Resultado esperado: bloqueo + solicitud de apertura de caja.
 
-4. Logout con turno abierto
-   - Con turno abierto, intentar cerrar sesión desde sidebar o cuenta.
-   - Resultado esperado: bloqueo con diálogo "Debes cerrar turno antes de salir" y acción "Ir a cierre".
+4. Logout con sesión activa
+   - Con sesión activa, intentar cerrar sesión desde sidebar o cuenta.
+   - Resultado esperado: bloqueo con diálogo y única acción para cerrar la sesión completa.
 
-5. Cerrar caja con turno abierto
-   - Con caja diaria abierta y al menos un turno abierto.
-   - Intentar "Cerrar caja del día".
-   - Resultado esperado: bloqueo con mensaje de turnos abiertos.
+5. Cierre único de sesión
+   - Con sesión activa, ejecutar el cierre.
+   - Resultado esperado: se cierra la sesión, se cierra la caja, se imprime el comprobante y el usuario sale del sistema.
 
-6. Turno de ayer sin cerrar
-   - Simular turno abierto con `business_date` anterior.
-   - Entrar en `Iniciar operación`.
-   - Resultado esperado: obliga a ir al cierre de turno antes de continuar.
+6. Recuperación tras reinicio
+   - Simular sesión abierta con `business_date` anterior o reinicio del cliente.
+   - Entrar nuevamente al sistema.
+   - Resultado esperado: se restaura la `ActiveSession` si sigue abierta.
 
-7. Conflicto de dos cajeros
-   - Con caja diaria abierta, cajero A abre turno.
-   - Cajero B intenta abrir turno en misma caja.
-   - Resultado esperado: bloqueo "Ya existe un turno abierto en esta caja".
+7. Conflicto de dos usuarios
+   - Con una sesión activa ya abierta, otro usuario intenta iniciar una nueva sesión en la misma caja.
+   - Resultado esperado: bloqueo por sesión activa existente.

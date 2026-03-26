@@ -434,7 +434,7 @@ class TicketPrinter {
       content.add(
         pw.Center(
           child: pw.Text(
-            'Pago: ${_translatePaymentMethod(sale.paymentMethod!)}',
+            'Pago: ${sale.paymentMethodDisplayLabel}',
             style: pw.TextStyle(font: baseFont, fontSize: normalSize),
           ),
         ),
@@ -605,22 +605,4 @@ class TicketPrinter {
     return '${text.substring(0, maxLength - 3)}...';
   }
 
-  static String _translatePaymentMethod(String method) {
-    switch (method.toLowerCase()) {
-      case 'cash':
-        return 'Efectivo';
-      case 'card':
-        return 'Tarjeta';
-      case 'transfer':
-        return 'Transferencia';
-      case 'mixed':
-        return 'Mixto';
-      case 'credit':
-        return 'Crédito';
-      case 'layaway':
-        return 'Apartado';
-      default:
-        return method;
-    }
-  }
 }

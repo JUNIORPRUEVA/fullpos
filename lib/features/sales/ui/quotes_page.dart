@@ -265,31 +265,6 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
-  ButtonStyle _primaryActionButtonStyle({Color? borderColor}) {
-    final primary = ui_colors.AppColors.primaryBlue;
-    final onPrimary = ColorUtils.readableTextColor(primary);
-    return ElevatedButton.styleFrom(
-      backgroundColor: primary,
-      foregroundColor: onPrimary,
-      disabledBackgroundColor: primary.withOpacity(0.35),
-      disabledForegroundColor: onPrimary.withOpacity(0.70),
-      elevation: 0,
-      side: BorderSide(color: borderColor ?? primary.withOpacity(0.95)),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_brandRadius),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      minimumSize: const Size(0, 38),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      textStyle: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 14,
-        fontFamily: 'Inter',
-      ),
-    );
-  }
-
   ButtonStyle _secondaryActionButtonStyle() {
     return OutlinedButton.styleFrom(
       foregroundColor: ui_colors.AppColors.primaryBlue,

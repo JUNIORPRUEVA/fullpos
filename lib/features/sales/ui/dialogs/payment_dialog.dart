@@ -329,6 +329,60 @@ class _PaymentDialogState extends State<PaymentDialog> {
       'PAYMENT_EXECUTE source=$_lastTriggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=${widget.cartFingerprint ?? 'na'} request=$paymentRequestId',
     );
 
+    final cashAmount = double.tryParse(_cashController.text) ?? 0.0;
+    final cardAmount = double.tryParse(_cardController.text) ?? 0.0;
+    final transferAmount = double.tryParse(_transferController.text) ?? 0.0;
+    final mixedTotal = cashAmount + cardAmount + transferAmount;
+
+    if (_selectedMethod == PaymentMethod.cash && _change < -0.009) {
+      _showError('El efectivo recibido no cubre el total de la venta');
+      return;
+    }
+
+    if (_selectedMethod == PaymentMethod.card) {
+      if (cardAmount <= 0) {
+        _showError('Debe indicar el monto cobrado con tarjeta');
+        return;
+      }
+      if ((cardAmount - widget.total).abs() > 0.009) {
+        _showError('El pago con tarjeta debe cubrir exactamente el total');
+        return;
+      }
+    }
+
+    if (_selectedMethod == PaymentMethod.transfer) {
+      if (transferAmount <= 0) {
+        _showError('Debe indicar el monto transferido');
+        return;
+      }
+      if ((transferAmount - widget.total).abs() > 0.009) {
+        _showError(
+          'El pago por transferencia debe cubrir exactamente el total',
+        );
+        return;
+      }
+    }
+
+    if (_selectedMethod == PaymentMethod.mixed) {
+      final hasCard = cardAmount > 0.009;
+      final hasTransfer = transferAmount > 0.009;
+
+      if (cashAmount <= 0.009) {
+        _showError('El pago mixto debe incluir una parte en efectivo');
+        return;
+      }
+      if (hasCard == hasTransfer) {
+        _showError(
+          'El pago mixto solo permite efectivo con tarjeta o efectivo con transferencia',
+        );
+        return;
+      }
+      if ((mixedTotal - widget.total).abs() > 0.009) {
+        _showError('El pago mixto debe cuadrar exactamente con el total');
+        return;
+      }
+    }
+
     // Si el usuario eligió descargar factura PDF, obligar a seleccionar cliente
     // para poder nombrar el archivo de forma profesional.
     if (_downloadInvoicePdf) {
@@ -409,9 +463,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
       'paymentRequestId': paymentRequestId,
       'triggerSource': _lastTriggerSource,
       'method': _selectedMethod,
-      'cash': double.tryParse(_cashController.text) ?? 0,
-      'card': double.tryParse(_cardController.text) ?? 0,
-      'transfer': double.tryParse(_transferController.text) ?? 0,
+      'cash': cashAmount,
+      'card': cardAmount,
+      'transfer': transferAmount,
       'received': double.tryParse(_receivedController.text) ?? widget.total,
       'change': _change > 0 ? _change : 0,
       'dueDate': _dueDate,
@@ -809,6 +863,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                 Icons.account_balance,
                               ),
                               const SizedBox(height: 16),
+                              Text(
+                                'Solo se permite Efectivo + Tarjeta o Efectivo + Transferencia.',
+                                style: TextStyle(
+                                  color: scheme.onSurface.withAlpha(170),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
