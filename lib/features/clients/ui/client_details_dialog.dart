@@ -5,7 +5,6 @@ import '../../../core/constants/app_sizes.dart';
 import '../data/client_model.dart';
 import '../../sales/data/sales_repository.dart';
 import '../../sales/data/sales_model.dart';
-import '../../sales/data/sale_model.dart' show SaleKind;
 // import '../../sales/data/sale_kind.dart'; // Removed due to URI doesn't exist
 
 /// Diálogo para mostrar los detalles completos de un cliente

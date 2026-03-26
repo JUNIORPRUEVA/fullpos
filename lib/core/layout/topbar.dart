@@ -56,6 +56,10 @@ class _TopbarState extends ConsumerState<Topbar>
     await WindowService.minimize();
   }
 
+  Future<void> _toggleFullScreen() async {
+    await WindowService.toggleFullScreen();
+  }
+
   Future<void> _closeApp() async {
     // Con sesión activa no se permite salir sin cierre.
     if (_openCashSessionId != null) {
@@ -370,28 +374,45 @@ class _TopbarState extends ConsumerState<Topbar>
           // Borde ligeramente más oscuro para un look más profesional
           final winBtnBorder = appBarFg.withValues(alpha: 0.28);
 
-          return Row(
-            children: [
-              actionIconButton(
-                icon: Icons.remove,
-                tooltip: 'Minimizar',
-                onTap: _minimize,
-                customFg: appBarFg,
-                customBg: winBtnBg,
-                borderColor: winBtnBorder,
-                borderWidth: 1.2,
-              ),
-              SizedBox(width: spaceS * 0.6),
-              actionIconButton(
-                icon: Icons.close,
-                tooltip: 'Cerrar aplicación',
-                onTap: _closeApp,
-                customFg: scheme.error,
-                customBg: winBtnBg,
-                borderColor: winBtnBorder,
-                borderWidth: 1.2,
-              ),
-            ],
+          return ValueListenableBuilder<bool>(
+            valueListenable: WindowService.fullScreenListenable,
+            builder: (context, isFullScreen, _) => Row(
+              children: [
+                actionIconButton(
+                  icon: Icons.remove,
+                  tooltip: 'Minimizar',
+                  onTap: _minimize,
+                  customFg: appBarFg,
+                  customBg: winBtnBg,
+                  borderColor: winBtnBorder,
+                  borderWidth: 1.2,
+                ),
+                SizedBox(width: spaceS * 0.6),
+                actionIconButton(
+                  icon: isFullScreen
+                      ? Icons.fullscreen_exit
+                      : Icons.fullscreen,
+                  tooltip: isFullScreen
+                      ? 'Salir de pantalla completa'
+                      : 'Pantalla completa',
+                  onTap: _toggleFullScreen,
+                  customFg: appBarFg,
+                  customBg: winBtnBg,
+                  borderColor: winBtnBorder,
+                  borderWidth: 1.2,
+                ),
+                SizedBox(width: spaceS * 0.6),
+                actionIconButton(
+                  icon: Icons.close,
+                  tooltip: 'Cerrar aplicación',
+                  onTap: _closeApp,
+                  customFg: scheme.error,
+                  customBg: winBtnBg,
+                  borderColor: winBtnBorder,
+                  borderWidth: 1.2,
+                ),
+              ],
+            ),
           );
         }
 

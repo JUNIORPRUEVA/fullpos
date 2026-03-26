@@ -14,6 +14,9 @@ class SaleModel {
   final double itbisAmount;
   final double total;
   final String? paymentMethod;
+  final double paymentCashAmount;
+  final double paymentCardAmount;
+  final double paymentTransferAmount;
   final double paidAmount;
   final double changeAmount;
   final double creditInterestRate;
@@ -45,6 +48,9 @@ class SaleModel {
     this.itbisAmount = 0.0,
     required this.total,
     this.paymentMethod,
+    this.paymentCashAmount = 0.0,
+    this.paymentCardAmount = 0.0,
+    this.paymentTransferAmount = 0.0,
     this.paidAmount = 0.0,
     this.changeAmount = 0.0,
     this.creditInterestRate = 0.0,
@@ -77,6 +83,9 @@ class SaleModel {
     'itbis_amount': itbisAmount,
     'total': total,
     'payment_method': paymentMethod,
+    'payment_cash_amount': paymentCashAmount,
+    'payment_card_amount': paymentCardAmount,
+    'payment_transfer_amount': paymentTransferAmount,
     'paid_amount': paidAmount,
     'change_amount': changeAmount,
     'credit_interest_rate': creditInterestRate,
@@ -109,6 +118,10 @@ class SaleModel {
     itbisAmount: (map['itbis_amount'] as num?)?.toDouble() ?? 0.0,
     total: (map['total'] as num).toDouble(),
     paymentMethod: map['payment_method'] as String?,
+    paymentCashAmount: (map['payment_cash_amount'] as num?)?.toDouble() ?? 0.0,
+    paymentCardAmount: (map['payment_card_amount'] as num?)?.toDouble() ?? 0.0,
+    paymentTransferAmount:
+        (map['payment_transfer_amount'] as num?)?.toDouble() ?? 0.0,
     paidAmount: (map['paid_amount'] as num?)?.toDouble() ?? 0.0,
     changeAmount: (map['change_amount'] as num?)?.toDouble() ?? 0.0,
     creditInterestRate:
@@ -142,6 +155,9 @@ class SaleModel {
     double? itbisAmount,
     double? total,
     String? paymentMethod,
+    double? paymentCashAmount,
+    double? paymentCardAmount,
+    double? paymentTransferAmount,
     double? paidAmount,
     double? changeAmount,
     double? creditInterestRate,
@@ -156,38 +172,88 @@ class SaleModel {
     int? createdAtMs,
     int? updatedAtMs,
     int? deletedAtMs,
-  }) =>
-      SaleModel(
-        id: id ?? this.id,
-        localCode: localCode ?? this.localCode,
-        kind: kind ?? this.kind,
-        status: status ?? this.status,
-        customerId: customerId ?? this.customerId,
-        customerNameSnapshot: customerNameSnapshot ?? this.customerNameSnapshot,
-        customerPhoneSnapshot: customerPhoneSnapshot ?? this.customerPhoneSnapshot,
-        customerRncSnapshot: customerRncSnapshot ?? this.customerRncSnapshot,
-        itbisEnabled: itbisEnabled ?? this.itbisEnabled,
-        itbisRate: itbisRate ?? this.itbisRate,
-        discountTotal: discountTotal ?? this.discountTotal,
-        subtotal: subtotal ?? this.subtotal,
-        itbisAmount: itbisAmount ?? this.itbisAmount,
-        total: total ?? this.total,
-        paymentMethod: paymentMethod ?? this.paymentMethod,
-        paidAmount: paidAmount ?? this.paidAmount,
-        changeAmount: changeAmount ?? this.changeAmount,
-        creditInterestRate: creditInterestRate ?? this.creditInterestRate,
-        creditTermDays: creditTermDays ?? this.creditTermDays,
-        creditDueDateMs: creditDueDateMs ?? this.creditDueDateMs,
-        creditInstallments: creditInstallments ?? this.creditInstallments,
-        creditNote: creditNote ?? this.creditNote,
-        fiscalEnabled: fiscalEnabled ?? this.fiscalEnabled,
-        ncfFull: ncfFull ?? this.ncfFull,
-        ncfType: ncfType ?? this.ncfType,
-        sessionId: sessionId ?? this.sessionId,
-        createdAtMs: createdAtMs ?? this.createdAtMs,
-        updatedAtMs: updatedAtMs ?? this.updatedAtMs,
-        deletedAtMs: deletedAtMs ?? this.deletedAtMs,
+  }) => SaleModel(
+    id: id ?? this.id,
+    localCode: localCode ?? this.localCode,
+    kind: kind ?? this.kind,
+    status: status ?? this.status,
+    customerId: customerId ?? this.customerId,
+    customerNameSnapshot: customerNameSnapshot ?? this.customerNameSnapshot,
+    customerPhoneSnapshot: customerPhoneSnapshot ?? this.customerPhoneSnapshot,
+    customerRncSnapshot: customerRncSnapshot ?? this.customerRncSnapshot,
+    itbisEnabled: itbisEnabled ?? this.itbisEnabled,
+    itbisRate: itbisRate ?? this.itbisRate,
+    discountTotal: discountTotal ?? this.discountTotal,
+    subtotal: subtotal ?? this.subtotal,
+    itbisAmount: itbisAmount ?? this.itbisAmount,
+    total: total ?? this.total,
+    paymentMethod: paymentMethod ?? this.paymentMethod,
+    paymentCashAmount: paymentCashAmount ?? this.paymentCashAmount,
+    paymentCardAmount: paymentCardAmount ?? this.paymentCardAmount,
+    paymentTransferAmount: paymentTransferAmount ?? this.paymentTransferAmount,
+    paidAmount: paidAmount ?? this.paidAmount,
+    changeAmount: changeAmount ?? this.changeAmount,
+    creditInterestRate: creditInterestRate ?? this.creditInterestRate,
+    creditTermDays: creditTermDays ?? this.creditTermDays,
+    creditDueDateMs: creditDueDateMs ?? this.creditDueDateMs,
+    creditInstallments: creditInstallments ?? this.creditInstallments,
+    creditNote: creditNote ?? this.creditNote,
+    fiscalEnabled: fiscalEnabled ?? this.fiscalEnabled,
+    ncfFull: ncfFull ?? this.ncfFull,
+    ncfType: ncfType ?? this.ncfType,
+    sessionId: sessionId ?? this.sessionId,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+    deletedAtMs: deletedAtMs ?? this.deletedAtMs,
+  );
+
+  bool get isMixedPayment =>
+      (paymentMethod ?? '').trim().toLowerCase() == 'mixed';
+
+  List<String> get paymentBreakdownParts {
+    final parts = <String>[];
+    if (paymentCashAmount > 0.009) {
+      parts.add('Efectivo RD\$ ${paymentCashAmount.toStringAsFixed(2)}');
+    }
+    if (paymentCardAmount > 0.009) {
+      parts.add('Tarjeta RD\$ ${paymentCardAmount.toStringAsFixed(2)}');
+    }
+    if (paymentTransferAmount > 0.009) {
+      parts.add(
+        'Transferencia RD\$ ${paymentTransferAmount.toStringAsFixed(2)}',
       );
+    }
+    return parts;
+  }
+
+  String get paymentBreakdownLabel => paymentBreakdownParts.join(' + ');
+
+  String get paymentMethodDisplayLabel {
+    final base = paymentMethod == null
+        ? ''
+        : PaymentMethod.getDescription(paymentMethod!);
+    if (!isMixedPayment || paymentBreakdownParts.isEmpty) {
+      return base;
+    }
+    return 'Mixto ($paymentBreakdownLabel)';
+  }
+
+  String get paymentMethodCompactLabel {
+    if (!isMixedPayment) {
+      return switch ((paymentMethod ?? '').trim().toLowerCase()) {
+        'cash' || 'efectivo' => 'EFE',
+        'card' || 'tarjeta' => 'TAR',
+        'transfer' || 'transferencia' => 'TRF',
+        'credit' || 'credito' => 'CRE',
+        'layaway' || 'apartado' => 'APA',
+        'mixed' || 'mixto' => 'MIX',
+        _ => 'PAG',
+      };
+    }
+    if (paymentCardAmount > 0.009) return 'EFE+TAR';
+    if (paymentTransferAmount > 0.009) return 'EFE+TRF';
+    return 'MIX';
+  }
 }
 
 class SaleItemModel {
@@ -239,7 +305,8 @@ class SaleItemModel {
     productNameSnapshot: map['product_name_snapshot'] as String,
     qty: (map['qty'] as num).toDouble(),
     unitPrice: (map['unit_price'] as num).toDouble(),
-    purchasePriceSnapshot: (map['purchase_price_snapshot'] as num?)?.toDouble() ?? 0.0,
+    purchasePriceSnapshot:
+        (map['purchase_price_snapshot'] as num?)?.toDouble() ?? 0.0,
     discountLine: (map['discount_line'] as num?)?.toDouble() ?? 0.0,
     totalLine: (map['total_line'] as num).toDouble(),
     createdAtMs: map['created_at_ms'] as int,
@@ -354,14 +421,94 @@ class CreditPaymentModel {
     'user_id': userId,
   };
 
-  factory CreditPaymentModel.fromMap(Map<String, dynamic> map) => CreditPaymentModel(
-    id: map['id'] as int?,
-    saleId: map['sale_id'] as int,
-    clientId: map['client_id'] as int,
-    amount: (map['amount'] as num).toDouble(),
-    method: map['method'] as String? ?? 'cash',
-    note: map['note'] as String?,
-    createdAtMs: map['created_at_ms'] as int,
-    userId: map['user_id'] as int?,
-  );
+  factory CreditPaymentModel.fromMap(Map<String, dynamic> map) =>
+      CreditPaymentModel(
+        id: map['id'] as int?,
+        saleId: map['sale_id'] as int,
+        clientId: map['client_id'] as int,
+        amount: (map['amount'] as num).toDouble(),
+        method: map['method'] as String? ?? 'cash',
+        note: map['note'] as String?,
+        createdAtMs: map['created_at_ms'] as int,
+        userId: map['user_id'] as int?,
+      );
+}
+
+class SaleKind {
+  static const String invoice = 'invoice';
+  static const String quote = 'quote';
+  static const String returnSale = 'return';
+
+  static const List<String> all = [invoice, quote, returnSale];
+
+  static String getDescription(String kind) {
+    switch (kind) {
+      case invoice:
+        return 'Factura';
+      case quote:
+        return 'Cotización';
+      case returnSale:
+        return 'Devolución';
+      default:
+        return kind;
+    }
+  }
+}
+
+class SaleStatus {
+  static const String draft = 'draft';
+  static const String completed = 'completed';
+  static const String cancelled = 'cancelled';
+
+  static const List<String> all = [draft, completed, cancelled];
+
+  static String getDescription(String status) {
+    switch (status) {
+      case draft:
+        return 'Borrador';
+      case completed:
+        return 'Completado';
+      case cancelled:
+        return 'Cancelado';
+      default:
+        return status;
+    }
+  }
+}
+
+class PaymentMethod {
+  static const String cash = 'cash';
+  static const String transfer = 'transfer';
+  static const String card = 'card';
+  static const String mixed = 'mixed';
+  static const String credit = 'credit';
+  static const String layaway = 'layaway';
+
+  static const List<String> all = [
+    cash,
+    transfer,
+    card,
+    mixed,
+    credit,
+    layaway,
+  ];
+
+  static String getDescription(String method) {
+    switch (method) {
+      case cash:
+        return 'Efectivo';
+      case transfer:
+        return 'Transferencia';
+      case card:
+        return 'Tarjeta';
+      case mixed:
+        return 'Mixto';
+      case credit:
+        return 'Crédito';
+      case layaway:
+        return 'Apartado';
+      default:
+        return method;
+    }
+  }
 }

@@ -139,12 +139,7 @@ class TicketTemplate {
     // Forma de pago
     if (settings.showPaymentMethod == 1 &&
         (sale.paymentMethod ?? '').isNotEmpty) {
-      lines.add(
-        _center(
-          'Pago: ${sale.paymentMethodDisplayLabel}',
-          width,
-        ),
-      );
+      lines.add(_center('Pago: ${sale.paymentMethodDisplayLabel}', width));
     }
 
     if ((sale.paymentMethod ?? '').toLowerCase() == 'credit') {
@@ -155,7 +150,10 @@ class TicketTemplate {
       lines.add(_center('CREDITO', width));
       lines.add(
         _padRight('Interes:', (width * 0.6).toInt()) +
-            _padLeft('${interestRate.toStringAsFixed(2)}%', (width * 0.4).toInt()),
+            _padLeft(
+              '${interestRate.toStringAsFixed(2)}%',
+              (width * 0.4).toInt(),
+            ),
       );
       lines.add(
         _padRight('Total credito:', (width * 0.6).toInt()) +
@@ -175,12 +173,16 @@ class TicketTemplate {
         );
         lines.add(
           _padRight('Valor cuota:', (width * 0.6).toInt()) +
-              _padLeft(_formatCurrency(installmentAmount), (width * 0.4).toInt()),
+              _padLeft(
+                _formatCurrency(installmentAmount),
+                (width * 0.4).toInt(),
+              ),
         );
       }
       if (sale.creditDueDateMs != null) {
-        final dueDate =
-            DateTime.fromMillisecondsSinceEpoch(sale.creditDueDateMs!);
+        final dueDate = DateTime.fromMillisecondsSinceEpoch(
+          sale.creditDueDateMs!,
+        );
         final dueStr = DateFormat('dd/MM/yyyy').format(dueDate);
         lines.add(
           _padRight('Vence:', (width * 0.6).toInt()) +
@@ -237,25 +239,6 @@ class TicketTemplate {
 
   String _resolvePoweredByLine() {
     return 'Powered by FULLTECH, SRL';
-  }
-
-  String _translatePaymentMethod(String method) {
-    switch (method.toLowerCase()) {
-      case 'cash':
-        return 'Efectivo';
-      case 'card':
-        return 'Tarjeta';
-      case 'transfer':
-        return 'Transferencia';
-      case 'mixed':
-        return 'Mixto';
-      case 'credit':
-        return 'Credito';
-      case 'layaway':
-        return 'Apartado';
-      default:
-        return method;
-    }
   }
 
   /// Genera un ticket de prueba (demo)

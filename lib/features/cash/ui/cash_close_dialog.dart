@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/errors/error_handler.dart';
-import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/printing/models/company_info.dart';
 import '../../../core/printing/models/receipt_text_utils.dart';

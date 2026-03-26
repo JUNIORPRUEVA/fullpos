@@ -288,7 +288,6 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       scheme.primary.withOpacity(0.16),
       scheme.surfaceContainerHighest,
     );
-    final muted = scheme.onSurface.withOpacity(0.68);
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -1308,6 +1307,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildSalesBreakdown({
     required ThemeData theme,
     required bool compact,
@@ -1493,6 +1493,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildMovementsCard({
     required ThemeData theme,
     required bool compact,

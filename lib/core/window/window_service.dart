@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding;
@@ -40,16 +40,10 @@ class WindowService {
       // Load fullscreen state from preferences
       try {
         final prefs = await SharedPreferences.getInstance();
-        if (Platform.isWindows) {
-          _isFullScreen = true;
-          fullScreenListenable.value = true;
-          await prefs.setBool('pos_fullscreen', true);
-        } else {
-          _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
-          fullScreenListenable.value = _isFullScreen;
-        }
+        _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
+        fullScreenListenable.value = _isFullScreen;
       } catch (_) {
-        _isFullScreen = Platform.isWindows;
+        _isFullScreen = false;
         fullScreenListenable.value = _isFullScreen;
       }
 
@@ -103,8 +97,12 @@ class WindowService {
     final physicalHeight = display.size.height + 50; // +50px to cover taskbar
 
     if (kDebugMode) {
-      debugPrint('[WINDOW] display.size (work area): ${display.size.width}x${display.size.height}');
-      debugPrint('[WINDOW] estimated physical resolution: $physicalWidth x $physicalHeight');
+      debugPrint(
+        '[WINDOW] display.size (work area): ${display.size.width}x${display.size.height}',
+      );
+      debugPrint(
+        '[WINDOW] estimated physical resolution: $physicalWidth x $physicalHeight',
+      );
       debugPrint('[WINDOW] origin: ${origin.dx},${origin.dy}');
     }
 
@@ -123,7 +121,9 @@ class WindowService {
     bool preferCurrentDisplay = true,
   }) async {
     if (kDebugMode) {
-      debugPrint('[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay');
+      debugPrint(
+        '[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay',
+      );
     }
 
     // Step 1: Disable system fullscreen (can leave screen black on some PCs)
@@ -170,7 +170,9 @@ class WindowService {
       // Set bounds to cover entire physical screen including taskbar
       await windowManager.setBounds(bounds);
       if (kDebugMode) {
-        debugPrint('[WINDOW] setBounds to: ${bounds.left},${bounds.top} ${bounds.width}x${bounds.height}');
+        debugPrint(
+          '[WINDOW] setBounds to: ${bounds.left},${bounds.top} ${bounds.width}x${bounds.height}',
+        );
       }
 
       // Small delay to ensure bounds are applied
@@ -187,7 +189,8 @@ class WindowService {
         await windowManager.maximize();
         if (kDebugMode) debugPrint('[WINDOW] fallback to maximize');
       } catch (e2) {
-        if (kDebugMode) debugPrint('[WINDOW] fallback maximize also failed: $e2');
+        if (kDebugMode)
+          debugPrint('[WINDOW] fallback maximize also failed: $e2');
       }
     }
 
@@ -212,6 +215,40 @@ class WindowService {
     await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
   }
 
+  static Future<void> _applyWindowsWindowedMode() async {
+    if (kDebugMode) {
+      debugPrint('[WINDOW] applying windowed mode');
+    }
+
+    try {
+      await windowManager.setFullScreen(false);
+    } catch (_) {}
+
+    try {
+      await windowManager.setAlwaysOnTop(false);
+    } catch (_) {}
+
+    try {
+      await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+    } catch (_) {}
+
+    try {
+      await windowManager.setResizable(true);
+    } catch (_) {}
+
+    try {
+      await windowManager.setMinimumSize(const Size(1100, 650));
+    } catch (_) {}
+
+    try {
+      await windowManager.maximize();
+    } catch (_) {}
+
+    if (kDebugMode) {
+      debugPrint('[WINDOW] windowed mode application complete');
+    }
+  }
+
   /// Ensure window appears on restore/unminimize
   static void _installEnforcer() {
     if (_enforcerInstalled) return;
@@ -224,11 +261,13 @@ class WindowService {
   }
 
   /// Set fullscreen state
-  static Future<void> setFullScreen(bool value, {bool savePreference = true}) async {
+  static Future<void> setFullScreen(
+    bool value, {
+    bool savePreference = true,
+  }) async {
     if (!_isInitialized) return;
 
-    // On Windows POS, always maintain fullscreen/kiosk mode
-    final effectiveValue = Platform.isWindows ? true : value;
+    final effectiveValue = value;
     _isFullScreen = effectiveValue;
     fullScreenListenable.value = effectiveValue;
 
@@ -236,6 +275,8 @@ class WindowService {
       if (effectiveValue) {
         // Apply kiosk mode on Windows
         await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
+      } else {
+        await _applyWindowsWindowedMode();
       }
     } else {
       // Non-Windows platforms: use system fullscreen
@@ -264,11 +305,6 @@ class WindowService {
 
   /// Toggle fullscreen
   static Future<void> toggleFullScreen() async {
-    if (Platform.isWindows) {
-      // Windows POS always stays in fullscreen
-      await setFullScreen(true);
-      return;
-    }
     await setFullScreen(!_isFullScreen);
   }
 
@@ -515,4 +551,3 @@ class _PosWindowEnforcer with WindowListener {
     }
   }
 }
-

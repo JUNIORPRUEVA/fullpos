@@ -68,14 +68,23 @@ class WindowStartupController {
 
       try {
         await WindowService.init();
-        // Apply kiosk mode at startup
-        // This ensures: frameless, always-on-top, non-resizable, full screen bounds
-        await WindowService.applyWindowsPosKioskModeForStartup(
-          preferCurrentDisplay: true,
-        );
+        if (WindowService.isFullScreen()) {
+          // Apply kiosk mode at startup only when user preference enables it.
+          await WindowService.applyWindowsPosKioskModeForStartup(
+            preferCurrentDisplay: true,
+          );
 
-        if (kDebugMode) {
-          debugPrint('[WINDOW] kiosk mode applied (startup)');
+          if (kDebugMode) {
+            debugPrint('[WINDOW] kiosk mode applied (startup)');
+          }
+        } else {
+          await windowManager.setMinimumSize(const Size(1100, 650));
+          await windowManager.maximize();
+          await windowManager.setResizable(true);
+
+          if (kDebugMode) {
+            debugPrint('[WINDOW] windowed mode applied (startup)');
+          }
         }
       } catch (e) {
         // Fallback: normal maximized window
