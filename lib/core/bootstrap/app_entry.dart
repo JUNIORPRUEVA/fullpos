@@ -33,6 +33,22 @@ class AppEntry extends ConsumerStatefulWidget {
 }
 
 class _AppEntryState extends ConsumerState<AppEntry> {
+  bool _windowShowScheduled = false;
+
+  Future<void> _showWindowAfterFirstPaint() async {
+    if (_windowShowScheduled) return;
+    _windowShowScheduled = true;
+
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+      await WidgetsBinding.instance.endOfFrame;
+      await WindowStartupController.instance.showWhenReady();
+    } finally {
+      _windowShowScheduled = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show window only when bootstrap is ready and layout is painted.
@@ -42,7 +58,7 @@ class _AppEntryState extends ConsumerState<AppEntry> {
       appBootstrapProvider.select((b) => b.snapshot.status),
       (prev, next) {
         if (next == BootStatus.ready && prev != BootStatus.ready) {
-          unawaited(WindowStartupController.instance.showWhenReady());
+          unawaited(_showWindowAfterFirstPaint());
         }
       },
     );

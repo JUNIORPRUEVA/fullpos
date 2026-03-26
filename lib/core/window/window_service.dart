@@ -1,9 +1,8 @@
 import 'dart:io';
-import 'dart:ui' show Offset, Rect, Size;
+import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding;
-import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class WindowService {
   static bool _isInitialized = false;
   static bool _isFullScreen = false;
+  static bool _isFullscreenTransitioning = false;
   static int _systemDialogDepth = 0;
   static bool _restoreAlwaysOnTopAfterDialog = false;
   static bool _enforcerInstalled = false;
@@ -25,6 +25,11 @@ class WindowService {
   static final ValueNotifier<bool> fullScreenListenable = ValueNotifier<bool>(
     false,
   );
+
+  static void _publishFullScreenState(bool value) {
+    _isFullScreen = value;
+    fullScreenListenable.value = value;
+  }
 
   /// Initialize window_manager
   static Future<void> init() async {
@@ -40,11 +45,9 @@ class WindowService {
       // Load fullscreen state from preferences
       try {
         final prefs = await SharedPreferences.getInstance();
-        _isFullScreen = prefs.getBool('pos_fullscreen') ?? false;
-        fullScreenListenable.value = _isFullScreen;
+        _publishFullScreenState(prefs.getBool('pos_fullscreen') ?? false);
       } catch (_) {
-        _isFullScreen = false;
-        fullScreenListenable.value = _isFullScreen;
+        _publishFullScreenState(false);
       }
 
       _isInitialized = true;
@@ -55,63 +58,22 @@ class WindowService {
     }
   }
 
-  static Future<Rect> _getWindowsKioskBounds({
-    bool preferCurrentDisplay = true,
-  }) async {
-    Display display = await screenRetriever.getPrimaryDisplay();
-
-    if (preferCurrentDisplay) {
-      try {
-        final windowBounds = await windowManager.getBounds();
-        final windowCenter = Offset(
-          windowBounds.left + (windowBounds.width / 2),
-          windowBounds.top + (windowBounds.height / 2),
-        );
-
-        final displays = await screenRetriever.getAllDisplays();
-        for (final d in displays) {
-          final origin = d.visiblePosition ?? Offset.zero;
-          final rect = Rect.fromLTWH(
-            origin.dx,
-            origin.dy,
-            d.size.width,
-            d.size.height,
-          );
-          if (rect.contains(windowCenter)) {
-            display = d;
-            break;
-          }
-        }
-      } catch (_) {
-        // Use primary display on error
+  static Future<void> _runFullscreenTransition(
+    Future<void> Function() action,
+  ) async {
+    if (_isFullscreenTransitioning) {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] fullscreen transition skipped (already running)');
       }
+      return;
     }
 
-    final origin = display.visiblePosition ?? Offset.zero;
-
-    // CRITICAL: Get PHYSICAL screen resolution, not work area
-    // display.size gives work area (visible region excluding taskbar)
-    // Windows taskbar is typically 40px (vertical) or 40px (horizontal)
-    // So physical resolution = work_area + taskbar_size
-    final physicalWidth = display.size.width;
-    final physicalHeight = display.size.height + 50; // +50px to cover taskbar
-
-    if (kDebugMode) {
-      debugPrint(
-        '[WINDOW] display.size (work area): ${display.size.width}x${display.size.height}',
-      );
-      debugPrint(
-        '[WINDOW] estimated physical resolution: $physicalWidth x $physicalHeight',
-      );
-      debugPrint('[WINDOW] origin: ${origin.dx},${origin.dy}');
+    _isFullscreenTransitioning = true;
+    try {
+      return await action();
+    } finally {
+      _isFullscreenTransitioning = false;
     }
-
-    return Rect.fromLTWH(
-      0, // Start from 0,0 (physical screen coordinate)
-      0,
-      physicalWidth,
-      physicalHeight,
-    );
   }
 
   /// Apply Windows POS kiosk mode: full screen without system fullscreen.
@@ -120,83 +82,41 @@ class WindowService {
   static Future<void> _applyWindowsPosKioskMode({
     bool preferCurrentDisplay = true,
   }) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay',
-      );
-    }
-
-    // Step 1: Disable system fullscreen (can leave screen black on some PCs)
-    try {
-      await windowManager.setFullScreen(false);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setFullScreen(false) failed: $e');
-    }
-
-    // Step 2: Hide title bar for full POS mode
-    try {
-      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setTitleBarStyle failed: $e');
-    }
-
-    // Step 3: Make frameless for maximum usable space
-    try {
-      await windowManager.setAsFrameless();
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setAsFrameless failed: $e');
-    }
-
-    // Step 4: Always on top in POS mode (prevents other windows from covering)
-    try {
-      await windowManager.setAlwaysOnTop(true);
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setAlwaysOnTop failed: $e');
-    }
-
-    // Step 5: CRITICAL - Set bounds to physical screen resolution
-    // Windows doesn't allow non-resizable windows to set arbitrary bounds.
-    // So we must be resizable to set bounds, then make non-resizable after.
-    try {
-      // Temporarily allow resizing so we can set bounds
-      await windowManager.setResizable(true);
-      if (kDebugMode) debugPrint('[WINDOW] temporarily set resizable=true');
-
-      // Get physical resolution bounds
-      final bounds = await _getWindowsKioskBounds(
-        preferCurrentDisplay: preferCurrentDisplay,
-      );
-
-      // Set bounds to cover entire physical screen including taskbar
-      await windowManager.setBounds(bounds);
+    await _runFullscreenTransition(() async {
       if (kDebugMode) {
         debugPrint(
-          '[WINDOW] setBounds to: ${bounds.left},${bounds.top} ${bounds.width}x${bounds.height}',
+          '[WINDOW] applying kiosk mode, preferCurrentDisplay=$preferCurrentDisplay',
         );
       }
 
-      // Small delay to ensure bounds are applied
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      try {
+        await windowManager.setSkipTaskbar(true);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[WINDOW] setSkipTaskbar(true) failed: $e');
+      }
 
-      // Now disable resizing to lock the window in kiosk mode
-      await windowManager.setResizable(false);
-      if (kDebugMode) debugPrint('[WINDOW] set resizable=false (locked)');
-    } catch (e) {
-      if (kDebugMode) debugPrint('[WINDOW] setBounds failed: $e');
-      // Fallback: just maximize and hope it covers most of the screen
+      try {
+        await windowManager.setAlwaysOnTop(true);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[WINDOW] setAlwaysOnTop failed: $e');
+      }
+
+      try {
+        await windowManager.setFullScreen(true);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[WINDOW] setFullScreen(true) failed: $e');
+      }
+
       try {
         await windowManager.setResizable(false);
-        await windowManager.maximize();
-        if (kDebugMode) debugPrint('[WINDOW] fallback to maximize');
-      } catch (e2) {
-        if (kDebugMode)
-          debugPrint('[WINDOW] fallback maximize also failed: $e2');
+      } catch (e) {
+        if (kDebugMode) debugPrint('[WINDOW] setResizable(false) failed: $e');
       }
-    }
 
-    if (kDebugMode) {
-      debugPrint('[WINDOW] kiosk mode application complete');
-    }
+      if (kDebugMode) {
+        debugPrint('[WINDOW] kiosk mode application complete');
+      }
+    });
   }
 
   /// Apply POS kiosk mode while window is hidden (startup only).
@@ -212,41 +132,77 @@ class WindowService {
   /// Used internally by enforcer to restore kiosk state
   static Future<void> _reapplyKioskModeAfterRestore() async {
     if (!Platform.isWindows) return;
+    try {
+      final stillFullScreen = await windowManager.isFullScreen();
+      if (stillFullScreen) {
+        try {
+          await windowManager.setSkipTaskbar(true);
+        } catch (_) {}
+        try {
+          await windowManager.setAlwaysOnTop(true);
+        } catch (_) {}
+        try {
+          await windowManager.setResizable(false);
+        } catch (_) {}
+        return;
+      }
+    } catch (_) {}
     await _applyWindowsPosKioskMode(preferCurrentDisplay: true);
   }
 
   static Future<void> _applyWindowsWindowedMode() async {
-    if (kDebugMode) {
-      debugPrint('[WINDOW] applying windowed mode');
-    }
+    await _runFullscreenTransition(() async {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] applying windowed mode');
+      }
 
+      try {
+        await windowManager.setAlwaysOnTop(false);
+      } catch (_) {}
+
+      try {
+        await windowManager.setFullScreen(false);
+      } catch (_) {}
+
+      try {
+        await windowManager.setSkipTaskbar(false);
+      } catch (_) {}
+
+      try {
+        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+      } catch (_) {}
+
+      try {
+        await windowManager.setResizable(true);
+      } catch (_) {}
+
+      try {
+        await windowManager.setMinimumSize(const Size(1100, 650));
+      } catch (_) {}
+
+      try {
+        await windowManager.maximize();
+      } catch (_) {}
+
+      if (kDebugMode) {
+        debugPrint('[WINDOW] windowed mode application complete');
+      }
+    });
+  }
+
+  /// Apply normal maximized desktop mode after the window is visible.
+  static Future<void> ensureWindowedDesktopMode() async {
+    if (!Platform.isWindows || !_isInitialized) return;
+    await _applyWindowsWindowedMode();
     try {
-      await windowManager.setFullScreen(false);
+      final isVisible = await windowManager.isVisible();
+      if (!isVisible) {
+        await windowManager.show();
+      }
     } catch (_) {}
-
     try {
-      await windowManager.setAlwaysOnTop(false);
+      await windowManager.focus();
     } catch (_) {}
-
-    try {
-      await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-    } catch (_) {}
-
-    try {
-      await windowManager.setResizable(true);
-    } catch (_) {}
-
-    try {
-      await windowManager.setMinimumSize(const Size(1100, 650));
-    } catch (_) {}
-
-    try {
-      await windowManager.maximize();
-    } catch (_) {}
-
-    if (kDebugMode) {
-      debugPrint('[WINDOW] windowed mode application complete');
-    }
   }
 
   /// Ensure window appears on restore/unminimize
@@ -268,8 +224,6 @@ class WindowService {
     if (!_isInitialized) return;
 
     final effectiveValue = value;
-    _isFullScreen = effectiveValue;
-    fullScreenListenable.value = effectiveValue;
 
     if (Platform.isWindows) {
       if (effectiveValue) {
@@ -291,6 +245,8 @@ class WindowService {
         await windowManager.maximize();
       }
     }
+
+    _publishFullScreenState(effectiveValue);
 
     // Save preference
     if (savePreference) {

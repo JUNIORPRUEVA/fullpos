@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../constants/app_colors.dart';
@@ -28,6 +29,34 @@ class WindowStartupController {
   bool _optionsApplied = false;
   bool _shown = false;
 
+  Future<WindowOptions> _resolveStartupOptions() async {
+    const fallbackSize = Size(1600, 900);
+    var startupSize = fallbackSize;
+
+    try {
+      final display = await screenRetriever.getPrimaryDisplay();
+      startupSize = display.visibleSize ?? display.size;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WINDOW] primary display size unavailable: $e');
+      }
+    }
+
+    if (startupSize.width < 1100 || startupSize.height < 650) {
+      startupSize = const Size(1280, 720);
+    }
+
+    return WindowOptions(
+      size: startupSize,
+      minimumSize: const Size(1100, 650),
+      center: true,
+      backgroundColor: AppColors.bgLightAlt,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.normal,
+      title: 'FULLPOS',
+    );
+  }
+
   /// Apply window options (size, position, kiosk mode) while window is hidden.
   /// Called from main() before runApp() to ensure options are set before show.
   Future<void> applyStartupOptions() async {
@@ -36,17 +65,7 @@ class WindowStartupController {
 
     if (!Platform.isWindows) return;
 
-    // For Windows POS, we want kiosk mode (full screen, frameless).
-    // Don't use size/position options; kiosk will handle bounds.
-    const options = WindowOptions(
-      size: Size(1280, 720),
-      minimumSize: Size(1100, 650),
-      center: true,
-      backgroundColor: AppColors.bgDark,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
-      title: 'FULLPOS',
-    );
+    final options = await _resolveStartupOptions();
 
     try {
       await windowManager.waitUntilReadyToShow(options, () async {
@@ -78,12 +97,14 @@ class WindowStartupController {
             debugPrint('[WINDOW] kiosk mode applied (startup)');
           }
         } else {
+          // In normal mode, keep startup operations minimal while hidden.
           await windowManager.setMinimumSize(const Size(1100, 650));
-          await windowManager.maximize();
           await windowManager.setResizable(true);
+          await windowManager.maximize();
+          await Future<void>.delayed(const Duration(milliseconds: 16));
 
           if (kDebugMode) {
-            debugPrint('[WINDOW] windowed mode applied (startup)');
+            debugPrint('[WINDOW] windowed mode prepared (startup maximized)');
           }
         }
       } catch (e) {
@@ -93,8 +114,9 @@ class WindowStartupController {
         }
         try {
           await windowManager.setMinimumSize(const Size(1100, 650));
+          await windowManager.setResizable(true);
           await windowManager.maximize();
-          await windowManager.setResizable(false);
+          await Future<void>.delayed(const Duration(milliseconds: 16));
         } catch (_) {
           // Ensure app doesn't hang if window setup fails
         }
@@ -120,6 +142,18 @@ class WindowStartupController {
     }
 
     try {
+      if (!WindowService.isFullScreen()) {
+        try {
+          final isMaximized = await windowManager.isMaximized();
+          if (!isMaximized) {
+            await windowManager.maximize();
+            await Future<void>.delayed(const Duration(milliseconds: 16));
+          }
+        } catch (_) {
+          // Ignore
+        }
+      }
+
       // Restore if minimized (can happen if user minimized during bootstrap)
       try {
         final isMin = await windowManager.isMinimized();

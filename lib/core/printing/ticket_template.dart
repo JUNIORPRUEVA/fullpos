@@ -18,7 +18,7 @@ class TicketTemplate {
 
   String generate() {
     final lines = <String>[];
-    final width = settings.charsPerLine;
+    final width = _safeLineWidth(settings.charsPerLine);
     final separator = '-' * width;
 
     final businessName = _resolveBusinessName(settings.headerBusinessName);
@@ -226,7 +226,7 @@ class TicketTemplate {
   String _resolveBusinessName(String headerBusinessName) {
     final header = headerBusinessName.trim();
     final headerUpper = header.toUpperCase();
-    final business = appConfigService.getBusinessName().trim();
+    final business = _safeConfiguredBusinessName();
     final shouldFallback =
         header.isEmpty ||
         headerUpper == 'FULLTECH, SRL' ||
@@ -239,6 +239,19 @@ class TicketTemplate {
 
   String _resolvePoweredByLine() {
     return 'Powered by FULLTECH, SRL';
+  }
+
+  String _safeConfiguredBusinessName() {
+    try {
+      return appConfigService.getBusinessName().trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  int _safeLineWidth(int value) {
+    if (value < 16) return 16;
+    return value;
   }
 
   /// Genera un ticket de prueba (demo)
@@ -282,17 +295,20 @@ class TicketTemplate {
   }
 
   String _center(String text, int width) {
+    width = _safeLineWidth(width);
     if (text.length >= width) return text.substring(0, width);
     final padding = (width - text.length) ~/ 2;
     return ' ' * padding + text;
   }
 
   String _padRight(String text, int width) {
+    width = _safeLineWidth(width);
     if (text.length >= width) return text.substring(0, width);
     return text + ' ' * (width - text.length);
   }
 
   String _padLeft(String text, int width) {
+    width = _safeLineWidth(width);
     if (text.length >= width) return text.substring(0, width);
     return ' ' * (width - text.length) + text;
   }

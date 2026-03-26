@@ -123,11 +123,9 @@ class _CashBoxPageState extends State<CashBoxPage> {
       final result = await CashCloseDialog.show(
         context,
         sessionId: sessionId,
-        logoutAfterClose: false,
+        logoutAfterClose: true,
       );
       if (result == true && mounted) {
-        setState(() => _session = null);
-        await _loadData();
         return;
       }
     } finally {

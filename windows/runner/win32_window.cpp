@@ -54,7 +54,7 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
   FreeLibrary(user32_module);
 }
 
-constexpr COLORREF kFullposBgColor = RGB(0x1A, 0x1A, 0x1A);
+constexpr COLORREF kFullposBgColor = RGB(0x0B, 0x2F, 0x82);
 constexpr UINT_PTR kFlutterChildSubclassId = 0xF00D;
 static bool g_flutter_child_painted_once = false;
 

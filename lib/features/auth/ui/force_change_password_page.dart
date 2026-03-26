@@ -67,7 +67,7 @@ class _ForceChangePasswordPageState
       unawaited(ref.read(appBootstrapProvider).refreshAuth());
       final rootCtx = ErrorHandler.navigatorKey.currentContext ?? context;
       GoRouter.of(rootCtx).refresh();
-      GoRouter.of(rootCtx).go('/sales');
+      GoRouter.of(rootCtx).go('/cash-gate');
     } catch (e, st) {
       final ex = await ErrorHandler.instance.handle(
         e,

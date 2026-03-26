@@ -15,6 +15,7 @@ import '../features/auth/ui/login_page.dart';
 import '../features/auth/ui/force_change_password_page.dart';
 import '../features/auth/services/first_run_auth_flags.dart';
 import '../features/cash/ui/cash_box_page.dart';
+import '../features/cash/ui/cash_gate_page.dart';
 import '../features/cash/ui/cash_history_page.dart';
 import '../features/cash/ui/expenses_overview_page.dart';
 import '../features/cash/data/operation_flow_service.dart';
@@ -113,7 +114,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: ErrorHandler.navigatorKey,
     // Nota: La pantalla de arranque se maneja fuera del router (AppEntry).
     // Mantener una ruta inicial estable evita “rebotes” visuales.
-    initialLocation: isLoggedIn ? '/sales' : '/login',
+    initialLocation: isLoggedIn ? '/cash-gate' : '/login',
     refreshListenable: refresh,
     redirect: (context, state) async {
       final path = state.uri.path;
@@ -122,10 +123,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnPublicLicense = path == '/license';
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
-      final isOnSales = path == '/sales';
+      final isOnCashGate = path == '/cash-gate';
 
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
       if (bootStatus != BootStatus.ready) return null;
+
+      ActiveSession? activeSessionCache;
+      Future<ActiveSession?> loadActiveSession() async {
+        activeSessionCache ??= await OperationFlowService.loadActiveSession();
+        return activeSessionCache;
+      }
+
+      Future<String> privateLanding() async {
+        final session = await loadActiveSession();
+        return session == null ? '/cash-gate' : '/sales';
+      }
 
       // Gate de licencia: distinguir ACTIVA vs BLOQUEADA vs no válida.
       final gate = await _getLicenseGateDecisionFast();
@@ -148,13 +160,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
       if (isOnBlocked) {
-        return isLoggedIn ? '/sales' : '/login';
+        return isLoggedIn ? await privateLanding() : '/login';
       }
       if (isOnPublicLicense || isOnSettingsLicense) {
         // En debug permitimos abrir la pantalla de licencia desde Configuración
         // para poder resetear TRIAL/licencia en esta misma PC.
         if (kDebugMode) return null;
-        return isLoggedIn ? '/sales' : '/login';
+        return isLoggedIn ? await privateLanding() : '/login';
       }
 
       assert(() {
@@ -180,19 +192,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       } else {
-        if (isOnForceChangePassword) return '/sales';
+        if (isOnForceChangePassword) return await privateLanding();
       }
 
-      if (isOnLogin) return '/sales';
-
-      ActiveSession? activeSessionCache;
-      Future<ActiveSession?> loadActiveSession() async {
-        activeSessionCache ??= await OperationFlowService.loadActiveSession();
-        return activeSessionCache;
-      }
+      if (isOnLogin) return await privateLanding();
 
       final activeSession = await loadActiveSession();
-      if (activeSession == null && !isOnSales) {
+      if (activeSession == null) {
+        return isOnCashGate ? null : '/cash-gate';
+      }
+
+      if (isOnCashGate) {
         return '/sales';
       }
 
@@ -202,6 +212,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) => FullposBrandScope(child: LoginPage()),
+      ),
+      GoRoute(
+        path: '/cash-gate',
+        builder: (context, state) =>
+            const FullposBrandScope(child: CashGatePage()),
       ),
       GoRoute(
         path: '/force-change-password',

@@ -78,7 +78,7 @@ class _AppShellState extends State<AppShell> {
             final isDesktop =
                 Platform.isWindows || Platform.isLinux || Platform.isMacOS;
             final double topbarInnerTopPadding = (!isNarrow && isDesktop)
-                ? AppSizes.paddingXS
+              ? AppSizes.paddingXS
                 : 0.0;
 
             Widget topbarWidget = Topbar(

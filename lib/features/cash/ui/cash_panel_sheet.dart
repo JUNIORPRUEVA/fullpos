@@ -1072,7 +1072,8 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           : ListView.separated(
               padding: EdgeInsets.all(isCompactDialog ? 12 : 14),
               itemCount: _movements.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, separatorIndex) =>
+                  const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return Column(
@@ -1738,21 +1739,14 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     final result = await CashCloseDialog.show(
       context,
       sessionId: widget.sessionId,
-      logoutAfterClose: false,
+      logoutAfterClose: true,
       initialSummary: _summary,
       initialSession: _session,
       initialMovements: _movements,
     );
 
     if (result == true && mounted) {
-      await _loadData();
-      final rootNavigator = Navigator.of(context, rootNavigator: true);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (rootNavigator.canPop()) {
-          rootNavigator.pop();
-        }
-      });
+      return;
     }
   }
 }

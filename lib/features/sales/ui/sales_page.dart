@@ -25,6 +25,7 @@ import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/ui/app_toast.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
 import '../../../theme/app_colors.dart';
@@ -113,6 +114,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Color get salesDetailTextColor =>
       Theme.of(context).extension<SalesDetailTextTheme>()?.textColor ??
       scheme.onSurface;
+
+  void _showNotice(SnackBar snackBar) {
+    if (!mounted) return;
+    AppToast.showSnackBar(context, snackBar);
+  }
 
   LinearGradient _resolveBackgroundGradient(AppGradientTheme? gradientTheme) {
     return gradientTheme?.backgroundGradient ??
@@ -247,7 +253,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (key == LogicalKeyboardKey.f8) {
       if (_currentCart.items.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        _showNotice(
           SnackBar(
             content: Text('Agrega productos antes de cobrar'),
             backgroundColor: scheme.error,
@@ -339,7 +345,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (!mounted) return;
 
     if (product == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text('No se encontro producto con codigo: $code'),
           backgroundColor: scheme.error,
@@ -520,7 +526,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     } catch (e) {
       if (!mounted || token != _initialLoadToken) return;
       setState(() => _isSearching = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text('No se pudo cargar Ventas: $e'),
           backgroundColor: scheme.error,
@@ -566,7 +572,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
     if (!mounted) return null;
     if (showMessage) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: const Text(
             'No hay una sesión activa. Debes abrir caja para continuar.',
@@ -1052,7 +1058,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   Future<void> _showTotalDiscountDialog() async {
     if (_currentCart.items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text('Agrega productos antes de aplicar descuento'),
           backgroundColor: status.warning,
@@ -1087,7 +1093,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _currentCart.discountTotalType = null;
         _currentCart.discountTotalValue = null;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text('Descuento eliminado'),
           backgroundColor: status.success,
@@ -1126,7 +1132,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final discountLabel = result.type == DiscountType.percent
           ? 'Descuento aplicado: ${result.value.toStringAsFixed(1)}%'
           : 'Descuento aplicado: RD\$ ${result.value.toStringAsFixed(2)}';
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(content: Text(discountLabel), backgroundColor: status.success),
       );
     }
@@ -1144,7 +1150,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final qtyInCart = _currentCart.getQuantityForProduct(product.id ?? -1);
     final effectiveStock = product.stock - qtyInCart;
     if (effectiveStock <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text('Producto sin stock disponible'),
           backgroundColor: scheme.error,
@@ -1177,7 +1183,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         product.stock - _currentCart.getQuantityForProduct(item.productId!);
     if (available <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text('Stock insuficiente'),
           backgroundColor: scheme.error,
@@ -1226,7 +1232,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             final discountToApply = computeDiscountAmount();
 
             if (newQty <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
+              _showNotice(
                 SnackBar(
                   content: Text('La cantidad debe ser mayor a 0'),
                   backgroundColor: scheme.error,
@@ -1461,7 +1467,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (missing.isEmpty) return true;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    _showNotice(
       SnackBar(
         content: Text('No se puede activar NCF. Falta: ${missing.join(', ')}.'),
         backgroundColor: scheme.error,
@@ -1486,7 +1492,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (missing.isEmpty) return true;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    _showNotice(
       SnackBar(
         content: Text(
           'No se puede continuar con NCF. Falta: ${missing.join(', ')}.',
@@ -1522,7 +1528,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       if (!_canProceedWithFiscalOrNotify()) return;
 
       if (_currentCart.fiscalEnabled && _availableNcfs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        _showNotice(
           SnackBar(
             content: Text(
               'No hay NCF disponibles. Hable con Administración para agregarlo.',
@@ -1534,7 +1540,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       }
 
       if (_currentCart.fiscalEnabled && _currentCart.selectedNcf == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        _showNotice(
           SnackBar(
             content: Text('Seleccione un Comprobante Fiscal (NCF)'),
             backgroundColor: scheme.error,
@@ -1645,7 +1651,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         if (!canLayaway) return;
 
         if (_activeSessionId == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          _showNotice(
             SnackBar(
               content: const Text('Debe abrir caja para crear un apartado'),
               backgroundColor: scheme.error,
@@ -1673,7 +1679,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         }
 
         if (ncfFull == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          _showNotice(
             SnackBar(
               content: Text(
                 'No hay NCF disponibles para el talonario seleccionado',
@@ -1904,7 +1910,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _selectedCartItemIndex = null;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      _showNotice(
         SnackBar(
           content: Text(
             '✔ Venta completada correctamente',
@@ -2032,8 +2038,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     debugPrint('Factura descargada: ${file.path}');
 
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.showSnackBar(
+    _showNotice(
       const SnackBar(
         content: Text('Factura descargada'),
         duration: Duration(milliseconds: 900),
@@ -2085,7 +2090,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       _currentCart.clear();
       _selectedCartItemIndex = null;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
+    _showNotice(
       SnackBar(
         content: Text('Cotización guardada'),
         backgroundColor: status.success,
@@ -4205,7 +4210,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   _currentCart.fiscalEnabled = false;
                                   _currentCart.selectedNcf = null;
                                 });
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                _showNotice(
                                   SnackBar(
                                     content: Text(
                                       'No hay NCF disponibles. Hable con Administración para agregarlo.',
@@ -4743,7 +4748,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                     _currentCart.fiscalEnabled = false;
                                     _currentCart.selectedNcf = null;
                                   });
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  _showNotice(
                                     SnackBar(
                                       content: const Text(
                                         'No hay NCF disponibles. Hable con Administración para agregarlo.',

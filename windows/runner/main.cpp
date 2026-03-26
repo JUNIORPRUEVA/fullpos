@@ -25,8 +25,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
+  MONITORINFO monitor_info = {sizeof(MONITORINFO)};
+  const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+  RECT work_area = {0, 0, 1600, 900};
+  if (GetMonitorInfo(monitor, &monitor_info)) {
+    work_area = monitor_info.rcWork;
+  }
+
+  Win32Window::Point origin(work_area.left, work_area.top);
+  Win32Window::Size size(
+      work_area.right - work_area.left,
+      work_area.bottom - work_area.top);
   if (!window.Create(L"FULLPOS", origin, size)) {
     return EXIT_FAILURE;
   }

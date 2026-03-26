@@ -342,13 +342,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           note: closeNote,
         );
       } catch (e) {
-        if (mounted) {
+        if (mounted && !widget.logoutAfterClose) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('La sesión se cerró, pero no se pudo imprimir: $e'),
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
+        } else {
+          debugPrint('Cierre de turno completado sin ticket impreso: $e');
         }
       }
 

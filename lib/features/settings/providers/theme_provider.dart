@@ -8,6 +8,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/app_status_theme.dart';
+import '../../../core/theme/color_utils.dart';
 import '../../../core/theme/sales_products_theme.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/session/session_manager.dart';
@@ -580,7 +581,6 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     settings.salesDetailTextColor,
     settings.salesDetailGradientMid,
   );
-
   final scheme =
       ColorScheme.fromSeed(
         seedColor: settings.primaryColor,
@@ -596,6 +596,11 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         onError: onError,
         surfaceContainerHighest: surfaceColor.withAlpha(230),
       );
+  final snackBarBackground = Color.alphaBlend(
+    scheme.primary.withOpacity(0.08),
+    scheme.surface,
+  );
+  final snackBarForeground = ColorUtils.readableTextColor(snackBarBackground);
 
   final searchBg = settings.salesControlBarContentBackgroundColor.opacity == 0
       ? scheme.surface
@@ -773,13 +778,23 @@ ThemeData _buildThemeData(ThemeSettings settings) {
 
     // Snackbars
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: scheme.surface,
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: snackBarBackground,
+      elevation: 12,
+      insetPadding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSizes.radiusL),
+        side: BorderSide(color: scheme.outline.withAlpha(70)),
+      ),
       contentTextStyle: TextStyle(
-        color: scheme.onSurface,
+        color: snackBarForeground,
         fontSize: settings.fontSize,
         fontFamily: settings.fontFamily,
+        fontWeight: FontWeight.w600,
       ),
       actionTextColor: scheme.primary,
+      closeIconColor: snackBarForeground.withAlpha(180),
+      showCloseIcon: true,
     ),
 
     // Text theme

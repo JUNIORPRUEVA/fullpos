@@ -32,6 +32,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _pinController = TextEditingController();
+  final _usernameFocusNode = FocusNode();
 
   bool _firstRunPrefillChecked = false;
 
@@ -46,6 +47,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   void initState() {
     super.initState();
     unawaited(_maybePrefillFirstRunCredentials());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _usernameFocusNode.requestFocus();
+    });
   }
 
   Future<void> _maybePrefillFirstRunCredentials() async {
@@ -90,6 +95,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   void dispose() {
+    _usernameFocusNode.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _pinController.dispose();
@@ -153,7 +159,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
         final rootCtx = ErrorHandler.navigatorKey.currentContext ?? context;
         GoRouter.of(rootCtx).refresh();
-        GoRouter.of(rootCtx).go('/sales');
+        GoRouter.of(rootCtx).go('/cash-gate');
       } else {
         if (!mounted) return;
         setState(() {
@@ -680,6 +686,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ],
                         TextFormField(
                           controller: _usernameController,
+                          focusNode: _usernameFocusNode,
                           decoration: decoration(
                             label: 'Usuario',
                             hint: 'Ingresa tu usuario',

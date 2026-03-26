@@ -19,8 +19,8 @@ class FullposBrandTheme {
   static const LinearGradient backgroundGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [AppColors.brandBlueDark, AppColors.brandBlue, AppColors.bgDark],
-    stops: [0.0, 0.68, 1.0],
+    colors: [AppColors.brandBlueDark, AppColors.brandBlue, AppColors.bgLightAlt],
+    stops: [0.0, 0.62, 1.0],
   );
 
   static ThemeData get theme {
