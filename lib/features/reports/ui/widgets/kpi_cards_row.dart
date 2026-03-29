@@ -29,8 +29,8 @@ class KpiCardsRow extends StatelessWidget {
               width: cardWidth,
             ),
             _buildKpiCard(
-              title: 'Ganancia',
-              value: 'RD\$ ${_formatMoney(kpis.totalProfit)}',
+              title: 'Ganancia Neta',
+              value: 'RD\$ ${_formatMoney(kpis.netProfit)}',
               icon: Icons.trending_up,
               color: AppColors.gold,
               width: cardWidth,

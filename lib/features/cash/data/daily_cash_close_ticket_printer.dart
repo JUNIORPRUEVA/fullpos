@@ -100,6 +100,11 @@ class DailyCashCloseTicketPrinter {
     final lines = <String>[];
     final fmt = DateFormat('dd/MM/yyyy HH:mm');
     final dateFmt = DateFormat('dd/MM/yyyy');
+    final totalSales =
+        salesCashTotal +
+        salesCardTotal +
+        salesTransferTotal +
+        salesCreditTotal;
 
     String sanitize(String text) => _sanitizeTicketText(text);
     String fit(String text) => ReceiptText.fitText(sanitize(text), w);
@@ -195,12 +200,15 @@ class DailyCashCloseTicketPrinter {
     }
     lines.add(line());
 
+    lines.add('<H2C>BASE DE CAJA');
+    lines.add(line());
     addKeyValue('Fondo inicial', money(openingAmount));
     addKeyValue('Tickets', totalTickets.toString());
 
     lines.add(line());
     lines.add('<H2C>VENTAS DEL DIA');
     lines.add(line());
+    addKeyValue('Total ventas del dia', money(totalSales));
     addKeyValue('Ventas efectivo', money(salesCashTotal));
     addKeyValue('Ventas tarjeta', money(salesCardTotal));
     addKeyValue('Ventas transferencia', money(salesTransferTotal));
@@ -224,7 +232,7 @@ class DailyCashCloseTicketPrinter {
     addKeyValue('Retiros manuales', money(cashOutManual));
 
     lines.add(line());
-    addKeyValue('Efectivo esperado', money(expectedCash));
+  addKeyValue('Efectivo esperado en caja', money(expectedCash));
     lines.add(line());
 
     if ((note ?? '').trim().isNotEmpty) {

@@ -45,10 +45,7 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
       parent: _entryController,
       curve: Curves.easeOutCubic,
     );
-    _scaleAnimation = Tween<double>(
-      begin: 0.97,
-      end: 1.0,
-    ).animate(
+    _scaleAnimation = Tween<double>(begin: 0.97, end: 1.0).animate(
       CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic),
     );
     _entryController.forward();
@@ -159,235 +156,249 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
         child: ScaleTransition(
           scale: _scaleAnimation,
           child: AlertDialog(
-            titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-            contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-            actionsPadding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+            titlePadding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            contentPadding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+            actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
             title: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: typeColor.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: typeColor.withOpacity(0.35)),
-          ),
-          child: Row(
-            children: [
-              Icon(actionIcon, color: typeColor),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Ajuste de Stock',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: typeColor.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: typeColor.withOpacity(0.35)),
               ),
-              Text(
-                isInput ? 'ENTRADA' : 'SALIDA',
-                style: TextStyle(
-                  color: typeColor,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
-          ),
-        ),
-            content: ConstrainedBox(
-          constraints: DialogSizes.medium(context),
-          child: Form(
-            key: _formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceVariant.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: scheme.outlineVariant),
+                  Icon(actionIcon, color: typeColor),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Ajuste de Stock',
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.product.name,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                  ),
+                  Text(
+                    isInput ? 'ENTRADA' : 'SALIDA',
+                    style: TextStyle(
+                      color: typeColor,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            content: ConstrainedBox(
+              constraints: DialogSizes.medium(context),
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Código: ${widget.product.code}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurface.withOpacity(0.72),
-                          ),
+                        decoration: BoxDecoration(
+                          color: scheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: scheme.outlineVariant),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Stock actual: ',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              widget.product.stock.toStringAsFixed(2),
+                              widget.product.name,
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                color: widget.product.stock <= 0
-                                    ? scheme.error
-                                    : scheme.tertiary,
                               ),
                             ),
-                            const SizedBox(width: 14),
+                            const SizedBox(height: 4),
                             Text(
-                              'Mínimo: ${widget.product.stockMin.toStringAsFixed(2)}',
+                              'Código: ${widget.product.code}',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurface.withOpacity(0.75),
-                                fontWeight: FontWeight.w600,
+                                color: scheme.onSurface.withOpacity(0.72),
                               ),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Operación',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  SegmentedButton<StockMovementType>(
-                    segments: const [
-                      ButtonSegment(
-                        value: StockMovementType.input,
-                        icon: Icon(Icons.add_circle_outline),
-                        label: Text('Agregar'),
-                      ),
-                      ButtonSegment(
-                        value: StockMovementType.output,
-                        icon: Icon(Icons.remove_circle_outline),
-                        label: Text('Restar'),
-                      ),
-                    ],
-                    selected: {_selectedType},
-                    onSelectionChanged: (selection) {
-                      setState(() {
-                        _selectedType = selection.first;
-                        _quantityController.clear();
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _quantityController,
-                    enabled: !_isLoading,
-                    decoration: InputDecoration(
-                      labelText: isInput
-                          ? 'Cantidad a agregar *'
-                          : 'Cantidad a restar *',
-                      hintText: 'Ej: 5.00',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: Icon(actionIcon, color: typeColor),
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
-                    ],
-                    autofocus: true,
-                    onChanged: (_) => setState(() {}),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'La cantidad es requerida';
-                      }
-                      final quantity = double.tryParse(value.trim());
-                      if (quantity == null || quantity <= 0) {
-                        return 'Debe ser mayor que 0';
-                      }
-                      if (_selectedType == StockMovementType.output &&
-                          quantity > widget.product.stock) {
-                        return 'Stock insuficiente (actual: ${widget.product.stock.toStringAsFixed(2)})';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _noteController,
-                    enabled: !_isLoading,
-                    decoration: const InputDecoration(
-                      labelText: 'Nota (opcional)',
-                      hintText: 'Motivo del movimiento',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.notes_outlined),
-                    ),
-                    maxLines: 2,
-                  ),
-                  if (newStock != null) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(13),
-                      decoration: BoxDecoration(
-                        color: newStock < widget.product.stockMin
-                            ? scheme.error.withOpacity(0.08)
-                            : scheme.tertiary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: newStock < widget.product.stockMin
-                              ? scheme.error.withOpacity(0.45)
-                              : scheme.tertiary.withOpacity(0.45),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            newStock < widget.product.stockMin
-                                ? Icons.warning_amber_rounded
-                                : Icons.check_circle_outline,
-                            color: newStock < widget.product.stockMin
-                                ? scheme.error
-                                : scheme.tertiary,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            const SizedBox(height: 8),
+                            Row(
                               children: [
                                 Text(
-                                  'Nuevo stock proyectado',
-                                  style: theme.textTheme.bodySmall?.copyWith(
+                                  'Stock actual: ',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: scheme.onSurface.withOpacity(0.78),
                                   ),
                                 ),
-                                const SizedBox(height: 2),
                                 Text(
-                                  newStock.toStringAsFixed(2),
+                                  widget.product.stock.toStringAsFixed(2),
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w800,
-                                    color: newStock < widget.product.stockMin
+                                    color: widget.product.stock <= 0
                                         ? scheme.error
                                         : scheme.tertiary,
                                   ),
                                 ),
+                                const SizedBox(width: 14),
+                                Text(
+                                  'Mínimo: ${widget.product.stockMin.toStringAsFixed(2)}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: scheme.onSurface.withOpacity(0.75),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ],
                             ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Operación',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      SegmentedButton<StockMovementType>(
+                        segments: const [
+                          ButtonSegment(
+                            value: StockMovementType.input,
+                            icon: Icon(Icons.add_circle_outline),
+                            label: Text('Agregar'),
+                          ),
+                          ButtonSegment(
+                            value: StockMovementType.output,
+                            icon: Icon(Icons.remove_circle_outline),
+                            label: Text('Restar'),
                           ),
                         ],
+                        selected: {_selectedType},
+                        onSelectionChanged: (selection) {
+                          setState(() {
+                            _selectedType = selection.first;
+                            _quantityController.clear();
+                          });
+                        },
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _quantityController,
+                        enabled: !_isLoading,
+                        decoration: InputDecoration(
+                          labelText: isInput
+                              ? 'Cantidad a agregar *'
+                              : 'Cantidad a restar *',
+                          hintText: 'Ej: 5.00',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: Icon(actionIcon, color: typeColor),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d+\.?\d{0,2}'),
+                          ),
+                        ],
+                        autofocus: true,
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'La cantidad es requerida';
+                          }
+                          final quantity = double.tryParse(value.trim());
+                          if (quantity == null || quantity <= 0) {
+                            return 'Debe ser mayor que 0';
+                          }
+                          if (_selectedType == StockMovementType.output &&
+                              quantity > widget.product.stock) {
+                            return 'Stock insuficiente (actual: ${widget.product.stock.toStringAsFixed(2)})';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _noteController,
+                        enabled: !_isLoading,
+                        decoration: const InputDecoration(
+                          labelText: 'Nota (opcional)',
+                          hintText: 'Motivo del movimiento',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.notes_outlined),
+                        ),
+                        maxLines: 2,
+                      ),
+                      if (newStock != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: newStock < widget.product.stockMin
+                                ? scheme.error.withOpacity(0.08)
+                                : scheme.tertiary.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: newStock < widget.product.stockMin
+                                  ? scheme.error.withOpacity(0.45)
+                                  : scheme.tertiary.withOpacity(0.45),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                newStock < widget.product.stockMin
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.check_circle_outline,
+                                color: newStock < widget.product.stockMin
+                                    ? scheme.error
+                                    : scheme.tertiary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Nuevo stock proyectado',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: scheme.onSurface.withOpacity(
+                                              0.78,
+                                            ),
+                                          ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      newStock.toStringAsFixed(2),
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            color:
+                                                newStock <
+                                                    widget.product.stockMin
+                                                ? scheme.error
+                                                : scheme.tertiary,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
             actions: [
               OutlinedButton(
                 onPressed: _isLoading ? null : () => _dismissAnimated(),
@@ -402,7 +413,9 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Icon(actionIcon),
-                label: Text(_isLoading ? 'Guardando...' : '$actionLabel (Enter)'),
+                label: Text(
+                  _isLoading ? 'Guardando...' : '$actionLabel (Enter)',
+                ),
               ),
             ],
           ),

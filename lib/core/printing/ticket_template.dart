@@ -53,10 +53,10 @@ class TicketTemplate {
       lines.add(_center('Ticket #${sale.localCode}', width));
     }
 
-    // NCF
-    if ((settings.showNcf == 1 || sale.fiscalEnabled == 1) &&
-        (sale.ncfFull ?? '').isNotEmpty) {
-      lines.add(_center('NCF: ${sale.ncfFull}', width));
+    // e-CF
+    if ((settings.showElectronicInvoiceReference == 1 || sale.electronicInvoiceEnabled == 1) &&
+        (sale.electronicInvoiceCode ?? '').isNotEmpty) {
+      lines.add(_center('e-CF: ${sale.electronicInvoiceCode}', width));
     }
 
     lines.add(separator);

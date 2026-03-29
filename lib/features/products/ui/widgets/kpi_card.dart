@@ -26,17 +26,22 @@ class KpiCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final mutedText = scheme.onSurface.withOpacity(0.65);
 
-    return Card(
-      elevation: 1,
-      shadowColor: scheme.shadow.withOpacity(0.06),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: AppColors.borderSoft, width: 1),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface.withOpacity(0.98),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.045),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
-      color: scheme.surface,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         hoverColor: AppColors.lightBlueHover.withOpacity(0.6),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -93,10 +98,25 @@ class KpiCard extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.all(iconPadding),
                         decoration: BoxDecoration(
-                          color: color.withOpacity(0.1),
-                          shape: BoxShape.circle,
+                          color: color.withOpacity(0.11),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(icon, color: color, size: iconSize),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: titleFont,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                            fontFamily: 'Inter',
+                            letterSpacing: 0.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       if (onTap != null)
                         Icon(
@@ -117,19 +137,24 @@ class KpiCard extends StatelessWidget {
                       constraints: BoxConstraints(minHeight: compact ? 24 : 28),
                       child: valueText,
                     ),
-
                   SizedBox(height: gap2),
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: titleFont,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
-                      fontFamily: 'Inter',
-                      letterSpacing: 0.2,
+                  Container(
+                    width: double.infinity,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: 0.42,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

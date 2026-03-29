@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_sizes.dart';
+import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
 import '../utils/date_time_formatter.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
-import '../../features/settings/providers/theme_provider.dart';
 
 /// Footer del layout principal
 class Footer extends ConsumerStatefulWidget {
@@ -42,21 +42,20 @@ class _FooterState extends ConsumerState<Footer> {
   @override
   Widget build(BuildContext context) {
     final businessSettings = ref.watch(businessSettingsProvider);
-    final themeSettings = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final shadowColor = theme.shadowColor;
-    final footerBg = themeSettings.footerColor;
+    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final footerBg = tokens.footerBackground.withOpacity(0.92);
     final footerTextColor = ColorUtils.ensureReadableColor(
-      themeSettings.footerTextColor,
+      tokens.footerText,
       footerBg,
+      minRatio: 4.5,
     );
     final activeColor = ColorUtils.ensureReadableColor(
       scheme.secondary,
       footerBg,
       minRatio: 3.0,
     );
-    final borderColor = scheme.outlineVariant.withOpacity(0.35);
     final year = DateTime.now().year;
     final s = widget.scale.clamp(0.65, 1.12);
     final h = (AppSizes.footerHeight * s).clamp(26.0, 40.0);
@@ -69,20 +68,16 @@ class _FooterState extends ConsumerState<Footer> {
       height: h,
       decoration: BoxDecoration(
         color: footerBg,
-        border: Border(top: BorderSide(color: borderColor, width: 1.5)),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: shadowColor.withOpacity(0.25),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
-          ),
-          BoxShadow(
-            color: scheme.onSurface.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 1),
-            spreadRadius: -2,
+            color: Colors.black12,
+            blurRadius: 8,
+            offset: Offset(0, -2),
           ),
         ],
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.08), width: 1),
+        ),
       ),
       padding: EdgeInsets.symmetric(horizontal: pad),
       child: Row(

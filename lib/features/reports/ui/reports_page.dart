@@ -269,21 +269,96 @@ class _ReportsPageState extends State<ReportsPage>
     final selected = await showDialog<Map<String, bool>>(
       context: context,
       builder: (context) {
+        final dialogTheme = Theme.of(context);
+        final dialogScheme = dialogTheme.colorScheme;
         final temp = Map<String, bool>.from(_pdfSections);
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             Widget item(String key, String label) {
-              return CheckboxListTile(
-                value: temp[key] ?? false,
-                onChanged: (v) => setStateDialog(() => temp[key] = v ?? false),
-                title: Text(label),
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
+              final enabled = temp[key] ?? false;
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setStateDialog(() => temp[key] = !enabled),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: enabled
+                        ? dialogScheme.primary.withOpacity(0.08)
+                        : dialogScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: enabled
+                          ? dialogScheme.primary.withOpacity(0.22)
+                          : dialogScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: enabled,
+                        onChanged: (v) =>
+                            setStateDialog(() => temp[key] = v ?? false),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: dialogTheme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               );
             }
 
             return AlertDialog(
-              title: const Text('Configurar PDF'),
+              titlePadding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+              contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+              actionsPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: dialogScheme.error.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.picture_as_pdf_outlined,
+                          color: dialogScheme.error,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Configurar PDF',
+                          style: dialogTheme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Selecciona las secciones que quieres incluir en el reporte exportado.',
+                    style: dialogTheme.textTheme.bodySmall?.copyWith(
+                      color: dialogScheme.onSurface.withOpacity(0.65),
+                    ),
+                  ),
+                ],
+              ),
               content: SizedBox(
                 width: 520,
                 child: SingleChildScrollView(
@@ -293,7 +368,7 @@ class _ReportsPageState extends State<ReportsPage>
                       item('kpis', 'KPIs'),
                       item('salesSeries', 'Ventas por Período'),
                       item('paymentMethods', 'Métodos de Pago'),
-                      item('profitSeries', 'Ganancias por Período'),
+                      item('profitSeries', 'Ganancia Neta por Período'),
                       item('comparativeStats', 'Comparativa de Ventas'),
                       const Divider(),
                       item('topProducts', 'Top Productos'),
@@ -310,7 +385,7 @@ class _ReportsPageState extends State<ReportsPage>
                 ),
                 ElevatedButton.icon(
                   onPressed: () => Navigator.pop(context, temp),
-                  icon: const Icon(Icons.picture_as_pdf),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
                   label: const Text('Generar PDF'),
                 ),
               ],
@@ -385,6 +460,65 @@ class _ReportsPageState extends State<ReportsPage>
     return EdgeInsets.fromLTRB(side, 16, side, 16);
   }
 
+  String _periodLabel() {
+    switch (_selectedPeriod) {
+      case DateRangePeriod.today:
+        return 'Hoy';
+      case DateRangePeriod.week:
+        return 'Semana';
+      case DateRangePeriod.biweekly:
+        return '15 dias';
+      case DateRangePeriod.month:
+        return 'Mes';
+      case DateRangePeriod.year:
+        return 'Ano';
+      case DateRangePeriod.custom:
+        return 'Personalizado';
+    }
+  }
+
+  Widget _buildHeaderBadge({
+    required String label,
+    required String value,
+    required Color color,
+    IconData? icon,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurface.withOpacity(0.68),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -413,126 +547,202 @@ class _ReportsPageState extends State<ReportsPage>
   }
 
   Widget _buildHeader() {
+    final theme = Theme.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final range = DateRangeHelper.getRangeForPeriod(
+      _selectedPeriod,
+      customStart: _customStart,
+      customEnd: _customEnd,
+    );
+    final date = DateFormat('dd/MM/yyyy');
+    final periodCaption = _selectedPeriod == DateRangePeriod.custom
+        ? '${date.format(range.start)} - ${date.format(range.end)}'
+        : _periodLabel();
+
     return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withOpacity(0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () {
-                    if (context.canPop()) {
-                      context.pop();
-                      return;
-                    }
-                    context.go('/sales');
-                  },
-                  tooltip: 'Volver',
-                  style: IconButton.styleFrom(
-                    backgroundColor: scheme.surfaceContainerHighest,
-                    foregroundColor: scheme.onSurface,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [scheme.primary, scheme.tertiary],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.analytics,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: scheme.outlineVariant),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.shadow.withOpacity(0.05),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked = constraints.maxWidth < 1120;
+                final identity = Row(
                   children: [
-                    Text(
-                      'Dashboard de Reportes',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: scheme.onSurface,
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                          return;
+                        }
+                        context.go('/sales');
+                      },
+                      tooltip: 'Volver',
+                      style: IconButton.styleFrom(
+                        backgroundColor: scheme.surfaceContainerHighest,
+                        foregroundColor: scheme.onSurface,
                       ),
                     ),
-                    Text(
-                      'Estadísticas y métricas del negocio',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface.withOpacity(0.65),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.all(11),
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: scheme.primary.withOpacity(0.18),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.analytics_outlined,
+                        color: scheme.primary,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Centro de reportes',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Vista operativa de ventas, utilidad, caja y clientes.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurface.withOpacity(0.66),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-                const Spacer(),
-                _buildActionButton(
-                  icon: Icons.people_alt,
-                  label: 'Ventas por cliente',
-                  color: scheme.tertiary,
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ClientSalesReportPage(),
+                );
+
+                final actions = Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    _buildActionButton(
+                      icon: Icons.people_alt_outlined,
+                      label: 'Ventas por cliente',
+                      color: scheme.tertiary,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ClientSalesReportPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    _buildActionButton(
+                      icon: Icons.picture_as_pdf_outlined,
+                      label: 'PDF',
+                      color: scheme.error,
+                      onPressed: _exportPdf,
+                    ),
+                    _buildActionButton(
+                      icon: Icons.download_outlined,
+                      label: 'CSV',
+                      color: scheme.primary,
+                      onPressed: _exportCSV,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh_rounded),
+                      onPressed: _loadData,
+                      tooltip: 'Recargar datos',
+                      style: IconButton.styleFrom(
+                        backgroundColor: scheme.primary.withOpacity(0.10),
+                        foregroundColor: scheme.primary,
                       ),
-                    );
-                  },
-                ),
-                const SizedBox(width: 8),
-                _buildActionButton(
-                  icon: Icons.picture_as_pdf,
-                  label: 'PDF',
-                  color: scheme.error,
-                  onPressed: _exportPdf,
-                ),
-                const SizedBox(width: 8),
-                _buildActionButton(
-                  icon: Icons.download,
-                  label: 'Exportar CSV',
-                  color: scheme.primary,
-                  onPressed: _exportCSV,
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  onPressed: _loadData,
-                  tooltip: 'Recargar datos',
-                  style: IconButton.styleFrom(
-                    backgroundColor: scheme.primary.withOpacity(0.12),
-                    foregroundColor: scheme.primary,
-                  ),
-                ),
-              ],
+                    ),
+                  ],
+                );
+
+                return Column(
+                  children: [
+                    if (stacked) ...[
+                      identity,
+                      const SizedBox(height: 12),
+                      Align(alignment: Alignment.centerRight, child: actions),
+                    ] else
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: identity),
+                          const SizedBox(width: 12),
+                          actions,
+                        ],
+                      ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _buildHeaderBadge(
+                                label: 'Periodo',
+                                value: periodCaption,
+                                color: scheme.primary,
+                                icon: Icons.calendar_today_outlined,
+                              ),
+                              _buildHeaderBadge(
+                                label: 'Ventas cargadas',
+                                value: _salesList.length.toString(),
+                                color: scheme.tertiary,
+                                icon: Icons.receipt_long_outlined,
+                              ),
+                              _buildHeaderBadge(
+                                label: 'Top clientes',
+                                value: _topClients.length.toString(),
+                                color: scheme.secondary,
+                                icon: Icons.people_outline,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: DateRangeSelector(
+                        selectedPeriod: _selectedPeriod,
+                        customStart: _customStart,
+                        customEnd: _customEnd,
+                        onPeriodChanged: _onPeriodChanged,
+                        onCustomRangeChanged: _onCustomRangeChanged,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: DateRangeSelector(
-              selectedPeriod: _selectedPeriod,
-              customStart: _customStart,
-              customEnd: _customEnd,
-              onPeriodChanged: _onPeriodChanged,
-              onCustomRangeChanged: _onCustomRangeChanged,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -550,8 +760,8 @@ class _ReportsPageState extends State<ReportsPage>
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
       ),
     );
@@ -560,38 +770,48 @@ class _ReportsPageState extends State<ReportsPage>
   Widget _buildLoadingState() {
     final scheme = Theme.of(context).colorScheme;
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.12),
-              shape: BoxShape.circle,
+      child: Container(
+        width: 320,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: scheme.primary.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation(scheme.primary),
+                strokeWidth: 3,
+              ),
             ),
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation(scheme.primary),
-              strokeWidth: 3,
+            const SizedBox(height: 18),
+            Text(
+              'Cargando reportes',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Cargando datos...',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: scheme.onSurface.withOpacity(0.7),
+            const SizedBox(height: 6),
+            Text(
+              'Procesando ventas, utilidad, caja y comparativas del rango seleccionado.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withOpacity(0.58),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Procesando estadisticas',
-            style: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -604,12 +824,13 @@ class _ReportsPageState extends State<ReportsPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_kpis != null) AdvancedKpiCards(kpis: _kpis!),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           if (isNarrow)
             Column(
               children: [
                 _buildChartCard(
                   title: 'Ventas por Periodo',
+                  subtitle: 'Comportamiento bruto del periodo seleccionado.',
                   icon: Icons.bar_chart,
                   child: SizedBox(
                     height: 280,
@@ -622,6 +843,7 @@ class _ReportsPageState extends State<ReportsPage>
                 const SizedBox(height: 16),
                 _buildChartCard(
                   title: 'Metodos de Pago',
+                  subtitle: 'Distribucion real segun pagos registrados.',
                   icon: Icons.pie_chart,
                   child: SizedBox(
                     height: 280,
@@ -638,6 +860,7 @@ class _ReportsPageState extends State<ReportsPage>
                   flex: 3,
                   child: _buildChartCard(
                     title: 'Ventas por Periodo',
+                    subtitle: 'Comportamiento bruto del periodo seleccionado.',
                     icon: Icons.bar_chart,
                     child: SizedBox(
                       height: 280,
@@ -653,6 +876,7 @@ class _ReportsPageState extends State<ReportsPage>
                   flex: 2,
                   child: _buildChartCard(
                     title: 'Metodos de Pago',
+                    subtitle: 'Distribucion real segun pagos registrados.',
                     icon: Icons.pie_chart,
                     child: SizedBox(
                       height: 280,
@@ -662,12 +886,14 @@ class _ReportsPageState extends State<ReportsPage>
                 ),
               ],
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           if (isNarrow)
             Column(
               children: [
                 _buildChartCard(
-                  title: 'Ganancias por Periodo',
+                  title: 'Ganancia Neta por Periodo',
+                  subtitle:
+                      'Utilidad diaria despues de devoluciones y egresos.',
                   icon: Icons.trending_up,
                   child: SizedBox(
                     height: 250,
@@ -680,6 +906,7 @@ class _ReportsPageState extends State<ReportsPage>
                 const SizedBox(height: 16),
                 _buildChartCard(
                   title: 'Comparativa de Ventas',
+                  subtitle: 'Lectura rapida frente a cortes anteriores.',
                   icon: Icons.compare_arrows,
                   child: SizedBox(
                     height: 250,
@@ -698,7 +925,9 @@ class _ReportsPageState extends State<ReportsPage>
                 Expanded(
                   flex: 2,
                   child: _buildChartCard(
-                    title: 'Ganancias por Periodo',
+                    title: 'Ganancia Neta por Periodo',
+                    subtitle:
+                        'Utilidad diaria despues de devoluciones y egresos.',
                     icon: Icons.trending_up,
                     child: SizedBox(
                       height: 250,
@@ -714,6 +943,7 @@ class _ReportsPageState extends State<ReportsPage>
                   flex: 2,
                   child: _buildChartCard(
                     title: 'Comparativa de Ventas',
+                    subtitle: 'Lectura rapida frente a cortes anteriores.',
                     icon: Icons.compare_arrows,
                     child: SizedBox(
                       height: 250,
@@ -726,9 +956,9 @@ class _ReportsPageState extends State<ReportsPage>
                 ),
               ],
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           _buildCategoryPerformanceCard(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           _buildTabbedSection(),
         ],
       ),
@@ -743,7 +973,8 @@ class _ReportsPageState extends State<ReportsPage>
     );
 
     return _buildChartCard(
-      title: 'Ventas y Ganancias por Categoria',
+      title: 'Ventas y Margen Bruto por Categoria',
+      subtitle: 'Desempeno neto por categoria dentro del rango activo.',
       icon: Icons.category,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -808,7 +1039,7 @@ class _ReportsPageState extends State<ReportsPage>
                       ),
                       Expanded(
                         child: Text(
-                          'Ganancia',
+                          'Margen Bruto',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             color: scheme.onSurfaceVariant,
@@ -818,6 +1049,17 @@ class _ReportsPageState extends State<ReportsPage>
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'El margen bruto por categoria refleja ventas menos costo y devoluciones. Los gastos generales del rango solo se descuentan en la ganancia neta del reporte.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   ListView.separated(
@@ -906,6 +1148,7 @@ class _ReportsPageState extends State<ReportsPage>
 
   Widget _buildChartCard({
     required String title,
+    required String subtitle,
     required IconData icon,
     required Widget child,
   }) {
@@ -913,13 +1156,13 @@ class _ReportsPageState extends State<ReportsPage>
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -929,6 +1172,7 @@ class _ReportsPageState extends State<ReportsPage>
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -939,12 +1183,28 @@ class _ReportsPageState extends State<ReportsPage>
                   child: Icon(icon, color: scheme.primary, size: 18),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: scheme.onSurface,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurface.withOpacity(0.62),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -964,39 +1224,85 @@ class _ReportsPageState extends State<ReportsPage>
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Column(
         children: [
           Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
+              color: scheme.surface,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
+                top: Radius.circular(18),
               ),
+              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
             ),
-            child: TabBar(
-              controller: _tabController,
-              labelColor: scheme.primary,
-              unselectedLabelColor: scheme.onSurface.withOpacity(0.7),
-              indicatorColor: scheme.primary,
-              indicatorWeight: 3,
-              labelStyle: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-              tabs: [
-                _buildTab(Icons.inventory_2, 'Top Productos'),
-                _buildTab(Icons.people, 'Top Clientes'),
-                _buildTab(Icons.receipt_long, 'Ventas'),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Vista tabular',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Productos, clientes y ventas recientes en una sola superficie.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurface.withOpacity(0.62),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    labelColor: scheme.primary,
+                    unselectedLabelColor: scheme.onSurface.withOpacity(0.68),
+                    indicator: BoxDecoration(
+                      color: scheme.primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: scheme.primary.withOpacity(0.16),
+                      ),
+                    ),
+                    dividerColor: Colors.transparent,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    labelStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                    tabs: [
+                      _buildTab(Icons.inventory_2_outlined, 'Top Productos'),
+                      _buildTab(Icons.people_outline, 'Top Clientes'),
+                      _buildTab(Icons.receipt_long_outlined, 'Ventas'),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -1020,7 +1326,7 @@ class _ReportsPageState extends State<ReportsPage>
     return Tab(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [Icon(icon, size: 18), const SizedBox(width: 6), Text(label)],
+        children: [Icon(icon, size: 17), const SizedBox(width: 6), Text(label)],
       ),
     );
   }

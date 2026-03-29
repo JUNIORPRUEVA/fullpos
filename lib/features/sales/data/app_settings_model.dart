@@ -2,7 +2,7 @@
 class AppSettingsModel {
   final int? id;
   final bool itbisEnabledDefault;
-  final bool fiscalEnabledDefault;
+  final bool electronicInvoiceEnabledDefault;
   final double itbisRate;
   final String ticketSize; // '80mm' or 'A4'
   final int updatedAtMs;
@@ -10,7 +10,7 @@ class AppSettingsModel {
   AppSettingsModel({
     this.id,
     required this.itbisEnabledDefault,
-    required this.fiscalEnabledDefault,
+    required this.electronicInvoiceEnabledDefault,
     required this.itbisRate,
     required this.ticketSize,
     required this.updatedAtMs,
@@ -22,7 +22,8 @@ class AppSettingsModel {
     return AppSettingsModel(
       id: map['id'] as int?,
       itbisEnabledDefault: (map['itbis_enabled_default'] as int) == 1,
-      fiscalEnabledDefault: (map['fiscal_enabled_default'] as int? ?? 0) == 1,
+        electronicInvoiceEnabledDefault:
+          (map['electronic_invoice_enabled_default'] as int? ?? 0) == 1,
       itbisRate: (map['itbis_rate'] as num).toDouble(),
       ticketSize: map['ticket_size'] as String,
       updatedAtMs: map['updated_at_ms'] as int,
@@ -33,7 +34,8 @@ class AppSettingsModel {
     return {
       if (id != null) 'id': id,
       'itbis_enabled_default': itbisEnabledDefault ? 1 : 0,
-      'fiscal_enabled_default': fiscalEnabledDefault ? 1 : 0,
+        'electronic_invoice_enabled_default':
+          electronicInvoiceEnabledDefault ? 1 : 0,
       'itbis_rate': itbisRate,
       'ticket_size': ticketSize,
       'updated_at_ms': updatedAtMs,
@@ -43,7 +45,7 @@ class AppSettingsModel {
   AppSettingsModel copyWith({
     int? id,
     bool? itbisEnabledDefault,
-    bool? fiscalEnabledDefault,
+    bool? electronicInvoiceEnabledDefault,
     double? itbisRate,
     String? ticketSize,
     int? updatedAtMs,
@@ -51,7 +53,9 @@ class AppSettingsModel {
     return AppSettingsModel(
       id: id ?? this.id,
       itbisEnabledDefault: itbisEnabledDefault ?? this.itbisEnabledDefault,
-      fiscalEnabledDefault: fiscalEnabledDefault ?? this.fiscalEnabledDefault,
+        electronicInvoiceEnabledDefault:
+          electronicInvoiceEnabledDefault ??
+          this.electronicInvoiceEnabledDefault,
       itbisRate: itbisRate ?? this.itbisRate,
       ticketSize: ticketSize ?? this.ticketSize,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,

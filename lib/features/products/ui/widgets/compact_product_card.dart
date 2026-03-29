@@ -38,17 +38,22 @@ class CompactProductCard extends StatelessWidget {
     final statusColor = _getStatusColor(scheme);
     final mutedText = scheme.onSurface.withOpacity(0.65);
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: scheme.outlineVariant, width: 1),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface.withOpacity(0.98),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      color: scheme.surface,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         hoverColor: AppColors.lightBlueHover.withOpacity(0.5),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -71,18 +76,18 @@ class CompactProductCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Container(
-                width: 70,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                width: 78,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   product.code,
                   style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 10,
-                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                    fontFamily: 'Inter',
                     color: scheme.onSurface,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -94,8 +99,8 @@ class CompactProductCard extends StatelessWidget {
                 child: Text(
                   product.name,
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                     fontFamily: 'Inter',
                     color: scheme.onSurface,
                   ),
@@ -134,20 +139,17 @@ class CompactProductCard extends StatelessWidget {
               if (onAddStockTap != null)
                 SizedBox(
                   height: 36,
-                  child: OutlinedButton.icon(
+                  child: FilledButton.tonalIcon(
                     onPressed: onAddStockTap,
                     icon: const Icon(Icons.add_circle_outline, size: 18),
                     label: const Text('Stock'),
-                    style: OutlinedButton.styleFrom(
+                    style: FilledButton.styleFrom(
                       foregroundColor: AppColors.primaryBlue,
-                      side: const BorderSide(
-                        color: AppColors.primaryBlue,
-                        width: 1,
-                      ),
+                      backgroundColor: AppColors.lightBlueHover,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       textStyle: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                         fontFamily: 'Inter',
                       ),
                       shape: RoundedRectangleBorder(
@@ -184,11 +186,7 @@ class CompactProductCard extends StatelessWidget {
         ),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 8,
-            color: mutedText,
-            fontFamily: 'Inter',
-          ),
+          style: TextStyle(fontSize: 8, color: mutedText, fontFamily: 'Inter'),
         ),
       ],
     );

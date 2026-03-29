@@ -42,64 +42,57 @@ class ClientRowTile extends StatelessWidget {
         ? client.nombre.trim().substring(0, 1).toUpperCase()
         : '?';
 
-    final bgColor = Colors.white;
     final selectedBg = scheme.primary.withOpacity(0.09);
     final selectedBorder = scheme.primary.withOpacity(0.62);
 
     return Material(
-      color: bgColor,
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onViewDetails,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         hoverColor: scheme.primary.withOpacity(0.06),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOut,
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          constraints: const BoxConstraints(minHeight: 60, maxHeight: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? selectedBg : Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: isSelected ? selectedBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? selectedBorder : scheme.outlineVariant,
-              width: isSelected ? 1.3 : 1,
+              color: isSelected ? selectedBorder : Colors.transparent,
+              width: isSelected ? 1 : 0,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: theme.shadowColor.withOpacity(isSelected ? 0.10 : 0.06),
-                blurRadius: isSelected ? 14 : 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
           child: Row(
             children: [
               Container(
                 width: 4,
-                height: 34,
+                height: 28,
                 decoration: BoxDecoration(
                   color: isSelected ? scheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 flex: 2,
                 child: Row(
                   children: [
                     CircleAvatar(
-                      radius: 16,
+                      radius: 14,
                       backgroundColor: scheme.primary.withOpacity(0.12),
                       foregroundColor: scheme.primary,
                       child: Text(
                         initials,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
+                          fontSize: 12,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         client.nombre,
@@ -107,7 +100,7 @@ class ClientRowTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w700,
-                          fontSize: 15.5,
+                          fontSize: 14,
                           color: textColor,
                         ),
                       ),
@@ -158,10 +151,15 @@ class ClientRowTile extends StatelessWidget {
               SizedBox(
                 width: 72,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(client.isActive ? 0.14 : 0.12),
-                    borderRadius: BorderRadius.circular(999),
+                    color: statusColor.withOpacity(
+                      client.isActive ? 0.14 : 0.12,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: statusColor.withOpacity(0.30)),
                   ),
                   child: Text(
@@ -172,7 +170,7 @@ class ClientRowTile extends StatelessWidget {
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: textColor,
-                      fontSize: 11,
+                      fontSize: 10,
                     ),
                   ),
                 ),
@@ -181,10 +179,13 @@ class ClientRowTile extends StatelessWidget {
               SizedBox(
                 width: 86,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: creditColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: creditColor.withOpacity(0.28)),
                   ),
                   child: Text(
@@ -195,7 +196,7 @@ class ClientRowTile extends StatelessWidget {
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: scheme.primary,
-                      fontSize: 11,
+                      fontSize: 10,
                     ),
                   ),
                 ),
@@ -217,11 +218,7 @@ class ClientRowTile extends StatelessWidget {
               const SizedBox(width: 6),
               PopupMenuButton<String>(
                 tooltip: 'Acciones',
-                icon: Icon(
-                  Icons.more_vert,
-                  color: mutedText,
-                  size: 18,
-                ),
+                icon: Icon(Icons.more_vert, color: mutedText, size: 17),
                 padding: EdgeInsets.zero,
                 onSelected: (value) {
                   switch (value) {

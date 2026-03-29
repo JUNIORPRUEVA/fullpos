@@ -1,6 +1,9 @@
 #include "win32_window.h"
 
-#include <dwmapi.h>
+#include <algorithm>
+#include <cstdint>
+#include <vector>
+
 #include <commctrl.h>
 #include <flutter_windows.h>
 
@@ -8,24 +11,7 @@
 
 namespace {
 
-/// Window attribute that enables dark mode window decorations.
-///
-/// Redefined in case the developer's machine has a Windows SDK older than
-/// version 10.0.22000.0.
-/// See: https://docs.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
-#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
-#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
-#endif
-
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
-
-/// Registry key for app theme preference.
-///
-/// A value of 0 indicates apps should use dark mode. A non-zero or missing
-/// value indicates apps should use light mode.
-constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
-  L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
-constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
@@ -54,12 +40,108 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
   FreeLibrary(user32_module);
 }
 
-constexpr COLORREF kFullposBgColor = RGB(0x0B, 0x2F, 0x82);
+struct RgbColor {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+};
+
+constexpr RgbColor kFullposGradientStart = {0x03, 0x0A, 0x17};
+constexpr RgbColor kFullposGradientMid = {0x0D, 0x5E, 0xC3};
+constexpr RgbColor kFullposGradientEnd = {0x0B, 0x2F, 0x82};
+constexpr double kFullposGradientMidStop = 0.62;
+int g_cached_gradient_width = 0;
+int g_cached_gradient_height = 0;
+std::vector<uint32_t> g_cached_gradient_pixels;
+
+COLORREF ToColorRef(const RgbColor& color) {
+  return RGB(color.r, color.g, color.b);
+}
+
+uint8_t LerpChannel(uint8_t start, uint8_t end, double t) {
+  const double value = start + ((end - start) * t);
+  return static_cast<uint8_t>(std::clamp(value, 0.0, 255.0));
+}
+
+RgbColor SampleFullposGradient(double t) {
+  t = std::clamp(t, 0.0, 1.0);
+  if (t <= kFullposGradientMidStop) {
+    const double local_t = kFullposGradientMidStop <= 0.0
+                               ? 0.0
+                               : t / kFullposGradientMidStop;
+    return {
+        LerpChannel(kFullposGradientStart.r, kFullposGradientMid.r, local_t),
+        LerpChannel(kFullposGradientStart.g, kFullposGradientMid.g, local_t),
+        LerpChannel(kFullposGradientStart.b, kFullposGradientMid.b, local_t),
+    };
+  }
+
+  const double local_t = (t - kFullposGradientMidStop) /
+                         (1.0 - kFullposGradientMidStop);
+  return {
+      LerpChannel(kFullposGradientMid.r, kFullposGradientEnd.r, local_t),
+      LerpChannel(kFullposGradientMid.g, kFullposGradientEnd.g, local_t),
+      LerpChannel(kFullposGradientMid.b, kFullposGradientEnd.b, local_t),
+  };
+}
+
+void EnsureCachedFullposGradient(int width, int height) {
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  if (g_cached_gradient_width == width &&
+      g_cached_gradient_height == height &&
+      !g_cached_gradient_pixels.empty()) {
+    return;
+  }
+
+  g_cached_gradient_width = width;
+  g_cached_gradient_height = height;
+  g_cached_gradient_pixels.assign(static_cast<size_t>(width) * height, 0);
+
+  const double max_x = std::max(1, width - 1);
+  const double max_y = std::max(1, height - 1);
+
+  for (int y = 0; y < height; ++y) {
+    const double fy = static_cast<double>(y) / max_y;
+    for (int x = 0; x < width; ++x) {
+      const double fx = static_cast<double>(x) / max_x;
+      const RgbColor color = SampleFullposGradient((fx + fy) * 0.5);
+      g_cached_gradient_pixels[static_cast<size_t>(y) * width + x] =
+          static_cast<uint32_t>(color.b) |
+          (static_cast<uint32_t>(color.g) << 8) |
+          (static_cast<uint32_t>(color.r) << 16);
+    }
+  }
+}
+
+void PaintFullposBrandGradient(HDC hdc, const RECT& rc) {
+  const int width = rc.right - rc.left;
+  const int height = rc.bottom - rc.top;
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+
+  BITMAPINFO bmi = {};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = width;
+  bmi.bmiHeader.biHeight = -height;
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+
+  EnsureCachedFullposGradient(width, height);
+
+  StretchDIBits(hdc, rc.left, rc.top, width, height, 0, 0, width, height,
+                g_cached_gradient_pixels.data(), &bmi, DIB_RGB_COLORS,
+                SRCCOPY);
+}
+
 constexpr UINT_PTR kFlutterChildSubclassId = 0xF00D;
 static bool g_flutter_child_painted_once = false;
 
 HBRUSH FullposBackgroundBrush() {
-  static HBRUSH brush = CreateSolidBrush(kFullposBgColor);
+  static HBRUSH brush = CreateSolidBrush(ToColorRef(kFullposGradientStart));
   return brush;
 }
 
@@ -98,7 +180,7 @@ LRESULT CALLBACK FlutterChildSubclassProc(HWND hwnd,
       if (hdc) {
         RECT rc;
         GetClientRect(hwnd, &rc);
-        FillRect(hdc, &rc, FullposBackgroundBrush());
+        PaintFullposBrandGradient(hdc, rc);
       }
       return 1;
     }
@@ -111,7 +193,7 @@ LRESULT CALLBACK FlutterChildSubclassProc(HWND hwnd,
         if (hdc) {
           RECT rc;
           GetClientRect(hwnd, &rc);
-          FillRect(hdc, &rc, FullposBackgroundBrush());
+          PaintFullposBrandGradient(hdc, rc);
           ReleaseDC(hwnd, hdc);
         }
       }
@@ -170,8 +252,8 @@ WindowClassRegistrar* WindowClassRegistrar::instance_ = nullptr;
 
 const wchar_t* WindowClassRegistrar::GetWindowClass() {
   if (!class_registered_) {
-    // Fondo oscuro para evitar “pantalla blanca” durante startup/resize
-    // cuando la vista de Flutter aún no cubre el área completa.
+    // Fallback sólido con el color inicial de la marca para evitar flashes
+    // mientras la ventana termina de pintar el degradado completo.
     static HBRUSH kBackgroundBrush = FullposBackgroundBrush();
 
     WNDCLASS window_class{};
@@ -267,13 +349,20 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_CLOSE:
+      DebugLogWin32(L"main:WM_CLOSE", message);
+      if (!OnCloseRequested()) {
+        return 0;
+      }
+      break;
+
     case WM_ERASEBKGND: {
       DebugLogWin32(L"main:WM_ERASEBKGND", message);
       HDC hdc = reinterpret_cast<HDC>(wparam);
       if (hdc) {
         RECT rc;
         GetClientRect(hwnd, &rc);
-        FillRect(hdc, &rc, FullposBackgroundBrush());
+        PaintFullposBrandGradient(hdc, rc);
       }
       return 1;
     }
@@ -283,7 +372,7 @@ Win32Window::MessageHandler(HWND hwnd,
       PAINTSTRUCT ps;
       HDC hdc = BeginPaint(hwnd, &ps);
       if (hdc) {
-        FillRect(hdc, &ps.rcPaint, FullposBackgroundBrush());
+        PaintFullposBrandGradient(hdc, ps.rcPaint);
       }
       EndPaint(hwnd, &ps);
       return 0;
@@ -299,8 +388,10 @@ Win32Window::MessageHandler(HWND hwnd,
 
     case WM_SHOWWINDOW:
       DebugLogWin32(L"main:WM_SHOWWINDOW", message);
-      ForceRepaint(hwnd);
-      if (child_content_ != nullptr) ForceRepaint(child_content_);
+      InvalidateRect(hwnd, nullptr, FALSE);
+      if (child_content_ != nullptr) {
+        InvalidateRect(child_content_, nullptr, FALSE);
+      }
       return 0;
 
     case WM_DPICHANGED: {
@@ -311,9 +402,10 @@ Win32Window::MessageHandler(HWND hwnd,
 
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-
-      ForceRepaint(hwnd);
-      if (child_content_ != nullptr) ForceRepaint(child_content_);
+      InvalidateRect(hwnd, nullptr, FALSE);
+      if (child_content_ != nullptr) {
+        InvalidateRect(child_content_, nullptr, FALSE);
+      }
       return 0;
     }
     case WM_SIZE: {
@@ -323,9 +415,9 @@ Win32Window::MessageHandler(HWND hwnd,
         // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
-        ForceRepaint(child_content_);
+        InvalidateRect(child_content_, nullptr, FALSE);
       }
-      ForceRepaint(hwnd);
+      InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
     }
 
@@ -333,9 +425,9 @@ Win32Window::MessageHandler(HWND hwnd,
       DebugLogWin32(L"main:WM_ACTIVATE", message);
       if (child_content_ != nullptr) {
         SetFocus(child_content_);
-        ForceRepaint(child_content_);
+        InvalidateRect(child_content_, nullptr, FALSE);
       }
-      ForceRepaint(hwnd);
+      InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
@@ -377,15 +469,7 @@ void Win32Window::SetChildContent(HWND content) {
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);
 
-  // Subclass the Flutter child HWND to harden background painting.
-  g_flutter_child_painted_once = false;
-  if (!SetWindowSubclass(content, FlutterChildSubclassProc,
-                         kFlutterChildSubclassId, 0)) {
-    DebugLogWin32(L"child:SetWindowSubclass_failed", GetLastError());
-  }
-
   ForceRepaint(window_handle_);
-  ForceRepaint(child_content_);
 
   SetFocus(child_content_);
 }
@@ -413,17 +497,11 @@ void Win32Window::OnDestroy() {
   // No-op; provided for subclasses.
 }
 
-void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
+bool Win32Window::OnCloseRequested() {
+  return true;
+}
 
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+void Win32Window::UpdateTheme(HWND const window) {
+  // Let Windows manage the native title bar and caption buttons.
+  (void)window;
 }

@@ -168,7 +168,7 @@ class _TrainingPageState extends State<TrainingPage> {
           border: Border.all(color: AppColors.surfaceLightBorder),
         ),
         child: const Text(
-          'No se encontraron coincidencias. Prueba con otra palabra (ej: NCF, impresora, backup, cierre de caja, descuentos, cotización).',
+          'No se encontraron coincidencias. Prueba con otra palabra (ej: e-CF, impresora, backup, cierre de caja, descuentos, cotización).',
           style: TextStyle(color: Colors.grey),
         ),
       );
@@ -459,7 +459,7 @@ const List<TrainingDoc> _trainingDocs = [
       TrainingSection(
         title: '3) Primer arranque: configuración mínima',
         bullets: [
-          'Entra a CONFIGURACIÓN → NEGOCIO y registra: nombre comercial, RNC, dirección, teléfono y datos fiscales.',
+          'Entra a CONFIGURACIÓN → NEGOCIO y registra: nombre comercial, RNC, dirección, teléfono y datos del emisor.',
           'Configura moneda y cualquier dato requerido por tu operación.',
           'Ve a CONFIGURACIÓN → USUARIOS y crea usuarios (cajero, supervisor, administrador) con permisos correctos.',
           'Si tu negocio usa caja: abre una sesión de caja cuando el sistema lo solicite.',
@@ -502,7 +502,7 @@ const List<TrainingDoc> _trainingDocs = [
           'Si no imprime: prueba impresión en Windows; revisa cable/driver/cola de impresión.',
           'Si se cierra o queda lento: reinicia el programa; si persiste, reinicia la PC.',
           'Si necesitas ayuda técnica: ve a CONFIGURACIÓN → SOPORTE y genera el archivo para soporte.',
-          'Busca el problema en Entrenamiento con el buscador (ej: “impresora”, “caja”, “NCF”).',
+          'Busca el problema en Entrenamiento con el buscador (ej: “impresora”, “caja”, “e-CF”).',
         ],
       ),
     ],
@@ -540,7 +540,7 @@ const List<TrainingDoc> _trainingDocs = [
           'Ajusta cantidad, precio o descuentos según permisos.',
           'Selecciona cliente si necesitas factura a nombre o crédito.',
           'Elige método de pago (efectivo, tarjeta, transferencia, mixto si aplica).',
-          'Confirma: imprime ticket y guarda el comprobante si aplica.',
+          'Confirma: imprime ticket y guarda el documento electrónico si aplica.',
         ],
       ),
       TrainingSection(
@@ -616,7 +616,7 @@ const List<TrainingDoc> _trainingDocs = [
       TrainingSection(
         title: 'Clientes',
         bullets: [
-          'Registrar clientes con datos fiscales y contacto.',
+          'Registrar clientes con datos comerciales y contacto.',
           'Consultar historial de compras y comportamiento.',
         ],
       ),
@@ -644,7 +644,7 @@ const List<TrainingDoc> _trainingDocs = [
       TrainingSection(
         title: 'Configuración del negocio y sistema',
         bullets: [
-          'Datos fiscales, contacto, monedas y parámetros del negocio.',
+          'Datos del emisor, contacto, monedas y parámetros del negocio.',
           'Impresora/ticket y ajustes de visual/tema si está disponible.',
         ],
       ),
@@ -693,7 +693,7 @@ const List<TrainingDoc> _trainingDocs = [
         title: 'Módulo 4: Clientes',
         bullets: [
           'Objetivo: ventas a nombre, historial y control de crédito.',
-          'Práctica: crea 3 clientes, asigna datos fiscales, realiza una venta por cliente y consulta historial.',
+          'Práctica: crea 3 clientes, asigna datos del emisor cuando aplique, realiza una venta por cliente y consulta historial.',
         ],
       ),
       TrainingSection(

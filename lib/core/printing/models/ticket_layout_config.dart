@@ -52,8 +52,8 @@ class TicketLayoutConfig {
   /// Mostrar código/número de ticket
   final bool showTicketCode;
 
-  /// Mostrar NCF
-  final bool showNcf;
+  /// Mostrar e-CF
+  final bool showElectronicInvoiceReference;
 
   /// Mostrar ITBIS
   final bool showItbis;
@@ -121,7 +121,7 @@ class TicketLayoutConfig {
     this.fontFamily = TicketFontFamily.courier,
     this.showDateTime = true,
     this.showTicketCode = true,
-    this.showNcf = true,
+    this.showElectronicInvoiceReference = true,
     this.showItbis = true,
     this.showCashier = true,
     this.showTotalsBreakdown = true,
@@ -194,7 +194,7 @@ class TicketLayoutConfig {
       fontFamily: TicketFontFamily.arialBlack,
       showDateTime: true,
       showTicketCode: true,
-      showNcf: true,
+      showElectronicInvoiceReference: true,
       showItbis: true,
       showCashier: true,
       showTotalsBreakdown: true,
@@ -231,7 +231,7 @@ class TicketLayoutConfig {
       fontFamily: TicketFontFamily.courier,
       showDateTime: true,
       showTicketCode: true,
-      showNcf: false,
+      showElectronicInvoiceReference: false,
       showItbis: true,
       showCashier: false,
       showTotalsBreakdown: false,
@@ -279,7 +279,7 @@ class TicketLayoutConfig {
       fontFamily: _parseFontFamily(settings.fontFamily),
       showDateTime: settings.showDatetime == 1,
       showTicketCode: settings.showCode == 1,
-      showNcf: settings.showNcf == 1,
+      showElectronicInvoiceReference: settings.showElectronicInvoiceReference == 1,
       showItbis: settings.showItbis == 1,
       showCashier: settings.showCashier == 1,
       showTotalsBreakdown: settings.showSubtotalItbisTotal == 1,
@@ -389,7 +389,7 @@ class TicketLayoutConfig {
     TicketFontFamily? fontFamily,
     bool? showDateTime,
     bool? showTicketCode,
-    bool? showNcf,
+    bool? showElectronicInvoiceReference,
     bool? showItbis,
     bool? showCashier,
     bool? showTotalsBreakdown,
@@ -421,7 +421,9 @@ class TicketLayoutConfig {
       fontFamily: fontFamily ?? this.fontFamily,
       showDateTime: showDateTime ?? this.showDateTime,
       showTicketCode: showTicketCode ?? this.showTicketCode,
-      showNcf: showNcf ?? this.showNcf,
+        showElectronicInvoiceReference:
+          showElectronicInvoiceReference ??
+          this.showElectronicInvoiceReference,
       showItbis: showItbis ?? this.showItbis,
       showCashier: showCashier ?? this.showCashier,
       showTotalsBreakdown: showTotalsBreakdown ?? this.showTotalsBreakdown,

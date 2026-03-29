@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../theme/app_colors.dart';
 import '../data/stock_repository.dart';
 import '../models/stock_movement_model.dart';
 import 'widgets/kpi_card.dart';
+import 'widgets/products_surface.dart';
 
 /// Historial completo de inventario (entradas, salidas y ajustes)
 class StockHistoryPage extends StatefulWidget {
@@ -170,105 +172,145 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
     final color = _movementColor(movement);
     final dateLabel = _dateFormat.format(movement.createdAt.toLocal());
 
-    return Card(
-      elevation: 0,
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.12),
-          child: Icon(
-            movement.isInput
-                ? Icons.call_made
-                : movement.isOutput
-                ? Icons.call_received
-                : Icons.tune,
-            color: color,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.borderSoft),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              movement.isInput
+                  ? Icons.call_made
+                  : movement.isOutput
+                  ? Icons.call_received
+                  : Icons.tune,
+              color: color,
+            ),
           ),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                detail.productLabel,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              _qtyLabel(movement),
-              style: TextStyle(fontWeight: FontWeight.bold, color: color),
-            ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  movement.type.label,
-                  style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        detail.productLabel,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _qtyLabel(movement),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: color,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                if (detail.productCode != null)
-                  Text(
-                    'Cód: ${detail.productCode}',
-                    style: TextStyle(color: Colors.grey[700]),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        movement.type.label,
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                    if (detail.productCode != null)
+                      Text(
+                        'Cód: ${detail.productCode}',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$dateLabel • ${detail.userLabel}',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    fontFamily: 'Inter',
                   ),
+                ),
+                if (movement.note?.isNotEmpty ?? false) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Nota: ${movement.note}',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ],
+                if (detail.currentStock != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Stock actual: ${_qtyFormat.format(detail.currentStock)}',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ],
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              '$dateLabel • ${detail.userLabel}',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-            if (movement.note?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Nota: ${movement.note}',
-                style: TextStyle(
-                  color: Colors.grey[700],
-                  fontStyle: FontStyle.italic,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-            if (detail.currentStock != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Stock actual: ${_qtyFormat.format(detail.currentStock)}',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 900;
+    final rangeLabel = _range == null
+        ? null
+        : '${DateFormat('dd/MM/yyyy').format(_range!.start)} - ${DateFormat('dd/MM/yyyy').format(_range!.end)}';
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Historial de Inventario'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.date_range),
-            onPressed: _pickRange,
-            tooltip: 'Filtrar por fechas',
-          ),
-          if (_range != null)
-            IconButton(
-              icon: const Icon(Icons.clear),
-              onPressed: _clearRange,
-              tooltip: 'Limpiar rango',
-            ),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -276,81 +318,142 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  Row(
-                    children: [
-                      const Text(
-                        'Movimientos',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                  ProductsSurface(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  ChoiceChip(
+                                    label: const Text('Todos'),
+                                    selected: _filterType == null,
+                                    onSelected: (_) => _setFilter(null),
+                                  ),
+                                  ChoiceChip(
+                                    label: const Text('Entradas'),
+                                    selected:
+                                        _filterType == StockMovementType.input,
+                                    onSelected: (_) =>
+                                        _setFilter(StockMovementType.input),
+                                  ),
+                                  ChoiceChip(
+                                    label: const Text('Salidas'),
+                                    selected:
+                                        _filterType == StockMovementType.output,
+                                    onSelected: (_) =>
+                                        _setFilter(StockMovementType.output),
+                                  ),
+                                  ChoiceChip(
+                                    label: const Text('Ajustes'),
+                                    selected:
+                                        _filterType == StockMovementType.adjust,
+                                    onSelected: (_) =>
+                                        _setFilter(StockMovementType.adjust),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (!isCompact) ...[
+                              const SizedBox(width: 10),
+                              FilledButton.tonalIcon(
+                                onPressed: _pickRange,
+                                icon: const Icon(Icons.date_range),
+                                label: const Text('Rango'),
+                                style: FilledButton.styleFrom(
+                                  foregroundColor: AppColors.primaryBlue,
+                                  backgroundColor: AppColors.lightBlueHover,
+                                ),
+                              ),
+                              if (_range != null) ...[
+                                const SizedBox(width: 8),
+                                OutlinedButton.icon(
+                                  onPressed: _clearRange,
+                                  icon: const Icon(Icons.clear),
+                                  label: const Text('Limpiar'),
+                                ),
+                              ],
+                            ],
+                          ],
                         ),
-                      ),
-                      const Spacer(),
-                      ChoiceChip(
-                        label: const Text('Todos'),
-                        selected: _filterType == null,
-                        onSelected: (_) => _setFilter(null),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Entradas'),
-                        selected: _filterType == StockMovementType.input,
-                        onSelected: (_) => _setFilter(StockMovementType.input),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Salidas'),
-                        selected: _filterType == StockMovementType.output,
-                        onSelected: (_) => _setFilter(StockMovementType.output),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Ajustes'),
-                        selected: _filterType == StockMovementType.adjust,
-                        onSelected: (_) => _setFilter(StockMovementType.adjust),
-                      ),
-                    ],
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (isCompact)
+                              FilledButton.tonalIcon(
+                                onPressed: _pickRange,
+                                icon: const Icon(Icons.date_range),
+                                label: const Text('Rango'),
+                                style: FilledButton.styleFrom(
+                                  foregroundColor: AppColors.primaryBlue,
+                                  backgroundColor: AppColors.lightBlueHover,
+                                ),
+                              ),
+                            if (isCompact && _range != null)
+                              OutlinedButton.icon(
+                                onPressed: _clearRange,
+                                icon: const Icon(Icons.clear),
+                                label: const Text('Limpiar'),
+                              ),
+                            if (rangeLabel != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBackgroundAlt,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.borderSoft,
+                                  ),
+                                ),
+                                child: Text(
+                                  rangeLabel,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  if (_range != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Rango: ${DateFormat('dd/MM/yyyy').format(_range!.start)} - ${DateFormat('dd/MM/yyyy').format(_range!.end)}',
-                      style: TextStyle(color: Colors.grey[700], fontSize: 12),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  _buildSummary(),
-                  const SizedBox(height: 16),
-                  if (_history.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(Icons.inbox, size: 48, color: Colors.grey[400]),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'No hay movimientos registrados',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                  const SizedBox(height: 12),
+                  ProductsSurface(child: _buildSummary()),
+                  const SizedBox(height: 12),
+                  ProductsSurface(
+                    child: _history.isEmpty
+                        ? Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 16,
+                            ),
+                            child: const Text(
+                              'Sin movimientos',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Inter',
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            children: _history.map(_buildMovementTile).toList(),
                           ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Cada entrada, salida o ajuste quedará archivado aquí.',
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    Column(
-                      children: _history
-                          .map((m) => _buildMovementTile(m))
-                          .toList(),
-                    ),
+                  ),
                 ],
               ),
       ),

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/security/app_actions.dart';
 import '../../../core/session/session_manager.dart';
+import '../../settings/ui/settings_layout.dart';
 import '../data/authorization_audit_repository.dart';
 
 class AuthorizationsPage extends StatefulWidget {
@@ -54,22 +55,47 @@ class _AuthorizationsPageState extends State<AuthorizationsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        title: const Text('Autorizaciones'),
-        surfaceTintColor: scheme.surface,
-        actions: [
-          IconButton(
-            tooltip: 'Recargar',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Builder(
+        builder: (context) {
+          final scheme = Theme.of(context).colorScheme;
+          return Scaffold(
+            backgroundColor: scheme.surface,
+            appBar: AppBar(
+              title: const Text('Autorizaciones'),
+              actions: [
+                IconButton(
+                  tooltip: 'Recargar',
+                  onPressed: _loading ? null : _load,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            body: LayoutBuilder(
+              builder: (context, constraints) {
+                return SettingsLayout.pageFrame(
+                  constraints,
+                  max: 1200,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SettingsLayout.sectionHeading(
+                        context,
+                        title: 'Auditoría de aprobaciones',
+                        subtitle:
+                            'Consulta solicitudes, metodos usados, responsables y resultado de cada autorizacion operativa.',
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(child: _buildBody(scheme)),
+                    ],
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
-      body: _buildBody(scheme),
     );
   }
 

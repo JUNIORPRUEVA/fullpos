@@ -1,12 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../settings/ui/training/training_page.dart';
 import '../../../theme/app_colors.dart';
-import 'authorizations_page.dart';
-import 'cash_drawer_settings_page.dart';
-import 'scanner_settings_page.dart';
 
 /// Página de Herramientas
 class ToolsPage extends ConsumerWidget {
@@ -26,40 +22,6 @@ class ToolsPage extends ConsumerWidget {
         onTap: () => Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const TrainingPage())),
-      ),
-      _ToolItem(
-        icon: Icons.verified_user_outlined,
-        title: 'Autorizaciones',
-        subtitle: 'Auditoria de permisos',
-        color: AppColors.primaryBlue,
-        onTap: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const AuthorizationsPage())),
-      ),
-      _ToolItem(
-        icon: Icons.description_outlined,
-        title: 'NCF',
-        subtitle: 'Comprobantes fiscales',
-        color: AppColors.primaryBlue,
-        onTap: () => context.go('/ncf'),
-      ),
-      _ToolItem(
-        icon: Icons.qr_code_scanner_rounded,
-        title: 'Lector',
-        subtitle: 'Configurar escáner',
-        color: AppColors.primaryBlue,
-        onTap: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const ScannerSettingsPage())),
-      ),
-      _ToolItem(
-        icon: Icons.point_of_sale,
-        title: 'Caja registradora',
-        subtitle: 'Apertura automática al cobrar',
-        color: AppColors.primaryBlue,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const CashDrawerSettingsPage()),
-        ),
       ),
     ];
 
@@ -109,7 +71,20 @@ class ToolsPage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      'Centro de apoyo operativo',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 4),
+                    Text(
+                      'Las opciones de negocio, dispositivos y seguridad se administran en Configuración. Aqui quedan solo accesos de apoyo operativo.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Expanded(
                       child: GridView.count(
                         crossAxisCount: crossAxisCount,

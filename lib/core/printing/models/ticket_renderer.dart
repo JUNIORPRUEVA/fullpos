@@ -193,11 +193,11 @@ class TicketRenderer {
       lines.add(alignText(_sanitizeTicketText(data.extraLegend!), w, 'center'));
     }
 
-    // NCF si existe
-    if (config.showNcf && data.ncf != null && data.ncf!.isNotEmpty) {
+    // Mostrar el e-CF cuando exista
+    if (config.showElectronicInvoiceReference && data.electronicInvoiceCode != null && data.electronicInvoiceCode!.isNotEmpty) {
       lines.add(
         alignText(
-          _sanitizeTicketText('NCF: ${data.ncf}'),
+          _sanitizeTicketText('e-CF: ${data.electronicInvoiceCode}'),
           w,
           config.detailsAlignment,
         ),
@@ -797,13 +797,13 @@ class TicketRenderer {
       );
     }
 
-    final ncf = (data.ncf ?? '').trim();
-    if (config.showNcf && ncf.isNotEmpty) {
+    final electronicCode = (data.electronicInvoiceCode ?? '').trim();
+    if (config.showElectronicInvoiceReference && electronicCode.isNotEmpty) {
       addAlignedTextLine(
-        'Tipo CF: ${_cfTypeLabelFromNcf(ncf)}',
+        'Tipo e-CF: ${_cfTypeLabelFromElectronicCode(electronicCode)}',
         config.detailsAlignment,
       );
-      addAlignedTextLine('NCF: $ncf', config.detailsAlignment);
+      addAlignedTextLine('e-CF: $electronicCode', config.detailsAlignment);
     }
 
     addSectionGap();
@@ -1085,12 +1085,14 @@ class TicketRenderer {
     return lines.map((l) => _fitLine(l, w)).toList(growable: false);
   }
 
-  String _cfTypeLabelFromNcf(String ncf) {
-    final upper = ncf.toUpperCase();
-    if (upper.startsWith('B01')) return 'FACTURA DE CRÉDITO FISCAL';
+  String _cfTypeLabelFromElectronicCode(String electronicCode) {
+    final upper = electronicCode.toUpperCase();
+    if (upper.startsWith('B01')) return 'FACTURA DE CRÉDITO';
     if (upper.startsWith('B02')) return 'FACTURA DE CONSUMO';
     if (upper.startsWith('B14')) return 'FACTURA REG. ESPECIAL';
-    if (upper.startsWith('B15')) return 'COMPROBANTE GUBERNAMENTAL';
+    if (upper.startsWith('B15')) {
+      return 'DOCUMENTO ELECTRÓNICO GUBERNAMENTAL';
+    }
     return 'FACTURA';
   }
 }

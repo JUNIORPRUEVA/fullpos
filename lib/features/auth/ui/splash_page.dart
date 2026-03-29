@@ -15,13 +15,13 @@ class SplashPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final brandName = FullposBrandTheme.appName;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: FullposBrandTheme.background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: FullposBrandTheme.backgroundGradient,
-        ),
+      backgroundColor: Colors.white,
+      body: ColoredBox(
+        color: Colors.white,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
@@ -34,13 +34,14 @@ class SplashPage extends ConsumerWidget {
                     width: 150,
                     height: 150,
                     decoration: BoxDecoration(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.gold.withOpacity(0.35),
-                          blurRadius: 36,
-                          spreadRadius: 8,
-                          offset: const Offset(0, 6),
+                          color: scheme.primary.withOpacity(0.12),
+                          blurRadius: 28,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 12),
                         ),
                       ],
                     ),
@@ -50,12 +51,10 @@ class SplashPage extends ConsumerWidget {
                         FullposBrandTheme.logoAsset,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                              child: Icon(
-                                Icons.storefront,
-                                size: 72,
-                                color: AppColors.gold,
-                              ),
+                            Icon(
+                              Icons.storefront,
+                              size: 72,
+                              color: scheme.primary,
                             ),
                       ),
                     ),
@@ -63,9 +62,8 @@ class SplashPage extends ConsumerWidget {
                   const SizedBox(height: AppSizes.spaceL),
                   Text(
                     brandName,
-                    style: const TextStyle(
-                      color: AppColors.textLight,
-                      fontSize: 40,
+                    style: theme.textTheme.headlineLarge?.copyWith(
+                      color: scheme.onSurface,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2.6,
                     ),
@@ -74,8 +72,8 @@ class SplashPage extends ConsumerWidget {
                   const SizedBox(height: AppSizes.spaceXS),
                   Text(
                     'Software punto de ventas',
-                    style: TextStyle(
-                      color: AppColors.textLight.withOpacity(0.86),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.72),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
@@ -92,9 +90,8 @@ class SplashPage extends ConsumerWidget {
                     const SizedBox(height: AppSizes.spaceM),
                     Text(
                       boot.errorMessage ?? 'No se pudo iniciar la aplicación.',
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 15,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurface.withOpacity(0.78),
                         height: 1.3,
                       ),
                       textAlign: TextAlign.center,
@@ -129,12 +126,12 @@ class SplashPage extends ConsumerWidget {
                       ],
                     ),
                   ] else ...[
-                    const CircularProgressIndicator(color: AppColors.gold),
+                    CircularProgressIndicator(color: scheme.primary),
                     const SizedBox(height: AppSizes.spaceL),
                     Text(
                       boot.message.isNotEmpty ? boot.message : 'Iniciando...',
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurface.withOpacity(0.72),
                         fontSize: 16,
                       ),
                       textAlign: TextAlign.center,

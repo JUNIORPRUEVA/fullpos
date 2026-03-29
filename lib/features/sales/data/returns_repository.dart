@@ -70,9 +70,9 @@ class ReturnsRepository {
         'payment_method': 'return',
         'paid_amount': 0.0,
         'change_amount': 0.0,
-        'fiscal_enabled': 0,
-        'ncf_full': null,
-        'ncf_type': null,
+        'electronic_invoice_enabled': 0,
+        'electronic_invoice_code': null,
+        'electronic_document_type': null,
         // La devolución debe impactar la caja del turno ACTUAL (donde sale el efectivo),
         // aunque el ticket original sea de otro turno.
         'session_id': cashSessionId,

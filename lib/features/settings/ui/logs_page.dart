@@ -12,8 +12,6 @@ import '../../../core/logging/app_logger.dart';
 import '../../../core/network/api_client.dart';
 import 'settings_layout.dart';
 
-import 'training/training_page.dart';
-
 class LogsPage extends StatefulWidget {
   const LogsPage({super.key});
 
@@ -259,38 +257,37 @@ class _LogsPageState extends State<LogsPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        title: const Text('Logs y soporte'),
-        actions: [
-          IconButton(
-            tooltip: 'Recargar',
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final padding = SettingsLayout.contentPadding(constraints);
-          return Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: SettingsLayout.maxWidth(constraints),
-              child: Padding(
-                padding: padding,
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView(
-                        children: [
-                          const Text(
-                            'Manejo de errores',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
+        backgroundColor: scheme.surface,
+        appBar: AppBar(
+          title: const Text('Logs y soporte'),
+          actions: [
+            IconButton(
+              tooltip: 'Recargar',
+              onPressed: _loading ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final padding = SettingsLayout.contentPadding(constraints);
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: SettingsLayout.maxWidth(constraints),
+                child: Padding(
+                  padding: padding,
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView(
+                          children: [
+                            SettingsLayout.sectionHeading(
+                              context,
+                              title: 'Diagnostico y soporte',
+                              subtitle:
+                                  'Genera archivos para soporte, consulta errores recientes y revisa los datos de contacto tecnico.',
                             ),
-                          ),
-                          const SizedBox(height: AppSizes.spaceS),
+                            const SizedBox(height: AppSizes.spaceS),
                           Container(
                             padding: const EdgeInsets.all(AppSizes.paddingM),
                             decoration: BoxDecoration(
@@ -474,46 +471,6 @@ class _LogsPageState extends State<LogsPage> {
                               ),
                             ),
                           const SizedBox(height: AppSizes.spaceL),
-                          const Text(
-                            'Entrenamiento',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: AppSizes.spaceS),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: scheme.surface,
-                              borderRadius: BorderRadius.circular(
-                                AppSizes.radiusM,
-                              ),
-                              border: Border.all(color: scheme.outlineVariant),
-                            ),
-                            child: ListTile(
-                              leading: Icon(
-                                Icons.school,
-                                color: scheme.primary,
-                              ),
-                              title: const Text(
-                                'Abrir entrenamiento',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                              subtitle: const Text(
-                                'Instalación paso a paso, manual completo y capacitación por módulo con buscador.',
-                              ),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const TrainingPage(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: AppSizes.spaceL),
                           Row(
                             children: [
                               const Expanded(
@@ -559,11 +516,11 @@ class _LogsPageState extends State<LogsPage> {
                           ),
                         ],
                       ),
+                ),
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        ),
       ),
     );
   }

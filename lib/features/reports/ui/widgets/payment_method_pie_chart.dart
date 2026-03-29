@@ -28,20 +28,28 @@ class _PaymentMethodPieChartState extends State<PaymentMethodPieChart> {
 
     if (widget.data.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.pie_chart_outline,
-              size: 48,
-              color: scheme.onSurface.withOpacity(0.3),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No hay datos para mostrar',
-              style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
-            ),
-          ],
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.pie_chart_outline,
+                size: 42,
+                color: scheme.onSurface.withOpacity(0.3),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No hay datos para mostrar',
+                style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -78,58 +86,66 @@ class _PaymentMethodPieChartState extends State<PaymentMethodPieChart> {
         const SizedBox(width: 16),
         Expanded(
           flex: 2,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: widget.data.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              final color = chartColors[index % chartColors.length];
-              final percentage = total > 0 ? (item.amount / total * 100) : 0;
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: widget.data.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
+                final color = chartColors[index % chartColors.length];
+                final percentage = total > 0 ? (item.amount / total * 100) : 0;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(3),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.method,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: touchedIndex == index
-                                  ? FontWeight.bold
-                                  : FontWeight.w500,
-                              color: scheme.onSurface,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.method,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: touchedIndex == index
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: scheme.onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            '${percentage.toStringAsFixed(1)}% • ${item.count} ventas',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: scheme.onSurface.withOpacity(0.6),
+                            Text(
+                              '${percentage.toStringAsFixed(1)}% • ${item.count} ventas',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: scheme.onSurface.withOpacity(0.6),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         ),
       ],

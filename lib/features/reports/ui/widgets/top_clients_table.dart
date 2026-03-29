@@ -5,10 +5,7 @@ import '../../data/reports_repository.dart';
 class TopClientsTable extends StatelessWidget {
   final List<TopClient> clients;
 
-  const TopClientsTable({
-    super.key,
-    required this.clients,
-  });
+  const TopClientsTable({super.key, required this.clients});
 
   @override
   Widget build(BuildContext context) {
@@ -21,8 +18,8 @@ class TopClientsTable extends StatelessWidget {
 
     if (clients.isEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
+        child: Container(
+          padding: const EdgeInsets.all(24),
           child: Text(
             'No hay clientes para mostrar',
             style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
@@ -35,12 +32,10 @@ class TopClientsTable extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.1),
-              border: Border(
-                bottom: BorderSide(color: scheme.outlineVariant),
-              ),
+              color: scheme.primary.withOpacity(0.06),
+              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
             ),
             child: const Row(
               children: [
@@ -84,11 +79,11 @@ class TopClientsTable extends StatelessWidget {
             final rankColor = index < 3 ? scheme.tertiary : scheme.onSurface;
 
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
               decoration: BoxDecoration(
                 color: index % 2 == 0
                     ? scheme.surface
-                    : scheme.surfaceContainerHighest,
+                    : scheme.surface.withOpacity(0.72),
                 border: Border(
                   bottom: BorderSide(color: scheme.outlineVariant),
                 ),
@@ -101,8 +96,9 @@ class TopClientsTable extends StatelessWidget {
                       '${index + 1}',
                       style: TextStyle(
                         color: rankColor,
-                        fontWeight:
-                            index < 3 ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: index < 3
+                            ? FontWeight.bold
+                            : FontWeight.w600,
                       ),
                     ),
                   ),
@@ -110,10 +106,7 @@ class TopClientsTable extends StatelessWidget {
                     flex: 3,
                     child: Text(
                       client.clientName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface,
-                      ),
+                      style: TextStyle(fontSize: 13, color: scheme.onSurface),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -135,10 +128,7 @@ class TopClientsTable extends StatelessWidget {
                     flex: 1,
                     child: Text(
                       client.purchaseCount.toString(),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface,
-                      ),
+                      style: TextStyle(fontSize: 13, color: scheme.onSurface),
                       textAlign: TextAlign.right,
                     ),
                   ),

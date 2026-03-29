@@ -435,13 +435,6 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
     await _repository.saveThemeSettings(newSettings);
   }
 
-  /// Aplicar tema preset
-  Future<void> applyPreset(String presetName) async {
-    final preset = PresetThemes.getPreset(presetName);
-    state = preset;
-    await _repository.saveThemeSettings(preset);
-  }
-
   /// Resetear a valores por defecto
   Future<void> resetToDefault() async {
     await _repository.resetToDefault();
@@ -463,20 +456,18 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
     Color contrast(Color c) =>
         c.computeLuminance() > 0.5 ? Colors.black : Colors.white;
 
-    // Paleta base para modo oscuro (corporativa neutra)
-    const darkBg = Color(0xFF0B1220);
-    const darkSurface = Color(0xFF111827);
-    const darkText = Color(0xFFE5E7EB);
-    const darkMuted = Color(0xFF94A3B8);
-
-    // Paleta base para modo claro (surface gris claro solicitado)
-    const lightBg = Color(0xFFF3F6F5);
-    const lightSurface = Color(0xFFF8F9F9);
-    const lightText = Color(0xFF1F2937);
+    const darkBg = PremiumThemeColors.darkBackground;
+    const darkSurface = PremiumThemeColors.darkSurface;
+    const darkCard = PremiumThemeColors.darkSurfaceAlt;
+    const darkText = PremiumThemeColors.darkText;
+    const darkMuted = PremiumThemeColors.darkTextSecondary;
+    const lightBg = PremiumThemeColors.background;
+    const lightSurface = PremiumThemeColors.surface;
+    const lightText = PremiumThemeColors.textPrimary;
 
     if (isDark) {
       final nextAppBarColor = isTooLight(settings.appBarColor)
-          ? darkBg
+          ? darkSurface
           : settings.appBarColor;
       final nextSidebarColor = isTooLight(settings.sidebarColor)
           ? darkBg
@@ -489,7 +480,7 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
             ? darkSurface
             : settings.surfaceColor,
         cardColor: isTooLight(settings.cardColor)
-            ? darkSurface
+            ? darkCard
             : settings.cardColor,
         textColor: isTooDark(settings.textColor)
             ? darkText
@@ -503,7 +494,7 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
             ? contrast(nextSidebarColor)
             : settings.sidebarTextColor,
         footerColor: isTooLight(settings.footerColor)
-            ? darkBg
+            ? darkSurface
             : settings.footerColor,
         footerTextColor: isTooDark(settings.footerTextColor)
             ? darkMuted
@@ -512,10 +503,17 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
     }
 
     final nextAppBarColor = isTooDark(settings.appBarColor)
-        ? settings.primaryColor
+        ? PremiumThemeColors.chromeBackground
         : settings.appBarColor;
-    // En modo claro: solo corregimos fondo/surface/texto/appbar si venimos de un esquema muy oscuro.
-    // Sidebar/Footer pueden ser oscuros en modo claro, asÃ­ que no los forzamos.
+    final nextTopbarColor = isTooDark(settings.topbarColor)
+        ? PremiumThemeColors.chromeBackground
+        : settings.topbarColor;
+    final nextFooterColor = isTooDark(settings.footerColor)
+        ? PremiumThemeColors.chromeBackground
+        : settings.footerColor;
+    final nextSidebarColor = isTooLight(settings.sidebarColor)
+        ? PremiumThemeColors.sidebarBackground
+        : settings.sidebarColor;
     return settings.copyWith(
       backgroundColor: isTooDark(settings.backgroundColor)
           ? lightBg
@@ -523,9 +521,6 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
       surfaceColor: isTooDark(settings.surfaceColor)
           ? lightSurface
           : settings.surfaceColor,
-      cardColor: isTooDark(settings.cardColor)
-          ? Colors.white
-          : settings.cardColor,
       textColor: isTooLight(settings.textColor)
           ? lightText
           : settings.textColor,
@@ -533,8 +528,21 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
       appBarTextColor: (nextAppBarColor != settings.appBarColor)
           ? contrast(nextAppBarColor)
           : settings.appBarTextColor,
-      // Mantener sidebar/footer tal cual (configuraciÃ³n del usuario o preset)
-      footerTextColor: settings.footerTextColor,
+      topbarColor: nextTopbarColor,
+      topbarTextColor: (nextTopbarColor != settings.topbarColor)
+          ? contrast(nextTopbarColor)
+          : settings.topbarTextColor,
+      cardColor: isTooDark(settings.cardColor)
+          ? lightSurface
+          : settings.cardColor,
+      sidebarColor: nextSidebarColor,
+      sidebarTextColor: (nextSidebarColor != settings.sidebarColor)
+          ? contrast(nextSidebarColor)
+          : settings.sidebarTextColor,
+      footerColor: nextFooterColor,
+      footerTextColor: (nextFooterColor != settings.footerColor)
+          ? contrast(nextFooterColor)
+          : settings.footerTextColor,
     );
   }
 }
@@ -567,19 +575,45 @@ ThemeData _buildThemeData(ThemeSettings settings) {
   final onButton = _getContrastColor(settings.buttonColor);
   final scaffoldBg = settings.backgroundColor;
   final surfaceColor = settings.surfaceColor.opacity == 0
-      ? Colors.white
+      ? PremiumThemeColors.surface
       : settings.surfaceColor;
   final effectiveTextColor = _ensureReadableColor(
     settings.textColor,
     surfaceColor,
   );
+  final secondaryTextColor = _ensureReadableColor(
+    PremiumThemeColors.textSecondary,
+    surfaceColor,
+    minRatio: 3.2,
+  );
   final appBarTextColor = _ensureReadableColor(
     settings.appBarTextColor,
     settings.appBarColor,
   );
+  final outlineColor = brightness == Brightness.dark
+      ? Colors.white.withOpacity(0.12)
+      : PremiumThemeColors.appBarBorder;
+  final chromeDividerColor = settings.appBarColor.computeLuminance() < 0.16
+      ? Colors.white.withOpacity(0.08)
+      : outlineColor;
   final salesDetailTextColor = _ensureReadableColor(
     settings.salesDetailTextColor,
     settings.salesDetailGradientMid,
+  );
+  final outlineVariant = brightness == Brightness.dark
+      ? Colors.white.withOpacity(0.08)
+      : PremiumThemeColors.appBarBorder.withOpacity(0.82);
+  final surfaceAlt = brightness == Brightness.dark
+      ? Color.alphaBlend(Colors.white.withOpacity(0.04), surfaceColor)
+      : PremiumThemeColors.surfaceAlt;
+  final subtleShadow = Colors.black.withOpacity(
+    brightness == Brightness.dark ? 0.16 : 0.035,
+  );
+  final hoverTint = brightness == Brightness.dark
+      ? Colors.white.withOpacity(0.04)
+      : settings.primaryColor.withOpacity(0.045);
+  final focusTint = settings.primaryColor.withOpacity(
+    brightness == Brightness.dark ? 0.22 : 0.12,
   );
   final scheme =
       ColorScheme.fromSeed(
@@ -592,18 +626,21 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         onSecondary: onAccent,
         surface: surfaceColor,
         onSurface: effectiveTextColor,
+        onSurfaceVariant: secondaryTextColor,
         error: settings.errorColor,
         onError: onError,
-        surfaceContainerHighest: surfaceColor.withAlpha(230),
+        outline: outlineColor,
+        outlineVariant: outlineVariant,
+        surfaceContainerHighest: surfaceAlt,
       );
   final snackBarBackground = Color.alphaBlend(
-    scheme.primary.withOpacity(0.08),
+    scheme.primary.withOpacity(brightness == Brightness.dark ? 0.16 : 0.08),
     scheme.surface,
   );
   final snackBarForeground = ColorUtils.readableTextColor(snackBarBackground);
 
   final searchBg = settings.salesControlBarContentBackgroundColor.opacity == 0
-      ? scheme.surface
+      ? surfaceAlt
       : settings.salesControlBarContentBackgroundColor;
   final tokenSearchText = _ensureReadableColor(
     settings.textColor,
@@ -617,13 +654,18 @@ ThemeData _buildThemeData(ThemeSettings settings) {
   );
 
   final tokens = AppTokens(
+    topbarBackground: settings.topbarColor,
+    topbarText: settings.topbarTextColor,
+    footerBackground: settings.footerColor,
+    footerText: settings.footerTextColor,
     panelBackground: settings.backgroundColor,
-    panelBorder: scheme.onSurface.withAlpha(28),
+    panelBorder: outlineVariant,
     cardBackground: settings.cardColor,
-    cardBorder: scheme.onSurface.withAlpha(28),
+    cardBorder: outlineVariant,
     sidebarBackground: settings.sidebarColor,
-    sidebarBorder: scheme.onSurface.withAlpha(28),
+    sidebarBorder: outlineVariant,
     sidebarText: settings.sidebarTextColor,
+    sidebarActive: settings.sidebarActiveColor,
     controlBarBackground: settings.salesControlBarBackgroundColor,
     controlBarBorder: settings.salesControlBarBorderColor,
     controlBarText: settings.salesControlBarTextColor,
@@ -643,7 +685,11 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     colorScheme: scheme,
 
     scaffoldBackgroundColor: scaffoldBg,
-    hoverColor: settings.hoverColor.withOpacity(0.12),
+    canvasColor: scaffoldBg,
+    hoverColor: hoverTint,
+    focusColor: focusTint,
+    splashColor: settings.primaryColor.withOpacity(0.08),
+    highlightColor: Colors.transparent,
 
     // AppBar
     appBarTheme: AppBarTheme(
@@ -651,40 +697,74 @@ ThemeData _buildThemeData(ThemeSettings settings) {
       surfaceTintColor: Colors.transparent,
       foregroundColor: appBarTextColor,
       elevation: 0,
+      scrolledUnderElevation: 0,
       centerTitle: false,
       iconTheme: IconThemeData(color: appBarTextColor),
+      actionsIconTheme: IconThemeData(color: secondaryTextColor),
+      titleTextStyle: TextStyle(
+        color: appBarTextColor,
+        fontSize: settings.fontSize + 4,
+        fontWeight: FontWeight.w700,
+        fontFamily: settings.fontFamily,
+      ),
+      toolbarTextStyle: TextStyle(
+        color: appBarTextColor,
+        fontSize: settings.fontSize,
+        fontWeight: FontWeight.w600,
+        fontFamily: settings.fontFamily,
+      ),
+      shape: Border(bottom: BorderSide(color: chromeDividerColor, width: 1)),
     ),
 
     // Cards
     cardTheme: CardThemeData(
       color: settings.cardColor,
-      elevation: 1,
-      shadowColor: Colors.black.withAlpha(20),
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: subtleShadow,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSizes.radiusL),
-        side: BorderSide(color: scheme.onSurface.withAlpha(25), width: 1),
+        borderRadius: BorderRadius.circular(AppSizes.radiusL + 2),
+        side: BorderSide(color: outlineVariant, width: 1),
       ),
     ),
 
     // Input decoration
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: scheme.surface,
+      fillColor: brightness == Brightness.dark ? surfaceAlt : scheme.surface,
+      hintStyle: TextStyle(
+        color: secondaryTextColor,
+        fontFamily: settings.fontFamily,
+      ),
+      labelStyle: TextStyle(
+        color: secondaryTextColor,
+        fontFamily: settings.fontFamily,
+      ),
+      floatingLabelStyle: TextStyle(
+        color: scheme.primary,
+        fontWeight: FontWeight.w600,
+        fontFamily: settings.fontFamily,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        borderSide: BorderSide(color: scheme.onSurface.withAlpha(30), width: 1),
+        borderSide: BorderSide(color: outlineVariant, width: 1),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        borderSide: BorderSide(color: scheme.onSurface.withAlpha(30), width: 1),
+        borderSide: BorderSide(color: outlineVariant, width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        borderSide: BorderSide(color: scheme.primary, width: 2),
+        borderSide: BorderSide(color: scheme.primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        borderSide: BorderSide(color: scheme.error, width: 2),
+        borderSide: BorderSide(color: scheme.error, width: 1.5),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppSizes.radiusM),
+        borderSide: BorderSide(color: scheme.error, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: AppSizes.paddingM,
@@ -697,7 +777,10 @@ ThemeData _buildThemeData(ThemeSettings settings) {
       style: FilledButton.styleFrom(
         backgroundColor: settings.buttonColor,
         foregroundColor: onButton,
-        minimumSize: const Size(0, 48),
+        minimumSize: const Size(0, 46),
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusM),
         ),
@@ -714,11 +797,13 @@ ThemeData _buildThemeData(ThemeSettings settings) {
       style: ElevatedButton.styleFrom(
         backgroundColor: settings.buttonColor,
         foregroundColor: onButton,
-        minimumSize: const Size(0, 48),
+        minimumSize: const Size(0, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusM),
         ),
-        elevation: 2,
+        elevation: 0,
+        shadowColor: Colors.transparent,
         textStyle: TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: settings.fontSize + 1,
@@ -730,11 +815,17 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     // Outlined Button
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: settings.buttonColor,
-        side: BorderSide(color: settings.buttonColor, width: 1.5),
-        minimumSize: const Size(0, 48),
+        foregroundColor: effectiveTextColor,
+        side: BorderSide(color: outlineColor, width: 1.2),
+        minimumSize: const Size(0, 46),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppSizes.radiusM),
+        ),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: settings.fontSize + 1,
+          fontFamily: settings.fontFamily,
         ),
       ),
     ),
@@ -742,14 +833,86 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     // Text Button
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: settings.buttonColor,
-        minimumSize: const Size(0, 48),
+        foregroundColor: settings.primaryColor,
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: settings.fontSize,
+          fontFamily: settings.fontFamily,
+        ),
       ),
+    ),
+
+    listTileTheme: ListTileThemeData(
+      iconColor: secondaryTextColor,
+      textColor: effectiveTextColor,
+      tileColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSizes.radiusM),
+      ),
+    ),
+
+    popupMenuTheme: PopupMenuThemeData(
+      color: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shadowColor: subtleShadow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppSizes.radiusM),
+        side: BorderSide(color: outlineVariant),
+      ),
+      textStyle: TextStyle(
+        color: effectiveTextColor,
+        fontSize: settings.fontSize,
+        fontFamily: settings.fontFamily,
+      ),
+    ),
+
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: scheme.primary,
+      linearTrackColor: surfaceAlt,
+      circularTrackColor: surfaceAlt,
+    ),
+
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return scheme.primary;
+        }
+        return Colors.transparent;
+      }),
+      side: BorderSide(color: outlineColor, width: 1.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    ),
+
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return scheme.primary;
+        }
+        return secondaryTextColor;
+      }),
+    ),
+
+    switchTheme: SwitchThemeData(
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return scheme.primary.withOpacity(0.35);
+        }
+        return outlineVariant;
+      }),
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return scheme.primary;
+        }
+        return scheme.surface;
+      }),
     ),
 
     // Divider
     dividerTheme: DividerThemeData(
-      color: scheme.onSurface.withAlpha(30),
+      color: outlineVariant,
       thickness: 1,
       space: 1,
     ),
@@ -758,10 +921,10 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
-      elevation: 8,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppSizes.radiusL),
-        side: BorderSide(color: scheme.outline.withAlpha(80), width: 1.0),
+        borderRadius: BorderRadius.circular(AppSizes.radiusL + 2),
+        side: BorderSide(color: outlineColor, width: 1.0),
       ),
       titleTextStyle: TextStyle(
         color: scheme.onSurface,
@@ -780,11 +943,11 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: snackBarBackground,
-      elevation: 12,
+      elevation: 0,
       insetPadding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusL),
-        side: BorderSide(color: scheme.outline.withAlpha(70)),
+        side: BorderSide(color: outlineVariant),
       ),
       contentTextStyle: TextStyle(
         color: snackBarForeground,
@@ -836,7 +999,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         fontFamily: settings.fontFamily,
       ),
       labelLarge: TextStyle(
-        color: effectiveTextColor.withAlpha(180),
+        color: secondaryTextColor,
         fontSize: settings.fontSize,
         fontWeight: FontWeight.w500,
         fontFamily: settings.fontFamily,

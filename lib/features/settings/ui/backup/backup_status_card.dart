@@ -27,49 +27,45 @@ class BackupStatusCard extends StatelessWidget {
       destination = 'Local';
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Estado de Backup',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            _StatusRow(
-              label: 'Nube',
-              value: status.isCloudEnabled ? 'Activa' : 'Inactiva',
-              color: status.isCloudEnabled ? scheme.primary : scheme.error,
-            ),
-            _StatusRow(
-              label: 'Destino actual',
-              value: destination,
-              color: scheme.secondary,
-            ),
-            if (status.reason != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                status.reason!,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
-            const SizedBox(height: 12),
-            SwitchListTile(
-              value: keepLocalCopy,
-              onChanged: status.canUseCloudBackup
-                  ? onKeepLocalCopyChanged
-                  : null,
-              title: const Text('Mantener copia local adicional'),
-              subtitle: const Text('Opcional cuando la nube está activa'),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Estado de backup',
+          style: Theme.of(context).textTheme.titleMedium,
         ),
-      ),
+        const SizedBox(height: 12),
+        _StatusRow(
+          label: 'Nube',
+          value: status.isCloudEnabled ? 'Activa' : 'Inactiva',
+          color: status.isCloudEnabled ? scheme.primary : scheme.error,
+        ),
+        const Divider(),
+        _StatusRow(
+          label: 'Destino actual',
+          value: destination,
+          color: scheme.secondary,
+        ),
+        if (status.reason != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            status.reason!,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ],
+        const SizedBox(height: 8),
+        SwitchListTile(
+          value: keepLocalCopy,
+          onChanged: status.canUseCloudBackup
+              ? onKeepLocalCopyChanged
+              : null,
+          title: const Text('Mantener copia local adicional'),
+          subtitle: const Text('Opcional cuando la nube está activa'),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ],
     );
   }
 }

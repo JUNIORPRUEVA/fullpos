@@ -167,15 +167,15 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
               ),
             ],
 
-            // NCF
-            if (layout.showNcf &&
-                previewData.ncf != null &&
-                previewData.ncf!.isNotEmpty) ...[
+            // e-CF
+            if (layout.showElectronicInvoiceReference &&
+                previewData.electronicInvoiceCode != null &&
+                previewData.electronicInvoiceCode!.isNotEmpty) ...[
               SizedBox(height: lineSpacing),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'NCF: ${previewData.ncf}',
+                  'e-CF: ${previewData.electronicInvoiceCode}',
                   style: TextStyle(fontFamily: fontFamily, fontSize: fontSize),
                 ),
               ),

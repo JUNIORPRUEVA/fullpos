@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:window_manager/window_manager.dart';
 
 import '../../features/settings/providers/business_settings_provider.dart';
-import '../logging/app_logger.dart';
 import 'backup_models.dart';
 import 'backup_orchestrator.dart';
 
@@ -20,45 +17,21 @@ class BackupLifecycle extends ConsumerStatefulWidget {
 }
 
 class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
-    with WidgetsBindingObserver, WindowListener {
-  bool _closing = false;
+    with WidgetsBindingObserver {
   Timer? _lifecycleBackupTimer;
 
   static const Duration _autoBackupDelayAfterPause = Duration(seconds: 12);
-
-  bool get _isDesktop =>
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    if (_isDesktop) {
-      unawaited(_installWindowCloseHook());
-    }
-  }
-
-  Future<void> _installWindowCloseHook() async {
-    try {
-      windowManager.addListener(this);
-      await windowManager.setPreventClose(true);
-    } catch (_) {
-      // Ignorar si el plugin falla.
-    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _lifecycleBackupTimer?.cancel();
-    if (_isDesktop) {
-      try {
-        windowManager.removeListener(this);
-      } catch (_) {
-        // Ignorar.
-      }
-    }
     super.dispose();
   }
 
@@ -107,45 +80,6 @@ class _BackupLifecycleState extends ConsumerState<BackupLifecycle>
   void _cancelPendingLifecycleBackup() {
     _lifecycleBackupTimer?.cancel();
     _lifecycleBackupTimer = null;
-  }
-
-  @override
-  Future<void> onWindowClose() async {
-    if (_closing) return;
-    _closing = true;
-
-    final enabled = ref.read(businessSettingsProvider).enableAutoBackup;
-
-    if (enabled) {
-      // No bloqueante: fire-and-forget. Si falla, solo log.
-      unawaited(
-        BackupOrchestrator.instance
-            .createBackup(
-              trigger: BackupTrigger.autoWindowClose,
-              maxWait: const Duration(seconds: 10),
-            )
-            .catchError((e, st) {
-              unawaited(
-                AppLogger.instance.logWarn(
-                  'Auto-backup al cerrar falló: $e',
-                  module: 'backup',
-                ),
-              );
-
-              return BackupResult(
-                ok: false,
-                messageUser: 'Auto-backup falló',
-                messageDev: e.toString(),
-              );
-            }),
-      );
-    }
-
-    try {
-      await windowManager.destroy();
-    } catch (_) {
-      // Ignorar.
-    }
   }
 
   @override

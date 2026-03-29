@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/errors/error_handler.dart';
 import '../../data/suppliers_repository.dart';
 import '../../models/supplier_model.dart';
+import '../widgets/products_surface.dart';
 
 /// Diálogo para crear/editar suplidores
 class SupplierFormDialog extends StatefulWidget {
@@ -120,6 +121,9 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Shortcuts(
       shortcuts: {
         LogicalKeySet(LogicalKeyboardKey.escape): DismissIntent(),
@@ -140,74 +144,113 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
         },
         child: Focus(
           autofocus: true,
-          child: AlertDialog(
-            title: Text(_isEdit ? 'Editar Suplidor' : 'Nuevo Suplidor'),
-            content: Form(
-              key: _formKey,
-              child: SingleChildScrollView(
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: ProductsSurface(
+                padding: EdgeInsets.zero,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Nombre *',
-                        hintText: 'Ej: Proveedor ABC',
-                        border: OutlineInputBorder(),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        border: Border(
+                          bottom: BorderSide(color: scheme.outlineVariant),
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(22),
+                        ),
                       ),
-                      textCapitalization: TextCapitalization.words,
-                      autofocus: true,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'El nombre es requerido';
-                        }
-                        if (value.trim().length < 2) {
-                          return 'El nombre debe tener al menos 2 caracteres';
-                        }
-                        return null;
-                      },
+                      child: ProductsSectionHeader(
+                        eyebrow: 'SUPLIDOR',
+                        title: _isEdit ? 'Editar suplidor' : 'Nuevo suplidor',
+                        subtitle: 'Ficha breve para abastecimiento.',
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _phoneController,
-                      decoration: const InputDecoration(
-                        labelText: 'Teléfono',
-                        hintText: 'Ej: 809-555-1234',
-                        prefixIcon: Icon(Icons.phone),
-                        border: OutlineInputBorder(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextFormField(
+                              controller: _nameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Nombre *',
+                                hintText: 'Ej: Proveedor ABC',
+                                border: OutlineInputBorder(),
+                              ),
+                              textCapitalization: TextCapitalization.words,
+                              autofocus: true,
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'El nombre es requerido';
+                                }
+                                if (value.trim().length < 2) {
+                                  return 'El nombre debe tener al menos 2 caracteres';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _phoneController,
+                              decoration: const InputDecoration(
+                                labelText: 'Teléfono',
+                                hintText: 'Ej: 809-555-1234',
+                                prefixIcon: Icon(Icons.phone),
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: TextInputType.phone,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _noteController,
+                              decoration: const InputDecoration(
+                                labelText: 'Notas',
+                                hintText: 'Información adicional',
+                                border: OutlineInputBorder(),
+                              ),
+                              maxLines: 3,
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: _isLoading
+                                      ? null
+                                      : () => Navigator.pop(context),
+                                  child: const Text('Cancelar'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilledButton(
+                                  onPressed: _isLoading ? null : _save,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Text(_isEdit ? 'Actualizar' : 'Crear'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _noteController,
-                      decoration: const InputDecoration(
-                        labelText: 'Notas',
-                        hintText: 'Información adicional',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
                     ),
                   ],
                 ),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: _isLoading ? null : () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _save,
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(_isEdit ? 'Actualizar' : 'Crear'),
-              ),
-            ],
           ),
         ),
       ),

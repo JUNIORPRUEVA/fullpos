@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../data/reports_repository.dart';
 
 class SalesBarChart extends StatefulWidget {
@@ -35,29 +36,50 @@ class _SalesBarChartState extends State<SalesBarChart> {
 
     if (widget.data.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.bar_chart, size: 48, color: scheme.onSurface.withOpacity(0.3)),
-            const SizedBox(height: 8),
-            Text(
-              'No hay datos para mostrar',
-              style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
-            ),
-          ],
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.bar_chart,
+                size: 42,
+                color: scheme.onSurface.withOpacity(0.3),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No hay datos para mostrar',
+                style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    final maxY = widget.data
-        .map((e) => e.value)
-        .reduce((a, b) => a > b ? a : b);
+    final values = widget.data
+        .map((entry) => entry.value)
+        .toList(growable: false);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxY = maxValue <= 0 ? 0.0 : maxValue * 1.15;
+    final minY = minValue >= 0 ? 0.0 : minValue * 1.15;
+    final span = (maxY - minY).abs();
+    final interval = span > 0 ? span / 4 : 1.0;
+    final hasNegativeValues = minY < 0;
 
     return Padding(
       padding: const EdgeInsets.only(top: 16, right: 16, bottom: 8),
       child: BarChart(
         BarChartData(
-          maxY: maxY * 1.15,
+          minY: minY,
+          maxY: maxY,
+          baselineY: 0,
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
               getTooltipColor: (group) => scheme.onSurface.withOpacity(0.9),
@@ -150,7 +172,7 @@ class _SalesBarChartState extends State<SalesBarChart> {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 60,
-                interval: maxY > 0 ? maxY / 4 : 1,
+                interval: interval,
                 getTitlesWidget: (value, meta) {
                   return Text(
                     moneyAxis.format(value),
@@ -173,41 +195,56 @@ class _SalesBarChartState extends State<SalesBarChart> {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            horizontalInterval: maxY > 0 ? maxY / 4 : 1,
+            horizontalInterval: interval,
             getDrawingHorizontalLine: (value) {
               return FlLine(
                 color: scheme.outlineVariant.withOpacity(0.5),
-                strokeWidth: 1,
+                strokeWidth: value == 0 ? 1.3 : 1,
               );
             },
           ),
-          barGroups: _buildBarGroups(maxY, barColor, scheme),
+          barGroups: _buildBarGroups(
+            maxY: maxY,
+            minY: minY,
+            hasNegativeValues: hasNegativeValues,
+            barColor: barColor,
+            scheme: scheme,
+          ),
         ),
       ),
     );
   }
 
-  List<BarChartGroupData> _buildBarGroups(
-    double maxY,
-    Color barColor,
-    ColorScheme scheme,
-  ) {
+  List<BarChartGroupData> _buildBarGroups({
+    required double maxY,
+    required double minY,
+    required bool hasNegativeValues,
+    required Color barColor,
+    required ColorScheme scheme,
+  }) {
     return widget.data.asMap().entries.map((entry) {
       final index = entry.key;
       final item = entry.value;
       final isTouched = index == touchedIndex;
+      final rodColor = item.value >= 0
+          ? (isTouched ? barColor.withOpacity(0.8) : barColor)
+          : (isTouched ? scheme.error.withOpacity(0.8) : scheme.error);
 
       return BarChartGroupData(
         x: index,
         barRods: [
           BarChartRodData(
+            fromY: 0,
             toY: item.value,
-            color: isTouched ? barColor.withOpacity(0.8) : barColor,
+            color: rodColor,
             width: _calculateBarWidth(),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+            borderRadius: item.value >= 0
+                ? const BorderRadius.vertical(top: Radius.circular(4))
+                : const BorderRadius.vertical(bottom: Radius.circular(4)),
             backDrawRodData: BackgroundBarChartRodData(
-              show: true,
-              toY: maxY * 1.15,
+              show: !hasNegativeValues,
+              fromY: minY,
+              toY: maxY,
               color: scheme.surfaceContainerHighest,
             ),
           ),

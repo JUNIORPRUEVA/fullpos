@@ -396,125 +396,73 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Theme(
+        data: SettingsLayout.brandedTheme(context),
+        child: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
     }
 
     return Theme(
       data: SettingsLayout.brandedTheme(context),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final padding = SettingsLayout.contentPadding(constraints);
-          final sectionGap = SettingsLayout.sectionGap(constraints);
-          final isNarrow = constraints.maxWidth < 980;
-
-          return Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: SettingsLayout.maxWidth(constraints, max: 1400),
-              child: Padding(
-                padding: padding,
-                child: Column(
-                  children: [
-                    // Header
-                    _buildHeader(),
-                    SizedBox(height: sectionGap),
-
-                    // Contenido principal
-                    Expanded(
-                      child: isNarrow
-                          ? Column(
-                              children: [
-                                Expanded(child: _buildSettingsPanel()),
-                                SizedBox(height: sectionGap),
-                                Expanded(child: _buildPreviewPanel()),
-                              ],
-                            )
-                          : Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Panel de configuraci??n (izquierda)
-                                Expanded(flex: 3, child: _buildSettingsPanel()),
-                                SizedBox(width: sectionGap),
-
-                                // Panel de preview (derecha)
-                                Expanded(flex: 2, child: _buildPreviewPanel()),
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
+      child: Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: const Text('Impresora y ticket'),
+          actions: [
+            IconButton(
+              onPressed: _saving ? null : _resetSettings,
+              icon: const Icon(Icons.auto_fix_high),
+              tooltip: 'Restaurar plantilla profesional',
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveSettings,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_saving ? 'Guardando...' : 'Guardar'),
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [_scheme.primary, _scheme.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          ],
         ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.print, size: 36, color: _scheme.onPrimary),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Plantilla Profesional de Ticket',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: _scheme.onPrimary,
-                  ),
-                ),
-                Text(
-                  'Configure el diseño y contenido de sus recibos de venta',
-                  style: TextStyle(
-                    color: _scheme.onPrimary.withOpacity(0.7),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final sectionGap = SettingsLayout.sectionGap(constraints);
+            final isNarrow = constraints.maxWidth < 980;
 
-          // Botones de acción
-          OutlinedButton.icon(
-            onPressed: _resetSettings,
-            icon: const Icon(Icons.auto_fix_high, size: 18),
-            label: Text('Plantilla Profesional'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _scheme.onPrimary,
-              side: BorderSide(color: _scheme.onPrimary),
-            ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: _saving ? null : _saveSettings,
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.save, size: 18),
-            label: Text(_saving ? 'Guardando...' : 'Guardar Configuración'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _scheme.primary,
-              foregroundColor: _scheme.onPrimary,
-            ),
-          ),
-        ],
+            return SettingsLayout.pageFrame(
+              constraints,
+              max: 1400,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: isNarrow
+                        ? Column(
+                            children: [
+                              Expanded(child: _buildSettingsPanel()),
+                              SizedBox(height: sectionGap),
+                              Expanded(child: _buildPreviewPanel()),
+                            ],
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 3, child: _buildSettingsPanel()),
+                              SizedBox(width: sectionGap),
+                              Expanded(flex: 2, child: _buildPreviewPanel()),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1613,10 +1561,14 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               ),
               const Divider(),
               _buildSwitch(
-                'Mostrar NCF (Valor Fiscal)',
+                'Mostrar e-CF / referencia DGII',
                 Icons.receipt_outlined,
-                _settings.showNcf == 1,
-                (v) => _updateSetting((s) => s.copyWith(showNcf: v ? 1 : 0)),
+                _settings.showElectronicInvoiceReference == 1,
+                (v) => _updateSetting(
+                  (s) => s.copyWith(
+                    showElectronicInvoiceReference: v ? 1 : 0,
+                  ),
+                ),
               ),
               _buildSwitch(
                 'Mostrar Método de Pago',
@@ -1692,48 +1644,32 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
   Widget _buildPreviewPanel() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header del preview
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: _scheme.surfaceVariant,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.preview, color: _scheme.primary),
-              const SizedBox(width: 8),
-              const Text(
-                'Vista Previa',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        Row(
+          children: [
+            Icon(Icons.preview, color: _scheme.primary, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Vista previa',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: _scheme.primary,
               ),
-              const Spacer(),
-              Chip(
-                label: Text('${_settings.paperWidthMm}mm'),
-                backgroundColor: _scheme.primaryContainer,
-                labelStyle: const TextStyle(fontSize: 12),
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-
-        // Preview del ticket
+        const SizedBox(height: 12),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
               color: _scheme.surfaceVariant,
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(12),
-              ),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Center(
-                // FUENTE ÚNICA DE VERDAD: Usar SimplifiedTicketPreviewWidget
-                // que usa exactamente las mismas líneas que la impresión térmica
                 child: SimplifiedTicketPreviewWidget(
                   settings: _settings.copyWith(
                     headerExtra: _headerExtraCtrl.text,

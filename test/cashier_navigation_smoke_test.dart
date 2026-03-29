@@ -11,7 +11,7 @@ import 'package:fullpos/core/security/authz/permission_gate.dart';
 import 'package:fullpos/core/session/session_manager.dart';
 import 'package:fullpos/features/sales/ui/credits_page.dart';
 import 'package:fullpos/features/sales/ui/returns_list_page.dart';
-import 'package:fullpos/features/tools/ui/ncf_page.dart';
+import 'package:fullpos/features/tools/ui/electronic_invoicing_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -55,7 +55,10 @@ GoRouter _buildSmokeRouter() {
           child: const ReturnsListPage(),
         ),
       ),
-      GoRoute(path: '/ncf', builder: (context, state) => const NcfPage()),
+      GoRoute(
+        path: '/electronic-documents',
+        builder: (context, state) => const ElectronicInvoicingPage(),
+      ),
     ],
     initialLocation: '/credits',
   );
@@ -134,7 +137,7 @@ void main() {
   });
 
   testWidgets(
-    'Cashier: navigate Credits/Returns/NCF quickly (no setState-after-dispose, no infinite loaders)',
+    'Cashier: navigate Credits/Returns/Electronic Documents quickly (no setState-after-dispose, no infinite loaders)',
     (tester) async {
       // Simulate a logged-in cashier session.
       await SessionManager.login(
@@ -162,7 +165,7 @@ void main() {
         router.go('/returns');
         await tester.pump(const Duration(milliseconds: 20));
 
-        router.go('/ncf');
+        router.go('/electronic-documents');
         await tester.pump(const Duration(milliseconds: 20));
       }
 
@@ -180,7 +183,7 @@ void main() {
       await tester.pump(const Duration(seconds: 12));
 
       // Final route should remain navigable and rendered.
-      expect(find.byType(NcfPage), findsOneWidget);
+      expect(find.byType(ElectronicInvoicingPage), findsOneWidget);
     },
   );
 }

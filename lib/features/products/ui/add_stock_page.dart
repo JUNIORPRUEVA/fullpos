@@ -165,6 +165,10 @@ class _AddStockPageState extends State<AddStockPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final quantityFormat = NumberFormat.decimalPattern();
+
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Agregar Stock')),
@@ -191,315 +195,399 @@ class _AddStockPageState extends State<AddStockPage> {
     }
 
     final product = _product!;
+    final stockHealthy = product.stock >= product.stockMin;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Agregar Stock - ${product.name}'),
+        title: Text('Agregar stock · ${product.name}'),
         elevation: 0,
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Card con información del producto y stock actual
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Producto',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: scheme.outlineVariant),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Código',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurface.withOpacity(0.68),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  product.code,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: stockHealthy
+                                  ? AppColors.success.withOpacity(0.08)
+                                  : Colors.orange.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: stockHealthy
+                                    ? AppColors.success.withOpacity(0.22)
+                                    : Colors.orange.withOpacity(0.24),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Stock actual',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurface.withOpacity(0.68),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  quantityFormat.format(product.stock),
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: stockHealthy
+                                        ? AppColors.success
+                                        : Colors.orange,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: scheme.outlineVariant),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Mínimo',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurface.withOpacity(0.68),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  quantityFormat.format(product.stockMin),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: Form(
+                  key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Información del Producto',
-                        style: Theme.of(context).textTheme.titleMedium,
+                        'Entrada de stock',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Código:',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(color: Colors.grey[600]),
-                                ),
-                                Text(
-                                  product.code,
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Stock Actual:',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(color: Colors.grey[600]),
-                                ),
-                                Text(
-                                  product.stock.toString(),
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: product.stock >= product.stockMin
-                                            ? AppColors.success
-                                            : Colors.orange,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Stock Mínimo:',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(color: Colors.grey[600]),
-                                ),
-                                Text(
-                                  product.stockMin.toString(),
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
-                            ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _quantityController,
+                        enabled: !_saving,
+                        decoration: const InputDecoration(
+                          labelText: 'Cantidad a agregar',
+                          hintText: '0.00',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.add),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[0-9,\.]'),
                           ),
                         ],
+                        onFieldSubmitted: (_) =>
+                            FocusScope.of(context).nextFocus(),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Ingrese una cantidad';
+                          }
+                          final qty = _tryParseQuantity(value);
+                          if (qty == null || qty <= 0) {
+                            return 'La cantidad debe ser mayor que 0';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _noteController,
+                        enabled: !_saving,
+                        decoration: const InputDecoration(
+                          labelText: 'Nota',
+                          hintText: 'Ej: compra a proveedor X',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.notes_outlined),
+                        ),
+                        onFieldSubmitted: (_) {
+                          if (!_saving) _addStock();
+                        },
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _saving ? null : _addStock,
+                          icon: _saving
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.add_box_outlined),
+                          label: Text(
+                            _saving ? 'Guardando...' : 'Agregar stock',
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
-
-              // Formulario para agregar stock
-              Text(
-                'Agregar Stock',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 16),
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _quantityController,
-                      enabled: !_saving,
-                      decoration: const InputDecoration(
-                        labelText: 'Cantidad a Agregar',
-                        hintText: '0.00',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.add),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9,\.]')),
-                      ],
-                      onFieldSubmitted: (_) {
-                        // Si presiona Enter en el campo cantidad, enfocar nota
-                        FocusScope.of(context).nextFocus();
-                      },
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Ingrese una cantidad';
-                        }
-                        final qty = _tryParseQuantity(value);
-                        if (qty == null || qty <= 0) {
-                          return 'La cantidad debe ser mayor que 0';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _noteController,
-                      enabled: !_saving,
-                      decoration: const InputDecoration(
-                        labelText: 'Nota (Opcional)',
-                        hintText: 'Ej: Compra a proveedor X',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.notes),
-                      ),
-                      onFieldSubmitted: (_) {
-                        // Si presiona Enter/Tab en nota, guardar directamente
-                        if (!_saving) {
-                          _addStock();
-                        }
-                      },
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _saving ? null : _addStock,
-                        child: _saving
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Agregar Stock'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // Historial de movimientos
-              Text(
-                'Historial de Movimientos',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
               const SizedBox(height: 12),
-              if (_movements.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24.0),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.history, size: 48, color: Colors.grey[300]),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Sin movimientos registrados',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: Colors.grey[600]),
-                        ),
-                      ],
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Historial',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                )
-              else
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _movements.length,
-                  separatorBuilder: (context, index) => const Divider(),
-                  itemBuilder: (context, index) {
-                    final detail = _movements[index];
-                    final movement = detail.movement;
-                    final dateFormat = DateFormat('dd/MM/yyyy HH:mm:ss');
-                    final dateStr = dateFormat.format(
-                      movement.createdAt.toLocal(),
-                    );
-                    final qtyFormat = NumberFormat.decimalPattern();
-                    String qtyLabel;
-                    if (movement.isAdjust) {
-                      qtyLabel = movement.quantity >= 0
-                          ? '+${qtyFormat.format(movement.quantity)}'
-                          : qtyFormat.format(movement.quantity);
-                    } else if (movement.isInput) {
-                      qtyLabel = '+${qtyFormat.format(movement.quantity)}';
-                    } else {
-                      qtyLabel = '-${qtyFormat.format(movement.quantity)}';
-                    }
+                    const SizedBox(height: 10),
+                    if (_movements.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: scheme.outlineVariant),
+                        ),
+                        child: Text(
+                          'Sin movimientos',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurface.withOpacity(0.68),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _movements.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final detail = _movements[index];
+                          final movement = detail.movement;
+                          final dateFormat = DateFormat('dd/MM/yyyy HH:mm:ss');
+                          final dateStr = dateFormat.format(
+                            movement.createdAt.toLocal(),
+                          );
+                          String qtyLabel;
+                          if (movement.isAdjust) {
+                            qtyLabel = movement.quantity >= 0
+                                ? '+${quantityFormat.format(movement.quantity)}'
+                                : quantityFormat.format(movement.quantity);
+                          } else if (movement.isInput) {
+                            qtyLabel =
+                                '+${quantityFormat.format(movement.quantity)}';
+                          } else {
+                            qtyLabel =
+                                '-${quantityFormat.format(movement.quantity)}';
+                          }
 
-                    final color = movement.isInput
-                        ? AppColors.success
-                        : movement.isOutput
-                        ? Colors.red
-                        : (movement.quantity >= 0
-                              ? Colors.orange
-                              : Colors.deepOrange);
+                          final color = movement.isInput
+                              ? AppColors.success
+                              : movement.isOutput
+                              ? scheme.error
+                              : (movement.quantity >= 0
+                                    ? Colors.orange
+                                    : Colors.deepOrange);
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          movement.isInput
-                                              ? Icons.add_circle
-                                              : movement.isOutput
-                                              ? Icons.remove_circle
-                                              : Icons.tune,
-                                          color: color,
-                                          size: 20,
-                                        ),
-                                        const SizedBox(width: 8),
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: scheme.outlineVariant),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.10),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    movement.isInput
+                                        ? Icons.add_circle_outline
+                                        : movement.isOutput
+                                        ? Icons.remove_circle_outline
+                                        : Icons.tune,
+                                    color: color,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        movement.type.label,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '$qtyLabel • $dateStr',
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: scheme.onSurface
+                                                  .withOpacity(0.68),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                      if (movement.note?.isNotEmpty ??
+                                          false) ...[
+                                        const SizedBox(height: 4),
                                         Text(
-                                          movement.type.label,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyMedium
+                                          movement.note!,
+                                          style: theme.textTheme.labelSmall
                                               ?.copyWith(
-                                                fontWeight: FontWeight.bold,
+                                                color: scheme.onSurface
+                                                    .withOpacity(0.68),
                                               ),
                                         ),
                                       ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Cantidad: $qtyLabel',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                    if (movement.note?.isNotEmpty ?? false) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Nota: ${movement.note}',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              fontStyle: FontStyle.italic,
-                                              color: Colors.grey[600],
-                                            ),
-                                      ),
                                     ],
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    dateStr,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(color: Colors.grey[600]),
+                                const SizedBox(width: 8),
+                                Text(
+                                  detail.userLabel,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurface.withOpacity(0.68),
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Por: ${detail.userLabel}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(color: Colors.grey[600]),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                  ],
                 ),
+              ),
             ],
           ),
         ),

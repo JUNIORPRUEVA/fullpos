@@ -1,0 +1,23 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="waveBlue" x1="0" y1="0" x2="1920" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B82F6" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#60A5FA" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#93C5FD" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="waveSlate" x1="0" y1="0" x2="1920" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CBD5E1" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#94A3B8" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#E2E8F0" stop-opacity="0.18"/>
+    </linearGradient>
+    <filter id="soften" x="-5%" y="-10%" width="110%" height="120%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <g filter="url(#soften)">
+    <path d="M-80 238C122 199 255 172 427 193C620 217 753 298 920 306C1107 316 1254 241 1428 218C1605 194 1760 212 2000 267" stroke="url(#waveBlue)" stroke-width="28" stroke-linecap="round"/>
+    <path d="M-120 391C83 350 207 329 392 352C574 374 731 451 915 456C1093 462 1244 399 1420 380C1607 360 1771 377 2025 440" stroke="url(#waveSlate)" stroke-width="32" stroke-linecap="round"/>
+    <path d="M-90 646C105 602 285 585 455 612C640 640 774 716 934 721C1125 727 1298 660 1467 636C1643 611 1797 628 2010 679" stroke="url(#waveBlue)" stroke-width="36" stroke-linecap="round"/>
+    <path d="M-60 840C137 808 300 791 490 811C664 830 806 879 957 881C1131 884 1284 843 1456 825C1635 806 1797 822 1980 857" stroke="url(#waveSlate)" stroke-width="24" stroke-linecap="round"/>
+  </g>
+</svg>

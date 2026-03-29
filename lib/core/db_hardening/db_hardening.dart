@@ -80,5 +80,7 @@ class DbHardening {
 
   bool _isClosedError(String message) =>
       message.contains('database_closed') ||
-      message.contains('database is closed');
+      message.contains('database is closed') ||
+      message.contains('database has already been closed') ||
+      message.contains('bad state: this database has already been closed');
 }

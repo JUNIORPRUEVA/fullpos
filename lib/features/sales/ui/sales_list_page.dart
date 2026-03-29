@@ -17,6 +17,8 @@ import '../../settings/data/printer_settings_repository.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../../../theme/app_colors.dart';
 import '../../../core/window/window_service.dart';
+import '../../facturacion_electronica/data/factura_electronica_repository.dart';
+import '../../facturacion_electronica/data/models/factura_electronica_model.dart';
 
 /// Página de lista de ventas realizadas (Historial completo)
 class SalesListPage extends StatefulWidget {
@@ -29,6 +31,8 @@ class SalesListPage extends StatefulWidget {
 class _SalesListPageState extends State<SalesListPage> {
   List<SaleModel> _sales = [];
   List<SaleModel> _filteredSales = [];
+  Map<int, FacturaElectronicaModel> _electronicInvoicesBySaleId =
+      <int, FacturaElectronicaModel>{};
   bool _loading = true;
 
   int? _selectedSaleId;
@@ -71,9 +75,13 @@ class _SalesListPageState extends State<SalesListPage> {
       final data = await DbHardening.instance.runDbSafe<List<SaleModel>>(
         () => SalesRepository.getAllSales(),
       );
+      final invoiceMap = await FacturaElectronicaRepository.getBySaleIds(
+        data.map((sale) => sale.id ?? -1),
+      );
 
       _safeSetState(() {
         _sales = data;
+        _electronicInvoicesBySaleId = invoiceMap;
         _loading = false;
         _applyFilters();
       });
@@ -197,6 +205,9 @@ class _SalesListPageState extends State<SalesListPage> {
 
   Future<void> _showSaleDetails(SaleModel sale) async {
     final items = await SalesRepository.getItemsBySaleId(sale.id!);
+    final electronicInvoice = sale.id == null
+        ? null
+        : _electronicInvoicesBySaleId[sale.id!];
 
     if (!mounted) return;
 
@@ -205,6 +216,7 @@ class _SalesListPageState extends State<SalesListPage> {
       builder: (context) => _SaleDetailDialog(
         sale: sale,
         items: items,
+        electronicInvoice: electronicInvoice,
         onReprint: () => _reprintTicket(sale, items),
         // En Historial de Ventas NO se permite anular/reembolsar.
         // Eso se gestiona únicamente desde la pantalla de Devoluciones.
@@ -839,6 +851,9 @@ class _SalesListPageState extends State<SalesListPage> {
     final isCancelled = sale.status == 'cancelled';
     final saleId = sale.id;
     final isHovered = saleId != null && _hoveredSaleIds.contains(saleId);
+    final electronicInvoice = saleId == null
+      ? null
+      : _electronicInvoicesBySaleId[saleId];
 
     final rowColor = isSelected ? AppColors.lightBlueHover : scheme.surface;
     final statusLabel = isCancelled ? 'ANULADA' : 'OK';
@@ -975,6 +990,33 @@ class _SalesListPageState extends State<SalesListPage> {
                       ),
                     ),
                   ),
+                  if (electronicInvoice != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _invoiceStatusColor(electronicInvoice)
+                            .withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: _invoiceStatusColor(
+                            electronicInvoice,
+                          ).withOpacity(0.24),
+                        ),
+                      ),
+                      child: Text(
+                        electronicInvoice.statusLabel,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: _invoiceStatusColor(electronicInvoice),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 6),
                   Icon(Icons.chevron_right, color: AppColors.textSecondary),
                 ],
@@ -1020,6 +1062,9 @@ class _SalesListPageState extends State<SalesListPage> {
 
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final isCancelled = sale.status == 'cancelled';
+    final electronicInvoice = sale.id == null
+      ? null
+      : _electronicInvoicesBySaleId[sale.id!];
 
     return Card(
       margin: EdgeInsets.zero,
@@ -1051,6 +1096,10 @@ class _SalesListPageState extends State<SalesListPage> {
               _detailRow('Fecha', DateFormat('dd/MM/yyyy HH:mm').format(date)),
               _detailRow('Método', _getPaymentMethodLabel(sale.paymentMethod)),
               _detailRow('Estado', isCancelled ? 'Anulada' : 'Completada'),
+              if (electronicInvoice != null)
+                _detailRow('DGII', electronicInvoice.statusLabel),
+              if ((electronicInvoice?.ecf ?? '').trim().isNotEmpty)
+                _detailRow('e-CF', electronicInvoice!.ecf!),
               const SizedBox(height: 10),
               _detailRow('Subtotal', '\$${sale.subtotal.toStringAsFixed(2)}'),
               if (sale.discountTotal > 0)
@@ -1164,18 +1213,35 @@ class _SalesListPageState extends State<SalesListPage> {
         return 'PAGO';
     }
   }
+
+  Color _invoiceStatusColor(FacturaElectronicaModel invoice) {
+    switch (invoice.estadoDgii) {
+      case FacturaElectronicaModel.statusAccepted:
+        return AppColors.success;
+      case FacturaElectronicaModel.statusRejected:
+        return AppColors.error;
+      case FacturaElectronicaModel.statusPending:
+        return AppColors.primaryBlue;
+      case FacturaElectronicaModel.statusConfigPending:
+        return AppColors.warning;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
 }
 
 /// Diálogo de detalle de venta
 class _SaleDetailDialog extends StatelessWidget {
   final SaleModel sale;
   final List<SaleItemModel> items;
+  final FacturaElectronicaModel? electronicInvoice;
   final VoidCallback onReprint;
   final VoidCallback? onCancel;
 
   const _SaleDetailDialog({
     required this.sale,
     required this.items,
+    required this.electronicInvoice,
     required this.onReprint,
     this.onCancel,
   });
@@ -1406,26 +1472,54 @@ class _SaleDetailDialog extends StatelessWidget {
                       ),
                     ),
 
-                    // NCF si existe
-                    if (sale.ncfFull != null) ...[
+                    if (electronicInvoice != null) ...[
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
+                          color: Colors.blueGrey.shade50,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber),
+                          border: Border.all(color: Colors.blueGrey.shade200),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.receipt, color: Colors.amber),
-                            const SizedBox(width: 8),
-                            Text(
-                              'NCF: ${sale.ncfFull}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.cloud_done_outlined,
+                                  color: Colors.blueGrey,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Estado DGII: ${electronicInvoice!.statusLabel}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
+                            if ((electronicInvoice!.ecf ?? '').trim().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'e-CF: ${electronicInvoice!.ecf}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            if ((electronicInvoice!.mensajeDgii ?? '').trim().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  electronicInvoice!.mensajeDgii!,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blueGrey.shade700,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),

@@ -89,6 +89,9 @@ class ProductSyncService {
     }
   }
 
+  @visibleForTesting
+  bool get hasSessionListener => _sessionSub != null;
+
   void stop({bool preserveAutoStart = true}) {
     if (!preserveAutoStart) {
       _autoStartRequested = false;
@@ -156,8 +159,9 @@ class ProductSyncService {
           );
 
           try {
-            final payload = jsonDecode(item['payload_json'] as String)
-                as Map<String, dynamic>;
+            final payload =
+                jsonDecode(item['payload_json'] as String)
+                    as Map<String, dynamic>;
             final response = await _pushOperation(payload);
             await _runWithDbRecovery(
               () => _applyServerProduct(
@@ -243,7 +247,9 @@ class ProductSyncService {
       throw StateError('Cloud company not configured');
     }
 
-    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(settings);
+    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
+      settings,
+    );
     final headers = <String, String>{'Content-Type': 'application/json'};
     final cloudKey = settings.cloudApiKey?.trim();
     if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -330,7 +336,9 @@ class ProductSyncService {
   ProductModel _serverProductFromJson(Map<String, dynamic> json) {
     final updatedAt = DateTime.parse(json['updatedAt'] as String);
     final deletedAtRaw = json['deletedAt'] as String?;
-    final deletedAt = deletedAtRaw == null ? null : DateTime.parse(deletedAtRaw);
+    final deletedAt = deletedAtRaw == null
+        ? null
+        : DateTime.parse(deletedAtRaw);
     return ProductModel(
       id: 0,
       businessId: json['businessId']?.toString(),
@@ -376,7 +384,9 @@ class ProductSyncService {
       final localId = localRows.isEmpty
           ? null
           : (localRows.first['id'] as int?);
-      final local = localRows.isEmpty ? null : ProductModel.fromMap(localRows.first);
+      final local = localRows.isEmpty
+          ? null
+          : ProductModel.fromMap(localRows.first);
 
       if (local != null &&
           local.needsSync &&
@@ -400,7 +410,8 @@ class ProductSyncService {
         'stock': serverProduct.stock,
         'is_active': serverProduct.isActive ? 1 : 0,
         'sync_status': markNeedsSync ? 'pending' : 'synced',
-        'local_updated_at_ms': local?.localUpdatedAtMs ?? serverProduct.localUpdatedAtMs,
+        'local_updated_at_ms':
+            local?.localUpdatedAtMs ?? serverProduct.localUpdatedAtMs,
         'server_updated_at_ms': serverProduct.serverUpdatedAtMs,
         'version': serverProduct.version,
         'last_modified_by': serverProduct.lastModifiedBy,
@@ -408,19 +419,16 @@ class ProductSyncService {
         'needs_sync': markNeedsSync ? 1 : 0,
         'last_synced_at_ms': now,
         'deleted_at_ms': serverProduct.deletedAtMs,
-        'updated_at_ms': serverProduct.serverUpdatedAtMs ?? serverProduct.updatedAtMs,
+        'updated_at_ms':
+            serverProduct.serverUpdatedAtMs ?? serverProduct.updatedAtMs,
       };
 
       if (localId == null) {
-        await txn.insert(
-          DbTables.products,
-          {
-            ...serverProduct.toMap(),
-            ...values,
-            'created_at_ms': serverProduct.createdAtMs,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await txn.insert(DbTables.products, {
+          ...serverProduct.toMap(),
+          ...values,
+          'created_at_ms': serverProduct.createdAtMs,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
       } else {
         await txn.update(
           DbTables.products,
@@ -430,7 +438,8 @@ class ProductSyncService {
         );
       }
 
-      final resolvedId = localId ??
+      final resolvedId =
+          localId ??
           Sqflite.firstIntValue(
             await txn.rawQuery(
               'SELECT id FROM ${DbTables.products} WHERE server_id = ? OR code = ? ORDER BY id DESC LIMIT 1',
@@ -471,10 +480,7 @@ class ProductSyncService {
     final db = await DatabaseManager.instance.database;
     await db.update(
       DbTables.products,
-      {
-        'sync_status': 'conflict',
-        'last_sync_error': message,
-      },
+      {'sync_status': 'conflict', 'last_sync_error': message},
       where: 'server_id = ? OR code = ?',
       whereArgs: [serverProduct.serverId, serverProduct.code],
     );
@@ -501,7 +507,9 @@ class ProductSyncService {
       return;
     }
 
-    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(settings);
+    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
+      settings,
+    );
     final options = io.OptionBuilder()
         .setTransports(['websocket'])
         .disableAutoConnect()

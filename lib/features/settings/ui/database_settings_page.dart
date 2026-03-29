@@ -193,30 +193,33 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Base de datos'),
-        backgroundColor: scheme.surfaceVariant,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator.adaptive())
-          : RefreshIndicator(
-              onRefresh: _refresh,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 16,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      color: scheme.surface,
-                      elevation: 3,
-                      child: Padding(
+        appBar: AppBar(title: const Text('Base de datos')),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator.adaptive())
+            : RefreshIndicator(
+                onRefresh: _refresh,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SettingsLayout.pageFrame(
+                      constraints,
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SettingsLayout.sectionHeading(
+                              context,
+                              title: 'Estado de la base de datos',
+                              subtitle:
+                                  'Consulta el estado local y ejecuta acciones administrativas.',
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: scheme.surface.withOpacity(0.72),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -250,10 +253,10 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
                             ],
                           ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
                       children: [
                         Expanded(
                           child: FilledButton.icon(
@@ -276,13 +279,13 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      color: scheme.surfaceVariant,
-                      child: Padding(
+                            const SizedBox(height: 18),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: scheme.surfaceVariant.withOpacity(0.45),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,12 +328,15 @@ class _DatabaseSettingsPageState extends State<DatabaseSettingsPage> {
                               ),
                           ],
                         ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
-            ),
             ),
     );
   }

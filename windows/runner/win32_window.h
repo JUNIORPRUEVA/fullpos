@@ -71,6 +71,10 @@ class Win32Window {
   // Called when Destroy is called.
   virtual void OnDestroy();
 
+  // Called when the system requests the window to close.
+  // Return true to continue with the default Win32 close behavior.
+  virtual bool OnCloseRequested();
+
  private:
   friend class WindowClassRegistrar;
 

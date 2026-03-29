@@ -2,13 +2,34 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Prepare FULLPOS Windows Hot Reload",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Get-Process fullpos -ErrorAction SilentlyContinue | Stop-Process -Force; exit 0"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		},
+		{
 			"label": "Run FULLPOS Debug Windows",
 			"type": "shell",
-			"command": "cmd.exe",
+			"command": "flutter",
 			"args": [
-				"/c",
-				"cd /d C:\\Users\\PC\\Desktop\\FULLPOS_PROYECTO\\FULLPOS && flutter run -d windows --debug"
+				"run",
+				"-d",
+				"windows",
+				"--debug"
 			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
 			"isBackground": false
 		},
 		{
@@ -21,6 +42,9 @@
 				"windows",
 				"--debug"
 			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
 			"isBackground": false
 		}
 	]

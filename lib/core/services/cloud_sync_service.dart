@@ -1170,9 +1170,9 @@ class CloudSyncService {
           'paymentMethod': sale.paymentMethod,
           'paidAmount': sale.paidAmount,
           'changeAmount': sale.changeAmount,
-          'fiscalEnabled': sale.fiscalEnabled == 1,
-          'ncfFull': sale.ncfFull,
-          'ncfType': sale.ncfType,
+          'electronicInvoiceEnabled': sale.electronicInvoiceEnabled == 1,
+          'electronicInvoiceCode': sale.electronicInvoiceCode,
+          'electronicDocumentType': sale.electronicDocumentType,
           'sessionLocalId': sale.sessionId,
           'createdAt': DateTime.fromMillisecondsSinceEpoch(
             sale.createdAtMs,

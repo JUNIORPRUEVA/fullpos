@@ -27,9 +27,9 @@ class SaleModel {
   final int? creditDueDateMs;
   final int? creditInstallments;
   final String? creditNote;
-  final bool fiscalEnabled;
-  final String? ncfFull;
-  final String? ncfType;
+  final bool electronicInvoiceEnabled;
+  final String? electronicInvoiceCode;
+  final String? electronicDocumentType;
   final int? sessionId;
   final int createdAtMs;
   final int updatedAtMs;
@@ -64,9 +64,9 @@ class SaleModel {
     this.creditDueDateMs,
     this.creditInstallments,
     this.creditNote,
-    this.fiscalEnabled = false,
-    this.ncfFull,
-    this.ncfType,
+    this.electronicInvoiceEnabled = false,
+    this.electronicInvoiceCode,
+    this.electronicDocumentType,
     this.sessionId,
     required this.createdAtMs,
     required this.updatedAtMs,
@@ -172,9 +172,10 @@ class SaleModel {
       creditDueDateMs: map['credit_due_date_ms'] as int?,
       creditInstallments: map['credit_installments'] as int?,
       creditNote: map['credit_note'] as String?,
-      fiscalEnabled: (map['fiscal_enabled'] as int) == 1,
-      ncfFull: map['ncf_full'] as String?,
-      ncfType: map['ncf_type'] as String?,
+        electronicInvoiceEnabled:
+          (map['electronic_invoice_enabled'] as int) == 1,
+        electronicInvoiceCode: map['electronic_invoice_code'] as String?,
+        electronicDocumentType: map['electronic_document_type'] as String?,
       sessionId: map['session_id'] as int?,
       createdAtMs: map['created_at_ms'] as int,
       updatedAtMs: map['updated_at_ms'] as int,
@@ -209,9 +210,9 @@ class SaleModel {
       'credit_due_date_ms': creditDueDateMs,
       'credit_installments': creditInstallments,
       'credit_note': creditNote,
-      'fiscal_enabled': fiscalEnabled ? 1 : 0,
-      'ncf_full': ncfFull,
-      'ncf_type': ncfType,
+      'electronic_invoice_enabled': electronicInvoiceEnabled ? 1 : 0,
+      'electronic_invoice_code': electronicInvoiceCode,
+      'electronic_document_type': electronicDocumentType,
       'session_id': sessionId,
       'created_at_ms': createdAtMs,
       'updated_at_ms': updatedAtMs,
@@ -245,9 +246,9 @@ class SaleModel {
     int? creditDueDateMs,
     int? creditInstallments,
     String? creditNote,
-    bool? fiscalEnabled,
-    String? ncfFull,
-    String? ncfType,
+    bool? electronicInvoiceEnabled,
+    String? electronicInvoiceCode,
+    String? electronicDocumentType,
     int? sessionId,
     int? createdAtMs,
     int? updatedAtMs,
@@ -282,9 +283,12 @@ class SaleModel {
       creditDueDateMs: creditDueDateMs ?? this.creditDueDateMs,
       creditInstallments: creditInstallments ?? this.creditInstallments,
       creditNote: creditNote ?? this.creditNote,
-      fiscalEnabled: fiscalEnabled ?? this.fiscalEnabled,
-      ncfFull: ncfFull ?? this.ncfFull,
-      ncfType: ncfType ?? this.ncfType,
+        electronicInvoiceEnabled:
+          electronicInvoiceEnabled ?? this.electronicInvoiceEnabled,
+        electronicInvoiceCode:
+          electronicInvoiceCode ?? this.electronicInvoiceCode,
+        electronicDocumentType:
+          electronicDocumentType ?? this.electronicDocumentType,
       sessionId: sessionId ?? this.sessionId,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,

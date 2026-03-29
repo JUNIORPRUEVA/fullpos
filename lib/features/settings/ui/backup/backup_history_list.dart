@@ -33,7 +33,7 @@ class BackupHistoryList extends StatelessWidget {
       shrinkWrap: shrinkWrap,
       physics: physics,
       itemCount: history.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final entry = history[index];
         final created = DateTime.fromMillisecondsSinceEpoch(
@@ -55,87 +55,84 @@ class BackupHistoryList extends StatelessWidget {
             (entry.status == BackupStatus.failed ||
                 entry.status == BackupStatus.pendingUpload);
 
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      entry.mode == BackupMode.cloud
-                          ? Icons.cloud
-                          : Icons.archive,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        fileName,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    entry.mode == BackupMode.cloud ? Icons.cloud : Icons.archive,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      fileName,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    Text(
-                      _statusLabel(entry.status),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.labelMedium?.copyWith(color: statusColor),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
+                  ),
+                  Text(
+                    _statusLabel(entry.status),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelMedium?.copyWith(color: statusColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Fecha: $created',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (sizeKb != null)
                 Text(
-                  'Fecha: $created',
+                  'Tamaño: ${sizeKb}KB',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                if (sizeKb != null)
-                  Text(
-                    'Tamaño: ${sizeKb}KB',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (entry.notes != null)
-                  Text(
-                    'Notas: ${entry.notes}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                if (entry.errorMessage != null)
-                  Text(
-                    _errorLabel(entry.errorMessage!),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: _isPendingError(entry.errorMessage!)
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    if (entry.cloudBackupId != null)
-                      OutlinedButton.icon(
-                        onPressed: () => onRestoreCloud(entry),
-                        icon: const Icon(Icons.cloud_download),
-                        label: const Text('Restaurar nube'),
-                      ),
-                    if (canRetryCloud)
-                      FilledButton.icon(
-                        onPressed: () => onRetryCloudUpload(entry),
-                        icon: const Icon(Icons.cloud_upload),
-                        label: const Text('Reintentar nube'),
-                      ),
-                    if (hasLocal)
-                      OutlinedButton.icon(
-                        onPressed: () => onRestoreLocal(entry),
-                        icon: const Icon(Icons.restore),
-                        label: const Text('Restaurar local'),
-                      ),
-                  ],
+              if (entry.notes != null)
+                Text(
+                  'Notas: ${entry.notes}',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
-              ],
-            ),
+              if (entry.errorMessage != null)
+                Text(
+                  _errorLabel(entry.errorMessage!),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: _isPendingError(entry.errorMessage!)
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (entry.cloudBackupId != null)
+                    OutlinedButton.icon(
+                      onPressed: () => onRestoreCloud(entry),
+                      icon: const Icon(Icons.cloud_download),
+                      label: const Text('Restaurar nube'),
+                    ),
+                  if (canRetryCloud)
+                    FilledButton.icon(
+                      onPressed: () => onRetryCloudUpload(entry),
+                      icon: const Icon(Icons.cloud_upload),
+                      label: const Text('Reintentar nube'),
+                    ),
+                  if (hasLocal)
+                    OutlinedButton.icon(
+                      onPressed: () => onRestoreLocal(entry),
+                      icon: const Icon(Icons.restore),
+                      label: const Text('Restaurar local'),
+                    ),
+                ],
+              ),
+            ],
           ),
         );
       },

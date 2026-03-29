@@ -84,6 +84,7 @@ class _ClientsPageState extends State<ClientsPage> {
   List<ClientModel> _clients = [];
   ClientModel? _selectedClient;
   int? _selectedClientId;
+  bool _showDetailsPanel = false;
   bool _isLoading = false;
 
   DateTime? _statsFromDate;
@@ -133,18 +134,26 @@ class _ClientsPageState extends State<ClientsPage> {
           if (clients.isEmpty) {
             _selectedClient = null;
             _selectedClientId = null;
+            _showDetailsPanel = false;
           } else {
             final currentId = _selectedClientId;
-            if (currentId == null) {
-              _selectedClient = clients.first;
-              _selectedClientId = clients.first.id;
-            } else {
+            if (currentId != null) {
               final match = clients.firstWhere(
                 (c) => c.id == currentId,
                 orElse: () => clients.first,
               );
               _selectedClient = match;
               _selectedClientId = match.id;
+            } else if (_selectedClient != null) {
+              final fallback = clients.firstWhere(
+                (c) => c.id == _selectedClient?.id,
+                orElse: () => clients.first,
+              );
+              _selectedClient = fallback;
+              _selectedClientId = fallback.id;
+            } else {
+              _selectedClient = null;
+              _selectedClientId = null;
             }
           }
           _isLoading = false;
@@ -201,9 +210,11 @@ class _ClientsPageState extends State<ClientsPage> {
               creditDueDateMs: rawSale.creditDueDateMs,
               creditInstallments: rawSale.creditInstallments,
               creditNote: rawSale.creditNote,
-              fiscalEnabled: rawSale.fiscalEnabled ? 1 : 0,
-              ncfFull: rawSale.ncfFull,
-              ncfType: rawSale.ncfType,
+              electronicInvoiceEnabled: rawSale.electronicInvoiceEnabled
+                  ? 1
+                  : 0,
+              electronicInvoiceCode: rawSale.electronicInvoiceCode,
+              electronicDocumentType: rawSale.electronicDocumentType,
               sessionId: rawSale.sessionId,
               createdAtMs: rawSale.createdAtMs,
               updatedAtMs: rawSale.updatedAtMs,
@@ -248,23 +259,24 @@ class _ClientsPageState extends State<ClientsPage> {
     final mutedText = scheme.onSurface.withOpacity(0.7);
 
     return Container(
-      padding: const EdgeInsets.all(AppSizes.paddingM),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusM),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               color: scheme.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(AppSizes.radiusM),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: scheme.primary, size: 18),
+            child: Icon(icon, color: scheme.primary, size: 16),
           ),
-          const SizedBox(width: AppSizes.spaceM),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,18 +284,18 @@ class _ClientsPageState extends State<ClientsPage> {
               children: [
                 Text(
                   label,
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: mutedText,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   value,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
                     color: scheme.onSurface,
                   ),
                   maxLines: 1,
@@ -297,6 +309,21 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 
+  String _paymentMethodLabel(String? method) {
+    switch (method) {
+      case 'cash':
+        return 'Efectivo';
+      case 'card':
+        return 'Tarjeta';
+      case 'transfer':
+        return 'Transferencia';
+      case 'mixed':
+        return 'Mixto';
+      default:
+        return method ?? 'N/A';
+    }
+  }
+
   Widget _buildAnalyticsPanel() {
     final dateFormat = DateFormat('dd/MM/yyyy');
     final money = NumberFormat.currency(symbol: 'RD\$ ', decimalDigits: 2);
@@ -306,22 +333,22 @@ class _ClientsPageState extends State<ClientsPage> {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusL),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingL),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Resumen de Clientes',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: scheme.primary,
+              'Resumen',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
               ),
             ),
-            const SizedBox(height: AppSizes.spaceM),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -363,7 +390,7 @@ class _ClientsPageState extends State<ClientsPage> {
                 label: const Text('Limpiar fechas'),
               ),
             ],
-            const SizedBox(height: AppSizes.spaceL),
+            const SizedBox(height: 10),
             FutureBuilder<Map<String, dynamic>>(
               future: _statsFuture,
               builder: (context, snapshot) {
@@ -391,24 +418,30 @@ class _ClientsPageState extends State<ClientsPage> {
                 final totalPurchased =
                     (data['totalPurchased'] as num?)?.toDouble() ?? 0.0;
 
-                return Column(
+                return Row(
                   children: [
-                    _buildKpiTile(
-                      icon: Icons.people,
-                      label: 'Clientes registrados',
-                      value: loading ? '...' : clientsTotal.toString(),
+                    Expanded(
+                      child: _buildKpiTile(
+                        icon: Icons.people,
+                        label: 'Clientes',
+                        value: loading ? '...' : clientsTotal.toString(),
+                      ),
                     ),
-                    const SizedBox(height: AppSizes.spaceM),
-                    _buildKpiTile(
-                      icon: Icons.receipt_long,
-                      label: 'Visitas (tickets)',
-                      value: loading ? '...' : visitsCount.toString(),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildKpiTile(
+                        icon: Icons.receipt_long,
+                        label: 'Visitas',
+                        value: loading ? '...' : visitsCount.toString(),
+                      ),
                     ),
-                    const SizedBox(height: AppSizes.spaceM),
-                    _buildKpiTile(
-                      icon: Icons.payments,
-                      label: 'Total comprado',
-                      value: loading ? '...' : money.format(totalPurchased),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildKpiTile(
+                        icon: Icons.payments,
+                        label: 'Comprado',
+                        value: loading ? '...' : money.format(totalPurchased),
+                      ),
                     ),
                   ],
                 );
@@ -658,7 +691,10 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 
-  Widget _buildClientsTopHeaderLine({required double minWidth}) {
+  Widget _buildClientsTopHeaderLine({
+    required double minWidth,
+    required bool isWide,
+  }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -666,69 +702,57 @@ class _ClientsPageState extends State<ClientsPage> {
     final activeCount = _clients.where((c) => c.isActive).length;
     final creditCount = _clients.where((c) => c.hasCredit).length;
 
-    final summary = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Text(
-              'Clientes: $total',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface,
-              ),
-            ),
+    Widget summaryBadge({
+      required String label,
+      required String value,
+      required Color borderColor,
+      Color? backgroundColor,
+      Color? textColor,
+    }) {
+      return Expanded(
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: backgroundColor ?? scheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: scheme.tertiary.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.tertiary.withOpacity(0.28)),
-            ),
-            child: Text(
-              'Activos: $activeCount',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: textColor ?? scheme.onSurface.withOpacity(0.72),
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.primary.withOpacity(0.26)),
-            ),
-            child: Text(
-              'Crédito: $creditCount',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: scheme.primary,
+              const SizedBox(width: 6),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: textColor ?? scheme.onSurface,
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    }
 
     final searchField = SizedBox(
-      width: 320,
-      height: 42,
+      height: 48,
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: 'Buscar (nombre, teléfono, RNC, cédula...)',
+          hintText: 'Buscar cliente por nombre, teléfono o RNC...',
           prefixIcon: const Icon(Icons.search, size: 18),
           isDense: true,
           filled: true,
@@ -769,86 +793,183 @@ class _ClientsPageState extends State<ClientsPage> {
       ),
     );
 
-    return Container(
-      width: double.infinity,
-      color: scheme.surfaceVariant.withOpacity(0.22),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    final selectedName = _selectedClient?.nombre;
+
+    Widget panelButton() {
+      return SizedBox(
+        height: 48,
+        child: OutlinedButton.icon(
+          onPressed: isWide && _selectedClient != null
+              ? () {
+                  setState(() {
+                    _showDetailsPanel = !_showDetailsPanel;
+                  });
+                }
+              : null,
+          icon: Icon(
+            _showDetailsPanel
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            size: 18,
+          ),
+          label: Text(_showDetailsPanel ? 'Ocultar ficha' : 'Abrir ficha'),
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget selectedBadge() {
+      return Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
+          color: scheme.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: scheme.primary.withOpacity(0.20)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_outline, size: 16, color: scheme.primary),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(
+                selectedName ?? 'Sin selección',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: selectedName != null
+                      ? scheme.primary
+                      : scheme.onSurface.withOpacity(0.62),
+                ),
+              ),
             ),
           ],
         ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: minWidth),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: LayoutBuilder(
+          builder: (context, headerConstraints) {
+            final stacked = headerConstraints.maxWidth < 1080;
+            final searchRow = Row(
               children: [
-                Icon(Icons.people, size: 22, color: scheme.primary),
+                Expanded(child: searchField),
+                if (!stacked && isWide) ...[
+                  const SizedBox(width: 10),
+                  selectedBadge(),
+                ],
                 const SizedBox(width: 10),
-                Text(
-                  'Clientes',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(width: 12),
-                searchField,
-                const SizedBox(width: 12),
-                summary,
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _showFiltersDialog,
-                  icon: const Icon(Icons.filter_list, size: 18),
-                  label: const Text('Filtros'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 42),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _showFiltersDialog,
+                    icon: const Icon(Icons.filter_list, size: 18),
+                    label: const Text('Filtros'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _exportClientsToExcel,
-                  icon: const Icon(Icons.download, size: 18),
-                  label: const Text('Exportar'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 42),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                if (isWide) ...[const SizedBox(width: 8), panelButton()],
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _exportClientsToExcel,
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Exportar'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  onPressed: () => _showClientDialog(),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Nuevo cliente'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E3A8A),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(0, 42),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showClientDialog(),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Nuevo'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A8A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
               ],
-            ),
-          ),
+            );
+
+            final summaryRow = Row(
+              children: [
+                summaryBadge(
+                  label: 'Clientes',
+                  value: '$total',
+                  borderColor: scheme.outlineVariant,
+                ),
+                const SizedBox(width: 8),
+                summaryBadge(
+                  label: 'Activos',
+                  value: '$activeCount',
+                  borderColor: scheme.tertiary.withOpacity(0.28),
+                  backgroundColor: scheme.tertiary.withOpacity(0.10),
+                ),
+                const SizedBox(width: 8),
+                summaryBadge(
+                  label: 'Crédito',
+                  value: '$creditCount',
+                  borderColor: scheme.primary.withOpacity(0.26),
+                  backgroundColor: scheme.primary.withOpacity(0.10),
+                  textColor: scheme.primary,
+                ),
+              ],
+            );
+
+            if (stacked) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isWide) ...[
+                    SizedBox(width: double.infinity, child: selectedBadge()),
+                    const SizedBox(height: 10),
+                  ],
+                  searchRow,
+                  const SizedBox(height: 10),
+                  summaryRow,
+                ],
+              );
+            }
+
+            return ConstrainedBox(
+              constraints: BoxConstraints(minWidth: minWidth),
+              child: Column(
+                children: [searchRow, const SizedBox(height: 10), summaryRow],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -859,10 +980,20 @@ class _ClientsPageState extends State<ClientsPage> {
     setState(() {
       _selectedClient = client;
       _selectedClientId = client.id;
+      if (showDetails) {
+        _showDetailsPanel = true;
+      }
     });
-    if (showDetails) {
+    if (!showDetails) {
       _showClientDetails(client);
     }
+  }
+
+  void _hideDetailsPanel() {
+    if (!mounted) return;
+    setState(() {
+      _showDetailsPanel = false;
+    });
   }
 
   Widget _buildClientsListHeader() {
@@ -888,9 +1019,8 @@ class _ClientsPageState extends State<ClientsPage> {
       padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingM),
       height: 34,
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        border: Border.all(color: scheme.outlineVariant),
+        color: scheme.surface,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Row(
         children: [
@@ -922,36 +1052,7 @@ class _ClientsPageState extends State<ClientsPage> {
     final dateLabel = DateFormat('dd/MM/yy HH:mm');
 
     if (client == null) {
-      return Container(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Detalle de cliente',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Selecciona un cliente para ver sus detalles.',
-              style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            ),
-          ],
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     final createdAt = DateTime.fromMillisecondsSinceEpoch(client.createdAtMs);
@@ -961,13 +1062,19 @@ class _ClientsPageState extends State<ClientsPage> {
         : '?';
     final activeColor = client.isActive ? scheme.tertiary : scheme.outline;
     final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
-    final phone = (client.telefono?.isNotEmpty == true) ? client.telefono! : '-';
+    final phone = (client.telefono?.isNotEmpty == true)
+        ? client.telefono!
+        : '-';
     final rnc = (client.rnc?.isNotEmpty == true) ? client.rnc! : '-';
     final cedula = (client.cedula?.isNotEmpty == true) ? client.cedula! : '-';
-    final direccion = (client.direccion?.isNotEmpty == true) ? client.direccion! : '-';
+    final direccion = (client.direccion?.isNotEmpty == true)
+        ? client.direccion!
+        : '-';
 
     Future<Map<String, dynamic>> loadPurchasesData() async {
-      final summary = await SalesRepository.getCustomerPurchaseSummary(client.id!);
+      final summary = await SalesRepository.getCustomerPurchaseSummary(
+        client.id!,
+      );
       final rawPurchases = await SalesRepository.listCustomerPurchases(
         client.id!,
         limit: 15,
@@ -983,52 +1090,73 @@ class _ClientsPageState extends State<ClientsPage> {
       };
     }
 
-    Widget chip(String text, Color color, {IconData? icon}) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withOpacity(0.35)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 14, color: scheme.onSurface),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              text,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface,
-                letterSpacing: 0.2,
+    Widget badge(String label, String value, Color color, {IconData? icon}) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withOpacity(0.28)),
+          ),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: muted,
+                  ),
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+              const SizedBox(width: 6),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    Widget infoCard(String label, String value) {
+    Widget infoCard(String label, String value, {IconData? icon}) {
       return Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: scheme.surfaceVariant.withOpacity(0.28),
-          borderRadius: BorderRadius.circular(12),
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: scheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: muted,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: scheme.primary),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -1036,7 +1164,7 @@ class _ClientsPageState extends State<ClientsPage> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -1044,298 +1172,406 @@ class _ClientsPageState extends State<ClientsPage> {
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(24),
-      child: SingleChildScrollView(
+    Widget miniStat({
+      required String label,
+      required String value,
+      required IconData icon,
+    }) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: scheme.primary.withOpacity(0.12),
-                  foregroundColor: scheme.primary,
-                  child: Text(
-                    initials,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
+                Icon(icon, size: 16, color: scheme.primary),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    client.nombre,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                    ),
-                    maxLines: 2,
+                    label,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: muted,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Editar cliente',
-                  onPressed: () => _showClientDialog(client),
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                chip(client.isActive ? 'Activo' : 'Inactivo', activeColor),
-                chip(
-                  client.hasCredit ? 'Crédito' : 'Sin crédito',
-                  creditColor,
-                  icon: client.hasCredit ? Icons.credit_card : Icons.block,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.2,
-              children: [
-                infoCard('Teléfono', phone),
-                infoCard('RNC', rnc),
-                infoCard('Cédula', cedula),
-                infoCard('Creado', createdLabel),
-              ],
-            ),
-            const SizedBox(height: 10),
-            infoCard('Dirección', direccion),
-            const SizedBox(height: 14),
-            FutureBuilder<Map<String, dynamic>>(
-              future: loadPurchasesData(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                if (snapshot.hasError) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.error.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: scheme.error.withOpacity(0.28)),
-                    ),
-                    child: Text(
-                      'No se pudo cargar compras del cliente.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  );
-                }
-
-                final data = snapshot.data ?? const <String, dynamic>{};
-                final summary =
-                    (data['summary'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
-                final purchases = _normalizeSalesList(
-                  (data['purchases'] as List?) ?? const <dynamic>[],
-                );
-                final creditAmount = (data['creditAmount'] as num?)?.toDouble() ?? 0.0;
-                final purchasesCount = (summary['count'] as int?) ?? 0;
-                final totalPurchased = (summary['total'] as num?)?.toDouble() ?? 0.0;
-                final lastAtMs = (summary['lastAtMs'] as int?) ?? 0;
-                final hasLastDate = lastAtMs > 0;
-
-                Widget miniStat({
-                  required String label,
-                  required String value,
-                  required IconData icon,
-                }) {
-                  return Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceVariant.withOpacity(0.28),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: scheme.primary.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(icon, size: 16, color: scheme.primary),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                label,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: muted,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                value,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Resumen comercial',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: scheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    miniStat(
-                      label: 'Cantidad de ventas',
-                      value: purchasesCount.toString(),
-                      icon: Icons.receipt_long,
-                    ),
-                    const SizedBox(height: 8),
-                    miniStat(
-                      label: 'Total comprado',
-                      value: money.format(totalPurchased),
-                      icon: Icons.payments,
-                    ),
-                    const SizedBox(height: 8),
-                    miniStat(
-                      label: 'Monto en ventas a crédito',
-                      value: money.format(creditAmount),
-                      icon: Icons.credit_card,
-                    ),
-                    const SizedBox(height: 8),
-                    miniStat(
-                      label: 'Última compra',
-                      value: hasLastDate
-                          ? dateLabel.format(
-                              DateTime.fromMillisecondsSinceEpoch(lastAtMs),
-                            )
-                          : '-',
-                      icon: Icons.schedule,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Facturas compradas',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (purchases.isEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceVariant.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Este cliente no tiene facturas registradas.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )
-                    else
-                      ...purchases.take(8).map((sale) {
-                        final saleDate = DateTime.fromMillisecondsSinceEpoch(
-                          sale.createdAtMs,
-                        );
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceVariant.withOpacity(0.18),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: scheme.outlineVariant),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      sale.localCode,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      dateLabel.format(saleDate),
-                                      style: theme.textTheme.labelSmall?.copyWith(
-                                        color: muted,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                money.format(sale.total),
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: scheme.primary,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                  ],
-                );
-              },
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ],
         ),
+      );
+    }
+
+    Widget buildActivityPanel(Map<String, dynamic> data) {
+      final summary =
+          (data['summary'] as Map<String, dynamic>?) ??
+          const <String, dynamic>{};
+      final purchases = _normalizeSalesList(
+        (data['purchases'] as List?) ?? const <dynamic>[],
+      );
+      final creditAmount = (data['creditAmount'] as num?)?.toDouble() ?? 0.0;
+      final purchasesCount = (summary['count'] as int?) ?? 0;
+      final totalPurchased = (summary['total'] as num?)?.toDouble() ?? 0.0;
+      final lastAtMs = (summary['lastAtMs'] as int?) ?? 0;
+      final hasLastDate = lastAtMs > 0;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Actividad',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: miniStat(
+                  label: 'Ventas',
+                  value: purchasesCount.toString(),
+                  icon: Icons.receipt_long,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: miniStat(
+                  label: 'Comprado',
+                  value: money.format(totalPurchased),
+                  icon: Icons.payments,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: miniStat(
+                  label: 'Crédito',
+                  value: money.format(creditAmount),
+                  icon: Icons.credit_card,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              badge(
+                'Total comprado',
+                money.format(totalPurchased),
+                scheme.primary,
+              ),
+              const SizedBox(width: 8),
+              badge(
+                'Última actividad',
+                hasLastDate
+                    ? dateLabel.format(
+                        DateTime.fromMillisecondsSinceEpoch(lastAtMs),
+                      )
+                    : '-',
+                scheme.tertiary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (purchases.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: Text(
+                'Sin historial',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            ...purchases.take(8).map((sale) {
+              final saleDate = DateTime.fromMillisecondsSinceEpoch(
+                sale.createdAtMs,
+              );
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.receipt_long_outlined,
+                        size: 18,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            sale.localCode,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${dateLabel.format(saleDate)} • ${_paymentMethodLabel(sale.paymentMethod)}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: muted,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      money.format(sale.total),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ficha operativa',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Detalle activo del cliente seleccionado.',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Ocultar ficha',
+                onPressed: _hideDetailsPanel,
+                icon: const Icon(Icons.close, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: scheme.primary.withOpacity(0.18),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: scheme.primary.withOpacity(0.12),
+                              foregroundColor: scheme.primary,
+                              child: Text(
+                                initials,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Cliente activo',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: muted,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    client.nombre,
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Editar cliente',
+                              onPressed: () => _showClientDialog(client),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            badge(
+                              'Estado',
+                              client.isActive ? 'Activo' : 'Inactivo',
+                              activeColor,
+                            ),
+                            const SizedBox(width: 8),
+                            badge(
+                              'Crédito',
+                              client.hasCredit ? 'Sí' : 'No',
+                              creditColor,
+                              icon: client.hasCredit
+                                  ? Icons.credit_card
+                                  : Icons.block,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.45,
+                    children: [
+                      infoCard('Teléfono', phone, icon: Icons.phone_outlined),
+                      infoCard('RNC', rnc, icon: Icons.business_outlined),
+                      infoCard('Cédula', cedula, icon: Icons.badge_outlined),
+                      infoCard(
+                        'Creado',
+                        createdLabel,
+                        icon: Icons.event_outlined,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  infoCard(
+                    'Dirección',
+                    direccion,
+                    icon: Icons.location_on_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: loadPurchasesData(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: scheme.error.withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: scheme.error.withOpacity(0.28),
+                            ),
+                          ),
+                          child: Text(
+                            'No se pudo cargar compras del cliente.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }
+
+                      return buildActivityPanel(
+                        snapshot.data ?? const <String, dynamic>{},
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1346,7 +1582,7 @@ class _ClientsPageState extends State<ClientsPage> {
     final side = ((constraints.maxWidth - contentWidth) / 2)
         .clamp(12.0, 40.0)
         .toDouble();
-    return EdgeInsets.fromLTRB(side, 16, side, 16);
+    return EdgeInsets.fromLTRB(side, 12, side, 24);
   }
 
   @override
@@ -1360,8 +1596,8 @@ class _ClientsPageState extends State<ClientsPage> {
         final padding = _contentPadding(constraints);
         final isWide = constraints.maxWidth >= 1200;
         final isNarrow = constraints.maxWidth < 980;
-        final detailWidth = (constraints.maxWidth * 0.28)
-            .clamp(320.0, 420.0)
+        final detailWidth = (constraints.maxWidth * 0.33)
+            .clamp(340.0, 460.0)
             .toDouble();
         final headerMinWidth = math
             .max(0.0, constraints.maxWidth - padding.left - padding.right)
@@ -1371,22 +1607,16 @@ class _ClientsPageState extends State<ClientsPage> {
           width: double.infinity,
           decoration: BoxDecoration(
             color: scheme.surface,
-            borderRadius: BorderRadius.circular(AppSizes.radiusL),
-            boxShadow: [
-              BoxShadow(
-                color: theme.shadowColor.withOpacity(0.06),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(AppSizes.paddingM),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
             child: Column(
               children: [
                 if (_clients.isNotEmpty) ...[
                   _buildClientsListHeader(),
-                  const SizedBox(height: AppSizes.spaceS),
+                  const SizedBox(height: 8),
                 ],
                 Expanded(
                   child: _isLoading
@@ -1422,8 +1652,11 @@ class _ClientsPageState extends State<ClientsPage> {
                             ],
                           ),
                         )
-                      : ListView.builder(
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                           itemCount: _clients.length,
+                          separatorBuilder: (context, index) =>
+                              Divider(height: 1, color: scheme.outlineVariant),
                           itemBuilder: (context, index) {
                             final client = _clients[index];
                             final isSelected = client.id != null
@@ -1433,7 +1666,7 @@ class _ClientsPageState extends State<ClientsPage> {
                               client: client,
                               isSelected: isSelected,
                               onViewDetails: () =>
-                                  _selectClient(client, showDetails: !isWide),
+                                  _selectClient(client, showDetails: isWide),
                               onEdit: () => _showClientDialog(client),
                               onToggleActive: () => _toggleActive(client),
                               onToggleCredit: () => _toggleCredit(client),
@@ -1452,7 +1685,10 @@ class _ClientsPageState extends State<ClientsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildClientsTopHeaderLine(minWidth: headerMinWidth),
+              _buildClientsTopHeaderLine(
+                minWidth: headerMinWidth,
+                isWide: isWide,
+              ),
               const SizedBox(height: AppSizes.spaceL),
               Expanded(
                 child: isWide
@@ -1460,13 +1696,17 @@ class _ClientsPageState extends State<ClientsPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(child: listCard),
-                          const SizedBox(width: AppSizes.spaceL),
-                          SizedBox(
-                            width: detailWidth,
-                            child: SizedBox.expand(
-                              child: _buildClientDetailsPanel(_selectedClient),
+                          if (_showDetailsPanel && _selectedClient != null) ...[
+                            const SizedBox(width: AppSizes.spaceL),
+                            SizedBox(
+                              width: detailWidth,
+                              child: SizedBox.expand(
+                                child: _buildClientDetailsPanel(
+                                  _selectedClient,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       )
                     : Column(

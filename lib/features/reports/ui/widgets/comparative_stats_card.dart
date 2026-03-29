@@ -28,7 +28,7 @@ class ComparativeStatsCard extends StatelessWidget {
           (yesterday['count'] as num).toInt(),
           Icons.today,
         ),
-        const Divider(height: 24),
+        const SizedBox(height: 10),
         _buildComparisonRow(
           context,
           'Esta semana',
@@ -39,7 +39,7 @@ class ComparativeStatsCard extends StatelessWidget {
           (lastWeek['count'] as num).toInt(),
           Icons.date_range,
         ),
-        const Divider(height: 24),
+        const SizedBox(height: 10),
         _buildComparisonRow(
           context,
           'Este mes',
@@ -76,117 +76,96 @@ class ComparativeStatsCard extends StatelessWidget {
     final isPositive = change >= 0;
     final changeColor = isPositive ? scheme.tertiary : scheme.error;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: scheme.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: scheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: scheme.primary, size: 22),
           ),
-          child: Icon(icon, color: scheme.primary, size: 22),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    currentLabel,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: scheme.onSurface,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      currentLabel,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: scheme.onSurface,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: changeColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isPositive ? Icons.trending_up : Icons.trending_down,
-                          size: 14,
-                          color: changeColor,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${isPositive ? '+' : ''}${change.toStringAsFixed(1)}%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: changeColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isPositive
+                                ? Icons.trending_up
+                                : Icons.trending_down,
+                            size: 14,
                             color: changeColor,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 4),
+                          Text(
+                            '${isPositive ? '+' : ''}${change.toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: changeColor,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  currency.format(currentValue),
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.bold,
+                    color: scheme.primary,
                   ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    currency.format(currentValue),
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.primary,
-                    ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$currentCount ventas | $previousLabel: ${currency.format(previousValue)} ($previousCount ventas)',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurface.withOpacity(0.62),
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '($currentCount ventas)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text(
-                    '$previousLabel: ',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: scheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                  Text(
-                    currency.format(previousValue),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: scheme.onSurface.withOpacity(0.75),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    ' ($previousCount ventas)',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: scheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

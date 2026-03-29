@@ -13,7 +13,7 @@ class PrinterSettingsModel {
   final int autoOpenDrawerOnChargeWithoutTicket;
   final int copies; // 0, 1 o 2 copias
   final int showItbis;
-  final int showNcf;
+  final int showElectronicInvoiceReference;
   final int showCashier;
   final int showClient;
   final int showPaymentMethod;
@@ -79,7 +79,7 @@ class PrinterSettingsModel {
     this.autoOpenDrawerOnChargeWithoutTicket = 0,
     this.copies = 1,
     this.showItbis = 1,
-    this.showNcf = 1,
+    this.showElectronicInvoiceReference = 1,
     this.showCashier = 1,
     this.showClient = 1,
     this.showPaymentMethod = 1,
@@ -157,7 +157,7 @@ class PrinterSettingsModel {
         autoOpenDrawerOnChargeWithoutTicket,
     'copies': copies,
     'show_itbis': showItbis,
-    'show_ncf': showNcf,
+    'show_electronic_invoice_reference': showElectronicInvoiceReference,
     'show_cashier': showCashier,
     'show_client': showClient,
     'show_payment_method': showPaymentMethod,
@@ -207,7 +207,8 @@ class PrinterSettingsModel {
             map['auto_open_drawer_on_charge_without_ticket'] as int? ?? 0,
         copies: map['copies'] as int? ?? 1,
         showItbis: map['show_itbis'] as int? ?? 1,
-        showNcf: map['show_ncf'] as int? ?? 1,
+        showElectronicInvoiceReference:
+          map['show_electronic_invoice_reference'] as int? ?? 1,
         showCashier: map['show_cashier'] as int? ?? 1,
         showClient: map['show_client'] as int? ?? 1,
         showPaymentMethod: map['show_payment_method'] as int? ?? 1,
@@ -257,7 +258,7 @@ class PrinterSettingsModel {
     int? autoOpenDrawerOnChargeWithoutTicket,
     int? copies,
     int? showItbis,
-    int? showNcf,
+    int? showElectronicInvoiceReference,
     int? showCashier,
     int? showClient,
     int? showPaymentMethod,
@@ -305,7 +306,9 @@ class PrinterSettingsModel {
         this.autoOpenDrawerOnChargeWithoutTicket,
     copies: copies ?? this.copies,
     showItbis: showItbis ?? this.showItbis,
-    showNcf: showNcf ?? this.showNcf,
+    showElectronicInvoiceReference:
+      showElectronicInvoiceReference ??
+      this.showElectronicInvoiceReference,
     showCashier: showCashier ?? this.showCashier,
     showClient: showClient ?? this.showClient,
     showPaymentMethod: showPaymentMethod ?? this.showPaymentMethod,
@@ -355,7 +358,7 @@ class PrinterSettingsModel {
       autoOpenDrawerOnChargeWithoutTicket: 0,
       copies: 1,
       showItbis: 1,
-      showNcf: 1,
+      showElectronicInvoiceReference: 1,
       showCashier: 1,
       showClient: 1,
       showPaymentMethod: 1,
@@ -400,7 +403,7 @@ class PrinterSettingsModel {
       autoOpenDrawerOnChargeWithoutTicket: 0,
       copies: 1,
       showItbis: 1,
-      showNcf: 1,
+      showElectronicInvoiceReference: 1,
       showCashier: 1,
       showClient: 1,
       showPaymentMethod: 1,

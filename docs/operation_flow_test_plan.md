@@ -25,7 +25,7 @@ Validar el flujo único de sesión operativa sin pasos intermedios ni acciones s
 
 5. Cierre único de sesión
    - Con sesión activa, ejecutar el cierre.
-   - Resultado esperado: se cierra la sesión, se cierra la caja, se imprime el comprobante y el usuario sale del sistema.
+   - Resultado esperado: se cierra la sesión, se cierra la caja, se imprime el documento y el usuario sale del sistema.
 
 6. Recuperación tras reinicio
    - Simular sesión abierta con `business_date` anterior o reinicio del cliente.

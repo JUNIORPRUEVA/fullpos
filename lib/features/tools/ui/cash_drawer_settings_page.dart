@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
 import '../../settings/data/printer_settings_model.dart';
 import '../../settings/data/printer_settings_repository.dart';
+import '../../settings/ui/settings_layout.dart';
 
 class CashDrawerSettingsPage extends StatefulWidget {
   const CashDrawerSettingsPage({super.key});
@@ -69,60 +70,75 @@ class _CashDrawerSettingsPageState extends State<CashDrawerSettingsPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Caja registradora'),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceVariant.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: scheme.outlineVariant),
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Caja registradora'),
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return SettingsLayout.pageFrame(
+                    constraints,
+                    child: ListView(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: scheme.outlineVariant.withOpacity(0.4),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: (_settings
+                                            ?.autoOpenDrawerOnChargeWithoutTicket ??
+                                        0) ==
+                                    1,
+                                onChanged: _saving ? null : _setAutoOpen,
+                                title: const Text(
+                                  'Abrir caja al cobrar sin imprimir ticket',
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text('Impresora actual'),
+                                subtitle: Text(
+                                  (_settings?.selectedPrinterName ?? '')
+                                          .trim()
+                                          .isEmpty
+                                      ? 'No hay impresora configurada'
+                                      : _settings!.selectedPrinterName!,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _testing ? null : _testOpenDrawer,
+                                icon: const Icon(Icons.point_of_sale),
+                                label: Text(
+                                  _testing
+                                      ? 'Enviando pulso...'
+                                      : 'Probar apertura de caja',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const Text(
-                      'Configura la apertura automática de la caja de dinero al cobrar cuando no se imprime el ticket.',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile(
-                    value: (_settings?.autoOpenDrawerOnChargeWithoutTicket ?? 0) ==
-                        1,
-                    onChanged: _saving ? null : _setAutoOpen,
-                    title: const Text('Abrir caja al cobrar sin imprimir ticket'),
-                    subtitle: const Text(
-                      'Si está activa, al finalizar una venta sin imprimir se enviará pulso de apertura a la impresora configurada.',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Impresora actual'),
-                    subtitle: Text(
-                      (_settings?.selectedPrinterName ?? '').trim().isEmpty
-                          ? 'No hay impresora configurada'
-                          : _settings!.selectedPrinterName!,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _testing ? null : _testOpenDrawer,
-                    icon: const Icon(Icons.point_of_sale),
-                    label: Text(
-                      _testing ? 'Enviando pulso...' : 'Probar apertura de caja',
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
+      ),
     );
   }
 }

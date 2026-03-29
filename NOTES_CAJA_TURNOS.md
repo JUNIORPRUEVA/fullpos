@@ -4,7 +4,7 @@
 - **Login**: el usuario entra y el sistema valida si existe una `ActiveSession`.
 - **Sin sesión activa**: se muestra un único modal para abrir caja e iniciar la sesión operativa.
 - **Con sesión activa**: el usuario entra directo al POS.
-- **Cierre**: `CashCloseDialog` ejecuta `OperationFlowService.closeActiveSession()`, imprime el comprobante y fuerza logout.
+- **Cierre**: `CashCloseDialog` ejecuta `OperationFlowService.closeActiveSession()`, imprime el documento y fuerza logout.
 
 ## Principios obligatorios
 - Solo existe una sesión operativa visible para la UI.

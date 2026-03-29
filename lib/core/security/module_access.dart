@@ -39,7 +39,7 @@ class ModuleAccess {
     }
 
     if (path == '/reports') return permissions.canViewReports;
-    if (path == '/tools' || path == '/ncf') return permissions.canAccessTools;
+    if (path == '/tools' || path == '/electronic-documents') return permissions.canAccessTools;
 
     if (path == '/settings' ||
         path == '/settings/printer' ||
@@ -67,7 +67,7 @@ class ModuleAccess {
     if (path.startsWith('/cash/expenses')) return 'Gastos';
     if (path.startsWith('/cash')) return 'Caja';
     if (path == '/reports') return 'Reportes';
-    if (path == '/tools' || path == '/ncf') return 'Herramientas';
+    if (path == '/tools' || path == '/electronic-documents') return 'Herramientas';
     if (path.startsWith('/settings')) return 'Configuracion';
     if (path == '/account') return 'Cuenta';
     return 'Modulo';

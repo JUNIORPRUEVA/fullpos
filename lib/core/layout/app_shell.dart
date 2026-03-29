@@ -2,8 +2,6 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import '../constants/app_sizes.dart';
-import '../theme/app_gradient_theme.dart';
-import '../window/window_service.dart';
 import 'sidebar.dart';
 import 'topbar.dart';
 import 'footer.dart';
@@ -31,10 +29,10 @@ class _AppShellState extends State<AppShell> {
     // Sidebar más estrecho para una estética corporativa limpia.
     // Mantiene ancho consistente en resoluciones comunes.
     if (maxWidth < 1360) {
-      return 220.0;
+      return 208.0;
     }
-    final proportional = maxWidth * 0.16;
-    return proportional.clamp(220.0, 250.0);
+    final proportional = maxWidth * 0.148;
+    return proportional.clamp(208.0, 234.0);
   }
 
   void _updateResponsive(BoxConstraints constraints) {
@@ -58,100 +56,81 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: WindowService.fullScreenListenable,
-      builder: (context, isFullScreen, _) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            _updateResponsive(constraints);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _updateResponsive(constraints);
 
-            final isNarrow = _isNarrow;
-            final isShort = _isShort;
-            final showFooter = !isShort;
-            final sidebarWidth = _sidebarWidthFor(constraints.maxWidth);
-            final sidebarScale = 1.0;
-            final topbarHeight = AppSizes.topbarHeight;
-            final topbarScale = 1.0;
-            final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
-            final footerScale = 1.0;
+        final isNarrow = _isNarrow;
+        final isShort = _isShort;
+        final showFooter = !isShort;
+        final sidebarWidth = _sidebarWidthFor(constraints.maxWidth);
+        final sidebarScale = 1.0;
+        final topbarHeight = AppSizes.topbarHeight;
+        final topbarScale = 1.0;
+        final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
+        final footerScale = 1.0;
 
-            final isDesktop =
-                Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-            final double topbarInnerTopPadding = (!isNarrow && isDesktop)
-              ? AppSizes.paddingXS
-                : 0.0;
+        final isDesktop =
+            Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+        final double topbarInnerTopPadding = (!isNarrow && isDesktop)
+            ? AppSizes.paddingXS
+            : 0.0;
 
-            Widget topbarWidget = Topbar(
+        Widget topbarWidget = Topbar(
+          scale: topbarScale,
+          topPadding: topbarInnerTopPadding,
+        );
+        if (isNarrow) {
+          topbarWidget = Builder(
+            builder: (context) => Topbar(
               scale: topbarScale,
-              showBottomBorder: !isFullScreen,
               topPadding: topbarInnerTopPadding,
-            );
-            if (isNarrow) {
-              topbarWidget = Builder(
-                builder: (context) => Topbar(
-                  scale: topbarScale,
-                  showBottomBorder: !isFullScreen,
-                  topPadding: topbarInnerTopPadding,
-                  showMenuButton: true,
-                  onMenuPressed: () => Scaffold.of(context).openDrawer(),
-                ),
-              );
-            }
+              showMenuButton: true,
+              onMenuPressed: () => Scaffold.of(context).openDrawer(),
+            ),
+          );
+        }
 
-            final contentColumn = Column(
-              children: [
-                SizedBox(
-                  height: topbarHeight + topbarInnerTopPadding,
-                  child: topbarWidget,
-                ),
-                Expanded(child: widget.child),
-                if (showFooter)
-                  SizedBox(
-                    height: footerHeight,
-                    child: Footer(scale: footerScale),
-                  ),
-              ],
-            );
-
-            final theme = Theme.of(context);
-            final scheme = theme.colorScheme;
-            final gradientTheme = theme.extension<AppGradientTheme>();
-            final fallbackGradient = LinearGradient(
-              colors: [scheme.surface, scheme.primaryContainer],
-              stops: const [0.0, 1.0],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            );
-            final baseBody = Container(
-              decoration: BoxDecoration(
-                gradient: gradientTheme?.backgroundGradient ?? fallbackGradient,
+        final contentColumn = Column(
+          children: [
+            SizedBox(
+              height: topbarHeight + topbarInnerTopPadding,
+              child: topbarWidget,
+            ),
+            Expanded(child: widget.child),
+            if (showFooter)
+              SizedBox(
+                height: footerHeight,
+                child: Footer(scale: footerScale),
               ),
-              child: isNarrow
-                  ? SafeArea(child: contentColumn)
-                  : Row(
-                      children: [
-                        Sidebar(customWidth: sidebarWidth, scale: sidebarScale),
-                        Expanded(child: contentColumn),
-                      ],
-                    ),
-            );
+          ],
+        );
 
-            return Scaffold(
-              backgroundColor: theme.scaffoldBackgroundColor,
-              drawer: isNarrow
-                  ? Drawer(
-                      child: SafeArea(
-                        child: Sidebar(
-                          forcedCollapsed: false,
-                          customWidth: sidebarWidth,
-                          scale: sidebarScale,
-                        ),
-                      ),
-                    )
-                  : null,
-              body: baseBody,
-            );
-          },
+        final baseBody = isNarrow
+            ? SafeArea(child: contentColumn)
+            : Row(
+                children: [
+                  Sidebar(customWidth: sidebarWidth, scale: sidebarScale),
+                  Expanded(child: contentColumn),
+                ],
+              );
+
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          drawer: isNarrow
+              ? Drawer(
+                  backgroundColor: Colors.transparent,
+                  surfaceTintColor: Colors.transparent,
+                  child: SafeArea(
+                    child: Sidebar(
+                      forcedCollapsed: false,
+                      customWidth: sidebarWidth,
+                      scale: sidebarScale,
+                    ),
+                  ),
+                )
+              : null,
+          body: baseBody,
         );
       },
     );

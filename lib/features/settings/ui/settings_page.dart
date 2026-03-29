@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/services/app_configuration_service.dart';
-import 'package:printing/printing.dart';
-import '../../../core/printing/unified_ticket_printer.dart';
-import '../data/printer_settings_model.dart';
-import '../data/printer_settings_repository.dart';
 import 'backup_database_page.dart';
+import 'business_sections_settings_page.dart';
 import 'database_settings_page.dart';
+import 'device_hardware_settings_page.dart';
+import 'printer_settings_page.dart';
+import 'system_about_page.dart';
+import 'system_license_summary_page.dart';
+import 'user_permissions_directory_page.dart';
 import 'users_page.dart';
 import 'theme_settings_page.dart' as theme_page;
-import 'business_settings_page.dart';
 import 'logs_page.dart';
 import 'security_settings_page.dart';
 import 'cloud_settings_page.dart';
+import 'settings_layout.dart';
+import '../../tools/ui/authorizations_page.dart';
+import '../../tools/ui/cash_drawer_settings_page.dart';
+import '../../tools/ui/electronic_invoicing_page.dart';
+import '../../tools/ui/scanner_settings_page.dart';
 import '../../license/data/license_models.dart';
 import '../../license/services/license_file_storage.dart';
 import '../../license/services/license_storage.dart';
@@ -32,11 +36,19 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _isLoading = true;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -51,234 +63,252 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    final cardColors = <Color>[
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
-      AppColors.primaryBlue,
+
+    final sections = <_SettingsSectionData>[
+      _SettingsSectionData(
+        title: 'Negocio',
+        description: 'Empresa, documentos electrónicos y configuración general del POS.',
+        icon: Icons.storefront_outlined,
+        items: [
+          _SettingsItemData(
+            title: 'Empresa',
+            subtitle: 'Datos del negocio, contacto y branding.',
+            icon: Icons.business_outlined,
+            onTap: _openCompanySettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Facturación electrónica',
+            subtitle: 'Empresa emisora, DGII y estado e-CF.',
+            icon: Icons.description_outlined,
+            onTap: _openElectronicInvoicingPage,
+          ),
+          _SettingsItemData(
+            title: 'Impuestos',
+            subtitle: 'ITBIS, documentos electrónicos y ventas.',
+            icon: Icons.receipt_long_outlined,
+            onTap: _openTaxSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Moneda',
+            subtitle: 'Moneda base y símbolo de operación.',
+            icon: Icons.attach_money_outlined,
+            onTap: _openCurrencySettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'General POS settings',
+            subtitle: 'Comportamiento comercial y ajustes base.',
+            icon: Icons.tune_outlined,
+            onTap: _openPosGeneralSettingsPage,
+          ),
+        ],
+      ),
+      _SettingsSectionData(
+        title: 'Usuarios y seguridad',
+        description: 'Accesos, permisos y aprobaciones operativas.',
+        icon: Icons.admin_panel_settings_outlined,
+        items: [
+          _SettingsItemData(
+            title: 'Usuarios',
+            subtitle: 'Cuentas, credenciales y estado operativo.',
+            icon: Icons.people_outline,
+            onTap: _openUsersPage,
+          ),
+          _SettingsItemData(
+            title: 'Roles y permisos',
+            subtitle: 'Perfiles por usuario y acceso por módulo.',
+            icon: Icons.badge_outlined,
+            onTap: _openUserPermissionsPage,
+          ),
+          _SettingsItemData(
+            title: 'Autorizaciones',
+            subtitle: 'Auditoría y flujo de aprobaciones.',
+            icon: Icons.verified_user_outlined,
+            onTap: _openAuthorizationsPage,
+          ),
+          _SettingsItemData(
+            title: 'Seguridad',
+            subtitle: 'PIN local, terminal y aprobaciones remotas.',
+            icon: Icons.shield_outlined,
+            onTap: _openSecuritySettingsPage,
+          ),
+        ],
+      ),
+      _SettingsSectionData(
+        title: 'Dispositivos',
+        description: 'Impresión, caja y periféricos del terminal.',
+        icon: Icons.devices_outlined,
+        items: [
+          _SettingsItemData(
+            title: 'Impresora',
+            subtitle: 'Ticket, pruebas y preferencias de impresión.',
+            icon: Icons.print_outlined,
+            onTap: _openPrinterSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Caja registradora',
+            subtitle: 'Apertura automática y prueba de pulso.',
+            icon: Icons.point_of_sale_outlined,
+            onTap: _openCashDrawerSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Lector / scanner',
+            subtitle: 'Prefijo, sufijo y tiempo de lectura.',
+            icon: Icons.qr_code_scanner_rounded,
+            onTap: _openScannerSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Hardware y terminal',
+            subtitle: 'Accesos técnicos y utilidades del equipo.',
+            icon: Icons.memory_outlined,
+            onTap: _openHardwareSettingsPage,
+          ),
+        ],
+      ),
+      _SettingsSectionData(
+        title: 'Sistema',
+        description: 'Respaldo, nube, base local y soporte.',
+        icon: Icons.settings_suggest_outlined,
+        items: [
+          _SettingsItemData(
+            title: 'Backup',
+            subtitle: 'Copias, restauración y resguardo local.',
+            icon: Icons.backup_outlined,
+            onTap: _openBackupPage,
+          ),
+          _SettingsItemData(
+            title: 'Base de datos',
+            subtitle: 'Estado, diagnóstico y mantenimiento.',
+            icon: Icons.storage_outlined,
+            onTap: _openDatabaseSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Nube',
+            subtitle: 'Sincronización, owner app y conectividad.',
+            icon: Icons.cloud_outlined,
+            onTap: _openCloudSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Licencia',
+            subtitle: 'Estado actual, vigencia y origen.',
+            icon: Icons.vpn_key_outlined,
+            onTap: _openLicenseSummaryPage,
+          ),
+          _SettingsItemData(
+            title: 'Logs / Soporte',
+            subtitle: 'Eventos, diagnóstico y apoyo operativo.',
+            icon: Icons.support_agent_outlined,
+            onTap: _openLogsPage,
+          ),
+          _SettingsItemData(
+            title: 'Acerca de',
+            subtitle: 'Versión, atajos y referencia del sistema.',
+            icon: Icons.info_outline,
+            onTap: _openAboutPage,
+          ),
+        ],
+      ),
+      _SettingsSectionData(
+        title: 'Apariencia',
+        description: 'Tema, colores y presentación visual.',
+        icon: Icons.palette_outlined,
+        items: [
+          _SettingsItemData(
+            title: 'Tema y diseño visual',
+            subtitle: 'Colores, estilo general y personalización de la interfaz.',
+            icon: Icons.palette_outlined,
+            onTap: _openThemeSettings,
+          ),
+        ],
+      ),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final horizontalPadding = (width * 0.04).clamp(12.0, 28.0);
-        final verticalPadding = (width * 0.02).clamp(10.0, 20.0);
-        final gridSpacing = (width * 0.012).clamp(10.0, 16.0);
+    final negocioSection = _filterSection(sections[0]);
+    final usuariosSection = _filterSection(sections[1]);
+    final dispositivosSection = _filterSection(sections[2]);
+    final sistemaSection = _filterSection(sections[3]);
+    final aparienciaSection = _filterSection(sections[4]);
+    final visibleSections = [
+      negocioSection,
+      usuariosSection,
+      dispositivosSection,
+      sistemaSection,
+      aparienciaSection,
+    ].whereType<_SettingsSectionData>().toList(growable: false);
 
-        int crossAxisCount;
-        if (width < 520) {
-          crossAxisCount = 1;
-        } else if (width < 760) {
-          crossAxisCount = 2;
-        } else if (width < 980) {
-          crossAxisCount = 3;
-        } else if (width < 1240) {
-          crossAxisCount = 4;
-        } else if (width < 1480) {
-          crossAxisCount = 5;
-        } else {
-          crossAxisCount = 6;
-        }
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final gridSpacing = width >= 1280 ? 20.0 : 16.0;
+          final columns = width >= 1360
+              ? 3
+              : width >= 920
+              ? 2
+              : 1;
 
-        return Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1400),
+          return SettingsLayout.pageFrame(
+            constraints,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    horizontalPadding,
-                    verticalPadding,
-                    horizontalPadding,
-                    8,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.borderSoft),
-                      boxShadow: [
-                        BoxShadow(
-                          color: scheme.shadow.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.lightBlueHover,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppColors.borderSoft),
-                          ),
-                          child: Icon(
-                            Icons.settings,
-                            size: 22,
-                            color: AppColors.primaryBlue,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Configuración',
-                                style: textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Personaliza tu sistema POS',
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildSettingsHeader(textTheme),
+                const SizedBox(height: 16),
+                if (visibleSections.isEmpty)
+                  _buildEmptySearchState()
+                else
+                  LayoutBuilder(
+                    builder: (context, gridConstraints) {
+                      final sectionWidth = columns == 1
+                          ? gridConstraints.maxWidth
+                          : (gridConstraints.maxWidth -
+                                    ((columns - 1) * gridSpacing)) /
+                                columns;
+                      final gridSections = [
+                        negocioSection,
+                        usuariosSection,
+                        sistemaSection,
+                        dispositivosSection,
+                        aparienciaSection,
+                      ].whereType<_SettingsSectionData>();
 
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      8,
-                      horizontalPadding,
-                      verticalPadding,
-                    ),
-                    child: GridView.count(
-                      crossAxisCount: crossAxisCount,
-                      mainAxisSpacing: gridSpacing,
-                      crossAxisSpacing: gridSpacing,
-                      childAspectRatio: 2.55,
-                      children: [
-                        _buildSettingsCard(
-                          icon: Icons.print,
-                          title: 'Impresora',
-                          subtitle: 'Tickets',
-                          description:
-                              'Configura impresoras y prueba de impresión.',
-                          color: cardColors[0],
-                          onTap: () => _showPrinterDialog(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.people,
-                          title: 'Usuarios',
-                          subtitle: 'Accesos',
-                          description: 'Roles, permisos y gestión de cuentas.',
-                          color: cardColors[1],
-                          onTap: () => _openUsersPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.shield,
-                          title: 'Seguridad',
-                          subtitle: 'Overrides',
-                          description: 'PIN, códigos locales y autorizaciones.',
-                          color: cardColors[2],
-                          onTap: () => _openSecuritySettingsPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.cloud,
-                          title: 'Nube',
-                          subtitle: 'Accesos & Owner',
-                          description:
-                              'Sincronización y acceso del propietario.',
-                          color: cardColors[3],
-                          onTap: () => _openCloudSettingsPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.store,
-                          title: 'Negocio',
-                          subtitle: 'Empresa',
-                          description: 'Datos fiscales, contacto y monedas.',
-                          color: cardColors[4],
-                          onTap: () => _openBusinessSettingsPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.storage,
-                          title: 'Backup',
-                          subtitle: 'Datos',
-                          description: 'Respaldos y restauración del sistema.',
-                          color: cardColors[5],
-                          onTap: () => _openBackupPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.storage_outlined,
-                          title: 'Database',
-                          subtitle: 'Mantenimiento',
-                          description:
-                              'Ver estado, errores y opciones de limpieza local.',
-                          color: cardColors[9],
-                          onTap: () => _openDatabaseSettingsPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.palette,
-                          title: 'Tema',
-                          subtitle: 'Apariencia',
-                          description:
-                              'Personaliza colores y estilos visuales.',
-                          color: cardColors[6],
-                          onTap: () => _openThemeSettings(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.info,
-                          title: 'Acerca de',
-                          subtitle: 'v1.0.0',
-                          description: 'Información del sistema y atajos.',
-                          color: cardColors[7],
-                          onTap: () => _showAboutDialog(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.support_agent,
-                          title: 'Soporte',
-                          subtitle: 'Logs',
-                          description: 'Diagnósticos y registro de eventos.',
-                          color: cardColors[8],
-                          onTap: () => _openLogsPage(),
-                        ),
-                        _buildSettingsCard(
-                          icon: Icons.vpn_key,
-                          title: 'Licencia',
-                          subtitle: 'Solo lectura',
-                          description:
-                              'Ver licencia actual, tiempo restante y ubicación.',
-                          color: cardColors[0],
-                          onTap: () => _showLicenseSummaryDialog(),
-                        ),
-                      ],
-                    ),
+                      return Wrap(
+                        spacing: gridSpacing,
+                        runSpacing: 14,
+                        children: [
+                          for (final section in gridSections)
+                            SizedBox(
+                              width: sectionWidth,
+                              child: _buildSettingsSection(section),
+                            ),
+                        ],
+                      );
+                    },
                   ),
-                ),
               ],
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
+  }
+
+  _SettingsSectionData? _filterSection(_SettingsSectionData section) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return section;
+
+    final filteredItems = section.items
+        .where((item) {
+          final haystack =
+              '${section.title} ${section.description} ${item.title} ${item.subtitle}'
+                  .toLowerCase();
+          return haystack.contains(query);
+        })
+        .toList(growable: false);
+
+    if (filteredItems.isEmpty) return null;
+    return section.copyWith(items: filteredItems);
   }
 
   void _openUsersPage() {
@@ -292,6 +322,48 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SecuritySettingsPage()),
+    );
+  }
+
+  void _openUserPermissionsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UserPermissionsDirectoryPage()),
+    );
+  }
+
+  void _openAuthorizationsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthorizationsPage()),
+    );
+  }
+
+  void _openScannerSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ScannerSettingsPage()),
+    );
+  }
+
+  void _openCashDrawerSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CashDrawerSettingsPage()),
+    );
+  }
+
+  void _openHardwareSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DeviceHardwareSettingsPage()),
+    );
+  }
+
+  void _openElectronicInvoicingPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ElectronicInvoicingPage()),
     );
   }
 
@@ -309,12 +381,38 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _openBusinessSettingsPage({int tabIndex = 0}) {
+  void _openCompanySettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => BusinessSettingsPage(initialTabIndex: tabIndex),
-      ),
+      MaterialPageRoute(builder: (_) => const CompanyProfileSettingsPage()),
+    );
+  }
+
+  void _openTaxSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TaxSettingsPage()),
+    );
+  }
+
+  void _openCurrencySettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CurrencySettingsPage()),
+    );
+  }
+
+  void _openPosGeneralSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PosGeneralSettingsPage()),
+    );
+  }
+
+  void _openPrinterSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PrinterSettingsPage()),
     );
   }
 
@@ -339,309 +437,273 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildSettingsCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String description,
-    required Color color,
-    String? badge,
-    required VoidCallback onTap,
-  }) {
+  void _openLicenseSummaryPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SystemLicenseSummaryPage()),
+    );
+  }
+
+  void _openAboutPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SystemAboutPage()),
+    );
+  }
+
+  Widget _buildSettingsHeader(TextTheme textTheme) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useHorizontalLayout = constraints.maxWidth >= 860;
+        final titleBlock = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Configuración',
+              style: textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Accesos agrupados y densos para escritorio.',
+              style: textTheme.bodySmall?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        );
+
+        final searchField = SizedBox(
+          width: useHorizontalLayout ? 320 : double.infinity,
+          height: 48,
+          child: _buildSearchField(),
+        );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (useHorizontalLayout)
+              Row(
+                children: [
+                  Expanded(child: titleBlock),
+                  const SizedBox(width: 16),
+                  searchField,
+                ],
+              )
+            else ...[
+              titleBlock,
+              const SizedBox(height: 12),
+              searchField,
+            ],
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: AppColors.borderSoft),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSearchField() {
     final theme = Theme.of(context);
-    final textTheme = theme.textTheme;
     final scheme = theme.colorScheme;
 
-    final cardBg = AppColors.cardBackground;
-    final iconBg = AppColors.lightBlueHover;
-    final borderColor = AppColors.borderSoft;
-    final shadowColor = scheme.shadow.withOpacity(0.06);
-
-    return Card(
-      color: cardBg,
-      elevation: 1,
-      shadowColor: shadowColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: borderColor),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -14,
-              bottom: -18,
-              child: Icon(
-                icon,
-                size: 56,
-                color: scheme.onSurface.withOpacity(0.04),
+    return TextField(
+      controller: _searchController,
+      onChanged: (value) => setState(() => _searchQuery = value),
+      textInputAction: TextInputAction.search,
+      style: Theme.of(context).textTheme.bodyMedium,
+      decoration: InputDecoration(
+        hintText: 'Buscar configuración...',
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        suffixIcon: _searchQuery.trim().isEmpty
+            ? null
+            : IconButton(
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+                icon: const Icon(Icons.close_rounded, size: 18),
+                tooltip: 'Limpiar',
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(9),
-                    decoration: BoxDecoration(
-                      color: iconBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: borderColor.withOpacity(0.75)),
-                    ),
-                    child: Icon(icon, color: AppColors.primaryBlue, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isTight = constraints.maxHeight < 60;
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.2,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            SizedBox(height: isTight ? 0 : 1),
-                            Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: textTheme.labelSmall?.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            if (!isTight) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                description,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 18,
-                    color: AppColors.textSecondary,
-                  ),
-                ],
-              ),
-            ),
-            if (badge != null)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.tertiary,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    badge,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: scheme.onTertiary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        filled: true,
+        fillColor: scheme.surfaceVariant.withOpacity(0.28),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.borderSoft.withOpacity(0.45)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.primary.withOpacity(0.42)),
         ),
       ),
     );
   }
 
-  Widget _buildShortcutSection(String title, List<String> shortcuts) {
+  Widget _buildEmptySearchState() {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'No se encontraron configuraciones',
+            style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Prueba con otro término o limpia la búsqueda.',
+            textAlign: TextAlign.center,
+            style: textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsSection(_SettingsSectionData section) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
-        ...shortcuts.map(
-          (s) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(s, style: const TextStyle(fontSize: 12)),
+          section.title,
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.1,
           ),
         ),
+        const SizedBox(height: 2),
+        Text(
+          section.description,
+          style: textTheme.bodySmall?.copyWith(
+            color: AppColors.textSecondary,
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (var index = 0; index < section.items.length; index++) ...[
+          _buildSettingsItem(section.items[index]),
+          if (index != section.items.length - 1)
+            const Divider(height: 1, color: AppColors.borderSoft),
+        ],
       ],
     );
   }
 
-  void _showAboutDialog() {
-    final businessName = appConfigService.getBusinessName().trim().isNotEmpty
-        ? appConfigService.getBusinessName().trim()
-        : 'FULLPOS';
-    final year = DateTime.now().year;
+  Widget _buildSettingsItem(_SettingsItemData item) {
+    final textTheme = Theme.of(context).textTheme;
 
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final textTheme = theme.textTheme;
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 350,
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [scheme.primary, scheme.tertiary],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.point_of_sale,
-                  color: scheme.onPrimary,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                businessName,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                ),
-              ),
-              Text(
-                'SISTEMA POS',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: scheme.onSurfaceVariant,
-                  letterSpacing: 3,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: scheme.secondaryContainer.withOpacity(0.75),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'v1.0.0 LOCAL',
-                  style: textTheme.labelMedium?.copyWith(
-                    color: scheme.onSecondaryContainer,
-                    fontWeight: FontWeight.w800,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: item.onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 50, maxHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Icon(
+                    item.icon,
+                    size: 18,
+                    color: AppColors.primaryBlue.withOpacity(0.92),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: scheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: scheme.outlineVariant.withOpacity(0.35),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'ATAJOS',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        letterSpacing: 0.6,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.1,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    _buildShortcutSection('GLOBALES', [
-                      'Ctrl+Shift+F - Pantalla completa',
-                      'Ctrl+Q - Cerrar app',
-                      'ESC - Cerrar diálogos',
-                    ]),
-                    const SizedBox(height: 12),
-                    _buildShortcutSection('VENTAS', [
-                      'F2 - Enfocar búsqueda',
-                      'F3 - Seleccionar cliente',
-                      'F4 - Nuevo cliente',
-                      'F7 - Aplicar descuento',
-                      'F9 - Abrir pago',
-                      'F12 - Finalizar venta',
-                      '+ / - - Cambiar cantidad',
-                      'Ctrl+Backspace - Eliminar item',
-                    ]),
-                  ],
+                      if (item.subtitle.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          item.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                            height: 1.1,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '© $year $businessName',
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant.withOpacity(0.7),
-                  fontSize: 11,
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: AppColors.textSecondary,
                 ),
-              ),
-              const SizedBox(height: 20),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('CERRAR'),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  void _showPrinterDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => _PrinterDialogContent(
-        onConfigurePressed: () {
-          Navigator.pop(context);
-          context.push('/settings/printer');
-        },
-      ),
-    );
-  }
 
-  void _showLicenseSummaryDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => const _LicenseSummaryDialogContent(),
+}
+
+class _SettingsSectionData {
+  final String title;
+  final String description;
+  final IconData icon;
+  final List<_SettingsItemData> items;
+
+  const _SettingsSectionData({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.items,
+  });
+
+  _SettingsSectionData copyWith({List<_SettingsItemData>? items}) {
+    return _SettingsSectionData(
+      title: title,
+      description: description,
+      icon: icon,
+      items: items ?? this.items,
     );
   }
+}
+
+class _SettingsItemData {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _SettingsItemData({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
 }
 
 class _LicenseSummaryDialogContent extends StatefulWidget {
@@ -1031,325 +1093,3 @@ class _LicenseSummaryDialogContentState
   }
 }
 
-/// Diálogo de impresora con StatefulBuilder para manejar estado interno
-class _PrinterDialogContent extends StatefulWidget {
-  final VoidCallback onConfigurePressed;
-
-  const _PrinterDialogContent({required this.onConfigurePressed});
-
-  @override
-  State<_PrinterDialogContent> createState() => _PrinterDialogContentState();
-}
-
-class _PrinterDialogContentState extends State<_PrinterDialogContent> {
-  List<Printer> _printers = [];
-  PrinterSettingsModel? _settings;
-  bool _loading = true;
-  bool _printing = false;
-  String? _selectedPrinter;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    try {
-      final printers = await UnifiedTicketPrinter.getAvailablePrinters();
-      final settings = await PrinterSettingsRepository.getOrCreate();
-
-      if (!mounted) return;
-      setState(() {
-        _printers = printers;
-        _settings = settings;
-        _selectedPrinter = settings.selectedPrinterName;
-        _loading = false;
-      });
-    } catch (e, st) {
-      debugPrint('Error loading printers: $e\\n$st');
-      if (!mounted) return;
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'No se pudo cargar la configuraci\u00f3n de impresoras',
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _printTest() async {
-    final scheme = Theme.of(context).colorScheme;
-    if (_selectedPrinter == null || _selectedPrinter!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Seleccione una impresora primero'),
-          backgroundColor: scheme.secondary,
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    setState(() => _printing = true);
-
-    // Actualizar impresora seleccionada antes de imprimir
-    final updatedSettings = _settings!.copyWith(
-      selectedPrinterName: _selectedPrinter,
-    );
-    try {
-      await PrinterSettingsRepository.updateSettings(updatedSettings);
-      if (!mounted) return;
-
-      final result = await UnifiedTicketPrinter.printTestTicket();
-      if (!mounted) return;
-      final success = result.success;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(
-                success ? Icons.check_circle : Icons.error,
-                color: success ? scheme.onTertiary : scheme.onError,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                success
-                    ? '✅ Ticket de prueba enviado a la impresora'
-                    : '❌ Error al imprimir - Verifique la impresora',
-              ),
-            ],
-          ),
-          backgroundColor: success ? scheme.tertiary : scheme.error,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } catch (e, st) {
-      debugPrint('Error printing test ticket: $e\\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error imprimiendo: $e'),
-            backgroundColor: scheme.error,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _printing = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 450,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: scheme.secondaryContainer.withOpacity(0.6),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.print, color: scheme.secondary, size: 40),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'IMPRESORA Y TICKET',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Impresión térmica de tickets',
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-            ),
-            const SizedBox(height: 24),
-
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(),
-              )
-            else ...[
-              // Selector de impresora
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: scheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.print,
-                          color: scheme.onSurfaceVariant,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'IMPRESORA SELECCIONADA',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const Spacer(),
-                        // Botón refrescar
-                        IconButton(
-                          icon: const Icon(Icons.refresh, size: 20),
-                          onPressed: _loadData,
-                          tooltip: 'Actualizar lista',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (_printers.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: scheme.errorContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.warning,
-                              color: scheme.onErrorContainer,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                'No se detectaron impresoras.\nConecte una impresora e intente de nuevo.',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      DropdownButtonFormField<String>(
-                        initialValue:
-                            _printers.any((p) => p.name == _selectedPrinter)
-                            ? _selectedPrinter
-                            : null,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          hintText: 'Seleccione impresora',
-                        ),
-                        items: _printers
-                            .map(
-                              (p) => DropdownMenuItem(
-                                value: p.name,
-                                child: Text(
-                                  p.name,
-                                  style: const TextStyle(fontSize: 13),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          setState(() => _selectedPrinter = value);
-                        },
-                      ),
-
-                    const SizedBox(height: 8),
-                    Text(
-                      '${_printers.length} impresora(s) disponible(s)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Botón imprimir prueba
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _printing ? null : _printTest,
-                  icon: _printing
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: scheme.onPrimary,
-                          ),
-                        )
-                      : const Icon(Icons.print),
-                  label: Text(
-                    _printing ? 'IMPRIMIENDO...' : 'IMPRIMIR PÁGINA DE PRUEBA',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                    foregroundColor: scheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Botón configuración completa
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: widget.onConfigurePressed,
-                  icon: const Icon(Icons.settings),
-                  label: const Text('CONFIGURACIÓN COMPLETA'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: scheme.secondary,
-                    side: BorderSide(color: scheme.secondary),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('CERRAR'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

@@ -598,10 +598,17 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
     lines.add(line());
 
+    lines.add('<H2C>BASE DE CAJA');
+    lines.add(line());
     if (cashboxInitialAmount != null) {
-      addKeyValue('Apertura caja', money(cashboxInitialAmount));
+      addKeyValue('Base inicial caja', money(cashboxInitialAmount));
     }
-    addKeyValue('Apertura sesion', money(summary.openingAmount));
+    addKeyValue('Base inicial sesion', money(summary.openingAmount));
+    lines.add(line());
+
+    lines.add('<H2C>VENTAS DE LA SESION');
+    lines.add(line());
+    addKeyValue('Total ventas sesion', money(summary.totalSales));
     addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
     addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
     addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
@@ -621,7 +628,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     addKeyValue('Entradas manuales', money(manualNoAbonos));
     addKeyValue('Retiros manuales', money(summary.cashOutManual));
     lines.add(line());
-    addKeyValue('Efectivo esperado', money(summary.expectedCash));
+    addKeyValue('Efectivo esperado en caja', money(summary.expectedCash));
     addKeyValue('Efectivo contado', money(closingAmount));
     addKeyValue('Diferencia', money(closingAmount - summary.expectedCash));
     lines.add(line());
@@ -701,7 +708,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         final customerPhone =
             (refund['customer_phone'] as String?)?.trim() ?? '';
         final customerRnc = (refund['customer_rnc'] as String?)?.trim() ?? '';
-        final originalNcf = (refund['original_ncf'] as String?)?.trim() ?? '';
+        final originalElectronicCode =
+          (refund['original_electronic_invoice_code'] as String?)?.trim() ??
+          '';
 
         final productLabel = productsPreview.isNotEmpty
             ? productsPreview
@@ -727,9 +736,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             lines.add(fit('  * $r'));
           }
         }
-        if (originalNcf.isNotEmpty) {
+        if (originalElectronicCode.isNotEmpty) {
           final wrapped = ReceiptText.wrapText(
-            sanitize('NCF: $originalNcf'),
+            sanitize('e-CF: $originalElectronicCode'),
             (w - 4).clamp(6, w),
           );
           for (final r in wrapped.take(2)) {
@@ -912,11 +921,11 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
     final netSalesAfterRefunds = summary.totalSales - summary.refundsCash;
 
-    lines.add('<H2C>GRAN TOTALES GENERALES');
+    lines.add('<H2C>RESUMEN DEL TURNO');
     lines.add(line());
     addKeyValue('Tickets', summary.totalTickets.toString());
     addKeyValue('Devoluciones', summary.totalRefunds.toString());
-    addKeyValue('Total ventas', money(summary.totalSales));
+    addKeyValue('Total ventas del turno', money(summary.totalSales));
     addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
     addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
     addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
@@ -936,15 +945,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     if (summary.cashOutManual > 0) {
       addKeyValue('Retiros manuales', money(summary.cashOutManual));
     }
-    addKeyValue('Total neto general', money(netSalesAfterRefunds));
+    addKeyValue('Ventas netas del turno', money(netSalesAfterRefunds));
     lines.add('');
-    lines.add('<H2C>TOTAL VENTAS');
+    lines.add('<H2C>VENTAS DEL TURNO');
     lines.add('<H1C>${money(summary.totalSales)}');
     lines.add('');
     lines.add('<H2C>TOTAL TRANSFERENCIAS');
     lines.add('<H1C>${money(summary.salesTransferTotal)}');
     lines.add('');
-    lines.add('<H2C>EFECTIVO ESPERADO');
+    lines.add('<H2C>EFECTIVO ESPERADO EN CAJA');
     lines.add('<H1C>${money(summary.expectedCash)}');
     lines.add('');
     lines.add('<H2C>EFECTIVO CONTADO');
@@ -1356,7 +1365,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             ),
           ),
           const SizedBox(height: 6),
-          row('Apertura sesión', summary.openingAmount, color: fg),
+          row('Base inicial turno', summary.openingAmount, color: fg),
           row('Ventas efectivo', summary.salesCashTotal, color: fg),
           row('Entradas manuales', summary.cashInManual, color: fg),
           row('Retiros manuales', summary.cashOutManual, color: scheme.error),
@@ -1381,7 +1390,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
               const SizedBox(width: 8),
               _buildStatChip(
                 'RD\$ ${summary.totalSales.toStringAsFixed(2)}',
-                'Total ventas',
+                'Ventas turno',
                 scheme.secondary,
                 fg: fg,
                 fontFamily: fontFamily,
@@ -2549,8 +2558,10 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final returnCode = (selectedRefund['return_code'] as String?)?.trim() ?? '';
     final originalCode =
         (selectedRefund['original_code'] as String?)?.trim() ?? '';
-    final originalNcf =
-        (selectedRefund['original_ncf'] as String?)?.trim() ?? '';
+    final originalElectronicCode =
+      (selectedRefund['original_electronic_invoice_code'] as String?)
+          ?.trim() ??
+        '';
     final itemCount = (selectedRefund['item_count'] as int?) ?? 0;
     final productsPreview =
         (selectedRefund['products_preview'] as String?)?.trim() ?? '';
@@ -2665,7 +2676,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           kv('Código', returnCode.isNotEmpty ? returnCode : ''),
           kv('Items', itemCount > 0 ? itemCount.toString() : ''),
           kv('Ticket orig.', originalCode),
-          kv('NCF orig.', originalNcf),
+          kv('e-CF orig.', originalElectronicCode),
           if (customerName.isNotEmpty ||
               customerPhone.isNotEmpty ||
               customerRnc.isNotEmpty)

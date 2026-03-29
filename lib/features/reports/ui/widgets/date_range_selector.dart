@@ -20,17 +20,26 @@ class DateRangeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _buildChip(context, 'Hoy', DateRangePeriod.today),
-        _buildChip(context, 'Semana', DateRangePeriod.week),
-        _buildChip(context, '15 días', DateRangePeriod.biweekly),
-        _buildChip(context, 'Mes', DateRangePeriod.month),
-        _buildChip(context, 'Año', DateRangePeriod.year),
-        _buildChip(context, 'Personalizado', DateRangePeriod.custom),
-      ],
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _buildChip(context, 'Hoy', DateRangePeriod.today),
+          _buildChip(context, 'Semana', DateRangePeriod.week),
+          _buildChip(context, '15 dias', DateRangePeriod.biweekly),
+          _buildChip(context, 'Mes', DateRangePeriod.month),
+          _buildChip(context, 'Ano', DateRangePeriod.year),
+          _buildChip(context, 'Personalizado', DateRangePeriod.custom),
+        ],
+      ),
     );
   }
 
@@ -54,10 +63,17 @@ class DateRangeSelector extends StatelessWidget {
           }
         }
       },
-      selectedColor: scheme.primary,
+      backgroundColor: scheme.surface,
+      selectedColor: scheme.primary.withOpacity(0.14),
+      side: BorderSide(
+        color: isSelected
+            ? scheme.primary.withOpacity(0.22)
+            : scheme.outlineVariant,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       labelStyle: TextStyle(
-        color: isSelected ? scheme.onPrimary : scheme.onSurface,
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        color: isSelected ? scheme.primary : scheme.onSurface,
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
       ),
     );
   }

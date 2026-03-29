@@ -984,7 +984,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     }
     lines.add(line());
 
-    lines.add('<BL>${twoCols('Saldo inicial', money(summary.openingAmount))}');
+    lines.add('<BL>${twoCols('Base inicial turno', money(summary.openingAmount))}');
+    lines.add('<BL>${twoCols('Total ventas turno', money(summary.totalSales))}');
     lines.add(
       '<BL>${twoCols('Ventas efectivo', money(summary.salesCashTotal))}',
     );
@@ -1019,7 +1020,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     );
     lines.add(line());
     lines.add(
-      '<BL>${twoCols('Efectivo esperado', money(summary.expectedCash))}',
+      '<BL>${twoCols('Efectivo esperado en caja', money(summary.expectedCash))}',
     );
     lines.add('<BL>${twoCols('Efectivo contado', money(closingAmount))}');
     lines.add(
@@ -1132,12 +1133,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     lines.add('<H2C>TOTALES');
     lines.add(line());
     lines.add('<BL>${twoCols('Tickets', summary.totalTickets.toString())}');
-    lines.add('<BL>${twoCols('Total ventas', money(summary.totalSales))}');
+    lines.add('<BL>${twoCols('Total ventas del turno', money(summary.totalSales))}');
     lines.add('');
-    lines.add('<H2C>TOTAL VENTAS');
+    lines.add('<H2C>VENTAS DEL TURNO');
     lines.add('<H1C>${money(summary.totalSales)}');
     lines.add('');
-    lines.add('<H2C>EFECTIVO ESPERADO');
+    lines.add('<H2C>EFECTIVO ESPERADO EN CAJA');
     lines.add('<H1C>${money(summary.expectedCash)}');
     lines.add('');
     lines.add('<H2C>EFECTIVO CONTADO');

@@ -17,6 +17,7 @@ import '../../models/category_model.dart';
 import '../../models/product_model.dart';
 import '../../models/supplier_model.dart';
 import '../widgets/product_thumbnail.dart';
+import '../widgets/products_surface.dart';
 import 'category_form_dialog.dart';
 import 'supplier_form_dialog.dart';
 
@@ -82,7 +83,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       _selectedSupplierId = p.supplierId;
       _imagePath = p.imagePath;
       _placeholderType = p.placeholderType;
-      _placeholderColorHex = p.placeholderColorHex ??
+      _placeholderColorHex =
+          p.placeholderColorHex ??
           ColorUtils.generateDeterministicColorHex(
             p.name,
             categoryId: p.categoryId,
@@ -112,8 +114,9 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     super.dispose();
   }
 
-  String? get _previewImagePath =>
-      _placeholderType == 'color' ? null : (_pendingImageSourcePath ?? _imagePath);
+  String? get _previewImagePath => _placeholderType == 'color'
+      ? null
+      : (_pendingImageSourcePath ?? _imagePath);
 
   String _resolvePlaceholderColor() {
     if (_placeholderColorHex != null &&
@@ -278,7 +281,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     });
   }
 
-  
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -313,7 +315,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       final name = _nameController.text.trim();
       final purchasePrice =
           double.tryParse(_purchasePriceController.text.trim()) ?? 0.0;
-      final salePrice = double.tryParse(_salePriceController.text.trim()) ?? 0.0;
+      final salePrice =
+          double.tryParse(_salePriceController.text.trim()) ?? 0.0;
       final stock = double.tryParse(_stockController.text.trim()) ?? 0.0;
 
       bool differsDouble(double a, double b) => (a - b).abs() > 0.0001;
@@ -554,8 +557,44 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     }
   }
 
+  Widget _buildSectionLabel(
+    BuildContext context,
+    String title,
+    String? subtitle,
+  ) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.68),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Shortcuts(
       shortcuts: {
         LogicalKeySet(LogicalKeyboardKey.escape): DismissIntent(),
@@ -577,493 +616,630 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
         child: Focus(
           autofocus: true,
           child: Dialog(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.inventory_2, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Text(
-                    _isEdit ? 'Editar Producto' : 'Nuevo Producto',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-
-            // Form
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Código y Nombre
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              controller: _codeController,
-                              decoration: const InputDecoration(
-                                labelText: 'Código *',
-                                hintText: 'SKU o código del producto',
-                                border: OutlineInputBorder(),
-                              ),
-                              textCapitalization: TextCapitalization.characters,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Requerido';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              controller: _nameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Nombre *',
-                                hintText: 'Nombre del producto',
-                                border: OutlineInputBorder(),
-                              ),
-                              textCapitalization: TextCapitalization.words,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Requerido';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
+            backgroundColor: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: ProductsSurface(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        border: Border(
+                          bottom: BorderSide(color: scheme.outlineVariant),
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(22),
+                        ),
                       ),
-                      const SizedBox(height: 16),
-
-                      // Categoría y Suplidor
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<int?>(
-                              value: _selectedCategoryId,
-                              decoration: const InputDecoration(
-                                labelText: 'Categoría',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: null,
-                                  child: Text('Sin categoría'),
-                                ),
-                                ..._categories.map(
-                                  (c) => DropdownMenuItem(
-                                    value: c.id,
-                                    child: Text(c.name),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (value) =>
-                                  setState(() => _selectedCategoryId = value),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle),
-                            onPressed: _quickCreateCategory,
-                            tooltip: 'Crear categoría',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<int>(
-                              initialValue: _selectedSupplierId,
-                              decoration: const InputDecoration(
-                                labelText: 'Suplidor',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: null,
-                                  child: Text('Sin suplidor'),
-                                ),
-                                ..._suppliers.map(
-                                  (s) => DropdownMenuItem(
-                                    value: s.id,
-                                    child: Text(s.name),
-                                  ),
-                                ),
-                              ],
-                              onChanged: (value) =>
-                                  setState(() => _selectedSupplierId = value),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add_circle),
-                            onPressed: _quickCreateSupplier,
-                            tooltip: 'Crear suplidor',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Imagen / Color
-                      Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Vista previa',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(Icons.inventory_2_outlined, size: 18),
                           ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade300),
-                              color: Colors.grey[50],
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ProductsSectionHeader(
+                              eyebrow: 'PRODUCTO',
+                              title: _isEdit
+                                  ? 'Editar producto'
+                                  : 'Nuevo producto',
+                              subtitle: 'Ficha comercial del artículo.',
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    ProductThumbnail(
-                                      name: _nameController.text.trim().isEmpty
-                                          ? 'Producto'
-                                          : _nameController.text.trim(),
-                                      imagePath: _previewImagePath,
-                                      placeholderColorHex: _resolvePlaceholderColor(),
-                                      placeholderType: _placeholderType,
-                                      categoryId: _selectedCategoryId,
-                                      size: 92,
-                                      width: 92,
-                                      height: 92,
-                                      borderRadius: BorderRadius.circular(12),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSectionLabel(
+                                context,
+                                'Identificación',
+                                'Código y nombre.',
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextFormField(
+                                      controller: _codeController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Código *',
+                                        hintText: 'SKU o código del producto',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      textCapitalization:
+                                          TextCapitalization.characters,
+                                      validator: (value) {
+                                        if (value == null ||
+                                            value.trim().isEmpty) {
+                                          return 'Requerido';
+                                        }
+                                        return null;
+                                      },
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _nameController.text.trim().isEmpty
-                                                ? 'Sin nombre'
-                                                : _nameController.text.trim(),
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 3,
+                                    child: TextFormField(
+                                      controller: _nameController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Nombre *',
+                                        hintText: 'Nombre del producto',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      textCapitalization:
+                                          TextCapitalization.words,
+                                      validator: (value) {
+                                        if (value == null ||
+                                            value.trim().isEmpty) {
+                                          return 'Requerido';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildSectionLabel(
+                                context,
+                                'Clasificación',
+                                'Categoría y suplidor.',
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<int?>(
+                                      value: _selectedCategoryId,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Categoría',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem(
+                                          value: null,
+                                          child: Text('Sin categoría'),
+                                        ),
+                                        ..._categories.map(
+                                          (c) => DropdownMenuItem(
+                                            value: c.id,
+                                            child: Text(c.name),
                                           ),
-                                          const SizedBox(height: 8),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: [
-                                              ChoiceChip(
-                                                label: const Text('Usar imagen'),
-                                                selected: _placeholderType == 'image',
-                                                onSelected: (_) => _setPlaceholderType('image'),
+                                        ),
+                                      ],
+                                      onChanged: (value) => setState(
+                                        () => _selectedCategoryId = value,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    height: 48,
+                                    child: OutlinedButton(
+                                      onPressed: _quickCreateCategory,
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add_circle_outline,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<int>(
+                                      initialValue: _selectedSupplierId,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Suplidor',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem(
+                                          value: null,
+                                          child: Text('Sin suplidor'),
+                                        ),
+                                        ..._suppliers.map(
+                                          (s) => DropdownMenuItem(
+                                            value: s.id,
+                                            child: Text(s.name),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (value) => setState(
+                                        () => _selectedSupplierId = value,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    height: 48,
+                                    child: OutlinedButton(
+                                      onPressed: _quickCreateSupplier,
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add_circle_outline,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildSectionLabel(
+                                context,
+                                'Visual',
+                                'Imagen o placeholder.',
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Vista previa',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: scheme.outlineVariant,
+                                      ),
+                                      color: scheme.surface,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            ProductThumbnail(
+                                              name:
+                                                  _nameController.text
+                                                      .trim()
+                                                      .isEmpty
+                                                  ? 'Producto'
+                                                  : _nameController.text.trim(),
+                                              imagePath: _previewImagePath,
+                                              placeholderColorHex:
+                                                  _resolvePlaceholderColor(),
+                                              placeholderType: _placeholderType,
+                                              categoryId: _selectedCategoryId,
+                                              size: 92,
+                                              width: 92,
+                                              height: 92,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    _nameController.text
+                                                            .trim()
+                                                            .isEmpty
+                                                        ? 'Sin nombre'
+                                                        : _nameController.text
+                                                              .trim(),
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Wrap(
+                                                    spacing: 8,
+                                                    runSpacing: 8,
+                                                    children: [
+                                                      ChoiceChip(
+                                                        label: const Text(
+                                                          'Usar imagen',
+                                                        ),
+                                                        selected:
+                                                            _placeholderType ==
+                                                            'image',
+                                                        onSelected: (_) =>
+                                                            _setPlaceholderType(
+                                                              'image',
+                                                            ),
+                                                      ),
+                                                      ChoiceChip(
+                                                        label: const Text(
+                                                          'Usar color (sin imagen)',
+                                                        ),
+                                                        selected:
+                                                            _placeholderType ==
+                                                            'color',
+                                                        onSelected: (_) =>
+                                                            _setPlaceholderType(
+                                                              'color',
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
                                               ),
-                                              ChoiceChip(
-                                                label:
-                                                    const Text('Usar color (sin imagen)'),
-                                                selected: _placeholderType == 'color',
-                                                onSelected: (_) => _setPlaceholderType('color'),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            if (_placeholderType ==
+                                                'image') ...[
+                                              ElevatedButton.icon(
+                                                onPressed: _isLoading
+                                                    ? null
+                                                    : _pickImage,
+                                                icon: const Icon(
+                                                  Icons.upload_file,
+                                                ),
+                                                label: const Text(
+                                                  'Seleccionar imagen',
+                                                ),
+                                              ),
+                                              if (_previewImagePath != null)
+                                                OutlinedButton.icon(
+                                                  onPressed: _isLoading
+                                                      ? null
+                                                      : _removeSelectedImage,
+                                                  icon: const Icon(
+                                                    Icons.delete_outline,
+                                                  ),
+                                                  label: const Text('Quitar'),
+                                                ),
+                                            ] else ...[
+                                              ElevatedButton.icon(
+                                                onPressed: _isLoading
+                                                    ? null
+                                                    : _generateColor,
+                                                icon: const Icon(
+                                                  Icons.palette_outlined,
+                                                ),
+                                                label: const Text(
+                                                  'Generar color',
+                                                ),
+                                              ),
+                                              OutlinedButton.icon(
+                                                onPressed: _isLoading
+                                                    ? null
+                                                    : _pickColorManually,
+                                                icon: const Icon(
+                                                  Icons.color_lens,
+                                                ),
+                                                label: const Text(
+                                                  'Elegir color',
+                                                ),
                                               ),
                                             ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    if (_placeholderType == 'image') ...[
-                                      ElevatedButton.icon(
-                                        onPressed: _isLoading ? null : _pickImage,
-                                        icon: const Icon(Icons.upload_file),
-                                        label: const Text('Seleccionar imagen'),
-                                      ),
-                                      if (_previewImagePath != null)
-                                        OutlinedButton.icon(
-                                          onPressed: _isLoading
-                                              ? null
-                                              : _removeSelectedImage,
-                                          icon: const Icon(Icons.delete_outline),
-                                          label: const Text('Quitar'),
-                                        ),
-                                    ] else ...[
-                                      ElevatedButton.icon(
-                                        onPressed: _isLoading ? null : _generateColor,
-                                        icon: const Icon(Icons.palette_outlined),
-                                        label: const Text('Generar color'),
-                                      ),
-                                      OutlinedButton.icon(
-                                        onPressed:
-                                            _isLoading ? null : _pickColorManually,
-                                        icon: const Icon(Icons.color_lens),
-                                        label: const Text('Elegir color'),
-                                      ),
-                                    ],
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(
-                                          color: Colors.grey.shade300,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 28,
-                                            height: 28,
-                                            decoration: BoxDecoration(
-                                              color: ColorUtils.colorFromHex(
-                                                _resolvePlaceholderColor(),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: Colors.grey.shade300,
+                                                ),
                                               ),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: Colors.grey.shade300,
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Container(
+                                                    width: 28,
+                                                    height: 28,
+                                                    decoration: BoxDecoration(
+                                                      color: ColorUtils.colorFromHex(
+                                                        _resolvePlaceholderColor(),
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            6,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: Colors
+                                                            .grey
+                                                            .shade300,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    _resolvePlaceholderColor(),
+                                                  ),
+                                                ],
                                               ),
                                             ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _placeholderType == 'color'
+                                              ? 'Se guardara sin imagen usando el color.'
+                                              : 'Se prioriza la imagen; el color queda guardado como respaldo.',
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: scheme.onSurface
+                                                    .withOpacity(0.68),
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildSectionLabel(
+                                context,
+                                'Precios',
+                                'Costo y venta.',
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _purchasePriceController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Precio Compra',
+                                        prefixText: '\$ ',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(_resolvePlaceholderColor()),
-                                        ],
-                                      ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d+\.?\d{0,2}'),
+                                        ),
+                                      ],
+                                      validator: (value) {
+                                        if (value == null ||
+                                            value.trim().isEmpty) {
+                                          return 'Requerido';
+                                        }
+                                        final price = double.tryParse(
+                                          value.trim(),
+                                        );
+                                        if (price == null || price <= 0) {
+                                          return 'Debe ser mayor que 0';
+                                        }
+                                        return null;
+                                      },
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _placeholderType == 'color'
-                                      ? 'Se guardara sin imagen usando el color.'
-                                      : 'Se prioriza la imagen; el color queda guardado como respaldo.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[700],
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Precios
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _purchasePriceController,
-                              decoration: const InputDecoration(
-                                labelText: 'Precio Compra',
-                                prefixText: '\$ ',
-                                border: OutlineInputBorder(),
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}'),
-                                ),
-                              ],
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Requerido';
-                                }
-                                final price = double.tryParse(value.trim());
-                                if (price == null || price <= 0) {
-                                  return 'Debe ser mayor que 0';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _salePriceController,
-                              decoration: const InputDecoration(
-                                labelText: 'Precio Venta',
-                                prefixText: '\$ ',
-                                border: OutlineInputBorder(),
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}'),
-                                ),
-                              ],
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Requerido';
-                                }
-                                final price = double.tryParse(value.trim());
-                                if (price == null || price <= 0) {
-                                  return 'Debe ser mayor que 0';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Stock
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TextFormField(
-                                  controller: _stockController,
-                                  enabled: !_isEdit,
-                                  decoration: InputDecoration(
-                                    labelText: 'Stock Actual',
-                                    helperText: _isEdit
-                                        ? 'Solo editable desde "Agregar Stock"'
-                                        : null,
-                                    border: const OutlineInputBorder(),
-                                  ),
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _salePriceController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Precio Venta',
+                                        prefixText: '\$ ',
+                                        border: OutlineInputBorder(),
                                       ),
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.allow(
-                                      RegExp(r'^\d+\.?\d{0,2}'),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d+\.?\d{0,2}'),
+                                        ),
+                                      ],
+                                      validator: (value) {
+                                        if (value == null ||
+                                            value.trim().isEmpty) {
+                                          return 'Requerido';
+                                        }
+                                        final price = double.tryParse(
+                                          value.trim(),
+                                        );
+                                        if (price == null || price <= 0) {
+                                          return 'Debe ser mayor que 0';
+                                        }
+                                        return null;
+                                      },
                                     ),
-                                  ],
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Requerido';
-                                    }
-                                    final stock = double.tryParse(value.trim());
-                                    if (stock == null || stock < 0) {
-                                      return 'Inválido';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _stockMinController,
-                              decoration: const InputDecoration(
-                                labelText: 'Stock Mínimo',
-                                border: OutlineInputBorder(),
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
                                   ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+\.?\d{0,2}'),
-                                ),
-                              ],
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Requerido';
-                                }
-                                final stock = double.tryParse(value.trim());
-                                if (stock == null || stock < 0) {
-                                  return 'Inválido';
-                                }
-                                return null;
-                              },
-                            ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildSectionLabel(
+                                context,
+                                'Inventario base',
+                                'Existencia inicial y mínimo.',
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        TextFormField(
+                                          controller: _stockController,
+                                          enabled: !_isEdit,
+                                          decoration: InputDecoration(
+                                            labelText: 'Stock Actual',
+                                            helperText: _isEdit
+                                                ? 'Solo editable desde "Agregar Stock"'
+                                                : null,
+                                            border: const OutlineInputBorder(),
+                                          ),
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.allow(
+                                              RegExp(r'^\d+\.?\d{0,2}'),
+                                            ),
+                                          ],
+                                          validator: (value) {
+                                            if (value == null ||
+                                                value.trim().isEmpty) {
+                                              return 'Requerido';
+                                            }
+                                            final stock = double.tryParse(
+                                              value.trim(),
+                                            );
+                                            if (stock == null || stock < 0) {
+                                              return 'Inválido';
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _stockMinController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Stock Mínimo',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(
+                                          RegExp(r'^\d+\.?\d{0,2}'),
+                                        ),
+                                      ],
+                                      validator: (value) {
+                                        if (value == null ||
+                                            value.trim().isEmpty) {
+                                          return 'Requerido';
+                                        }
+                                        final stock = double.tryParse(
+                                          value.trim(),
+                                        );
+                                        if (stock == null || stock < 0) {
+                                          return 'Inválido';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        border: Border(
+                          top: BorderSide(color: scheme.outlineVariant),
+                        ),
+                        borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(22),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () => Navigator.pop(context),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: _isLoading ? null : _save,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(_isEdit ? 'Actualizar' : 'Crear'),
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-
-            // Actions
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(12),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: _isLoading ? null : () => Navigator.pop(context),
-                    child: const Text('Cancelar'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _save,
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(_isEdit ? 'Actualizar' : 'Crear'),
-                  ),
-                ],
-              ),
-            ),
-                ],
               ),
             ),
           ),

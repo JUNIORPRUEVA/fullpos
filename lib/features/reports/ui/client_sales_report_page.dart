@@ -44,9 +44,20 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
 
     try {
       final results = await Future.wait([
-        ReportsRepository.getClientSalesSummaries(startMs: startMs, endMs: endMs),
-        ReportsRepository.getTopProducts(startMs: startMs, endMs: endMs, limit: 10),
-        ReportsRepository.getTopClients(startMs: startMs, endMs: endMs, limit: 1),
+        ReportsRepository.getClientSalesSummaries(
+          startMs: startMs,
+          endMs: endMs,
+        ),
+        ReportsRepository.getTopProducts(
+          startMs: startMs,
+          endMs: endMs,
+          limit: 10,
+        ),
+        ReportsRepository.getTopClients(
+          startMs: startMs,
+          endMs: endMs,
+          limit: 1,
+        ),
       ]);
 
       final clientSummaries = results[0] as List<ClientSalesSummary>;
@@ -128,46 +139,247 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
     _loadData();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  String _periodLabel() {
+    switch (_selectedPeriod) {
+      case DateRangePeriod.today:
+        return 'Hoy';
+      case DateRangePeriod.week:
+        return 'Semana';
+      case DateRangePeriod.biweekly:
+        return '15 dias';
+      case DateRangePeriod.month:
+        return 'Mes';
+      case DateRangePeriod.year:
+        return 'Ano';
+      case DateRangePeriod.custom:
+        final date = DateFormat('dd/MM/yyyy');
+        if (_customStart != null && _customEnd != null) {
+          return '${date.format(_customStart!)} - ${date.format(_customEnd!)}';
+        }
+        return 'Personalizado';
+    }
+  }
 
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        title: const Text('Ventas por cliente'),
-        actions: [
-          IconButton(
-            onPressed: _loadData,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Recargar',
+  Widget _headerBadge(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final isWide = MediaQuery.sizeOf(context).width >= 1120;
+
+    return Scaffold(
+      backgroundColor: scheme.surface,
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DateRangeSelector(
-              selectedPeriod: _selectedPeriod,
-              customStart: _customStart,
-              customEnd: _customEnd,
-              onPeriodChanged: _onPeriodChanged,
-              onCustomRangeChanged: _onCustomRangeChanged,
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: scheme.outlineVariant),
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.shadow.withOpacity(0.05),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final stacked = constraints.maxWidth < 980;
+                      final identity = Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.arrow_back_rounded),
+                            tooltip: 'Volver',
+                            style: IconButton.styleFrom(
+                              backgroundColor: scheme.surfaceContainerHighest,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.all(11),
+                            decoration: BoxDecoration(
+                              color: scheme.tertiary.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: scheme.tertiary.withOpacity(0.18),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.people_alt_outlined,
+                              color: scheme.tertiary,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ventas por cliente',
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Lectura comercial por cliente, credito y facturas del rango.',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurface.withOpacity(0.66),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+
+                      final actions = Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _loadData,
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Recargar'),
+                          ),
+                        ],
+                      );
+
+                      return Column(
+                        children: [
+                          if (stacked) ...[
+                            identity,
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: actions,
+                            ),
+                          ] else
+                            Row(
+                              children: [
+                                Expanded(child: identity),
+                                actions,
+                              ],
+                            ),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _headerBadge(
+                                  context,
+                                  'Periodo',
+                                  _periodLabel(),
+                                  Icons.calendar_today_outlined,
+                                  scheme.primary,
+                                ),
+                                _headerBadge(
+                                  context,
+                                  'Clientes',
+                                  _clientSummaries.length.toString(),
+                                  Icons.people_outline,
+                                  scheme.tertiary,
+                                ),
+                                _headerBadge(
+                                  context,
+                                  'Facturas visibles',
+                                  _selectedClientSales.length.toString(),
+                                  Icons.receipt_long_outlined,
+                                  scheme.secondary,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: DateRangeSelector(
+                              selectedPeriod: _selectedPeriod,
+                              customStart: _customStart,
+                              customEnd: _customEnd,
+                              onPeriodChanged: _onPeriodChanged,
+                              onCustomRangeChanged: _onCustomRangeChanged,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             if (_isLoading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else
               Expanded(
-                child: Row(
-                  children: [
-                    Expanded(flex: 2, child: _buildGeneralPanel(context)),
-                    const SizedBox(width: 16),
-                    Expanded(flex: 3, child: _buildClientDetailPanel(context)),
-                  ],
-                ),
+                child: isWide
+                    ? Row(
+                        children: [
+                          Expanded(flex: 2, child: _buildGeneralPanel(context)),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 3,
+                            child: _buildClientDetailPanel(context),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Expanded(child: _buildGeneralPanel(context)),
+                          const SizedBox(height: 16),
+                          Expanded(child: _buildClientDetailPanel(context)),
+                        ],
+                      ),
               ),
           ],
         ),
@@ -193,22 +405,46 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Resumen general',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 10),
-          _statTile(context, 'Ventas totales', money.format(totalSales), Icons.payments),
+          _statTile(
+            context,
+            'Ventas totales',
+            money.format(totalSales),
+            Icons.payments,
+          ),
           const SizedBox(height: 8),
-          _statTile(context, 'Créditos totales', money.format(totalCredits), Icons.credit_card),
+          _statTile(
+            context,
+            'Créditos totales',
+            money.format(totalCredits),
+            Icons.credit_card,
+          ),
           const SizedBox(height: 8),
-          _statTile(context, 'Clientes con compras', _clientSummaries.length.toString(), Icons.people),
+          _statTile(
+            context,
+            'Clientes con compras',
+            _clientSummaries.length.toString(),
+            Icons.people,
+          ),
           const SizedBox(height: 8),
           _statTile(
             context,
@@ -221,7 +457,9 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
           const SizedBox(height: 12),
           Text(
             'Productos más vendidos',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 8),
           Expanded(
@@ -289,8 +527,15 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: scheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -301,7 +546,9 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
               children: [
                 Text(
                   'Clientes',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Expanded(
@@ -318,17 +565,21 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                           itemCount: _clientSummaries.length,
                           itemBuilder: (context, index) {
                             final item = _clientSummaries[index];
-                            final selected = item.clientId == _selectedClient?.clientId;
+                            final selected =
+                                item.clientId == _selectedClient?.clientId;
                             return InkWell(
                               onTap: () => _selectClient(item),
                               borderRadius: BorderRadius.circular(10),
                               child: Container(
                                 margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
                                 decoration: BoxDecoration(
                                   color: selected
                                       ? scheme.primary.withOpacity(0.10)
-                                      : scheme.surfaceVariant.withOpacity(0.22),
+                                      : scheme.surface,
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
                                     color: selected
@@ -343,17 +594,19 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                                       item.clientName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       '${money.format(item.totalSales)} · ${item.salesCount} ventas',
-                                      style: theme.textTheme.labelSmall?.copyWith(
-                                        color: scheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: scheme.onSurfaceVariant,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                     ),
                                   ],
                                 ),
@@ -373,7 +626,9 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
               children: [
                 Text(
                   _selectedClient?.clientName ?? 'Detalle del cliente',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 if (_selectedClient != null) ...[
@@ -382,8 +637,14 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                     runSpacing: 8,
                     children: [
                       _pill(context, 'Ventas: ${_selectedClient!.salesCount}'),
-                      _pill(context, 'Total: ${money.format(_selectedClient!.totalSales)}'),
-                      _pill(context, 'Crédito: ${money.format(_selectedClient!.totalCredit)}'),
+                      _pill(
+                        context,
+                        'Total: ${money.format(_selectedClient!.totalSales)}',
+                      ),
+                      _pill(
+                        context,
+                        'Crédito: ${money.format(_selectedClient!.totalCredit)}',
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -410,20 +671,27 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         sale.localCode,
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        date.format(DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs)),
-                                        style: theme.textTheme.labelSmall?.copyWith(
-                                          color: scheme.onSurfaceVariant,
+                                        date.format(
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                            sale.createdAtMs,
+                                          ),
                                         ),
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: scheme.onSurfaceVariant,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -448,14 +716,20 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
     );
   }
 
-  Widget _statTile(BuildContext context, String label, String value, IconData icon) {
+  Widget _statTile(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon,
+  ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: scheme.surfaceVariant.withOpacity(0.26),
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         children: [

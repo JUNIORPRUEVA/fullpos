@@ -5,6 +5,10 @@ import '../constants/app_colors.dart';
 /// Tokens que describen decisiones visuales compartidas entre pantallas.
 @immutable
 class AppTokens extends ThemeExtension<AppTokens> {
+  final Color topbarBackground;
+  final Color topbarText;
+  final Color footerBackground;
+  final Color footerText;
   final Color panelBackground;
   final Color panelBorder;
   final Color cardBackground;
@@ -12,6 +16,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final Color sidebarBackground;
   final Color sidebarBorder;
   final Color sidebarText;
+  final Color sidebarActive;
   final Color controlBarBackground;
   final Color controlBarBorder;
   final Color controlBarText;
@@ -25,6 +30,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final Color outline;
 
   const AppTokens({
+    required this.topbarBackground,
+    required this.topbarText,
+    required this.footerBackground,
+    required this.footerText,
     required this.panelBackground,
     required this.panelBorder,
     required this.cardBackground,
@@ -32,6 +41,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.sidebarBackground,
     required this.sidebarBorder,
     required this.sidebarText,
+    required this.sidebarActive,
     required this.controlBarBackground,
     required this.controlBarBorder,
     required this.controlBarText,
@@ -47,6 +57,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
 
   @override
   AppTokens copyWith({
+    Color? topbarBackground,
+    Color? topbarText,
+    Color? footerBackground,
+    Color? footerText,
     Color? panelBackground,
     Color? panelBorder,
     Color? cardBackground,
@@ -54,6 +68,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     Color? sidebarBackground,
     Color? sidebarBorder,
     Color? sidebarText,
+    Color? sidebarActive,
     Color? controlBarBackground,
     Color? controlBarBorder,
     Color? controlBarText,
@@ -67,6 +82,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
     Color? outline,
   }) {
     return AppTokens(
+      topbarBackground: topbarBackground ?? this.topbarBackground,
+      topbarText: topbarText ?? this.topbarText,
+      footerBackground: footerBackground ?? this.footerBackground,
+      footerText: footerText ?? this.footerText,
       panelBackground: panelBackground ?? this.panelBackground,
       panelBorder: panelBorder ?? this.panelBorder,
       cardBackground: cardBackground ?? this.cardBackground,
@@ -74,6 +93,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       sidebarBackground: sidebarBackground ?? this.sidebarBackground,
       sidebarBorder: sidebarBorder ?? this.sidebarBorder,
       sidebarText: sidebarText ?? this.sidebarText,
+      sidebarActive: sidebarActive ?? this.sidebarActive,
       controlBarBackground: controlBarBackground ?? this.controlBarBackground,
       controlBarBorder: controlBarBorder ?? this.controlBarBorder,
       controlBarText: controlBarText ?? this.controlBarText,
@@ -95,6 +115,16 @@ class AppTokens extends ThemeExtension<AppTokens> {
       return this;
     }
     return AppTokens(
+      topbarBackground:
+        Color.lerp(topbarBackground, other.topbarBackground, t) ??
+          topbarBackground,
+      topbarText:
+        Color.lerp(topbarText, other.topbarText, t) ?? topbarText,
+      footerBackground:
+        Color.lerp(footerBackground, other.footerBackground, t) ??
+          footerBackground,
+      footerText:
+        Color.lerp(footerText, other.footerText, t) ?? footerText,
       panelBackground:
           Color.lerp(panelBackground, other.panelBackground, t) ??
               panelBackground,
@@ -114,6 +144,8 @@ class AppTokens extends ThemeExtension<AppTokens> {
           Color.lerp(sidebarBorder, other.sidebarBorder, t) ?? sidebarBorder,
       sidebarText:
           Color.lerp(sidebarText, other.sidebarText, t) ?? sidebarText,
+        sidebarActive:
+          Color.lerp(sidebarActive, other.sidebarActive, t) ?? sidebarActive,
       controlBarBackground: Color.lerp(
             controlBarBackground,
             other.controlBarBackground,
@@ -154,6 +186,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
 
   @override
   int get hashCode => Object.hashAll([
+      topbarBackground,
+      topbarText,
+      footerBackground,
+      footerText,
         panelBackground,
         panelBorder,
         cardBackground,
@@ -161,6 +197,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
         sidebarBackground,
         sidebarBorder,
         sidebarText,
+        sidebarActive,
         controlBarBackground,
         controlBarBorder,
         controlBarText,
@@ -178,6 +215,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
   bool operator ==(Object other) {
     return identical(this, other) ||
         other is AppTokens &&
+        topbarBackground == other.topbarBackground &&
+        topbarText == other.topbarText &&
+        footerBackground == other.footerBackground &&
+        footerText == other.footerText &&
             panelBackground == other.panelBackground &&
             panelBorder == other.panelBorder &&
             cardBackground == other.cardBackground &&
@@ -185,6 +226,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
             sidebarBackground == other.sidebarBackground &&
             sidebarBorder == other.sidebarBorder &&
             sidebarText == other.sidebarText &&
+            sidebarActive == other.sidebarActive &&
             controlBarBackground == other.controlBarBackground &&
             controlBarBorder == other.controlBarBorder &&
             controlBarText == other.controlBarText &&
@@ -199,6 +241,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
   }
 
   static const AppTokens defaultTokens = AppTokens(
+    topbarBackground: AppColors.bgDark,
+    topbarText: AppColors.textLight,
+    footerBackground: AppColors.bgDark,
+    footerText: AppColors.textLight,
     panelBackground: AppColors.bgDark,
     panelBorder: AppColors.surfaceDarkVariant,
     cardBackground: AppColors.surfaceLight,
@@ -206,6 +252,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     sidebarBackground: AppColors.bgDark,
     sidebarBorder: AppColors.surfaceDark,
     sidebarText: AppColors.textLight,
+    sidebarActive: AppColors.brandBlue,
     controlBarBackground: AppColors.surfaceDark,
     controlBarBorder: AppColors.surfaceDarkVariant,
     controlBarText: AppColors.textLight,

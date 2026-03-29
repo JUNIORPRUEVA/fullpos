@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
-import '../../../core/constants/app_sizes.dart';
-import 'theme_selector_widget.dart';
+import 'settings_layout.dart';
 
-/// Página de configuración completa del tema (paleta + tipografía + presets)
+/// Página de configuración simplificada del tema.
 class ThemeSettingsPage extends ConsumerWidget {
   const ThemeSettingsPage({super.key});
 
@@ -12,81 +11,107 @@ class ThemeSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(themeProvider);
     final notifier = ref.read(themeProvider.notifier);
-    final scheme = Theme.of(context).colorScheme;
-    final sidePadding = (MediaQuery.sizeOf(context).width * 0.04).clamp(
-      12.0,
-      32.0,
-    );
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('TEMA DE LA APLICACIÓN'), elevation: 0),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Encabezado informativo
-            Container(
-              color: Theme.of(context).colorScheme.primary.withAlpha(15),
-              padding: EdgeInsets.all(sidePadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🎨 Personaliza tu POS (completo)',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Configura la paleta completa: AppBar, Sidebar, Footer, botones y tipografía.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.secondary.withAlpha(25),
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      border: Border.all(
-                        color: scheme.secondary.withAlpha(120),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: scheme.secondary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Tu selección se guarda automáticamente.',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Selector de temas
-            ThemeSelector(padding: EdgeInsets.all(sidePadding)),
-
-            // Tipografía
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Tipografía',
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Apariencia')),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return SettingsLayout.pageFrame(
+              constraints,
+              child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
+                    SettingsLayout.sectionHeading(
+                      context,
+                      title: 'Apariencia',
+                      subtitle:
+                          'Edita solo lo esencial. La apariencia base de FULLPOS sigue como configuración segura por defecto.',
+                    ),
+                    const SizedBox(height: 16),
+
+                    _SectionCard(
+                      title: 'Chrome principal',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Color de AppBar principal, sidebar y footer',
+                            color: settings.topbarColor,
+                            onPick: notifier.updateChromeBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto e iconos del chrome principal',
+                            color: settings.topbarTextColor,
+                            onPick: notifier.updateChromeTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Sidebar principal',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo del sidebar',
+                            color: settings.sidebarColor,
+                            onPick: notifier.updateSidebarColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto e iconos del sidebar',
+                            color: settings.sidebarTextColor,
+                            onPick: notifier.updateSidebarTextColor,
+                          ),
+                          _ColorRow(
+                            label: 'Color activo del sidebar',
+                            color: settings.sidebarActiveColor,
+                            onPick: notifier.updateSidebarActiveColor,
+                          ),
+                          _ColorRow(
+                            label: 'Hover del sidebar',
+                            color: settings.hoverColor,
+                            onPick: notifier.updateHoverColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Fondo general',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo principal de la aplicación',
+                            color: settings.backgroundColor,
+                            onPick: notifier.updateBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Paneles y superficies',
+                            color: settings.surfaceColor,
+                            onPick: notifier.updateSurfaceColor,
+                          ),
+                          _ColorRow(
+                            label: 'Tarjetas',
+                            color: settings.cardColor,
+                            onPick: notifier.updateCardColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto general',
+                            color: settings.textColor,
+                            onPick: notifier.updateTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Tipografía',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<String>(
                             initialValue: settings.fontFamily,
                             decoration: const InputDecoration(
                               labelText: 'Tipo de letra',
@@ -105,505 +130,135 @@ class ThemeSettingsPage extends ConsumerWidget {
                                 child: Text('Arial'),
                               ),
                             ],
-                            onChanged: (v) {
-                              if (v == null) return;
-                              notifier.updateFontFamily(v);
+                            onChanged: (value) {
+                              if (value == null) return;
+                              notifier.updateFontFamily(value);
                             },
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            _fontScaleLabel(settings.fontSize),
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          Slider(
+                            value: settings.fontSize.clamp(10.0, 22.0),
+                            min: 10,
+                            max: 22,
+                            divisions: 12,
+                            label: settings.fontSize.toStringAsFixed(0),
+                            onChanged: notifier.updateFontSize,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Ventas: productos y grid',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo del grid de productos',
+                            color: settings.salesGridBackgroundColor,
+                            onPick: notifier.updateSalesGridBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Fondo de la tarjeta de producto',
+                            color: settings.salesProductCardBackgroundColor,
+                            onPick:
+                                notifier.updateSalesProductCardBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Borde de la tarjeta de producto',
+                            color: settings.salesProductCardBorderColor,
+                            onPick: notifier.updateSalesProductCardBorderColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto de la tarjeta de producto',
+                            color: settings.salesProductCardTextColor,
+                            onPick: notifier.updateSalesProductCardTextColor,
+                          ),
+                          _ColorRow(
+                            label: 'Precio de producto',
+                            color: settings.salesProductPriceColor,
+                            onPick: notifier.updateSalesProductPriceColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Ventas: columna de detalle',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Gradiente inicio',
+                            color: settings.salesDetailGradientStart,
+                            onPick: notifier.updateSalesDetailGradientStart,
+                          ),
+                          _ColorRow(
+                            label: 'Gradiente medio',
+                            color: settings.salesDetailGradientMid,
+                            onPick: notifier.updateSalesDetailGradientMid,
+                          ),
+                          _ColorRow(
+                            label: 'Gradiente final',
+                            color: settings.salesDetailGradientEnd,
+                            onPick: notifier.updateSalesDetailGradientEnd,
+                          ),
+                          _ColorRow(
+                            label: 'Texto de la columna de detalle',
+                            color: settings.salesDetailTextColor,
+                            onPick: notifier.updateSalesDetailTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: notifier.resetToDefault,
+                            icon: const Icon(Icons.restart_alt),
+                            label: const Text('Restablecer apariencia FULLPOS'),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Tamaño base: ${settings.fontSize.toStringAsFixed(0)}',
-                      style: Theme.of(context).textTheme.labelLarge,
-                    ),
-                    Slider(
-                      value: settings.fontSize.clamp(10.0, 22.0),
-                      min: 10,
-                      max: 22,
-                      divisions: 12,
-                      label: settings.fontSize.toStringAsFixed(0),
-                      onChanged: (v) => notifier.updateFontSize(v),
-                    ),
-                  ],
-                ),
-              ),
-            ),
 
-            const SizedBox(height: 12),
-
-            // Paleta (sin duplicados)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Branding',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Color primario',
-                      color: settings.primaryColor,
-                      onPick: (c) => notifier.updatePrimaryColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Color secundario / acento',
-                      color: settings.accentColor,
-                      onPick: (c) => notifier.updateAccentColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Background & Surfaces',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo (background)',
-                      color: settings.backgroundColor,
-                      onPick: (c) => notifier.updateBackgroundColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Gradiente fondo (inicio)',
-                      color: settings.backgroundGradientStart,
-                      onPick: (c) => notifier.updateBackgroundGradientStart(c),
-                    ),
-                    _ColorRow(
-                      label: 'Gradiente fondo (medio)',
-                      color: settings.backgroundGradientMid,
-                      onPick: (c) => notifier.updateBackgroundGradientMid(c),
-                    ),
-                    _ColorRow(
-                      label: 'Gradiente fondo (final)',
-                      color: settings.backgroundGradientEnd,
-                      onPick: (c) => notifier.updateBackgroundGradientEnd(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Surface',
-                      color: settings.surfaceColor,
-                      onPick: (c) => notifier.updateSurfaceColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Cards',
-                      color: settings.cardColor,
-                      onPick: (c) => notifier.updateCardColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Texto',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Color de texto (general)',
-                      color: settings.textColor,
-                      onPick: (c) => notifier.updateTextColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'General (AppBar principal + Sidebar + Footer)',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo general (AppBar principal/Sidebar/Footer)',
-                      color: settings.topbarColor,
-                      onPick: (c) => notifier.updateChromeBackgroundColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'AppBar principal (barra superior)',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo AppBar principal',
-                      color: settings.topbarColor,
-                      onPick: (c) => notifier.updateTopbarColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto/Iconos AppBar principal',
-                      color: settings.topbarTextColor,
-                      onPick: (c) => notifier.updateTopbarTextColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'AppBar (pantallas)',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo AppBar (pantallas)',
-                      color: settings.appBarColor,
-                      onPick: (c) => notifier.updateAppBarColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto/Iconos AppBar (pantallas)',
-                      color: settings.appBarTextColor,
-                      onPick: (c) => notifier.updateAppBarTextColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Sidebar / Menú',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo Sidebar',
-                      color: settings.sidebarColor,
-                      onPick: (c) => notifier.updateSidebarColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto/Iconos Sidebar',
-                      color: settings.sidebarTextColor,
-                      onPick: (c) => notifier.updateSidebarTextColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Activo/Hover Sidebar',
-                      color: settings.sidebarActiveColor,
-                      onPick: (c) => notifier.updateSidebarActiveColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Hover (general)',
-                      color: settings.hoverColor,
-                      onPick: (c) => notifier.updateHoverColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Footer',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo Footer',
-                      color: settings.footerColor,
-                      onPick: (c) => notifier.updateFooterColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto/Iconos Footer',
-                      color: settings.footerTextColor,
-                      onPick: (c) => notifier.updateFooterTextColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Botones & Estados',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Botones (principal)',
-                      color: settings.buttonColor,
-                      onPick: (c) => notifier.updateButtonColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Éxito',
-                      color: settings.successColor,
-                      onPick: (c) => notifier.updateSuccessColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Error',
-                      color: settings.errorColor,
-                      onPick: (c) => notifier.updateErrorColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Advertencia',
-                      color: settings.warningColor,
-                      onPick: (c) => notifier.updateWarningColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Columna detalle de ventas
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Columna detalle de ventas',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Gradiente detalle (inicio)',
-                      color: settings.salesDetailGradientStart,
-                      onPick: (c) => notifier.updateSalesDetailGradientStart(c),
-                    ),
-                    _ColorRow(
-                      label: 'Gradiente detalle (medio)',
-                      color: settings.salesDetailGradientMid,
-                      onPick: (c) => notifier.updateSalesDetailGradientMid(c),
-                    ),
-                    _ColorRow(
-                      label: 'Gradiente detalle (final)',
-                      color: settings.salesDetailGradientEnd,
-                      onPick: (c) => notifier.updateSalesDetailGradientEnd(c),
-                    ),
-                    _ColorRow(
-                      label: 'Texto detalle de ventas',
-                      color: settings.salesDetailTextColor,
-                      onPick: (c) => notifier.updateSalesDetailTextColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Pagina de ventas (productos)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: _SectionCard(
-                title: 'Pagina de ventas (productos)',
-                child: Column(
-                  children: [
-                    _ColorRow(
-                      label: 'Fondo del GridView',
-                      color: settings.salesGridBackgroundColor,
-                      onPick: (c) => notifier.updateSalesGridBackgroundColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Tarjeta producto (fondo)',
-                      color: settings.salesProductCardBackgroundColor,
-                      onPick: (c) =>
-                          notifier.updateSalesProductCardBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Tarjeta producto (borde)',
-                      color: settings.salesProductCardBorderColor,
-                      onPick: (c) =>
-                          notifier.updateSalesProductCardBorderColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Tarjeta producto (texto)',
-                      color: settings.salesProductCardTextColor,
-                      onPick: (c) =>
-                          notifier.updateSalesProductCardTextColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Tarjeta producto alterna (fondo)',
-                      color: settings.salesProductCardAltBackgroundColor,
-                      onPick: (c) =>
-                          notifier.updateSalesProductCardAltBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Tarjeta producto alterna (borde)',
-                      color: settings.salesProductCardAltBorderColor,
-                      onPick: (c) =>
-                          notifier.updateSalesProductCardAltBorderColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Tarjeta producto alterna (texto)',
-                      color: settings.salesProductCardAltTextColor,
-                      onPick: (c) =>
-                          notifier.updateSalesProductCardAltTextColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Precio en tarjetas',
-                      color: settings.salesProductPriceColor,
-                      onPick: (c) => notifier.updateSalesProductPriceColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Barra buscador (fondo)',
-                      color: settings.salesControlBarBackgroundColor,
-                      onPick: (c) =>
-                          notifier.updateSalesControlBarBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Barra buscador (contenido)',
-                      color: settings.salesControlBarContentBackgroundColor,
-                      onPick: (c) => notifier
-                          .updateSalesControlBarContentBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Barra buscador (borde)',
-                      color: settings.salesControlBarBorderColor,
-                      onPick: (c) =>
-                          notifier.updateSalesControlBarBorderColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Barra buscador (texto/iconos)',
-                      color: settings.salesControlBarTextColor,
-                      onPick: (c) => notifier.updateSalesControlBarTextColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Categoria (fondo)',
-                      color: settings.salesControlBarDropdownBackgroundColor,
-                      onPick: (c) => notifier
-                          .updateSalesControlBarDropdownBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Categoria (borde)',
-                      color: settings.salesControlBarDropdownBorderColor,
-                      onPick: (c) =>
-                          notifier.updateSalesControlBarDropdownBorderColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Categoria (texto/iconos)',
-                      color: settings.salesControlBarDropdownTextColor,
-                      onPick: (c) =>
-                          notifier.updateSalesControlBarDropdownTextColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Menu categoria (fondo)',
-                      color: settings.salesControlBarPopupBackgroundColor,
-                      onPick: (c) =>
-                          notifier.updateSalesControlBarPopupBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Menu categoria (texto)',
-                      color: settings.salesControlBarPopupTextColor,
-                      onPick: (c) =>
-                          notifier.updateSalesControlBarPopupTextColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Menu categoria (seleccion fondo)',
-                      color:
-                          settings.salesControlBarPopupSelectedBackgroundColor,
-                      onPick: (c) => notifier
-                          .updateSalesControlBarPopupSelectedBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Menu categoria (seleccion texto)',
-                      color: settings.salesControlBarPopupSelectedTextColor,
-                      onPick: (c) => notifier
-                          .updateSalesControlBarPopupSelectedTextColor(c),
-                    ),
-                    const Divider(height: 24),
-                    _ColorRow(
-                      label: 'Botones inferiores (fondo)',
-                      color: settings.salesFooterButtonsBackgroundColor,
-                      onPick: (c) =>
-                          notifier.updateSalesFooterButtonsBackgroundColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Botones inferiores (texto)',
-                      color: settings.salesFooterButtonsTextColor,
-                      onPick: (c) =>
-                          notifier.updateSalesFooterButtonsTextColor(c),
-                    ),
-                    _ColorRow(
-                      label: 'Botones inferiores (borde)',
-                      color: settings.salesFooterButtonsBorderColor,
-                      onPick: (c) =>
-                          notifier.updateSalesFooterButtonsBorderColor(c),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Acciones
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: sidePadding),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => notifier.resetToDefault(),
-                      icon: const Icon(Icons.restart_alt),
-                      label: const Text('Restablecer'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Pie de página
-            Container(
-              margin: EdgeInsets.all(sidePadding),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                border: Border.all(
-                  color: scheme.outlineVariant.withAlpha(100),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.check_circle,
-                        color: settings.successColor,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Tema aplicado y guardado',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          color: settings.successColor,
+                          size: 18,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Los cambios se aplicarán inmediatamente en toda la aplicación.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Los cambios se aplican al momento y siempre puedes volver a la apariencia base de FULLPOS.',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: 20),
-          ],
+            );
+          },
         ),
       ),
     );
   }
+}
+
+String _fontScaleLabel(double fontSize) {
+  if (fontSize <= 12) return 'Estilo tipográfico: compacto';
+  if (fontSize >= 18) return 'Estilo tipográfico: amplio';
+  return 'Estilo tipográfico: equilibrado';
 }
 
 class _SectionCard extends StatelessWidget {
@@ -614,20 +269,13 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusM),
-        border: Border.all(color: scheme.outlineVariant.withAlpha(90)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           child,
         ],
       ),
@@ -737,7 +385,7 @@ class _ColorRow extends StatelessWidget {
                 const Color(0xFFF59E0B),
               ];
 
-              void syncFromCurrent() {
+              void syncThemeFromCurrent() {
                 a = current.alpha;
                 r = current.red;
                 g = current.green;
@@ -747,7 +395,7 @@ class _ColorRow extends StatelessWidget {
               void setCurrent(Color c) {
                 setState(() {
                   current = c;
-                  syncFromCurrent();
+                  syncThemeFromCurrent();
                   controller.text = toHex(current);
                 });
               }
@@ -787,7 +435,7 @@ class _ColorRow extends StatelessWidget {
                               if (parsed != null) {
                                 setState(() {
                                   current = parsed;
-                                  syncFromCurrent();
+                                  syncThemeFromCurrent();
                                 });
                               }
                             },

@@ -16,10 +16,13 @@ import '../dialogs/product_details_dialog.dart';
 import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/kpi_card.dart';
 import '../widgets/compact_product_card.dart';
+import '../widgets/products_surface.dart';
 
 /// Tab de Inventario con KPIs y alertas
 class InventoryTab extends StatefulWidget {
-  const InventoryTab({super.key});
+  const InventoryTab({super.key, required this.onBackToCatalog});
+
+  final VoidCallback onBackToCatalog;
 
   @override
   State<InventoryTab> createState() => _InventoryTabState();
@@ -310,7 +313,44 @@ class _InventoryTabState extends State<InventoryTab> {
     const maxContentWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
     final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
-    return EdgeInsets.fromLTRB(side, 16, side, 16);
+    return EdgeInsets.fromLTRB(side, 12, side, 14);
+  }
+
+  Widget _buildSectionHeader(
+    BuildContext context, {
+    required String title,
+    Widget? trailing,
+    bool stackOnCompact = true,
+  }) {
+    final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 860;
+    final titleWidget = Text(
+      title,
+      style: theme.textTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.w800,
+        fontFamily: 'Inter',
+        color: AppColors.textPrimary,
+      ),
+    );
+
+    if (trailing == null) {
+      return titleWidget;
+    }
+
+    if (compact && stackOnCompact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [titleWidget, const SizedBox(height: 10), trailing],
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(child: titleWidget),
+        const SizedBox(width: 12),
+        trailing,
+      ],
+    );
   }
 
   Widget _buildMovementTile(
@@ -589,19 +629,33 @@ class _InventoryTabState extends State<InventoryTab> {
 
         final isWide = usableWidth >= 1100;
 
-        const kpiTargetWidth = 260.0;
-        const kpiSpacing = 8.0;
+        const kpiTargetWidth = 236.0;
+        const kpiSpacing = 6.0;
         final computedColumns =
             ((usableWidth + kpiSpacing) / (kpiTargetWidth + kpiSpacing))
                 .floor()
                 .clamp(1, 5);
         final kpiCrossAxisCount = computedColumns;
         final kpiAspectRatio = usableWidth >= 1400
-            ? 2.45
-            : (usableWidth >= 1100 ? 2.2 : (usableWidth >= 780 ? 2.0 : 1.85));
+            ? 2.6
+            : (usableWidth >= 1100 ? 2.3 : (usableWidth >= 780 ? 2.08 : 1.9));
 
         final compactAlerts = usableWidth < 780;
-        final mainContent = RefreshIndicator(
+        final sectionPadding = EdgeInsets.all(usableWidth < 760 ? 12 : 14);
+        final historyButton = FilledButton.tonalIcon(
+          onPressed: _openHistory,
+          icon: const Icon(Icons.history),
+          label: const Text('Historial'),
+          style: FilledButton.styleFrom(
+            foregroundColor: AppColors.primaryBlue,
+            backgroundColor: AppColors.lightBlueHover,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        );
+
+        return RefreshIndicator(
           onRefresh: _loadInventoryData,
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -611,310 +665,327 @@ class _InventoryTabState extends State<InventoryTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // KPIs Principales
-                      Row(
-                        children: [
-                          Text(
-                            'Métricas de Inventario',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Inter',
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            'Panel de Control',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: AppColors.textSecondary,
-                              fontFamily: 'Inter',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: kpis.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: kpiCrossAxisCount,
-                          crossAxisSpacing: kpiSpacing,
-                          mainAxisSpacing: kpiSpacing,
-                          childAspectRatio: kpiAspectRatio,
-                        ),
-                        itemBuilder: (context, index) => kpis[index],
-                      ),
-                      const SizedBox(height: 26),
-
-                      // Desglose por categoria y suplidor
-                      Row(
-                        children: [
-                          Text(
-                            'Inventario por categoría',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Inter',
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            'por suplidor',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
-                              fontFamily: 'Inter',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      isWide
-                          ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      ProductsSurface(
+                        padding: sectionPadding,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Expanded(
-                                  child: _buildBreakdownPanel(
-                                    title: 'Categorías',
-                                    items: _inventoryByCategory,
-                                    money: currencyFormat,
-                                    accent: scheme.primary,
+                                OutlinedButton.icon(
+                                  onPressed: widget.onBackToCatalog,
+                                  icon: const Icon(
+                                    Icons.arrow_back_rounded,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Catálogo'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppColors.primaryBlue,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _buildBreakdownPanel(
-                                    title: 'Suplidores',
-                                    items: _inventoryBySupplier,
-                                    money: currencyFormat,
-                                    accent: scheme.tertiary,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Column(
-                              children: [
-                                _buildBreakdownPanel(
-                                  title: 'Categorías',
-                                  items: _inventoryByCategory,
-                                  money: currencyFormat,
-                                  accent: scheme.primary,
-                                ),
-                                const SizedBox(height: 12),
-                                _buildBreakdownPanel(
-                                  title: 'Suplidores',
-                                  items: _inventoryBySupplier,
-                                  money: currencyFormat,
-                                  accent: scheme.tertiary,
-                                ),
+                                const Spacer(),
+                                historyButton,
                               ],
                             ),
-
-                      const SizedBox(height: 22),
-                      // Alertas
-                      Row(
-                        children: [
-                          Text(
-                            'Alertas de Inventario',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Inter',
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.error.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              ' alertas',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: scheme.error,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      compactAlerts
-                          ? Column(
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
                               children: [
-                                KpiCard(
-                                  title: 'Stock Bajo',
+                                ProductsStatChip(
+                                  label: 'Productos activos',
+                                  value: _productCount.toString(),
+                                  icon: Icons.inventory_2_outlined,
+                                ),
+                                ProductsStatChip(
+                                  label: 'Alertas stock bajo',
                                   value: _lowStockCount.toString(),
-                                  icon: Icons.warning,
-                                  color: Colors.orange,
-                                  onTap: _lowStockCount > 0
-                                      ? _showLowStockDetails
-                                      : null,
+                                  icon: Icons.warning_amber_outlined,
+                                  color: const Color(0xFFF59E0B),
                                 ),
-                                const SizedBox(height: 12),
-                                KpiCard(
-                                  title: 'Agotados',
+                                ProductsStatChip(
+                                  label: 'Agotados',
                                   value: _outOfStockCount.toString(),
-                                  icon: Icons.error,
-                                  color: Colors.red,
-                                  onTap: _outOfStockCount > 0
-                                      ? _showOutOfStockDetails
-                                      : null,
+                                  icon: Icons.error_outline,
+                                  color: scheme.error,
                                 ),
-                              ],
-                            )
-                          : Row(
-                              children: [
-                                Expanded(
-                                  child: KpiCard(
-                                    title: 'Stock Bajo',
-                                    value: _lowStockCount.toString(),
-                                    icon: Icons.warning,
-                                    color: Colors.orange,
-                                    onTap: _lowStockCount > 0
-                                        ? _showLowStockDetails
-                                        : null,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: KpiCard(
-                                    title: 'Agotados',
-                                    value: _outOfStockCount.toString(),
-                                    icon: Icons.error,
-                                    color: Colors.red,
-                                    onTap: _outOfStockCount > 0
-                                        ? _showOutOfStockDetails
-                                        : null,
-                                  ),
-                                ),
-                              ],
-                            ),
-                      if (_lowStockCount == 0 && _outOfStockCount == 0) ...[
-                        const SizedBox(height: 32),
-                        Center(
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                size: 64,
-                                color: scheme.tertiary,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '¡Todo bajo control!',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                ProductsStatChip(
+                                  label: 'Movimientos recientes',
+                                  value: _recentMovements.length.toString(),
+                                  icon: Icons.swap_horiz_outlined,
                                   color: scheme.tertiary,
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'No hay productos con stock bajo o agotados',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: mutedText,
-                                ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                      const SizedBox(height: 30),
-                      Row(
-                        children: [
-                          Text(
-                            'Historial Reciente',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontFamily: 'Inter',
-                              color: AppColors.textPrimary,
+                      ),
+                      const SizedBox(height: 10),
+                      ProductsSurface(
+                        padding: sectionPadding,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionHeader(context, title: 'Resumen'),
+                            const SizedBox(height: 10),
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: kpis.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: kpiCrossAxisCount,
+                                    crossAxisSpacing: kpiSpacing,
+                                    mainAxisSpacing: kpiSpacing,
+                                    childAspectRatio: kpiAspectRatio,
+                                  ),
+                              itemBuilder: (context, index) => kpis[index],
                             ),
-                          ),
-                          const Spacer(),
-                          if (stockSummary != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                ' mov.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: mutedText,
-                                  fontWeight: FontWeight.w600,
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ProductsSurface(
+                        padding: sectionPadding,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionHeader(context, title: 'Distribución'),
+                            const SizedBox(height: 10),
+                            isWide
+                                ? Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _buildBreakdownPanel(
+                                          title: 'Categorías',
+                                          items: _inventoryByCategory,
+                                          money: currencyFormat,
+                                          accent: scheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _buildBreakdownPanel(
+                                          title: 'Suplidores',
+                                          items: _inventoryBySupplier,
+                                          money: currencyFormat,
+                                          accent: scheme.tertiary,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Column(
+                                    children: [
+                                      _buildBreakdownPanel(
+                                        title: 'Categorías',
+                                        items: _inventoryByCategory,
+                                        money: currencyFormat,
+                                        accent: scheme.primary,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      _buildBreakdownPanel(
+                                        title: 'Suplidores',
+                                        items: _inventoryBySupplier,
+                                        money: currencyFormat,
+                                        accent: scheme.tertiary,
+                                      ),
+                                    ],
+                                  ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ProductsSurface(
+                        padding: sectionPadding,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionHeader(
+                              context,
+                              title: 'Alertas',
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: scheme.error.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '${_lowStockCount + _outOfStockCount} alertas',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: scheme.error,
+                                    fontFamily: 'Inter',
+                                  ),
                                 ),
                               ),
                             ),
-                          const SizedBox(width: 8),
-                          TextButton.icon(
-                            onPressed: _openHistory,
-                            icon: const Icon(Icons.history),
-                            label: const Text('Ver historial completo'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (_recentMovements.isEmpty)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: scheme.outlineVariant),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.history,
-                                size: 48,
-                                color: scheme.onSurface.withOpacity(0.4),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Sin movimientos recientes',
-                                style: TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Cada entrada, salida o ajuste quedará registrado aquí.',
-                                textAlign: TextAlign.center,
+                            const SizedBox(height: 10),
+                            compactAlerts
+                                ? Column(
+                                    children: [
+                                      KpiCard(
+                                        title: 'Stock Bajo',
+                                        value: _lowStockCount.toString(),
+                                        icon: Icons.warning,
+                                        color: const Color(0xFFF59E0B),
+                                        onTap: _lowStockCount > 0
+                                            ? _showLowStockDetails
+                                            : null,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      KpiCard(
+                                        title: 'Agotados',
+                                        value: _outOfStockCount.toString(),
+                                        icon: Icons.error,
+                                        color: scheme.error,
+                                        onTap: _outOfStockCount > 0
+                                            ? _showOutOfStockDetails
+                                            : null,
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: KpiCard(
+                                          title: 'Stock Bajo',
+                                          value: _lowStockCount.toString(),
+                                          icon: Icons.warning,
+                                          color: const Color(0xFFF59E0B),
+                                          onTap: _lowStockCount > 0
+                                              ? _showLowStockDetails
+                                              : null,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: KpiCard(
+                                          title: 'Agotados',
+                                          value: _outOfStockCount.toString(),
+                                          icon: Icons.error,
+                                          color: scheme.error,
+                                          onTap: _outOfStockCount > 0
+                                              ? _showOutOfStockDetails
+                                              : null,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                            if (_lowStockCount == 0 &&
+                                _outOfStockCount == 0) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBackgroundAlt,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: AppColors.borderSoft,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Sin alertas',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
                               ),
                             ],
-                          ),
-                        )
-                      else
-                        Column(
-                          children: _recentMovements
-                              .take(10)
-                              .map(
-                                (m) => _buildMovementTile(
-                                  m,
-                                  unitsFormat,
-                                  dateFormat,
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      ProductsSurface(
+                        padding: sectionPadding,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionHeader(
+                              context,
+                              title: 'Movimientos',
+                              trailing: stockSummary == null
+                                  ? null
+                                  : Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: scheme.surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${stockSummary.movementsCount} movimientos',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: mutedText,
+                                          fontWeight: FontWeight.w700,
+                                          fontFamily: 'Inter',
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(height: 10),
+                            if (_recentMovements.isEmpty)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBackgroundAlt,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: AppColors.borderSoft,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Sin movimientos',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
                                 ),
                               )
-                              .toList(),
+                            else
+                              Column(
+                                children: _recentMovements
+                                    .take(10)
+                                    .map(
+                                      (m) => _buildMovementTile(
+                                        m,
+                                        unitsFormat,
+                                        dateFormat,
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                          ],
                         ),
+                      ),
                     ],
                   ),
                 ),
         );
-
-        return mainContent;
       },
     );
   }
@@ -931,11 +1002,11 @@ class _InventoryTabState extends State<InventoryTab> {
 
     if (items.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant),
+          color: AppColors.cardBackgroundAlt,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.borderSoft),
         ),
         child: Text(
           'Sin datos',
@@ -945,11 +1016,11 @@ class _InventoryTabState extends State<InventoryTab> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
+        color: AppColors.cardBackgroundAlt,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -964,10 +1035,13 @@ class _InventoryTabState extends State<InventoryTab> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: accent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '${items.length}',
@@ -997,12 +1071,13 @@ class _InventoryTabState extends State<InventoryTab> {
 
               return Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+                  horizontal: 12,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.borderSoft),
                 ),
                 child: Row(
                   children: [

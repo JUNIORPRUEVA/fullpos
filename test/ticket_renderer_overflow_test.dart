@@ -33,7 +33,7 @@ TicketData _sampleSaleData() {
     paymentMethod: 'EFECTIVO',
     paidAmount: 100.00,
     changeAmount: 30.00,
-    ncf: 'B020000000000058',
+    electronicInvoiceCode: 'B020000000000058',
     type: TicketType.sale,
   );
 }
@@ -69,7 +69,7 @@ TicketData _sampleSaleDataWithZerosButItems() {
     paymentMethod: 'Efectivo',
     paidAmount: 0.0,
     changeAmount: 0.0,
-    ncf: 'B020000000000058',
+    electronicInvoiceCode: 'B020000000000058',
     type: TicketType.sale,
   );
 }
@@ -91,7 +91,7 @@ TicketLayoutConfig _configForWidth(int width) {
     showPaymentInfo: true,
     showFooterMessage: false,
     footerMessage: '',
-    showNcf: true,
+    showElectronicInvoiceReference: true,
     showItbis: true,
     showCashier: true,
     showTotalsBreakdown: true,

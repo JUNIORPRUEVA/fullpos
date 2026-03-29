@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/ui/splash_page.dart';
-import '../brand/fullpos_brand_theme.dart';
+import '../services/cloud_sync_service.dart';
+import '../sync/product_sync_service.dart';
 import 'app_bootstrap_controller.dart';
 import '../window/window_startup_controller.dart';
 
@@ -34,15 +35,71 @@ class AppEntry extends ConsumerStatefulWidget {
 
 class _AppEntryState extends ConsumerState<AppEntry> {
   bool _windowShowScheduled = false;
+  bool _startupSyncScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_showWindowAfterFirstPaint());
+      });
+    }
+  }
+
+  Future<void> _startDeferredSync() async {
+    if (_startupSyncScheduled) return;
+    _startupSyncScheduled = true;
+
+    try {
+      CloudSyncService.instance.startRealtimeSyncEngine();
+      ProductSyncService.instance.start();
+      CloudSyncService.instance.scheduleUsersSyncSoon(
+        delay: const Duration(milliseconds: 100),
+        reason: 'startup_users',
+      );
+      CloudSyncService.instance.scheduleCompanyConfigSyncSoon(
+        delay: const Duration(milliseconds: 150),
+        reason: 'startup_company_config',
+      );
+      CloudSyncService.instance.scheduleClientsSyncSoon(
+        delay: const Duration(milliseconds: 200),
+        reason: 'startup_clients',
+      );
+      CloudSyncService.instance.scheduleCategoriesSyncSoon(
+        delay: const Duration(milliseconds: 220),
+        reason: 'startup_categories',
+      );
+      CloudSyncService.instance.scheduleSuppliersSyncSoon(
+        delay: const Duration(milliseconds: 240),
+        reason: 'startup_suppliers',
+      );
+      CloudSyncService.instance.scheduleProductsSyncSoon(
+        delay: const Duration(milliseconds: 250),
+        reason: 'startup_products',
+      );
+      CloudSyncService.instance.scheduleCashSyncSoon(
+        delay: const Duration(milliseconds: 350),
+        reason: 'startup_cash',
+      );
+      CloudSyncService.instance.scheduleSalesSyncSoon(
+        delay: const Duration(milliseconds: 450),
+        reason: 'startup_sales',
+      );
+      CloudSyncService.instance.scheduleQuotesSyncSoon(
+        delay: const Duration(milliseconds: 550),
+        reason: 'startup_quotes',
+      );
+    } catch (_) {
+      // Nunca bloquear UI por sync.
+    }
+  }
 
   Future<void> _showWindowAfterFirstPaint() async {
     if (_windowShowScheduled) return;
     _windowShowScheduled = true;
 
     try {
-      await WidgetsBinding.instance.endOfFrame;
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-      await WidgetsBinding.instance.endOfFrame;
       await WindowStartupController.instance.showWhenReady();
     } finally {
       _windowShowScheduled = false;
@@ -51,14 +108,11 @@ class _AppEntryState extends ConsumerState<AppEntry> {
 
   @override
   Widget build(BuildContext context) {
-    // Show window only when bootstrap is ready and layout is painted.
-    // Dart owns visibility; native never shows it.
-    // This ensures window appears fully formed with no flicker.
     ref.listen<BootStatus>(
       appBootstrapProvider.select((b) => b.snapshot.status),
       (prev, next) {
         if (next == BootStatus.ready && prev != BootStatus.ready) {
-          unawaited(_showWindowAfterFirstPaint());
+          unawaited(_startDeferredSync());
         }
       },
     );
@@ -75,7 +129,7 @@ class _AppEntryState extends ConsumerState<AppEntry> {
       : const Duration(milliseconds: 350);
 
     final body = showSplash
-        ? const FullposBrandScope(child: SplashPage())
+        ? const SplashPage()
         : widget.child;
 
     return AnimatedSwitcher(

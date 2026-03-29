@@ -25,7 +25,6 @@ import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/color_utils.dart';
-import '../../../core/ui/app_toast.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
 import '../../../theme/app_colors.dart';
@@ -45,9 +44,9 @@ import '../../products/ui/widgets/product_thumbnail.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import '../../settings/providers/business_settings_provider.dart';
+import '../../facturacion_electronica/data/electronic_company_repository.dart';
+import '../../facturacion_electronica/data/models/electronic_company_model.dart';
 import '../data/app_settings_model.dart';
-import '../data/ncf_book_model.dart';
-import '../data/ncf_repository.dart';
 import '../data/sale_item_model.dart';
 import '../data/sale_model.dart';
 import '../data/layaway_repository.dart';
@@ -76,28 +75,23 @@ class SalesPage extends ConsumerStatefulWidget {
 }
 
 class _SalesPageState extends ConsumerState<SalesPage> {
-  // Productos: tarjetas pequeñas y consistentes (no se inflan por resolución).
-  // Ajustes visuales qudel grid de productos (tamaño fijo premium)
-  static const double _productCardSize = 104;
-  // Más ancho por tile = menos columnas = catálogo menos apretado.
-  static const double _productTileMaxExtent = 132;
-  static const double _minProductCardSize = 72.0;
+  static const double _productTileHeight = 88.0;
+  static const double _productTileMaxExtent = 292.0;
+  static const double _productTileMinHeight = 80.0;
   static const double _ticketsFooterHeight = 60.0;
   static const double _gridCrossSpacing = 8.0;
-  static const double _gridMainSpacing = 10.0;
+  static const double _gridMainSpacing = 8.0;
 
-  double _productCardSizeFor(double availableWidth) {
+  double _productTileHeightFor(double availableWidth) {
     if (!availableWidth.isFinite || availableWidth <= 0) {
-      return _minProductCardSize;
+      return _productTileMinHeight;
     }
-    // Mantener el tamaño como está hoy: no crecer con resoluciones grandes.
-    // Solo reducimos en pantallas más estrechas.
-    final scale = (availableWidth / 1200).clamp(0.6, 1.0);
-    final size = (_productCardSize * scale).clamp(
-      _minProductCardSize,
-      _productCardSize,
+    final scale = (availableWidth / 1320).clamp(0.92, 1.0);
+    final size = (_productTileHeight * scale).clamp(
+      _productTileMinHeight,
+      _productTileHeight,
     );
-    return size.isFinite && size > 0 ? size : _minProductCardSize;
+    return size.isFinite && size > 0 ? size : _productTileMinHeight;
   }
 
   ColorScheme get scheme => Theme.of(context).colorScheme;
@@ -115,27 +109,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       Theme.of(context).extension<SalesDetailTextTheme>()?.textColor ??
       scheme.onSurface;
 
-  void _showNotice(SnackBar snackBar) {
-    if (!mounted) return;
-    AppToast.showSnackBar(context, snackBar);
-  }
-
-  LinearGradient _resolveBackgroundGradient(AppGradientTheme? gradientTheme) {
-    return gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.surface, scheme.primaryContainer],
-          stops: const [0.0, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-  }
-
   LinearGradient _resolveSalesDetailGradient(
     SalesDetailGradientTheme? gradientTheme,
   ) {
+    final fallbackAccent = scheme.primary.withOpacity(0.14);
     return gradientTheme?.backgroundGradient ??
         LinearGradient(
-          colors: [scheme.surface, AppColors.lightBlueHover.withOpacity(0.35)],
+          colors: [scheme.surface, fallbackAccent],
           stops: const [0.0, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -174,7 +154,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   List<ProductModel> _searchResults = [];
   bool _isSearching = false;
 
-  List<NcfBookModel> _availableNcfs = [];
+  ElectronicCompanyModel? _electronicCompany;
   List<CategoryModel> _categories = [];
   List<ClientModel> _clients = [];
   AppSettingsModel? _appSettings;
@@ -189,9 +169,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     cart.itbisRate = settings.itbisRate;
     cart.itbisEnabled = settings.itbisEnabledDefault;
-    cart.fiscalEnabled = settings.fiscalEnabledDefault;
-    if (cart.fiscalEnabled) {
-      // Fiscal implica ITBIS activo.
+    cart.electronicInvoiceEnabled = settings.electronicInvoiceEnabledDefault;
+    if (cart.electronicInvoiceEnabled) {
+      // La emisión electrónica implica ITBIS activo.
       cart.itbisEnabled = true;
     }
   }
@@ -253,7 +233,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (key == LogicalKeyboardKey.f8) {
       if (_currentCart.items.isEmpty) {
-        _showNotice(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Agrega productos antes de cobrar'),
             backgroundColor: scheme.error,
@@ -345,7 +325,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (!mounted) return;
 
     if (product == null) {
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('No se encontro producto con codigo: $code'),
           backgroundColor: scheme.error,
@@ -388,6 +368,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ticketsRepo.listTickets(userId: await SessionManager.userId()),
         tempCartRepo.getAllCarts(),
         SettingsRepository.getAppSettings(),
+        ElectronicCompanyRepository.getOrCreate(),
       ]);
       if (!mounted || token != _initialLoadToken) return;
 
@@ -397,6 +378,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final dbTickets = results[3] as List<PosTicketModel>;
       final tempCarts = results[4] as List<Map<String, dynamic>>;
       final appSettings = results[5] as AppSettingsModel;
+      final electronicCompany = results[6] as ElectronicCompanyModel;
 
       final loadedCarts = <_Cart>[];
 
@@ -467,7 +449,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ..discount = (cartMap['discount'] as num).toDouble()
           ..itbisEnabled = (cartMap['itbis_enabled'] as int) == 1
           ..itbisRate = (cartMap['itbis_rate'] as num).toDouble()
-          ..fiscalEnabled = (cartMap['fiscal_enabled'] as int) == 1
+            ..electronicInvoiceEnabled =
+              (cartMap['electronic_invoice_enabled'] as int) == 1
           ..discountTotalType = cartMap['discount_total_type'] as String?
           ..discountTotalValue = (cartMap['discount_total_value'] as num?)
               ?.toDouble();
@@ -506,6 +489,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _categories = categories;
         _clients = clients;
         _appSettings = appSettings;
+        _electronicCompany = electronicCompany;
         if (loadedCarts.isNotEmpty) {
           _carts.clear();
           _carts.addAll(loadedCarts);
@@ -526,7 +510,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     } catch (e) {
       if (!mounted || token != _initialLoadToken) return;
       setState(() => _isSearching = false);
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('No se pudo cargar Ventas: $e'),
           backgroundColor: scheme.error,
@@ -572,7 +556,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
     if (!mounted) return null;
     if (showMessage) {
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
             'No hay una sesión activa. Debes abrir caja para continuar.',
@@ -622,7 +606,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             discount: cart.discount,
             itbisEnabled: cart.itbisEnabled,
             itbisRate: cart.itbisRate,
-            fiscalEnabled: cart.fiscalEnabled,
+            electronicInvoiceEnabled: cart.electronicInvoiceEnabled,
             discountTotalType: cart.discountTotalType,
             discountTotalValue: cart.discountTotalValue,
             items: cart.items,
@@ -777,7 +761,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         discount: _currentCart.discount,
         itbisEnabled: _currentCart.itbisEnabled,
         itbisRate: _currentCart.itbisRate,
-        fiscalEnabled: _currentCart.fiscalEnabled,
+        electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
         discountTotalType: _currentCart.discountTotalType,
         discountTotalValue: _currentCart.discountTotalValue,
         items: _currentCart.items,
@@ -788,45 +772,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     }
   }
 
-  Future<void> _loadAvailableNcfs() async {
+  Future<void> _refreshElectronicCompany() async {
     try {
-      final all = await NcfRepository.getAll();
-      final available = all.where((ncf) => ncf.isAvailable).toList();
+      final company = await ElectronicCompanyRepository.getOrCreate();
       if (!mounted) return;
-      setState(() {
-        _availableNcfs = available;
-
-        // Asegura que el dropdown siempre tenga un value que exista en los items
-        if (_currentCart.fiscalEnabled) {
-          final selected = _currentCart.selectedNcf;
-          if (selected?.id != null) {
-            final match = available.where((b) => b.id == selected!.id).toList();
-            _currentCart.selectedNcf = match.isNotEmpty
-                ? match.first
-                : (available.isNotEmpty ? available.first : null);
-          } else if (selected != null) {
-            final match = available
-                .where(
-                  (b) =>
-                      b.type == selected.type &&
-                      b.series == selected.series &&
-                      b.fromN == selected.fromN &&
-                      b.toN == selected.toN,
-                )
-                .toList();
-            _currentCart.selectedNcf = match.isNotEmpty
-                ? match.first
-                : (available.isNotEmpty ? available.first : null);
-          } else {
-            _currentCart.selectedNcf = available.isNotEmpty
-                ? available.first
-                : null;
-          }
-        }
-      });
-      _scheduleCartPersistence();
+      setState(() => _electronicCompany = company);
     } catch (e, st) {
-      debugPrint('Error loading NCF books: $e\\n$st');
+      debugPrint('Error loading electronic company settings: $e\\n$st');
     }
   }
 
@@ -1058,7 +1010,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   Future<void> _showTotalDiscountDialog() async {
     if (_currentCart.items.isEmpty) {
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Agrega productos antes de aplicar descuento'),
           backgroundColor: status.warning,
@@ -1093,7 +1045,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _currentCart.discountTotalType = null;
         _currentCart.discountTotalValue = null;
       });
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Descuento eliminado'),
           backgroundColor: status.success,
@@ -1132,7 +1084,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final discountLabel = result.type == DiscountType.percent
           ? 'Descuento aplicado: ${result.value.toStringAsFixed(1)}%'
           : 'Descuento aplicado: RD\$ ${result.value.toStringAsFixed(2)}';
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(discountLabel), backgroundColor: status.success),
       );
     }
@@ -1150,7 +1102,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final qtyInCart = _currentCart.getQuantityForProduct(product.id ?? -1);
     final effectiveStock = product.stock - qtyInCart;
     if (effectiveStock <= 0) {
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Producto sin stock disponible'),
           backgroundColor: scheme.error,
@@ -1183,7 +1135,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         product.stock - _currentCart.getQuantityForProduct(item.productId!);
     if (available <= 0) {
       if (!mounted) return;
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Stock insuficiente'),
           backgroundColor: scheme.error,
@@ -1232,7 +1184,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             final discountToApply = computeDiscountAmount();
 
             if (newQty <= 0) {
-              _showNotice(
+              ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('La cantidad debe ser mayor a 0'),
                   backgroundColor: scheme.error,
@@ -1454,7 +1406,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
-  bool _canEnableFiscalOrNotify() {
+  Future<List<String>> _missingElectronicInvoiceRequirements({
+    required bool includeItbis,
+  }) async {
     final missing = <String>[];
     final client = _currentCart.selectedClient;
 
@@ -1465,37 +1419,54 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       if (rnc.isEmpty) missing.add('RNC del cliente');
     }
 
+    if (includeItbis && !_currentCart.itbisEnabled) {
+      missing.add('ITBIS');
+    }
+
+    final company = _electronicCompany ?? await ElectronicCompanyRepository.getOrCreate();
+    if (!mounted) return missing;
+    if (_electronicCompany?.updatedAtMs != company.updatedAtMs) {
+      setState(() => _electronicCompany = company);
+    }
+    if (company.automaticEmission != 1) {
+      missing.add('Emisión automática e-CF');
+    }
+    missing.addAll(company.missingRequiredFields());
+
+    return missing;
+  }
+
+  Future<bool> _canEnableElectronicInvoiceOrNotify() async {
+    final missing = await _missingElectronicInvoiceRequirements(
+      includeItbis: false,
+    );
+
     if (missing.isEmpty) return true;
 
-    _showNotice(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('No se puede activar NCF. Falta: ${missing.join(', ')}.'),
+        content: Text(
+          'No se puede activar e-CF. Falta: ${missing.join(', ')}.',
+        ),
         backgroundColor: scheme.error,
       ),
     );
     return false;
   }
 
-  bool _canProceedWithFiscalOrNotify() {
-    if (!_currentCart.fiscalEnabled) return true;
+  Future<bool> _canProceedWithElectronicInvoiceOrNotify() async {
+    if (!_currentCart.electronicInvoiceEnabled) return true;
 
-    final missing = <String>[];
-    final client = _currentCart.selectedClient;
-    if (client == null) {
-      missing.add('Cliente');
-    } else {
-      final rnc = (client.rnc ?? '').trim();
-      if (rnc.isEmpty) missing.add('RNC del cliente');
-    }
-
-    if (!_currentCart.itbisEnabled) missing.add('ITBIS');
+    final missing = await _missingElectronicInvoiceRequirements(
+      includeItbis: true,
+    );
 
     if (missing.isEmpty) return true;
 
-    _showNotice(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'No se puede continuar con NCF. Falta: ${missing.join(', ')}.',
+          'No se puede continuar con e-CF. Falta: ${missing.join(', ')}.',
         ),
         backgroundColor: scheme.error,
       ),
@@ -1525,29 +1496,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         return;
       }
 
-      if (!_canProceedWithFiscalOrNotify()) return;
-
-      if (_currentCart.fiscalEnabled && _availableNcfs.isEmpty) {
-        _showNotice(
-          SnackBar(
-            content: Text(
-              'No hay NCF disponibles. Hable con Administración para agregarlo.',
-            ),
-            backgroundColor: scheme.error,
-          ),
-        );
-        return;
-      }
-
-      if (_currentCart.fiscalEnabled && _currentCart.selectedNcf == null) {
-        _showNotice(
-          SnackBar(
-            content: Text('Seleccione un Comprobante Fiscal (NCF)'),
-            backgroundColor: scheme.error,
-          ),
-        );
-        return;
-      }
+      if (!await _canProceedWithElectronicInvoiceOrNotify()) return;
 
       final canCharge = await _authorizeAction(
         AppActions.chargeSale,
@@ -1651,7 +1600,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         if (!canLayaway) return;
 
         if (_activeSessionId == null) {
-          _showNotice(
+          ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('Debe abrir caja para crear un apartado'),
               backgroundColor: scheme.error,
@@ -1665,30 +1614,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           (paymentRequestId != null && paymentRequestId.isNotEmpty)
           ? _buildIdempotentLocalCode(kind, paymentRequestId)
           : await SalesRepository.generateNextLocalCode(kind);
-      String? ncfFull;
-      String? ncfType;
-      if (_currentCart.fiscalEnabled && _currentCart.selectedNcf != null) {
-        final selected = _currentCart.selectedNcf!;
-        ncfType = selected.type;
-
-        // Consumir el NCF del talonario seleccionado (evita consumir otro libro del mismo tipo)
-        if (selected.id != null) {
-          ncfFull = await NcfRepository.consumeNextForBook(selected.id!);
-        } else {
-          ncfFull = await NcfRepository.consumeNext(selected.type);
-        }
-
-        if (ncfFull == null) {
-          _showNotice(
-            SnackBar(
-              content: Text(
-                'No hay NCF disponibles para el talonario seleccionado',
-              ),
-              backgroundColor: scheme.error,
-            ),
-          );
-          return;
-        }
+      String? electronicInvoiceCode;
+      String? electronicDocumentType;
+      if (_currentCart.electronicInvoiceEnabled) {
+        electronicDocumentType = 'eCF';
       }
 
       final paymentMethodStr = switch (method) {
@@ -1774,9 +1703,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             subtotalOverride: subtotalAfterDiscount,
             itbisAmountOverride: itbisAmount,
             totalOverride: total,
-            fiscalEnabled: _currentCart.fiscalEnabled,
-            ncfFull: ncfFull,
-            ncfType: ncfType,
+            electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
+            electronicInvoiceCode: electronicInvoiceCode,
+            electronicDocumentType: electronicDocumentType,
             sessionId: activeShiftIdAfterDialog,
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
@@ -1805,9 +1734,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
             customerPhone: _currentCart.selectedClient?.telefono,
-            ncfFull: ncfFull,
-            ncfType: ncfType,
-            fiscalEnabled: _currentCart.fiscalEnabled,
+            electronicInvoiceCode: electronicInvoiceCode,
+            electronicDocumentType: electronicDocumentType,
+            electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
             paidAmount: receivedAmount,
             changeAmount: changeAmount > 0 ? changeAmount : 0,
             enforceLocalCodeIdempotency:
@@ -1864,9 +1793,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
             customerPhone: _currentCart.selectedClient?.telefono,
-            ncfFull: ncfFull,
-            ncfType: ncfType,
-            fiscalEnabled: _currentCart.fiscalEnabled,
+            electronicInvoiceCode: electronicInvoiceCode,
+            electronicDocumentType: electronicDocumentType,
+            electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
             paidAmount: receivedAmount,
             changeAmount: changeAmount > 0 ? changeAmount : 0,
             enforceLocalCodeIdempotency:
@@ -1910,7 +1839,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _selectedCartItemIndex = null;
       });
 
-      _showNotice(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             '✔ Venta completada correctamente',
@@ -1971,7 +1900,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       cart.discount.toStringAsFixed(2),
       cart.itbisEnabled ? 'itbis:1' : 'itbis:0',
       cart.itbisRate.toStringAsFixed(4),
-      cart.fiscalEnabled ? 'fiscal:1' : 'fiscal:0',
+      cart.electronicInvoiceEnabled ? 'electronic:1' : 'electronic:0',
       cart.discountTotalType ?? 'no-discount-type',
       (cart.discountTotalValue ?? 0).toStringAsFixed(2),
       ...sortedItemTokens,
@@ -2038,7 +1967,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     debugPrint('Factura descargada: ${file.path}');
 
     if (!mounted) return;
-    _showNotice(
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(
       const SnackBar(
         content: Text('Factura descargada'),
         duration: Duration(milliseconds: 900),
@@ -2090,7 +2020,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       _currentCart.clear();
       _selectedCartItemIndex = null;
     });
-    _showNotice(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Cotización guardada'),
         backgroundColor: status.success,
@@ -2306,253 +2236,317 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   final ticketPanelConstraints = _ticketPanelConstraints(
                     constraints.maxWidth,
                   );
-                  final panelMargin = constraints.maxWidth < 1150 ? 8.0 : 10.0;
-                  final scheme = Theme.of(context).colorScheme;
-                  final gradientTheme = Theme.of(
-                    context,
-                  ).extension<AppGradientTheme>();
-                  final backgroundGradient = _resolveBackgroundGradient(
-                    gradientTheme,
-                  );
+                  final panelMargin = constraints.maxWidth < 1150 ? 10.0 : 12.0;
+                  final theme = Theme.of(context);
+                  final tokens =
+                      theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
+                  final salesProducts =
+                      theme.extension<SalesProductsTheme>();
+                  final gridBackground =
+                      (salesProducts?.gridBackgroundColor.opacity ?? 0) == 0
+                      ? theme.scaffoldBackgroundColor
+                      : salesProducts!.gridBackgroundColor;
+                  final gridCardColor =
+                      (salesProducts?.cardBackgroundColor.opacity ?? 0) == 0
+                      ? theme.cardColor
+                      : salesProducts!.cardBackgroundColor;
+                  final gridBorderColor =
+                      (salesProducts?.cardBorderColor.opacity ?? 0) == 0
+                      ? tokens.outline
+                      : salesProducts!.cardBorderColor;
 
                   return Stack(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    8,
-                                    12,
-                                    6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: backgroundGradient,
-                                  ),
-                                  child: _build3DControlBar(),
+                      Container(
+                        color: gridBackground,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  12,
+                                  0,
+                                  12,
                                 ),
-                                Expanded(
-                                  child: Container(
-                                    margin: const EdgeInsets.only(top: 4),
-                                    decoration: BoxDecoration(
-                                      gradient: backgroundGradient,
-                                      borderRadius: BorderRadius.circular(16),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Theme.of(
-                                            context,
-                                          ).shadowColor.withOpacity(0.25),
-                                          blurRadius: 16,
-                                          offset: const Offset(0, 8),
-                                        ),
-                                        BoxShadow(
-                                          color: scheme.primary.withOpacity(
-                                            0.08,
+                                child: Column(
+                                  children: [
+                                    _build3DControlBar(),
+                                    const SizedBox(height: 12),
+                                    Expanded(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: gridCardColor,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
                                           ),
-                                          blurRadius: 10,
-                                          offset: const Offset(-2, -2),
-                                          spreadRadius: -1,
+                                          border: Border.all(
+                                            color: gridBorderColor,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: theme.shadowColor
+                                                  .withOpacity(0.04),
+                                              blurRadius: 16,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: _isSearching
-                                              ? const BrandedLoadingView(
-                                                  fullScreen: false,
-                                                  message:
-                                                      'Cargando datos de ventas...',
-                                                )
-                                              : (() {
-                                                  final products =
-                                                      _filteredProducts();
-                                                  if (products.isEmpty) {
-                                                    return Center(
-                                                      child: Column(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .inventory_2_outlined,
-                                                            size: 80,
-                                                            color: scheme
-                                                                .onSurface
-                                                                .withOpacity(
-                                                                  0.3,
-                                                                ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: Column(
+                                          children: [
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.fromLTRB(
+                                                    16,
+                                                    14,
+                                                    16,
+                                                    10,
+                                                  ),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(
+                                                          'Catalogo de productos',
+                                                          style: TextStyle(
+                                                            color: AppColors
+                                                                .textPrimary,
+                                                            fontSize: 16,
+                                                            fontWeight:
+                                                                FontWeight.w700,
                                                           ),
-                                                          const SizedBox(
-                                                            height: 16,
+                                                        ),
+                                                        const SizedBox(
+                                                          height: 2,
+                                                        ),
+                                                        Text(
+                                                          '${_filteredProducts().length} productos visibles',
+                                                          style: TextStyle(
+                                                            color: AppColors
+                                                                .textSecondary,
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.w500,
                                                           ),
-                                                          Text(
-                                                            'No hay productos disponibles',
-                                                            style: TextStyle(
-                                                              color: scheme
-                                                                  .onSurface
-                                                                  .withOpacity(
-                                                                    0.6,
-                                                                  ),
-                                                              fontSize: 18,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w500,
-                                                            ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 6,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: scheme
+                                                          .surfaceContainerHighest
+                                                          .withOpacity(0.55),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
                                                           ),
-                                                          const SizedBox(
-                                                            height: 8,
-                                                          ),
-                                                          Text(
-                                                            'Intenta buscar con otro término',
-                                                            style: TextStyle(
-                                                              color: scheme
-                                                                  .onSurface
-                                                                  .withOpacity(
-                                                                    0.4,
-                                                                  ),
-                                                              fontSize: 14,
-                                                            ),
-                                                          ),
-                                                        ],
+                                                    ),
+                                                    child: Text(
+                                                      'Vista compacta',
+                                                      style: TextStyle(
+                                                        color: AppColors
+                                                            .textSecondary,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
                                                       ),
-                                                    );
-                                                  }
-                                                  return Builder(
-                                                    builder: (context) {
-                                                      return Container(
-                                                        padding:
-                                                            const EdgeInsets.only(
-                                                              left: 12,
-                                                              right: 8,
-                                                              top: 12,
-                                                              bottom: 84,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          gradient:
-                                                              backgroundGradient,
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                16,
-                                                              ),
-                                                        ),
-                                                        child: LayoutBuilder(
-                                                          builder: (context, constraints) {
-                                                            final cardSize =
-                                                                _productCardSizeFor(
-                                                                  constraints
-                                                                      .maxWidth,
-                                                                );
-                                                            double
-                                                            maxExtent = stableMaxCrossAxisExtent(
-                                                              availableWidth:
-                                                                  constraints
-                                                                      .maxWidth,
-                                                              desiredMaxExtent:
-                                                                  _productTileMaxExtent,
-                                                              spacing:
-                                                                  _gridCrossSpacing,
-                                                              minExtent:
-                                                                  _productTileMaxExtent,
-                                                            );
-                                                            if (!maxExtent
-                                                                    .isFinite ||
-                                                                maxExtent <=
-                                                                    0) {
-                                                              maxExtent =
-                                                                  _productTileMaxExtent;
-                                                            }
-                                                            return GridView.builder(
-                                                              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                                                                maxCrossAxisExtent:
-                                                                    maxExtent,
-                                                                mainAxisExtent:
-                                                                    cardSize *
-                                                                    1.15,
-                                                                crossAxisSpacing:
-                                                                    _gridCrossSpacing,
-                                                                mainAxisSpacing:
-                                                                    _gridMainSpacing,
-                                                              ),
-                                                              itemCount:
-                                                                  products
-                                                                      .length,
-                                                              itemBuilder: (context, index) {
-                                                                final product =
-                                                                    products[index];
-                                                                return Center(
-                                                                  child: SizedBox(
-                                                                    width:
-                                                                        cardSize,
-                                                                    height:
-                                                                        cardSize *
-                                                                        1.15,
-                                                                    child: _buildProductCard(
-                                                                      product,
-                                                                      index:
-                                                                          index,
-                                                                      cardSize:
-                                                                          cardSize,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: Stack(
+                                                children: [
+                                                  Positioned.fill(
+                                                    child: _isSearching
+                                                        ? const BrandedLoadingView(
+                                                            fullScreen: false,
+                                                            message:
+                                                                'Cargando datos de ventas...',
+                                                          )
+                                                        : (() {
+                                                            final products =
+                                                                _filteredProducts();
+                                                            if (products
+                                                                .isEmpty) {
+                                                              return Center(
+                                                                child: Column(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .center,
+                                                                  children: [
+                                                                    Icon(
+                                                                      Icons
+                                                                          .inventory_2_outlined,
+                                                                      size: 64,
+                                                                      color: AppColors
+                                                                          .textSecondary
+                                                                          .withOpacity(
+                                                                            0.35,
+                                                                          ),
                                                                     ),
+                                                                    const SizedBox(
+                                                                      height:
+                                                                          12,
+                                                                    ),
+                                                                    Text(
+                                                                      'No hay productos disponibles',
+                                                                      style: TextStyle(
+                                                                        color: AppColors
+                                                                            .textPrimary,
+                                                                        fontSize:
+                                                                            18,
+                                                                        fontWeight:
+                                                                            FontWeight.w600,
+                                                                      ),
+                                                                    ),
+                                                                    const SizedBox(
+                                                                      height: 6,
+                                                                    ),
+                                                                    Text(
+                                                                      'Intenta buscar con otro termino o cambia el filtro',
+                                                                      style: TextStyle(
+                                                                        color: AppColors
+                                                                            .textSecondary,
+                                                                        fontSize:
+                                                                            13,
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                              );
+                                                            }
+                                                            return Padding(
+                                                              padding:
+                                                                  const EdgeInsets.fromLTRB(
+                                                                    12,
+                                                                    0,
+                                                                    12,
+                                                                    72,
                                                                   ),
-                                                                );
-                                                              },
+                                                              child: LayoutBuilder(
+                                                                builder:
+                                                                    (
+                                                                      context,
+                                                                      constraints,
+                                                                    ) {
+                                                                      final tileHeight = _productTileHeightFor(
+                                                                        constraints
+                                                                            .maxWidth,
+                                                                      );
+                                                                      double
+                                                                      maxExtent = stableMaxCrossAxisExtent(
+                                                                        availableWidth:
+                                                                            constraints.maxWidth,
+                                                                        desiredMaxExtent:
+                                                                            _productTileMaxExtent,
+                                                                        spacing:
+                                                                            _gridCrossSpacing,
+                                                                        minExtent:
+                                                                            240,
+                                                                      );
+                                                                      if (!maxExtent
+                                                                              .isFinite ||
+                                                                          maxExtent <=
+                                                                              0) {
+                                                                        maxExtent =
+                                                                            _productTileMaxExtent;
+                                                                      }
+                                                                      return GridView.builder(
+                                                                        padding: const EdgeInsets.only(
+                                                                          bottom:
+                                                                              8,
+                                                                        ),
+                                                                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                                                                          maxCrossAxisExtent:
+                                                                              maxExtent,
+                                                                          mainAxisExtent:
+                                                                              tileHeight,
+                                                                          crossAxisSpacing:
+                                                                              _gridCrossSpacing,
+                                                                          mainAxisSpacing:
+                                                                              _gridMainSpacing,
+                                                                        ),
+                                                                        itemCount:
+                                                                            products.length,
+                                                                        itemBuilder:
+                                                                            (
+                                                                              context,
+                                                                              index,
+                                                                            ) {
+                                                                              final product = products[index];
+                                                                              return _buildProductCard(
+                                                                                product,
+                                                                                index: index,
+                                                                                cardSize: tileHeight,
+                                                                              );
+                                                                            },
+                                                                      );
+                                                                    },
+                                                              ),
                                                             );
-                                                          },
-                                                        ),
-                                                      );
-                                                    },
-                                                  );
-                                                })(),
+                                                          })(),
+                                                  ),
+                                                  Positioned(
+                                                    bottom: 0,
+                                                    left: 0,
+                                                    right: 0,
+                                                    child:
+                                                        _buildTicketsFooter(),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        Positioned(
-                                          bottom: 0,
-                                          left: 0,
-                                          right: 0,
-                                          child: _buildTicketsFooter(),
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          ),
-                          const VerticalDivider(width: 1, thickness: 1),
-                          ConstrainedBox(
-                            constraints: ticketPanelConstraints,
-                            child: Container(
-                              margin: EdgeInsets.all(panelMargin),
-                              decoration: BoxDecoration(
-                                gradient: backgroundGradient,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Theme.of(
-                                      context,
-                                    ).shadowColor.withOpacity(0.25),
-                                    blurRadius: 14,
-                                    offset: const Offset(0, 6),
-                                    spreadRadius: 0,
-                                  ),
-                                  BoxShadow(
-                                    color: scheme.primary.withOpacity(0.12),
-                                    blurRadius: 10,
-                                    offset: const Offset(-2, -2),
-                                    spreadRadius: -1,
-                                  ),
-                                ],
                               ),
-                              clipBehavior: Clip.antiAlias,
-                              child: _buildTicketPanel(),
                             ),
-                          ),
-                        ],
+                            Container(
+                              width: 1,
+                              margin: const EdgeInsets.symmetric(vertical: 12),
+                              color: tokens.outline,
+                            ),
+                            ConstrainedBox(
+                              constraints: ticketPanelConstraints,
+                              child: Container(
+                                margin: EdgeInsets.all(panelMargin),
+                                decoration: BoxDecoration(
+                                  color: theme.cardColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: tokens.outline,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: _buildTicketPanel(),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       if (showCashClosedOverlay) _buildCashClosedOverlay(),
                     ],
@@ -2671,56 +2665,33 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ? scheme.error
         : (isLowStock ? status.warning : scheme.primary.withOpacity(0.85));
     final theme = Theme.of(context);
-    final productsTheme = theme.extension<SalesProductsTheme>();
-    final isAlt = index.isOdd;
-
-    // Azul de marca: el mismo que usa el AppBar (si está definido).
-    final brandBlue =
-        (theme.appBarTheme.backgroundColor != null &&
-            (theme.appBarTheme.backgroundColor?.opacity ?? 0) > 0)
-        ? theme.appBarTheme.backgroundColor!
-        : scheme.primary;
-
-    Color resolve(Color? c, Color fallback) {
-      if (c == null) return fallback;
-      return c.opacity == 0 ? fallback : c;
-    }
-
-    // Forzar fondo azul en todas las tarjetas para consistencia con la marca.
-    final cardBg = brandBlue;
-    final cardBorder = resolve(
-      isAlt
-          ? productsTheme?.cardAltBorderColor
-          : productsTheme?.cardBorderColor,
-      scheme.onPrimary.withOpacity(0.18),
-    );
-    final cardText = resolve(
-      isAlt ? productsTheme?.cardAltTextColor : productsTheme?.cardTextColor,
-      scheme.onPrimary,
-    );
-    final readableCardText = ColorUtils.ensureReadableColor(cardText, cardBg);
-    final priceColor = resolve(productsTheme?.priceColor, scheme.onPrimary);
-
-    final nameOverlayBg = scheme.onSurface.withOpacity(0.70);
-    final nameOverlayText = ColorUtils.ensureReadableColor(
-      scheme.surface,
-      nameOverlayBg,
-    );
-
+    final salesProducts = theme.extension<SalesProductsTheme>();
     final rawPrice = product.salePrice;
     final formattedPrice = (rawPrice % 1 == 0)
         ? rawPrice.toStringAsFixed(0)
         : rawPrice.toStringAsFixed(2);
     final isHovered = _hoveredProductIndexes.contains(index);
-
-    final uiScale = (cardSize / _productCardSize).clamp(0.72, 1.0);
-    final nameFontSize = 11.5 * uiScale;
-    final codeFontSize = 8.5 * uiScale;
-    final priceFontSize = 16.0 * uiScale;
-    final badgeIconSize = 11.0 * uiScale;
-    final badgeFontSize = 9.5 * uiScale;
-    final contentHPad = (8.0 * uiScale).clamp(6.0, 8.0);
-    final contentVPad = (6.0 * uiScale).clamp(4.0, 6.0);
+    final stockLabel = isOutOfStock
+        ? 'Sin stock'
+        : 'Stock ${effectiveStock.toInt()}';
+    final cardColor = isHovered
+      ? (salesProducts?.cardAltBackgroundColor.opacity ?? 0) == 0
+        ? Colors.white
+        : salesProducts!.cardAltBackgroundColor
+      : (salesProducts?.cardBackgroundColor.opacity ?? 0) == 0
+        ? scheme.surface.withOpacity(0.7)
+        : salesProducts!.cardBackgroundColor;
+    final cardBorderColor = isHovered
+      ? scheme.primary.withOpacity(0.22)
+      : (salesProducts?.cardBorderColor.opacity ?? 0) == 0
+        ? scheme.outlineVariant
+        : salesProducts!.cardBorderColor;
+    final cardTextColor = (salesProducts?.cardTextColor.opacity ?? 0) == 0
+      ? scheme.onSurface
+      : salesProducts!.cardTextColor;
+    final priceColor = (salesProducts?.priceColor.opacity ?? 0) == 0
+      ? scheme.onSurface
+      : salesProducts!.priceColor;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hoveredProductIndexes.add(index)),
@@ -2730,14 +2701,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         curve: Curves.easeOut,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: cardBg,
-          border: Border.all(color: cardBorder, width: 1),
+          color: cardColor,
+          border: Border.all(color: cardBorderColor),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withOpacity(isHovered ? 0.14 : 0.08),
-              blurRadius: isHovered ? 16 : 10,
-              spreadRadius: isHovered ? 1.2 : 0.4,
-              offset: Offset(0, isHovered ? 6 : 3),
+              color: theme.shadowColor.withOpacity(isHovered ? 0.07 : 0.03),
+              blurRadius: isHovered ? 14 : 10,
+              offset: Offset(0, isHovered ? 5 : 2),
             ),
           ],
         ),
@@ -2747,273 +2717,120 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             color: transparent,
             child: InkWell(
               onTap: isOutOfStock ? null : () => _addProductToCart(product),
-              hoverColor: AppColors.lightBlueHover.withOpacity(0.25),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: cardSize,
-                  height: cardSize * 1.15,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+              hoverColor: theme.hoverColor,
+              child: SizedBox(
+                height: cardSize,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
                     children: [
-                      // Imagen del producto más compacta
-                      Expanded(
-                        flex: 4,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            ProductThumbnail.fromProduct(
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: 54,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: cardBorderColor),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: ProductThumbnail.fromProduct(
                               product,
-                              width: double.infinity,
-                              height: double.infinity,
-                              borderRadius: BorderRadius.circular(12),
+                              width: 54,
+                              height: 54,
+                              borderRadius: BorderRadius.circular(10),
                               showBorder: false,
                             ),
-                            // Nombre flotante sobre la imagen
+                          ),
+                          if (qtyInCart > 0)
                             Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                padding: EdgeInsets.fromLTRB(
-                                  contentHPad,
-                                  (10.0 * uiScale).clamp(8.0, 10.0),
-                                  contentHPad,
-                                  (4.0 * uiScale).clamp(3.0, 4.0),
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [Colors.transparent, nameOverlayBg],
-                                    stops: const [0.0, 1.0],
-                                  ),
-                                ),
-                                child: Align(
-                                  alignment: Alignment.bottomLeft,
-                                  child: Text(
-                                    product.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: nameFontSize,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.1,
-                                      color: nameOverlayText,
-                                      letterSpacing: 0.1,
-                                      shadows: [
-                                        Shadow(
-                                          color: Theme.of(
-                                            context,
-                                          ).shadowColor.withOpacity(0.35),
-                                          blurRadius: 8,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            // Badge de código en esquina superior derecha
-                            Positioned(
-                              top: 6,
-                              right: 6,
+                              top: -5,
+                              right: -5,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 6,
-                                  vertical: 3,
+                                  vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.cardBackground.withOpacity(
-                                    0.92,
-                                  ),
-                                  borderRadius: BorderRadius.circular(6),
+                                  color: scheme.primary.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(999),
                                   border: Border.all(
-                                    color: AppColors.borderSoft,
-                                    width: 1,
+                                    color: scheme.primary.withOpacity(0.18),
                                   ),
                                 ),
                                 child: Text(
-                                  product.code.toUpperCase(),
+                                  qtyInCart.toInt().toString(),
                                   style: TextStyle(
-                                    fontSize: codeFontSize,
-                                    fontWeight: FontWeight.w700,
-                                    fontFamily: 'monospace',
-                                    color: AppColors.textSecondary,
-                                    letterSpacing: 0.3,
+                                    color: scheme.primary,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
                             ),
-                            // Badge de cantidad en carrito
-                            if (qtyInCart > 0)
-                              Positioned(
-                                top: 6,
-                                left: 6,
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: (6.0 * uiScale).clamp(4.0, 6.0),
-                                    vertical: (3.0 * uiScale).clamp(2.0, 3.0),
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: scheme.secondary,
-                                    borderRadius: BorderRadius.circular(6),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Theme.of(
-                                          context,
-                                        ).shadowColor.withOpacity(0.2),
-                                        blurRadius: 4,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.shopping_cart,
-                                        size: (10.0 * uiScale).clamp(8.0, 10.0),
-                                        color: scheme.onSecondary,
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        qtyInCart.toInt().toString(),
-                                        style: TextStyle(
-                                          fontSize: (8.0 * uiScale).clamp(
-                                            6.5,
-                                            8.0,
-                                          ),
-                                          fontWeight: FontWeight.w900,
-                                          color: scheme.onSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                        ],
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              product.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: cardTextColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                height: 1.15,
                               ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${product.code.toUpperCase()}  •  $stockLabel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: stockColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      // Información del producto
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          // Slightly tighter padding to avoid RenderFlex overflow on
-                          // small tile heights (e.g. 144px).
-                          padding: EdgeInsets.fromLTRB(
-                            contentHPad,
-                            contentVPad,
-                            contentHPad,
-                            contentVPad,
+                      const SizedBox(width: 10),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'RD\$',
+                            style: TextStyle(
+                              color: cardTextColor.withOpacity(0.72),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              // Precio y Stock en fila
-                              Flexible(
-                                fit: FlexFit.loose,
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    // Precio
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            'PRECIO',
-                                            style: TextStyle(
-                                              fontSize: 6.5 * uiScale,
-                                              fontWeight: FontWeight.w600,
-                                              color: readableCardText
-                                                  .withOpacity(0.62),
-                                              letterSpacing: 0.2,
-                                            ),
-                                          ),
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerLeft,
-                                            child: Text(
-                                              '\$$formattedPrice',
-                                              style: TextStyle(
-                                                fontSize: priceFontSize,
-                                                fontWeight: FontWeight.w900,
-                                                color: priceColor,
-                                                height: 1.0,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    // Stock badge (se adapta para no overflow)
-                                    Flexible(
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: FittedBox(
-                                          fit: BoxFit.scaleDown,
-                                          alignment: Alignment.centerRight,
-                                          child: Container(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: (6.0 * uiScale).clamp(
-                                                4.0,
-                                                6.0,
-                                              ),
-                                              vertical: (4.0 * uiScale).clamp(
-                                                3.0,
-                                                4.0,
-                                              ),
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: stockColor,
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  isOutOfStock
-                                                      ? Icons
-                                                            .remove_circle_outline
-                                                      : Icons.inventory_2,
-                                                  size: badgeIconSize,
-                                                  color: readableOn(stockColor),
-                                                ),
-                                                const SizedBox(width: 3),
-                                                Text(
-                                                  isOutOfStock
-                                                      ? 'Agot.'
-                                                      : '${effectiveStock.toInt()}',
-                                                  style: TextStyle(
-                                                    fontSize: badgeFontSize,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: readableOn(
-                                                      stockColor,
-                                                    ),
-                                                    height: 1.0,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 2),
+                          Text(
+                            formattedPrice,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: priceColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              height: 1,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ),
@@ -3038,15 +2855,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final items = [allOption, ..._categories.map((c) => c.name)];
     final dropdownBg = resolve(
       salesTheme?.controlBarDropdownBackgroundColor,
-      transparent,
+      scheme.surfaceContainerHighest.withOpacity(0.55),
     );
     final dropdownBorder = resolve(
       salesTheme?.controlBarDropdownBorderColor,
-      scheme.onSurface.withOpacity(0.2),
+      AppColors.borderSoft,
     );
     final dropdownText = resolve(
       salesTheme?.controlBarDropdownTextColor,
-      scheme.primary,
+      AppColors.textPrimary,
     );
     final menuBg = resolve(
       salesTheme?.controlBarPopupBackgroundColor,
@@ -3068,7 +2885,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       padding: const EdgeInsets.only(right: 4),
       child: PopupMenuButton<String>(
         tooltip: 'Elegir categoría',
-        offset: const Offset(0, 42),
+        offset: const Offset(0, 46),
         color: menuBg,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         initialValue: _selectedCategory ?? allOption,
@@ -3125,7 +2942,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             )
             .toList(),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: dropdownBg,
             borderRadius: BorderRadius.circular(10),
@@ -3158,8 +2976,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Widget _build3DControlBar() {
-    final gradientTheme = Theme.of(context).extension<AppGradientTheme>();
-    final backgroundGradient = _resolveBackgroundGradient(gradientTheme);
     final salesTheme = Theme.of(context).extension<SalesPageTheme>();
 
     Color resolve(Color? c, Color fallback) {
@@ -3171,31 +2987,27 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
     final controlText = resolve(
       salesTheme?.controlBarTextColor,
-      tokens.controlBarText,
+      AppColors.textPrimary,
     );
     final controlBorder = resolve(
       salesTheme?.controlBarBorderColor,
-      tokens.controlBarBorder,
+      AppColors.borderSoft,
     );
     final controlContentBg = resolve(
       salesTheme?.controlBarContentBackgroundColor,
-      tokens.searchFieldBackground,
+      Colors.white,
     );
-    final controlBarBg = salesTheme?.controlBarBackgroundColor;
-    final hasCustomBarBg = controlBarBg != null && controlBarBg.opacity != 0;
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final isCompact = width < 980;
 
-        // Colores acorde al tema (tokens) y ajustados por contraste.
-        // Evita que se “quede fijo en negro” cuando cambia el tema.
         final fieldTextColor = ColorUtils.ensureReadableColor(
-          tokens.searchFieldText,
+          AppColors.textPrimary,
           controlContentBg,
         );
 
-        final hintCandidate = tokens.searchFieldText.withOpacity(0.62);
+        final hintCandidate = AppColors.textSecondary.withOpacity(0.92);
         var hintColor = ColorUtils.ensureReadableColor(
           hintCandidate,
           controlContentBg,
@@ -3211,17 +3023,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           minRatio: 3.0,
         ).withOpacity(0.9);
 
-        // En pantallas amplias, el buscador debe verse más estrecho (≈95%)
-        // para un layout más elegante. En compacto se mantiene al 100%
-        // para no romper la usabilidad.
-        final searchBarWidth = isCompact ? double.infinity : (width * 0.95);
+        final searchBarWidth = isCompact ? double.infinity : (width * 0.96);
 
-        final outerPadding = EdgeInsets.all((width * 0.006).clamp(3.0, 6.0));
-        final barHeight = isCompact ? 40.0 : 44.0;
-        final radius = isCompact ? 14.0 : 16.0;
+        final outerPadding = EdgeInsets.all((width * 0.006).clamp(4.0, 6.0));
+        final barHeight = 48.0;
+        final radius = 12.0;
         final iconSize = isCompact ? 18.0 : 20.0;
-        final textSize = isCompact ? 12.5 : 13.0;
-        final fieldVPad = isCompact ? 11.0 : 12.0;
+        final textSize = 13.0;
+        final fieldVPad = 13.0;
 
         IconButton compactIconButton({
           required IconData icon,
@@ -3248,14 +3057,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         return Container(
           padding: outerPadding,
           decoration: BoxDecoration(
-            color: hasCustomBarBg ? controlBarBg : null,
-            gradient: hasCustomBarBg ? null : backgroundGradient,
+            color: tokens.panelBackground,
             borderRadius: BorderRadius.circular(radius),
-            border:
-                (salesTheme?.controlBarBorderColor != null &&
-                    salesTheme!.controlBarBorderColor.opacity != 0)
-                ? Border.all(color: controlBorder, width: 1)
-                : null,
           ),
           child: Row(
             children: [
@@ -3268,28 +3071,31 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       height: barHeight,
                       decoration: BoxDecoration(
                         color: controlContentBg,
-                        borderRadius: BorderRadius.circular(
-                          isCompact ? 12 : 14,
-                        ),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: controlBorder, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Theme.of(
+                              context,
+                            ).shadowColor.withOpacity(0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: Row(
                         children: [
-                          SizedBox(width: isCompact ? 10 : 12),
+                          const SizedBox(width: 12),
                           Icon(Icons.search, color: iconColor, size: iconSize),
                           Expanded(
                             child: TextField(
                               controller: _searchController,
                               focusNode: _searchFocusNode,
                               decoration: InputDecoration(
-                                // Evita que el InputDecorationTheme global
-                                // pinte un fondo blanco encima de nuestro
-                                // contenedor (lo que hacía el texto “blanco
-                                // sobre blanco” en algunos temas).
                                 filled: true,
                                 fillColor: Colors.transparent,
                                 hintText:
-                                    'Buscar artículo por nombre o código…',
+                                    'Buscar productos, codigo o categoria',
                                 hintStyle: TextStyle(
                                   color: hintColor,
                                   fontSize: textSize,
@@ -3297,7 +3103,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 border: InputBorder.none,
                                 isCollapsed: true,
                                 contentPadding: EdgeInsets.symmetric(
-                                  horizontal: isCompact ? 10 : 12,
+                                  horizontal: 12,
                                   vertical: fieldVPad,
                                 ),
                               ),
@@ -3316,6 +3122,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               style: TextStyle(
                                 color: fieldTextColor,
                                 fontSize: textSize,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
@@ -3328,7 +3135,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             onPressed: _openFilterDialog,
                             tooltip: 'Filtros avanzados',
                           ),
-                          SizedBox(width: isCompact ? 4 : 6),
+                          const SizedBox(width: 6),
                         ],
                       ),
                     ),
@@ -3352,260 +3159,152 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }) {
     final contrastColor = foregroundColor ?? ColorUtils.foregroundFor(color);
 
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20, color: contrastColor),
-      label: Text(
-        label,
-        style: TextStyle(
-          color: contrastColor,
-          fontSize: 14.0,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.1,
+    return SizedBox(
+      height: 42,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18, color: contrastColor),
+        label: Text(
+          label,
+          style: TextStyle(
+            color: contrastColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.1,
+          ),
         ),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: contrastColor,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        elevation: 2,
-        shadowColor: Theme.of(context).shadowColor.withOpacity(0.20),
-        minimumSize: const Size(0, 44),
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.hovered)) {
+              return const Color(0xFFF1F5F9);
+            }
+            return const Color(0xFFFFFFFF);
+          }),
+          foregroundColor: WidgetStatePropertyAll(contrastColor),
+          side: WidgetStatePropertyAll(
+            BorderSide(color: borderColor ?? const Color(0xFFE2E8F0)),
+          ),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          elevation: const WidgetStatePropertyAll(0),
+          shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+          overlayColor: const WidgetStatePropertyAll(Color(0xFFF1F5F9)),
+          minimumSize: const WidgetStatePropertyAll(Size(0, 42)),
+        ),
       ),
     );
   }
 
   Widget _buildTicketsFooter() {
-    final gradientTheme = Theme.of(context).extension<AppGradientTheme>();
-    final backgroundGradient = _resolveBackgroundGradient(gradientTheme);
-    final salesTheme = Theme.of(context).extension<SalesPageTheme>();
-    final shadowColor = Theme.of(context).shadowColor;
-
-    Color ensureDarkButtonBg(Color c) {
-      final hsl = HSLColor.fromColor(c);
-      if (hsl.lightness <= 0.28) return c;
-      return hsl.withLightness(0.26).toColor();
-    }
-
-    Color resolve(Color? c, Color fallback) {
-      if (c == null || c.opacity == 0) return fallback;
-      return c;
-    }
-
-    final baseButtonColor = resolve(
-      salesTheme?.footerButtonsBackgroundColor,
-      const Color(0xFF0D2B57),
-    );
-    final unifiedColor = ensureDarkButtonBg(baseButtonColor);
-    final unifiedTextColor = resolve(
-      salesTheme?.footerButtonsTextColor,
-      Colors.white.withOpacity(0.96),
-    );
-    final unifiedBorderColor =
-        salesTheme?.footerButtonsBorderColor ?? Colors.white.withOpacity(0.18);
+    final unifiedColor = const Color(0xFFFFFFFF);
+    final unifiedTextColor = const Color(0xFF0F172A);
+    final unifiedBorderColor = const Color(0xFFE2E8F0);
     return Container(
       height: _ticketsFooterHeight,
       decoration: BoxDecoration(
-        gradient: backgroundGradient,
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor.withOpacity(0.54),
-            blurRadius: 14,
-            offset: const Offset(0, -4),
-          ),
-        ],
+        color: Colors.white.withOpacity(0.96),
+        border: Border(top: BorderSide(color: AppColors.borderSoft)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final isNarrow = constraints.maxWidth < 520;
-            final compactColor = ensureDarkButtonBg(
-              resolve(salesTheme?.footerButtonsBackgroundColor, unifiedColor),
-            );
-            final compactText = resolve(
-              salesTheme?.footerButtonsTextColor,
-              Colors.white.withOpacity(0.96),
-            );
+            final buttons = <Widget>[
+              _buildCompactOperationButton(
+                icon: Icons.add_circle_outline,
+                label: 'Entrada',
+                color: unifiedColor,
+                foregroundColor: unifiedTextColor,
+                borderColor: unifiedBorderColor,
+                onPressed: () => _openCashMovement(CashMovementType.income),
+              ),
+              const SizedBox(width: 8),
+              _buildCompactOperationButton(
+                icon: Icons.remove_circle_outline,
+                label: 'Retiro',
+                color: unifiedColor,
+                foregroundColor: unifiedTextColor,
+                borderColor: unifiedBorderColor,
+                onPressed: () => _openCashMovement(CashMovementType.outcome),
+              ),
+              const SizedBox(width: 8),
+              _buildCompactOperationButton(
+                icon: Icons.account_balance,
+                label: 'Créditos',
+                color: unifiedColor,
+                foregroundColor: unifiedTextColor,
+                borderColor: unifiedBorderColor,
+                onPressed: () {
+                  AuthzService.guardedAction(
+                    context,
+                    authz_perm.Permissions.creditsView,
+                    () => context.go('/credits-list'),
+                    reason: 'Abrir creditos',
+                    resourceType: 'route',
+                    resourceId: '/credits-list',
+                  )();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildCompactOperationButton(
+                icon: Icons.request_quote_outlined,
+                label: 'Cotizaciones',
+                color: unifiedColor,
+                foregroundColor: unifiedTextColor,
+                borderColor: unifiedBorderColor,
+                onPressed: () {
+                  AuthzService.guardedAction(
+                    context,
+                    authz_perm.Permissions.quotesView,
+                    () => context.go('/quotes-list'),
+                    reason: 'Abrir cotizaciones',
+                    resourceType: 'route',
+                    resourceId: '/quotes-list',
+                  )();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildCompactOperationButton(
+                icon: Icons.assignment_return_outlined,
+                label: 'Devoluciones',
+                color: unifiedColor,
+                foregroundColor: unifiedTextColor,
+                borderColor: unifiedBorderColor,
+                onPressed: () {
+                  AuthzService.guardedAction(
+                    context,
+                    authz_perm.Permissions.returnsView,
+                    () => context.go('/returns-list'),
+                    reason: 'Abrir devoluciones',
+                    resourceType: 'route',
+                    resourceId: '/returns-list',
+                  )();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildCompactOperationButton(
+                icon: Icons.point_of_sale_outlined,
+                label: 'Corte',
+                color: unifiedColor,
+                foregroundColor: unifiedTextColor,
+                borderColor: unifiedBorderColor,
+                onPressed: () => context.go('/cash/history'),
+              ),
+            ];
 
-            if (isNarrow) {
-              // Mostrar botones compactos flotando también en pantallas pequeñas
-              return Row(
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildCompactOperationButton(
-                          icon: Icons.add_circle_outline,
-                          label: 'Entrada',
-                          color: compactColor,
-                          foregroundColor: compactText,
-                          borderColor: unifiedBorderColor,
-                          onPressed: () =>
-                              _openCashMovement(CashMovementType.income),
-                        ),
-                        const SizedBox(width: 10),
-                        _buildCompactOperationButton(
-                          icon: Icons.remove_circle_outline,
-                          label: 'Retiro',
-                          color: compactColor,
-                          foregroundColor: compactText,
-                          borderColor: unifiedBorderColor,
-                          onPressed: () =>
-                              _openCashMovement(CashMovementType.outcome),
-                        ),
-                        const SizedBox(width: 14),
-                        Container(
-                          width: 1,
-                          height: 28,
-                          color: unifiedBorderColor.withOpacity(0.35),
-                        ),
-                        const SizedBox(width: 14),
-                        _buildCompactOperationButton(
-                          icon: Icons.account_balance,
-                          label: 'Créditos',
-                          color: compactColor,
-                          foregroundColor: compactText,
-                          borderColor: unifiedBorderColor,
-                          onPressed: () {
-                            AuthzService.guardedAction(
-                              context,
-                              authz_perm.Permissions.creditsView,
-                              () => context.go('/credits-list'),
-                              reason: 'Abrir creditos',
-                              resourceType: 'route',
-                              resourceId: '/credits-list',
-                            )();
-                          },
-                        ),
-                        const SizedBox(width: 10),
-                        _buildCompactOperationButton(
-                          icon: Icons.request_quote_outlined,
-                          label: 'Cotizaciones',
-                          color: compactColor,
-                          foregroundColor: compactText,
-                          borderColor: unifiedBorderColor,
-                          onPressed: () {
-                            AuthzService.guardedAction(
-                              context,
-                              authz_perm.Permissions.quotesView,
-                              () => context.go('/quotes-list'),
-                              reason: 'Abrir cotizaciones',
-                              resourceType: 'route',
-                              resourceId: '/quotes-list',
-                            )();
-                          },
-                        ),
-                        const SizedBox(width: 10),
-                        _buildCompactOperationButton(
-                          icon: Icons.assignment_return_outlined,
-                          label: 'Devoluciones',
-                          color: compactColor,
-                          foregroundColor: compactText,
-                          borderColor: unifiedBorderColor,
-                          onPressed: () {
-                            AuthzService.guardedAction(
-                              context,
-                              authz_perm.Permissions.returnsView,
-                              () => context.go('/returns-list'),
-                              reason: 'Abrir devoluciones',
-                              resourceType: 'route',
-                              resourceId: '/returns-list',
-                            )();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
-
-            // En pantallas amplias usamos botones compactos, alineados a la derecha
-            return Row(
-              children: [
-                _buildCompactOperationButton(
-                  icon: Icons.add_circle_outline,
-                  label: 'Entrada',
-                  color: unifiedColor,
-                  foregroundColor: unifiedTextColor,
-                  borderColor: unifiedBorderColor,
-                  onPressed: () => _openCashMovement(CashMovementType.income),
+            return Align(
+              alignment: Alignment.center,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: buttons,
                 ),
-                SizedBox(width: 10),
-                _buildCompactOperationButton(
-                  icon: Icons.remove_circle_outline,
-                  label: 'Retiro',
-                  color: unifiedColor,
-                  foregroundColor: unifiedTextColor,
-                  borderColor: unifiedBorderColor,
-                  onPressed: () => _openCashMovement(CashMovementType.outcome),
-                ),
-                SizedBox(width: 14),
-                Container(
-                  width: 1,
-                  height: 28,
-                  color: unifiedBorderColor.withOpacity(0.35),
-                ),
-                SizedBox(width: 14),
-                const Spacer(),
-                _buildCompactOperationButton(
-                  icon: Icons.account_balance,
-                  label: 'Créditos',
-                  color: unifiedColor,
-                  foregroundColor: unifiedTextColor,
-                  borderColor: unifiedBorderColor,
-                  onPressed: () {
-                    AuthzService.guardedAction(
-                      context,
-                      authz_perm.Permissions.creditsView,
-                      () => context.go('/credits-list'),
-                      reason: 'Abrir creditos',
-                      resourceType: 'route',
-                      resourceId: '/credits-list',
-                    )();
-                  },
-                ),
-                SizedBox(width: 10),
-                _buildCompactOperationButton(
-                  icon: Icons.request_quote_outlined,
-                  label: 'Cotizaciones',
-                  color: unifiedColor,
-                  foregroundColor: unifiedTextColor,
-                  borderColor: unifiedBorderColor,
-                  onPressed: () {
-                    AuthzService.guardedAction(
-                      context,
-                      authz_perm.Permissions.quotesView,
-                      () => context.go('/quotes-list'),
-                      reason: 'Abrir cotizaciones',
-                      resourceType: 'route',
-                      resourceId: '/quotes-list',
-                    )();
-                  },
-                ),
-                SizedBox(width: 10),
-                _buildCompactOperationButton(
-                  icon: Icons.assignment_return_outlined,
-                  label: 'Devoluciones',
-                  color: unifiedColor,
-                  foregroundColor: unifiedTextColor,
-                  borderColor: unifiedBorderColor,
-                  onPressed: () {
-                    AuthzService.guardedAction(
-                      context,
-                      authz_perm.Permissions.returnsView,
-                      () => context.go('/returns-list'),
-                      reason: 'Abrir devoluciones',
-                      resourceType: 'route',
-                      resourceId: '/returns-list',
-                    )();
-                  },
-                ),
-              ],
+              ),
             );
           },
         ),
@@ -3615,31 +3314,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   /// Panel de ticket refactorizado con 3 cards profesionales
   Widget _buildTicketPanel() {
-    final gradientTheme = Theme.of(
-      context,
-    ).extension<SalesDetailGradientTheme>();
-    final panelGradient = _resolveSalesDetailGradient(gradientTheme);
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        // En alturas pequeñas, el diseño "sticky" (con Expanded interno)
-        // puede causar overflow. En ese caso hacemos el panel completo
-        // scrolleable.
         final isShort =
             constraints.maxHeight.isFinite && constraints.maxHeight < 560;
 
         final content = !isShort
             ? Column(
                 children: [
-                  // CARD A: Ticket / Cliente
                   _buildTicketHeaderCard(),
-                  const SizedBox(height: 8),
-
-                  // CARD B: Lista de items (scrollable)
+                  const SizedBox(height: 6),
                   Expanded(child: _buildItemsListCard()),
-                  const SizedBox(height: 8),
-
-                  // CARD C: Resumen + Total + Acciones (sticky)
+                  const SizedBox(height: 6),
                   _buildTotalAndActionsCard(),
                 ],
               )
@@ -3648,18 +3334,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 child: Column(
                   children: [
                     _buildTicketHeaderCard(),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     _buildItemsListCard(embedded: true),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     _buildTotalAndActionsCard(),
                   ],
                 ),
               );
 
-        // Requisito: la columna (contenedor) de detalle debe ser azul.
-        return Container(
-          decoration: BoxDecoration(gradient: panelGradient),
-          child: content,
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Container(color: Theme.of(context).cardColor, child: content),
         );
       },
     );
@@ -3669,195 +3354,212 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildTicketHeaderCard() {
     final totalTickets = _carts.length;
     final itemCount = _currentCart.items.length;
-    final headerColor = AppColors.primaryBlue;
+    final selectedClientName = _currentCart.selectedClient?.nombre.trim();
+    final selectedClientLabel =
+        selectedClientName == null || selectedClientName.isEmpty
+        ? 'Cliente general'
+        : selectedClientName;
 
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      elevation: 2,
-      shadowColor: Theme.of(context).shadowColor.withOpacity(0.12),
-      shape: RoundedRectangleBorder(
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.primary.withOpacity(0.12), width: 1),
+        border: Border.all(color: AppColors.borderSoft),
       ),
-      color: transparent,
-      child: Container(
-        decoration: BoxDecoration(
-          color: headerColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isCompact = constraints.maxWidth < 360;
-
-            Widget actionIcon({
-              required String tooltip,
-              required IconData icon,
-              required VoidCallback onTap,
-            }) {
-              return Tooltip(
-                message: tooltip,
-                child: Material(
-                  color: transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.white.withOpacity(0.22)),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: onTap,
-                    child: SizedBox(
-                      width: 34,
-                      height: 34,
-                      child: Icon(icon, color: Colors.white, size: 18),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          Widget iconBox(IconData icon, VoidCallback onTap, String tooltip) {
+            return Tooltip(
+              message: tooltip,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Ink(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
                     ),
+                    child: Icon(icon, size: 18, color: const Color(0xFF2563EB)),
                   ),
                 ),
-              );
-            }
-
-            Widget itemCountPill() {
-              if (itemCount <= 0) return const SizedBox.shrink();
-              return Tooltip(
-                message: 'Artículos en ticket',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: transparent,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: Colors.white.withOpacity(0.24)),
-                  ),
-                  child: Text(
-                    '$itemCount',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Material(
-                      color: transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.white.withOpacity(0.22)),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: _showTicketSelector,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.receipt_long_outlined,
-                                size: 18,
-                                color: Colors.white,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  totalTickets == 1
-                                      ? _currentCart.displayName
-                                      : '${_currentCart.displayName} ($totalTickets)',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: isCompact ? 13 : 14,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.1,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.arrow_drop_down,
-                                color: Colors.white.withOpacity(0.8),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  itemCountPill(),
-                  const SizedBox(width: 8),
-                  actionIcon(
-                    tooltip: 'Clientes',
-                    icon: Icons.group,
-                    onTap: _showClientPicker,
-                  ),
-                  const SizedBox(width: 8),
-                  actionIcon(
-                    tooltip: 'Venta manual',
-                    icon: Icons.edit_note,
-                    onTap: _showQuickItemDialog,
-                  ),
-                ],
               ),
             );
-          },
-        ),
+          }
+
+          Widget infoChip({
+            required IconData icon,
+            required String label,
+            required VoidCallback onTap,
+            int flex = 1,
+          }) {
+            return Expanded(
+              flex: flex,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Ink(
+                    height: 34,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.borderSoft),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            icon,
+                            size: 16,
+                            color: const Color(0xFF2563EB),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          Widget itemCountPill() {
+            return Tooltip(
+              message: 'Artículos en ticket',
+              child: Container(
+                height: 34,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.borderSoft),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.inventory_2_outlined,
+                        size: 16,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$itemCount',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return Row(
+            children: [
+              infoChip(
+                icon: Icons.receipt_long_outlined,
+                label: totalTickets == 1
+                    ? _currentCart.displayName
+                    : '${_currentCart.displayName} ($totalTickets)',
+                onTap: _showTicketSelector,
+                flex: 4,
+              ),
+              const SizedBox(width: 8),
+              infoChip(
+                icon: Icons.person_outline,
+                label: selectedClientLabel,
+                onTap: _showClientPicker,
+                flex: 5,
+              ),
+              const SizedBox(width: 8),
+              itemCountPill(),
+              const SizedBox(width: 8),
+              iconBox(Icons.group_outlined, _showClientPicker, 'Clientes'),
+              const SizedBox(width: 6),
+              iconBox(Icons.edit_note, _showQuickItemDialog, 'Venta manual'),
+            ],
+          );
+        },
       ),
     );
   }
 
   /// CARD B: Detalle de la venta (lista scrollable)
   Widget _buildItemsListCard({bool embedded = false}) {
-    final gradientTheme = Theme.of(
-      context,
-    ).extension<SalesDetailGradientTheme>();
-    final backgroundGradient = _resolveSalesDetailGradient(gradientTheme);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      elevation: 2,
-      shadowColor: Theme.of(context).shadowColor.withOpacity(0.12),
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: scheme.primary.withOpacity(0.12), width: 1),
+        border: Border.all(color: AppColors.borderSoft),
       ),
-      color: transparent,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Durante el arranque/redimensionado la altura puede llegar a 0–20px.
-          // Si está muy pequeña, no renderizar para evitar overflow.
           if (!embedded &&
               constraints.maxHeight > 0 &&
               constraints.maxHeight < 40) {
             return const SizedBox.shrink();
           }
 
-          return Container(
-            decoration: BoxDecoration(
-              gradient: backgroundGradient,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: _currentCart.items.isEmpty
-                ? _buildEmptyCartView()
-                : embedded
-                ? ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 6,
-                      horizontal: 8,
-                    ),
+          final listContent = _currentCart.items.isEmpty
+              ? _buildEmptyCartView()
+              : embedded
+              ? ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                  itemCount: _currentCart.items.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 0),
+                  itemBuilder: (context, index) {
+                    final item = _currentCart.items[index];
+                    return _buildCartItemRow(item, index);
+                  },
+                )
+              : Scrollbar(
+                  controller: _ticketItemsScrollController,
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    controller: _ticketItemsScrollController,
+                    primary: false,
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
                     itemCount: _currentCart.items.length,
                     separatorBuilder: (context, index) =>
                         const SizedBox(height: 0),
@@ -3865,26 +3567,38 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       final item = _currentCart.items[index];
                       return _buildCartItemRow(item, index);
                     },
-                  )
-                : Scrollbar(
-                    controller: _ticketItemsScrollController,
-                    thumbVisibility: true,
-                    child: ListView.separated(
-                      controller: _ticketItemsScrollController,
-                      primary: false,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 6,
-                        horizontal: 8,
-                      ),
-                      itemCount: _currentCart.items.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(height: 0),
-                      itemBuilder: (context, index) {
-                        final item = _currentCart.items[index];
-                        return _buildCartItemRow(item, index);
-                      },
-                    ),
                   ),
+                );
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+                child: Row(
+                  children: [
+                    Text(
+                      'Detalle',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${_currentCart.items.length} líneas',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.borderSoft),
+              Expanded(child: listContent),
+            ],
           );
         },
       ),
@@ -3942,33 +3656,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildCartItemRow(SaleItemModel item, int index) {
     final isSelected = _selectedCartItemIndex == index;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
-    // Requisito: líneas decorativas del detalle siempre negras.
-    final rowDividerColor = Colors.black.withOpacity(0.22);
+    final rowDividerColor = AppColors.borderSoft;
 
     return InkWell(
       onTap: () => setState(() => _selectedCartItemIndex = index),
       onDoubleTap: () => _showEditItemDialog(item, index),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: transparent,
+          color: isSelected
+              ? scheme.primary.withOpacity(0.05)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: isSelected
-              ? Border.all(color: scheme.primary.withOpacity(0.32), width: 1.5)
+              ? Border.all(color: scheme.primary.withOpacity(0.22), width: 1.2)
               : Border(bottom: BorderSide(color: rowDividerColor, width: 1)),
         ),
         child: Row(
           children: [
-            // Cantidad badge
             Container(
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: transparent,
+                color: scheme.surfaceContainerHighest.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: salesDetailTextColor.withOpacity(0.2),
-                ),
               ),
               child: Center(
                 child: Text(
@@ -3976,14 +3687,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: salesDetailTextColor,
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 10),
 
-            // Nombre y código del producto
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3993,17 +3703,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: salesDetailTextColor,
+                      color: AppColors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Precio: RD\$${item.unitPrice.toStringAsFixed(2)}',
+                    '${item.productCodeSnapshot}  •  RD\$${item.unitPrice.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 10,
-                      color: salesDetailTextColor.withOpacity(0.7),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -4011,7 +3721,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             ),
             const SizedBox(width: 8),
 
-            // Controles de cantidad
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -4031,7 +3740,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             ),
             const SizedBox(width: 10),
 
-            // Subtotal
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -4045,18 +3753,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     ),
                   ),
                 Text(
-                  '\$${subtotal.toStringAsFixed(2)}',
+                  'RD\$${subtotal.toStringAsFixed(2)}',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: salesDetailTextColor.withOpacity(0.95),
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ],
             ),
             const SizedBox(width: 8),
 
-            // Botón eliminar
             Material(
               color: Colors.transparent,
               child: InkWell(
@@ -4085,41 +3792,53 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildCompactStepperButton(IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 24,
-        height: 24,
+        width: 26,
+        height: 26,
         decoration: BoxDecoration(
-          color: transparent,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: salesDetailTextColor.withOpacity(0.2),
-            width: 0.5,
-          ),
+          color: scheme.surfaceContainerHighest.withOpacity(0.45),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
           icon,
           size: 14,
-          color: salesDetailTextColor.withOpacity(0.8),
+          color: AppColors.textPrimary.withOpacity(0.86),
         ),
       ),
     );
   }
 
-  /// CARD C: Resumen + Total + Acciones (sticky al fondo)
   Widget _buildTotalAndActionsCard() {
-    final gradientTheme = Theme.of(
-      context,
-    ).extension<SalesDetailGradientTheme>();
-    final backgroundGradient = _resolveSalesDetailGradient(gradientTheme);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Switches y opciones fiscales
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: Column(
             children: [
+              Row(
+                children: const [
+                  Text(
+                    'Resumen',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Spacer(),
+                  Text(
+                    'e-CF y total',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
@@ -4130,9 +3849,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: salesDetailTextColor.withOpacity(0.2),
-                        ),
+                        color: scheme.surfaceContainerHighest.withOpacity(0.4),
                       ),
                       child: Row(
                         children: [
@@ -4142,13 +3859,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: salesDetailTextColor,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
                           Switch(
                             value: _currentCart.itbisEnabled,
-                            onChanged: _currentCart.fiscalEnabled
+                            onChanged: _currentCart.electronicInvoiceEnabled
                                 ? null
                                 : (value) => _updateCurrentCart(
                                     () => _currentCart.itbisEnabled = value,
@@ -4168,63 +3885,39 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: salesDetailTextColor.withOpacity(0.2),
-                        ),
+                        color: scheme.surfaceContainerHighest.withOpacity(0.4),
                       ),
                       child: Row(
                         children: [
                           Expanded(
                             child: Text(
-                              'NCF',
+                              'e-CF',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: salesDetailTextColor,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
                           Switch(
-                            value: _currentCart.fiscalEnabled,
+                            value: _currentCart.electronicInvoiceEnabled,
                             onChanged: (value) async {
                               if (!value) {
                                 _updateCurrentCart(() {
-                                  _currentCart.fiscalEnabled = false;
-                                  _currentCart.selectedNcf = null;
+                                  _currentCart.electronicInvoiceEnabled = false;
                                 });
                                 return;
                               }
 
-                              if (!_canEnableFiscalOrNotify()) return;
+                              if (!await _canEnableElectronicInvoiceOrNotify()) {
+                                return;
+                              }
 
                               _updateCurrentCart(() {
-                                _currentCart.fiscalEnabled = true;
+                                _currentCart.electronicInvoiceEnabled = true;
                                 _currentCart.itbisEnabled = true;
                               });
-
-                              await _loadAvailableNcfs();
-                              if (!mounted) return;
-
-                              if (_availableNcfs.isEmpty) {
-                                _updateCurrentCart(() {
-                                  _currentCart.fiscalEnabled = false;
-                                  _currentCart.selectedNcf = null;
-                                });
-                                _showNotice(
-                                  SnackBar(
-                                    content: Text(
-                                      'No hay NCF disponibles. Hable con Administración para agregarlo.',
-                                    ),
-                                    backgroundColor: scheme.error,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              _updateCurrentCart(
-                                () => _currentCart.selectedNcf ??=
-                                    _availableNcfs.first,
-                              );
+                              await _refreshElectronicCompany();
                             },
                             activeColor: scheme.secondary,
                           ),
@@ -4235,55 +3928,27 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ],
               ),
 
-              if (_currentCart.fiscalEnabled) ...[
+              if (_currentCart.electronicInvoiceEnabled) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
-                        _currentCart.selectedNcf == null
-                            ? 'NCF: (no seleccionado)'
-                            : 'NCF: ${_currentCart.selectedNcf!.type} - ${_currentCart.selectedNcf!.buildNcf()}',
+                        _electronicCompany == null
+                            ? 'e-CF: cargando configuracion electronica...'
+                          : 'e-CF ${_electronicCompany!.environment.toUpperCase()} listo para DGII',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: _currentCart.selectedNcf == null
-                              ? scheme.error
-                              : salesDetailTextColor.withOpacity(0.8),
+                          color: AppColors.textSecondary,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     TextButton(
-                      onPressed: _availableNcfs.isEmpty
-                          ? null
-                          : () async {
-                              final selected = await _presentDialog<NcfBookModel>(
-                                builder: (_) => SimpleDialog(
-                                  title: const Text('Seleccionar NCF'),
-                                  children: _availableNcfs
-                                      .map(
-                                        (ncf) => SimpleDialogOption(
-                                          onPressed: () =>
-                                              Navigator.of(context).pop(ncf),
-                                          child: Text(
-                                            '${ncf.type} - ${ncf.buildNcf()} (${ncf.toN - ncf.nextN + 1})',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(growable: false),
-                                ),
-                              );
-                              if (!mounted || selected == null) return;
-                              _updateCurrentCart(
-                                () => _currentCart.selectedNcf = selected,
-                              );
-                            },
+                      onPressed: () => context.push('/electronic-documents'),
                       child: const Text(
-                        'Cambiar',
+                        'Configurar',
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
@@ -4293,12 +3958,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             ],
           ),
         ),
-        Divider(height: 1, color: Colors.black.withOpacity(0.22)),
+        const Divider(height: 1, color: AppColors.borderSoft),
 
-        // Resumen de totales
         Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(gradient: backgroundGradient),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
           child: Builder(
             builder: (context) {
               final grossSubtotal = _currentCart.calculateGrossSubtotal();
@@ -4332,11 +3995,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   if (_currentCart.itbisEnabled || discountsCombined > 0) ...[
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: const Divider(thickness: 1.5, color: Colors.black),
+                      child: const Divider(
+                        thickness: 1,
+                        color: AppColors.borderSoft,
+                      ),
                     ),
                   ],
 
-                  // Total destacado
                   GestureDetector(
                     onDoubleTap: _showTotalDiscountDialog,
                     child: Tooltip(
@@ -4344,13 +4009,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: scheme.primaryContainer.withOpacity(
-                            _currentCart.items.isEmpty ? 0.2 : 0.35,
+                          color: scheme.primary.withOpacity(
+                            _currentCart.items.isEmpty ? 0.05 : 0.08,
                           ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: scheme.primary.withOpacity(0.45),
-                            width: 1.6,
+                            color: scheme.primary.withOpacity(0.14),
                           ),
                         ),
                         child: Row(
@@ -4367,8 +4031,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 Text(
                                   'TOTAL:',
                                   style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
                                     color: scheme.primary,
                                   ),
                                 ),
@@ -4377,10 +4041,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             Text(
                               'RD\$${totalAmount.toStringAsFixed(2)}',
                               style: TextStyle(
-                                fontSize: 30,
-                                fontWeight: FontWeight.w900,
-                                color: scheme.primary,
-                                letterSpacing: 0.5,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ],
@@ -4394,7 +4057,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ),
         ),
 
-        // Botones de acción
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           child: Row(
@@ -4420,7 +4082,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _currentCart.items.isEmpty
                           ? scheme.surface
-                          : AppColors.primaryBlue,
+                          : const Color(0xFF2563EB),
                       foregroundColor: _currentCart.items.isEmpty
                           ? scheme.onSurface
                           : Colors.white,
@@ -4428,8 +4090,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      elevation: _currentCart.items.isEmpty ? 0 : 1,
-                      shadowColor: scheme.primary.withOpacity(0.25),
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
                     ),
                   ),
                 ),
@@ -4438,12 +4100,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               SizedBox(
                 height: 52,
                 width: 132,
-                child: ElevatedButton.icon(
+                child: OutlinedButton.icon(
                   onPressed: _currentCart.items.isEmpty ? null : _saveAsQuote,
                   icon: Icon(
                     Icons.description_outlined,
                     size: 18,
-                    color: scheme.onSecondary,
+                    color: _currentCart.items.isEmpty
+                        ? scheme.onSurface.withOpacity(0.38)
+                        : const Color(0xFF2563EB),
                   ),
                   label: Text(
                     'Cotizar',
@@ -4453,21 +4117,42 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.2,
-                      color: scheme.onSecondary,
+                      color: _currentCart.items.isEmpty
+                          ? scheme.onSurface.withOpacity(0.38)
+                          : const Color(0xFF2563EB),
                     ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    backgroundColor: _currentCart.items.isEmpty
-                        ? scheme.surface
-                        : scheme.secondary,
-                    foregroundColor: _currentCart.items.isEmpty
-                        ? scheme.onSurface
-                        : scheme.onSecondary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  style: ButtonStyle(
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 10),
                     ),
-                    elevation: _currentCart.items.isEmpty ? 0 : 1,
+                    backgroundColor: WidgetStateProperty.resolveWith((states) {
+                      if (_currentCart.items.isEmpty) {
+                        return scheme.surface;
+                      }
+                      if (states.contains(WidgetState.hovered)) {
+                        return const Color(0xFFEEF2FF);
+                      }
+                      return const Color(0xFFFFFFFF);
+                    }),
+                    foregroundColor: WidgetStateProperty.resolveWith((states) {
+                      if (_currentCart.items.isEmpty) {
+                        return scheme.onSurface.withOpacity(0.38);
+                      }
+                      return const Color(0xFF2563EB);
+                    }),
+                    shape: WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    side: const WidgetStatePropertyAll(
+                      BorderSide(color: Color(0xFFCBD5F5)),
+                    ),
+                    overlayColor: const WidgetStatePropertyAll(
+                      Color(0xFFEEF2FF),
+                    ),
+                    elevation: const WidgetStatePropertyAll(0),
                   ),
                 ),
               ),
@@ -4477,34 +4162,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ],
     );
 
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      elevation: 1,
-      shadowColor: Theme.of(context).shadowColor.withOpacity(0.08),
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: scheme.outlineVariant.withOpacity(0.6),
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.borderSoft),
       ),
-      color: transparent,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: backgroundGradient,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(context).shadowColor.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 320, maxWidth: 460),
-          child: content,
-        ),
+      margin: EdgeInsets.zero,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 320, maxWidth: 460),
+        child: content,
       ),
     );
   }
@@ -4515,8 +4182,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     bool isTotal, {
     Color? color,
   }) {
-    final baseColor = salesDetailTextColor;
-    final labelColor = color ?? baseColor.withAlpha((0.75 * 255).round());
+    final baseColor = AppColors.textPrimary;
+    final labelColor = color ?? AppColors.textSecondary;
     final valueColor = color ?? baseColor;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4678,7 +4345,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             ),
                             Switch(
                               value: _currentCart.itbisEnabled,
-                              onChanged: _currentCart.fiscalEnabled
+                              onChanged: _currentCart.electronicInvoiceEnabled
                                   ? null
                                   : (value) => _updateCurrentCart(
                                       () => _currentCart.itbisEnabled = value,
@@ -4707,70 +4374,47 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'NCF',
+                                    'e-CF',
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  if (_currentCart.fiscalEnabled)
+                                  if (_currentCart.electronicInvoiceEnabled)
                                     const Text(
-                                      'NCF requerido',
+                                      'Envío DGII activo',
                                       style: TextStyle(fontSize: 11),
                                     ),
                                 ],
                               ),
                             ),
                             Switch(
-                              value: _currentCart.fiscalEnabled,
+                              value: _currentCart.electronicInvoiceEnabled,
                               onChanged: (value) async {
                                 if (!value) {
                                   _updateCurrentCart(() {
-                                    _currentCart.fiscalEnabled = false;
-                                    _currentCart.selectedNcf = null;
+                                    _currentCart.electronicInvoiceEnabled = false;
                                   });
                                   return;
                                 }
 
-                                if (!_canEnableFiscalOrNotify()) return;
+                                if (!await _canEnableElectronicInvoiceOrNotify()) {
+                                  return;
+                                }
 
-                                // Activar valor fiscal implica ITBIS activo
+                                // Activar emisión electrónica implica ITBIS activo
                                 _updateCurrentCart(() {
-                                  _currentCart.fiscalEnabled = true;
+                                  _currentCart.electronicInvoiceEnabled = true;
                                   _currentCart.itbisEnabled = true;
                                 });
-
-                                await _loadAvailableNcfs();
-                                if (!mounted) return;
-
-                                if (_availableNcfs.isEmpty) {
-                                  _updateCurrentCart(() {
-                                    _currentCart.fiscalEnabled = false;
-                                    _currentCart.selectedNcf = null;
-                                  });
-                                  _showNotice(
-                                    SnackBar(
-                                      content: const Text(
-                                        'No hay NCF disponibles. Hable con Administración para agregarlo.',
-                                      ),
-                                      backgroundColor: scheme.error,
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                // Preseleccionar el primero disponible para que quede listo
-                                _updateCurrentCart(() {
-                                  _currentCart.selectedNcf ??=
-                                      _availableNcfs.first;
-                                });
+                                await _refreshElectronicCompany();
                               },
                               activeColor: scheme.secondary,
                             ),
                           ],
                         ),
                       ),
-                      if (_currentCart.fiscalEnabled) ...[
+                      if (_currentCart.electronicInvoiceEnabled) ...[
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.all(10),
@@ -4783,7 +4427,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Comprobante Fiscal (NCF)',
+                                'Factura electrónica DGII',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -4791,38 +4435,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              if (_availableNcfs.isEmpty)
-                                Text(
-                                  'No hay NCF disponibles. Hable con Administración para agregarlo.',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: scheme.error,
-                                  ),
-                                )
-                              else
-                                DropdownButtonFormField<NcfBookModel>(
-                                  initialValue: _currentCart.selectedNcf,
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 8,
-                                    ),
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: _availableNcfs.map((ncf) {
-                                    return DropdownMenuItem(
-                                      value: ncf,
-                                      child: Text(
-                                        '${ncf.type} - ${ncf.buildNcf()} (${ncf.toN - ncf.nextN + 1} disponibles)',
-                                        style: const TextStyle(fontSize: 11),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                        _electronicCompany == null
+                                          ? 'Cargando configuracion electronica...'
+                                          : 'Ambiente ${_electronicCompany!.environment.toUpperCase()} listo para emitir y enviar a DGII.',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: scheme.onSurfaceVariant,
                                       ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (ncf) => _updateCurrentCart(
-                                    () => _currentCart.selectedNcf = ncf,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () => context.push('/electronic-documents'),
+                                    icon: const Icon(
+                                      Icons.settings_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Abrir'),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -5709,8 +5345,7 @@ class _Cart {
   double discount = 0.0;
   bool itbisEnabled = true;
   double itbisRate = 0.18;
-  bool fiscalEnabled = false;
-  NcfBookModel? selectedNcf;
+  bool electronicInvoiceEnabled = false;
   ClientModel? selectedClient;
 
   String? discountTotalType;
@@ -5803,7 +5438,6 @@ class _Cart {
     discountTotalType = null;
     discountTotalValue = null;
     selectedClient = null;
-    selectedNcf = null;
   }
 
   double calculateGrossSubtotal() {

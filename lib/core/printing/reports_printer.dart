@@ -212,7 +212,9 @@ class ReportsPrinter {
               );
             } else {
               content.add(kvRow('Total Ventas:', money(kpis.totalSales)));
-              content.add(kvRow('Ganancia:', money(kpis.totalProfit)));
+              content.add(kvRow('Ganancia Bruta:', money(kpis.totalProfit)));
+              content.add(kvRow('Gastos del rango:', money(kpis.cashExpense)));
+              content.add(kvRow('Ganancia Neta:', money(kpis.netProfit)));
               content.add(kvRow('Cantidad Ventas:', '${kpis.salesCount}'));
               content.add(kvRow('Ticket Promedio:', money(kpis.avgTicket)));
               content.add(pw.SizedBox(height: 6));
@@ -262,7 +264,7 @@ class ReportsPrinter {
 
           // Profit series
           if (sections['profitSeries'] == true) {
-            content.add(sectionTitle('Ganancias por Período'));
+            content.add(sectionTitle('Ganancia Neta por Período'));
             final rows = profitSeries
                 .take(40)
                 .map((p) => [p.label, money(p.value)])
@@ -276,7 +278,7 @@ class ReportsPrinter {
               );
             } else {
               content.add(
-                simpleTable(headers: ['Período', 'Ganancias'], rows: rows),
+                simpleTable(headers: ['Período', 'Ganancia neta'], rows: rows),
               );
             }
           }
@@ -325,7 +327,7 @@ class ReportsPrinter {
             } else {
               content.add(
                 simpleTable(
-                  headers: ['Producto', 'Ventas', 'Cant.', 'Ganancia'],
+                  headers: ['Producto', 'Ventas', 'Cant.', 'Margen Bruto'],
                   rows: rows,
                 ),
               );

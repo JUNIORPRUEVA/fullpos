@@ -6,21 +6,10 @@ import 'package:flutter/widgets.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../constants/app_colors.dart';
 import 'window_service.dart';
 
-/// Centralizes window startup on Desktop (Windows focus).
-///
-/// **Design**: Dart owns window visibility. Native (C++) creates window but never shows it.
-/// This eliminates race conditions and ensures deterministic startup.
-///
-/// **Flow**:
-/// 1. main() calls applyStartupOptions() - apply options while hidden
-/// 2. AppEntry detects bootstrap ready - calls showWhenReady()
-/// 3. Window shows exactly once, fully formed, no flicker
-///
-/// **Key principle**: No dual show logic. Native handles rendering.
-/// Dart handles visibility and configuration.
+/// Centralizes Windows startup so the native window stays hidden until Flutter
+/// paints a real frame.
 class WindowStartupController {
   WindowStartupController._();
 
@@ -50,15 +39,14 @@ class WindowStartupController {
       size: startupSize,
       minimumSize: const Size(1100, 650),
       center: true,
-      backgroundColor: AppColors.bgLightAlt,
+      backgroundColor: const Color(0xFFFFFFFF),
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
       title: 'FULLPOS',
     );
   }
 
-  /// Apply window options (size, position, kiosk mode) while window is hidden.
-  /// Called from main() before runApp() to ensure options are set before show.
+  /// Apply startup window options while hidden.
   Future<void> applyStartupOptions() async {
     if (_optionsApplied) return;
     _optionsApplied = true;
@@ -69,11 +57,10 @@ class WindowStartupController {
 
     try {
       await windowManager.waitUntilReadyToShow(options, () async {
-        // Window is now created but hidden
         try {
           await windowManager.hide();
         } catch (_) {
-          // Ignore - may already be hidden
+          // Ignore - the window may already be hidden.
         }
 
         if (kDebugMode) {
@@ -81,44 +68,27 @@ class WindowStartupController {
         }
       });
 
-      // After waitUntilReadyToShow completes, apply kiosk mode
-      // Do this AFTER the initial window setup to ensure it takes effect
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-
       try {
         await WindowService.init();
-        if (WindowService.isFullScreen()) {
-          // Apply kiosk mode at startup only when user preference enables it.
-          await WindowService.applyWindowsPosKioskModeForStartup(
-            preferCurrentDisplay: true,
-          );
+        await windowManager.setMinimumSize(const Size(1100, 650));
+        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        await windowManager.setResizable(true);
+        await windowManager.maximize();
 
-          if (kDebugMode) {
-            debugPrint('[WINDOW] kiosk mode applied (startup)');
-          }
-        } else {
-          // In normal mode, keep startup operations minimal while hidden.
-          await windowManager.setMinimumSize(const Size(1100, 650));
-          await windowManager.setResizable(true);
-          await windowManager.maximize();
-          await Future<void>.delayed(const Duration(milliseconds: 16));
-
-          if (kDebugMode) {
-            debugPrint('[WINDOW] windowed mode prepared (startup maximized)');
-          }
+        if (kDebugMode) {
+          debugPrint('[WINDOW] startup window prepared (hidden, maximized)');
         }
       } catch (e) {
-        // Fallback: normal maximized window
         if (kDebugMode) {
-          debugPrint('[WINDOW] kiosk mode failed, applying fallback: $e');
+          debugPrint('[WINDOW] startup window preparation failed: $e');
         }
         try {
           await windowManager.setMinimumSize(const Size(1100, 650));
+          await windowManager.setTitleBarStyle(TitleBarStyle.normal);
           await windowManager.setResizable(true);
           await windowManager.maximize();
-          await Future<void>.delayed(const Duration(milliseconds: 16));
         } catch (_) {
-          // Ensure app doesn't hang if window setup fails
+          // Ignore fallback failures to avoid blocking startup.
         }
       }
     } catch (e) {
@@ -128,9 +98,7 @@ class WindowStartupController {
     }
   }
 
-  /// Show window exactly once when bootstrap is ready.
-  /// Called from AppEntry when BootStatus transitions to ready.
-  /// Window appears fully formed with all options already applied.
+  /// Show the hidden window exactly once after Flutter paints its first frame.
   Future<void> showWhenReady() async {
     if (_shown) return;
     _shown = true;
@@ -138,41 +106,25 @@ class WindowStartupController {
     if (!Platform.isWindows) return;
 
     if (kDebugMode) {
-      debugPrint('[WINDOW] show (bootstrap ready)');
+      debugPrint('[WINDOW] show (first Flutter frame)');
     }
 
     try {
-      if (!WindowService.isFullScreen()) {
-        try {
-          final isMaximized = await windowManager.isMaximized();
-          if (!isMaximized) {
-            await windowManager.maximize();
-            await Future<void>.delayed(const Duration(milliseconds: 16));
-          }
-        } catch (_) {
-          // Ignore
-        }
-      }
-
-      // Restore if minimized (can happen if user minimized during bootstrap)
       try {
         final isMin = await windowManager.isMinimized();
         if (isMin) {
           await windowManager.restore();
         }
       } catch (_) {
-        // Ignore
+        // Ignore restore failures.
       }
 
-      // Show window. It's properly sized and kiosk mode applied.
-      // No resize, reposition, or mode changes needed - done while hidden.
       await windowManager.show();
 
-      // Optional: focus window
       try {
         await windowManager.focus();
       } catch (_) {
-        // Ignore
+        // Ignore focus failures.
       }
 
       if (kDebugMode) {

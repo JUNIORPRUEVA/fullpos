@@ -1,5 +1,35 @@
 import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
+
+class PremiumThemeColors {
+  PremiumThemeColors._();
+
+  static const Color primary = Color(0xFF3B82F6);
+  static const Color primaryDark = Color(0xFF1E40AF);
+  static const Color background = Color(0xFFF8FAFC);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color surfaceAlt = Color(0xFFF1F5F9);
+  static const Color sidebarBackground = Color(0xFF0B1220);
+  static const Color sidebarHover = Color(0xFF162033);
+  static const Color sidebarActive = Color(0xFF2563EB);
+  static const Color sidebarText = Color(0xFFE5EDF7);
+  static const Color chromeBackground = Color(0xFF0F172A);
+  static const Color chromeText = Color(0xFFF8FAFC);
+  static const Color appBarBorder = Color(0xFFE2E8F0);
+  static const Color textPrimary = Color(0xFF0F172A);
+  static const Color textSecondary = Color(0xFF64748B);
+  static const Color success = Color(0xFF22C55E);
+  static const Color warning = Color(0xFFF59E0B);
+  static const Color error = Color(0xFFEF4444);
+  static const Color gradientStart = Color(0xFFFFFFFF);
+  static const Color gradientMid = Color(0xFFF8FAFC);
+  static const Color gradientEnd = Color(0xFFEAF2FF);
+  static const Color selectionSurface = Color(0xFFEFF6FF);
+  static const Color darkBackground = Color(0xFF020617);
+  static const Color darkSurface = Color(0xFF0F172A);
+  static const Color darkSurfaceAlt = Color(0xFF111827);
+  static const Color darkText = Color(0xFFE2E8F0);
+  static const Color darkTextSecondary = Color(0xFF94A3B8);
+}
 
 /// Modelo para la configuraciÃ³n del tema personalizado
 class ThemeSettings {
@@ -121,63 +151,58 @@ class ThemeSettings {
     required this.isDarkMode,
   });
 
-  /// Valores por defecto (tema Dominicano Dark)
+  /// Valores por defecto del sistema premium SaaS.
   static const ThemeSettings defaultSettings = ThemeSettings(
-    // TEMA POR DEFECTO: Azul Marca (pro, fondo blanco)
-    // Requisito: color primario siempre negro.
-    primaryColor: AppColors.bgDark,
-    accentColor: AppColors.brandBlueAccent,
-    backgroundColor: AppColors.surfaceLight,
-    surfaceColor: AppColors.surfaceLight,
-    textColor: AppColors.textDark,
-    hoverColor: AppColors.brandBlueAccent,
-    appBarColor: AppColors.brandBlue,
-    appBarTextColor: AppColors.textLight,
-    topbarColor: AppColors.brandBlue,
-    topbarTextColor: AppColors.textLight,
-    cardColor: AppColors.brandBlue,
-    buttonColor: AppColors.brandBlue,
-    successColor: AppColors.success,
-    errorColor: AppColors.error,
-    warningColor: AppColors.warning,
-    sidebarColor: AppColors.brandBlue,
-    sidebarTextColor: AppColors.textLight,
-    sidebarActiveColor: AppColors.brandBlueAccent,
-    footerColor: AppColors.brandBlue,
-    footerTextColor: AppColors.textLight,
-    // Fondo global blanco (con variación suave)
-    backgroundGradientStart: AppColors.surfaceLight,
-    backgroundGradientMid: AppColors.surfaceLightVariant,
-    backgroundGradientEnd: AppColors.surfaceLight,
-    // Columna de detalle de ventas: azul marca
-    salesDetailGradientStart: AppColors.brandBlueDark,
-    salesDetailGradientMid: AppColors.brandBlue,
-    salesDetailGradientEnd: AppColors.brandBlueDark,
-    salesDetailTextColor: AppColors.textLight,
-    // Grid de ventas: fondo blanco, tarjetas azules con texto blanco
-    salesGridBackgroundColor: AppColors.surfaceLight,
-    salesProductCardBackgroundColor: AppColors.brandBlue,
-    salesProductCardBorderColor: AppColors.brandBlueDark,
-    salesProductCardTextColor: AppColors.textLight,
-    salesProductCardAltBackgroundColor: AppColors.brandBlueLight,
-    salesProductCardAltBorderColor: AppColors.brandBlueDark,
-    salesProductCardAltTextColor: AppColors.textLight,
-    salesProductPriceColor: AppColors.textLight,
-    // Barra superior de ventas: azul marca; campo de búsqueda blanco
-    salesControlBarBackgroundColor: AppColors.brandBlue,
-    salesControlBarContentBackgroundColor: AppColors.surfaceLight,
-    salesControlBarBorderColor: AppColors.brandBlueDark,
-    salesControlBarTextColor: AppColors.textLight,
-    salesControlBarDropdownBackgroundColor: AppColors.surfaceLight,
-    salesControlBarDropdownBorderColor: AppColors.surfaceLightBorder,
-    salesControlBarDropdownTextColor: AppColors.textDark,
-    salesControlBarPopupBackgroundColor: AppColors.surfaceLight,
-    salesControlBarPopupTextColor: AppColors.textDark,
-    salesControlBarPopupSelectedBackgroundColor: AppColors.surfaceLightVariant,
-    salesControlBarPopupSelectedTextColor: AppColors.textDark,
-    salesFooterButtonsBackgroundColor: AppColors.brandBlue,
-    salesFooterButtonsTextColor: AppColors.textLight,
-    salesFooterButtonsBorderColor: AppColors.brandBlueDark,
+    primaryColor: PremiumThemeColors.primary,
+    accentColor: PremiumThemeColors.primaryDark,
+    backgroundColor: PremiumThemeColors.background,
+    surfaceColor: PremiumThemeColors.surface,
+    textColor: PremiumThemeColors.textPrimary,
+    hoverColor: PremiumThemeColors.sidebarHover,
+    appBarColor: PremiumThemeColors.chromeBackground,
+    appBarTextColor: PremiumThemeColors.chromeText,
+    topbarColor: PremiumThemeColors.chromeBackground,
+    topbarTextColor: PremiumThemeColors.chromeText,
+    cardColor: PremiumThemeColors.surface,
+    buttonColor: PremiumThemeColors.primary,
+    successColor: PremiumThemeColors.success,
+    errorColor: PremiumThemeColors.error,
+    warningColor: PremiumThemeColors.warning,
+    sidebarColor: PremiumThemeColors.sidebarBackground,
+    sidebarTextColor: PremiumThemeColors.sidebarText,
+    sidebarActiveColor: PremiumThemeColors.primary,
+    footerColor: PremiumThemeColors.chromeBackground,
+    footerTextColor: PremiumThemeColors.chromeText,
+    backgroundGradientStart: PremiumThemeColors.gradientStart,
+    backgroundGradientMid: PremiumThemeColors.gradientMid,
+    backgroundGradientEnd: PremiumThemeColors.gradientEnd,
+    salesDetailGradientStart: PremiumThemeColors.chromeBackground,
+    salesDetailGradientMid: PremiumThemeColors.darkSurfaceAlt,
+    salesDetailGradientEnd: PremiumThemeColors.chromeBackground,
+    salesDetailTextColor: Colors.white,
+    salesGridBackgroundColor: PremiumThemeColors.background,
+    salesProductCardBackgroundColor: PremiumThemeColors.surface,
+    salesProductCardBorderColor: PremiumThemeColors.appBarBorder,
+    salesProductCardTextColor: PremiumThemeColors.textPrimary,
+    salesProductCardAltBackgroundColor: PremiumThemeColors.surfaceAlt,
+    salesProductCardAltBorderColor: PremiumThemeColors.appBarBorder,
+    salesProductCardAltTextColor: PremiumThemeColors.textPrimary,
+    salesProductPriceColor: PremiumThemeColors.primary,
+    salesControlBarBackgroundColor: PremiumThemeColors.surface,
+    salesControlBarContentBackgroundColor: PremiumThemeColors.background,
+    salesControlBarBorderColor: PremiumThemeColors.appBarBorder,
+    salesControlBarTextColor: PremiumThemeColors.textPrimary,
+    salesControlBarDropdownBackgroundColor: PremiumThemeColors.surface,
+    salesControlBarDropdownBorderColor: PremiumThemeColors.appBarBorder,
+    salesControlBarDropdownTextColor: PremiumThemeColors.textPrimary,
+    salesControlBarPopupBackgroundColor: PremiumThemeColors.surface,
+    salesControlBarPopupTextColor: PremiumThemeColors.textPrimary,
+    salesControlBarPopupSelectedBackgroundColor:
+        PremiumThemeColors.selectionSurface,
+    salesControlBarPopupSelectedTextColor: PremiumThemeColors.primaryDark,
+    salesFooterButtonsBackgroundColor: PremiumThemeColors.surface,
+    salesFooterButtonsTextColor: PremiumThemeColors.textPrimary,
+    salesFooterButtonsBorderColor: PremiumThemeColors.appBarBorder,
     fontSize: 14.0,
     fontFamily: 'Poppins',
     isDarkMode: false,
@@ -185,154 +210,182 @@ class ThemeSettings {
 
   /// Crear desde Map (para cargar desde DB)
   factory ThemeSettings.fromMap(Map<String, dynamic> map) {
+    final defaults = ThemeSettings.defaultSettings;
     final appBarColor = Color(
-      map['appBarColor'] as int? ?? AppColors.surfaceDark.value,
+      map['appBarColor'] as int? ?? defaults.appBarColor.value,
     );
     final appBarTextColor = Color(
-      map['appBarTextColor'] as int? ?? AppColors.textLight.value,
+      map['appBarTextColor'] as int? ?? defaults.appBarTextColor.value,
     );
 
     return ThemeSettings(
-      primaryColor:
-          Color(map['primaryColor'] as int? ?? AppColors.brandBlueLight.value),
-      accentColor: Color(map['accentColor'] as int? ?? AppColors.brandBlue.value),
-      backgroundColor:
-          Color(map['backgroundColor'] as int? ?? AppColors.bgLight.value),
-      surfaceColor:
-          Color(map['surfaceColor'] as int? ?? AppColors.surfaceLight.value),
-      textColor: Color(map['textColor'] as int? ?? AppColors.textLight.value),
-      hoverColor:
-          Color(map['hoverColor'] as int? ?? AppColors.brandBlueAccent.value),
+      primaryColor: Color(
+        map['primaryColor'] as int? ?? defaults.primaryColor.value,
+      ),
+      accentColor: Color(
+        map['accentColor'] as int? ?? defaults.accentColor.value,
+      ),
+      backgroundColor: Color(
+        map['backgroundColor'] as int? ?? defaults.backgroundColor.value,
+      ),
+      surfaceColor: Color(
+        map['surfaceColor'] as int? ?? defaults.surfaceColor.value,
+      ),
+      textColor: Color(map['textColor'] as int? ?? defaults.textColor.value),
+      hoverColor: Color(map['hoverColor'] as int? ?? defaults.hoverColor.value),
       appBarColor: appBarColor,
       appBarTextColor: appBarTextColor,
       // Backwards compatible: si no existe topbarColor, heredarlo de appBarColor.
       topbarColor: Color(map['topbarColor'] as int? ?? appBarColor.value),
-      topbarTextColor:
-        Color(map['topbarTextColor'] as int? ?? appBarTextColor.value),
-      cardColor: Color(map['cardColor'] as int? ?? AppColors.surfaceLight.value),
-      buttonColor:
-          Color(map['buttonColor'] as int? ?? AppColors.brandBlueLight.value),
-      successColor: Color(map['successColor'] as int? ?? AppColors.success.value),
-      errorColor: Color(map['errorColor'] as int? ?? AppColors.error.value),
-      warningColor:
-          Color(map['warningColor'] as int? ?? AppColors.warning.value),
-      sidebarColor: Color(map['sidebarColor'] as int? ?? AppColors.bgDark.value),
-      sidebarTextColor:
-          Color(map['sidebarTextColor'] as int? ?? AppColors.textLight.value),
-      sidebarActiveColor: Color(
-        map['sidebarActiveColor'] as int? ?? AppColors.brandBlueLight.value,
+      topbarTextColor: Color(
+        map['topbarTextColor'] as int? ?? appBarTextColor.value,
       ),
-      footerColor: Color(map['footerColor'] as int? ?? AppColors.bgDark.value),
-      footerTextColor:
-          Color(map['footerTextColor'] as int? ?? AppColors.textLight.value),
+      cardColor: Color(map['cardColor'] as int? ?? defaults.cardColor.value),
+      buttonColor: Color(
+        map['buttonColor'] as int? ?? defaults.buttonColor.value,
+      ),
+      successColor: Color(
+        map['successColor'] as int? ?? defaults.successColor.value,
+      ),
+      errorColor: Color(map['errorColor'] as int? ?? defaults.errorColor.value),
+      warningColor: Color(
+        map['warningColor'] as int? ?? defaults.warningColor.value,
+      ),
+      sidebarColor: Color(
+        map['sidebarColor'] as int? ?? defaults.sidebarColor.value,
+      ),
+      sidebarTextColor: Color(
+        map['sidebarTextColor'] as int? ?? defaults.sidebarTextColor.value,
+      ),
+      sidebarActiveColor: Color(
+        map['sidebarActiveColor'] as int? ?? defaults.sidebarActiveColor.value,
+      ),
+      footerColor: Color(
+        map['footerColor'] as int? ?? defaults.footerColor.value,
+      ),
+      footerTextColor: Color(
+        map['footerTextColor'] as int? ?? defaults.footerTextColor.value,
+      ),
       backgroundGradientStart: Color(
-        map['backgroundGradientStart'] as int? ?? AppColors.surfaceLight.value,
+        map['backgroundGradientStart'] as int? ??
+            defaults.backgroundGradientStart.value,
       ),
       backgroundGradientMid: Color(
-        map['backgroundGradientMid'] as int? ?? AppColors.surfaceLight.value,
+        map['backgroundGradientMid'] as int? ??
+            defaults.backgroundGradientMid.value,
       ),
       backgroundGradientEnd: Color(
-        map['backgroundGradientEnd'] as int? ?? AppColors.surfaceLight.value,
+        map['backgroundGradientEnd'] as int? ??
+            defaults.backgroundGradientEnd.value,
       ),
       salesDetailGradientStart: Color(
-        map['salesDetailGradientStart'] as int? ?? AppColors.surfaceDark.value,
+        map['salesDetailGradientStart'] as int? ??
+            defaults.salesDetailGradientStart.value,
       ),
       salesDetailGradientMid: Color(
-        map['salesDetailGradientMid'] as int? ?? AppColors.surfaceDarkVariant.value,
+        map['salesDetailGradientMid'] as int? ??
+            defaults.salesDetailGradientMid.value,
       ),
       salesDetailGradientEnd: Color(
-        map['salesDetailGradientEnd'] as int? ?? AppColors.surfaceDark.value,
+        map['salesDetailGradientEnd'] as int? ??
+            defaults.salesDetailGradientEnd.value,
       ),
       salesDetailTextColor: Color(
-        map['salesDetailTextColor'] as int? ?? AppColors.textLight.value,
+        map['salesDetailTextColor'] as int? ??
+            defaults.salesDetailTextColor.value,
       ),
       salesGridBackgroundColor: Color(
         map['salesGridBackgroundColor'] as int? ??
-            AppColors.surfaceLightVariant.value,
+            defaults.salesGridBackgroundColor.value,
       ),
       salesProductCardBackgroundColor: Color(
         map['salesProductCardBackgroundColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesProductCardBackgroundColor.value,
       ),
       salesProductCardBorderColor: Color(
         map['salesProductCardBorderColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesProductCardBorderColor.value,
       ),
       salesProductCardTextColor: Color(
-        map['salesProductCardTextColor'] as int? ?? AppColors.textLight.value,
+        map['salesProductCardTextColor'] as int? ??
+            defaults.salesProductCardTextColor.value,
       ),
       salesProductCardAltBackgroundColor: Color(
         map['salesProductCardAltBackgroundColor'] as int? ??
-            AppColors.surfaceDarkVariant.value,
+            defaults.salesProductCardAltBackgroundColor.value,
       ),
       salesProductCardAltBorderColor: Color(
         map['salesProductCardAltBorderColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesProductCardAltBorderColor.value,
       ),
       salesProductCardAltTextColor: Color(
-        map['salesProductCardAltTextColor'] as int? ?? AppColors.textLight.value,
+        map['salesProductCardAltTextColor'] as int? ??
+            defaults.salesProductCardAltTextColor.value,
       ),
       salesProductPriceColor: Color(
         map['salesProductPriceColor'] as int? ??
-            AppColors.brandBlueLight.value,
+            defaults.salesProductPriceColor.value,
       ),
       salesControlBarBackgroundColor: Color(
         map['salesControlBarBackgroundColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesControlBarBackgroundColor.value,
       ),
       salesControlBarContentBackgroundColor: Color(
         map['salesControlBarContentBackgroundColor'] as int? ??
-            AppColors.surfaceDarkVariant.value,
+            defaults.salesControlBarContentBackgroundColor.value,
       ),
       salesControlBarBorderColor: Color(
         map['salesControlBarBorderColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesControlBarBorderColor.value,
       ),
       salesControlBarTextColor: Color(
-        map['salesControlBarTextColor'] as int? ?? AppColors.textLight.value,
+        map['salesControlBarTextColor'] as int? ??
+            defaults.salesControlBarTextColor.value,
       ),
       salesControlBarDropdownBackgroundColor: Color(
         map['salesControlBarDropdownBackgroundColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesControlBarDropdownBackgroundColor.value,
       ),
       salesControlBarDropdownBorderColor: Color(
         map['salesControlBarDropdownBorderColor'] as int? ??
-            AppColors.surfaceDarkVariant.value,
+            defaults.salesControlBarDropdownBorderColor.value,
       ),
       salesControlBarDropdownTextColor: Color(
         map['salesControlBarDropdownTextColor'] as int? ??
-            AppColors.textLight.value,
+            defaults.salesControlBarDropdownTextColor.value,
       ),
       salesControlBarPopupBackgroundColor: Color(
         map['salesControlBarPopupBackgroundColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesControlBarPopupBackgroundColor.value,
       ),
       salesControlBarPopupTextColor: Color(
         map['salesControlBarPopupTextColor'] as int? ??
-            AppColors.textLight.value,
+            defaults.salesControlBarPopupTextColor.value,
       ),
       salesControlBarPopupSelectedBackgroundColor: Color(
         map['salesControlBarPopupSelectedBackgroundColor'] as int? ??
-            AppColors.surfaceDarkVariant.value,
+            defaults.salesControlBarPopupSelectedBackgroundColor.value,
       ),
       salesControlBarPopupSelectedTextColor: Color(
         map['salesControlBarPopupSelectedTextColor'] as int? ??
-            AppColors.textLight.value,
+            defaults.salesControlBarPopupSelectedTextColor.value,
       ),
       salesFooterButtonsBackgroundColor: Color(
         map['salesFooterButtonsBackgroundColor'] as int? ??
-            AppColors.surfaceDark.value,
+            defaults.salesFooterButtonsBackgroundColor.value,
       ),
       salesFooterButtonsTextColor: Color(
-        map['salesFooterButtonsTextColor'] as int? ?? AppColors.textLight.value,
+        map['salesFooterButtonsTextColor'] as int? ??
+            defaults.salesFooterButtonsTextColor.value,
       ),
       salesFooterButtonsBorderColor: Color(
         map['salesFooterButtonsBorderColor'] as int? ??
-            AppColors.surfaceDarkVariant.value,
+            defaults.salesFooterButtonsBorderColor.value,
       ),
-      fontSize: (map['fontSize'] as num?)?.toDouble() ?? 14.0,
-      fontFamily: map['fontFamily'] as String? ?? 'Roboto',
-      isDarkMode: (map['isDarkMode'] as int? ?? 0) == 1,
+      fontSize: (map['fontSize'] as num?)?.toDouble() ?? defaults.fontSize,
+      fontFamily: map['fontFamily'] as String? ?? defaults.fontFamily,
+      isDarkMode:
+          (map['isDarkMode'] as int? ?? (defaults.isDarkMode ? 1 : 0)) == 1,
     );
   }
 
@@ -680,76 +733,4 @@ class ThemeSettings {
     fontFamily,
     isDarkMode,
   ]);
-}
-
-/// Temas predefinidos para selecciÃ³n rÃ¡pida
-class PresetThemes {
-  PresetThemes._();
-
-  static const Map<String, ThemeSettings> presets = {
-    // 1) Azul Marca (default)
-    'default': ThemeSettings.defaultSettings,
-
-    // 2) Negro (oscuro profesional)
-    'black': ThemeSettings(
-      primaryColor: AppColors.brandBlueAccent,
-      accentColor: AppColors.brandBlueLight,
-      backgroundColor: AppColors.bgDark,
-      surfaceColor: AppColors.surfaceDark,
-      textColor: AppColors.textLight,
-      hoverColor: AppColors.brandBlueAccent,
-      appBarColor: AppColors.surfaceDark,
-      appBarTextColor: AppColors.textLight,
-      topbarColor: AppColors.surfaceDark,
-      topbarTextColor: AppColors.textLight,
-      cardColor: AppColors.surfaceDarkVariant,
-      buttonColor: AppColors.brandBlue,
-      successColor: AppColors.success,
-      errorColor: AppColors.error,
-      warningColor: AppColors.warning,
-      sidebarColor: AppColors.bgDark,
-      sidebarTextColor: AppColors.textLight,
-      sidebarActiveColor: AppColors.brandBlueAccent,
-      footerColor: AppColors.bgDark,
-      footerTextColor: AppColors.textLightSecondary,
-      backgroundGradientStart: AppColors.brandBlueDark,
-      backgroundGradientMid: AppColors.bgDark,
-      backgroundGradientEnd: AppColors.bgDark,
-      salesDetailGradientStart: AppColors.surfaceDark,
-      salesDetailGradientMid: AppColors.surfaceDarkVariant,
-      salesDetailGradientEnd: AppColors.surfaceDark,
-      salesDetailTextColor: AppColors.textLight,
-      salesGridBackgroundColor: AppColors.bgDark,
-      salesProductCardBackgroundColor: AppColors.surfaceDarkVariant,
-      salesProductCardBorderColor: AppColors.surfaceDark,
-      salesProductCardTextColor: AppColors.textLight,
-      salesProductCardAltBackgroundColor: AppColors.surfaceDark,
-      salesProductCardAltBorderColor: AppColors.surfaceDarkVariant,
-      salesProductCardAltTextColor: AppColors.textLight,
-      salesProductPriceColor: AppColors.brandBlueLight,
-      salesControlBarBackgroundColor: AppColors.surfaceDark,
-      salesControlBarContentBackgroundColor: AppColors.surfaceDarkVariant,
-      salesControlBarBorderColor: AppColors.surfaceDark,
-      salesControlBarTextColor: AppColors.textLight,
-      salesControlBarDropdownBackgroundColor: AppColors.surfaceDark,
-      salesControlBarDropdownBorderColor: AppColors.surfaceDarkVariant,
-      salesControlBarDropdownTextColor: AppColors.textLight,
-      salesControlBarPopupBackgroundColor: AppColors.surfaceDark,
-      salesControlBarPopupTextColor: AppColors.textLight,
-      salesControlBarPopupSelectedBackgroundColor: AppColors.surfaceDarkVariant,
-      salesControlBarPopupSelectedTextColor: AppColors.textLight,
-      salesFooterButtonsBackgroundColor: AppColors.surfaceDark,
-      salesFooterButtonsTextColor: AppColors.textLight,
-      salesFooterButtonsBorderColor: AppColors.surfaceDarkVariant,
-      fontSize: 14.0,
-      fontFamily: 'Poppins',
-      isDarkMode: true,
-    ),
-  };
-
-  static List<String> get presetNames => presets.keys.toList();
-
-  static ThemeSettings getPreset(String name) {
-    return presets[name] ?? ThemeSettings.defaultSettings;
-  }
 }

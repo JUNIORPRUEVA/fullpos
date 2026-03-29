@@ -7,13 +7,10 @@ import '../../../core/backup/backup_prefs.dart';
 import '../../../core/backup/backup_repository.dart';
 import '../../../core/backup/backup_service.dart';
 import '../../../core/backup/cloud_status_service.dart';
-import '../../../core/backup/danger_actions_service.dart';
 import '../../../core/backup/restore_service.dart';
-import '../../../core/session/session_manager.dart';
 import 'backup/backup_history_list.dart';
 import 'backup/backup_status_card.dart';
-import 'backup/confirm_phrase_dialog.dart';
-import 'backup/danger_zone_actions.dart';
+import 'database_settings_page.dart';
 import 'settings_layout.dart';
 
 class BackupDatabasePage extends StatefulWidget {
@@ -30,7 +27,6 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
   bool _keepLocalCopy = false;
   int _retention = 15;
   List<BackupHistoryEntry> _history = const [];
-  bool _isAdmin = false;
 
   @override
   void initState() {
@@ -46,7 +42,6 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     final keepLocalCopy = await BackupPrefs.instance.getKeepLocalCopy();
     final retention = await BackupService.instance.getRetentionCount();
     final history = await BackupRepository.instance.listHistory(limit: 60);
-    final isAdmin = await SessionManager.isAdmin();
 
     if (!mounted) return;
     setState(() {
@@ -54,7 +49,6 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
       _keepLocalCopy = keepLocalCopy;
       _retention = retention;
       _history = history;
-      _isAdmin = isAdmin;
       _loading = false;
     });
   }
@@ -318,54 +312,6 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     setState(() => _keepLocalCopy = value);
   }
 
-  Future<void> _handleDangerAction({
-    required String title,
-    required String message,
-    required String phraseHint,
-    required String confirmText,
-    required Future<DangerActionResult> Function(String phrase, String pin)
-    action,
-  }) async {
-    final result = await showDialog<ConfirmPhraseResult>(
-      context: context,
-      builder: (_) => ConfirmPhraseDialog(
-        title: title,
-        message: message,
-        phraseHint: phraseHint,
-        confirmText: confirmText,
-      ),
-    );
-    if (result == null) return;
-    if (!mounted) return;
-
-    setState(() => _busy = true);
-    final rootNavigator = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _BusyDialog(message: 'Procesando...'),
-    );
-
-    try {
-      final outcome = await action(result.phrase, result.pin);
-      if (rootNavigator.canPop()) {
-        rootNavigator.pop();
-      }
-      if (!mounted) return;
-      await _load();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(outcome.messageUser)));
-    } finally {
-      if (rootNavigator.canPop()) {
-        rootNavigator.pop();
-      }
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final status = _status;
@@ -373,101 +319,110 @@ class _BackupDatabasePageState extends State<BackupDatabasePage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-      appBar: AppBar(
-        title: GestureDetector(
-          onLongPress: _runDiagnostics,
-          child: const Text('Backup y Base de Datos'),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Recargar',
-            onPressed: _loading || _busy ? null : _load,
-            icon: const Icon(Icons.refresh),
+        appBar: AppBar(
+          title: GestureDetector(
+            onLongPress: _runDiagnostics,
+            child: const Text('Backup y restauracion'),
           ),
-        ],
-      ),
-      body: _loading || status == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                BackupStatusCard(
-                  status: status,
-                  keepLocalCopy: _keepLocalCopy,
-                  onKeepLocalCopyChanged: _busy ? (_) {} : _onKeepLocalCopy,
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: _busy ? null : _createBackupNow,
-                      icon: const Icon(Icons.save),
-                      label: const Text('Hacer backup ahora'),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+          actions: [
+            IconButton(
+              tooltip: 'Recargar',
+              onPressed: _loading || _busy ? null : _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: _loading || status == null
+            ? const Center(child: CircularProgressIndicator())
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return SettingsLayout.pageFrame(
+                    constraints,
+                    child: ListView(
                       children: [
-                        const Text('Retencion'),
-                        const SizedBox(width: 6),
-                        DropdownButton<int>(
-                          value: _retention,
-                          onChanged: _busy ? null : (v) => _setRetention(v!),
-                          items: const [5, 10, 15, 20, 30]
-                              .map(
-                                (v) => DropdownMenuItem(
-                                  value: v,
-                                  child: Text('$v'),
+                        SettingsLayout.sectionHeading(
+                          context,
+                          title: 'Respaldo y restauración',
+                          subtitle:
+                          'Gestiona el backup local, la restauracion y el historial. La administracion de base local vive en Base de datos.',
+                        ),
+                        const SizedBox(height: 12),
+                        BackupStatusCard(
+                          status: status,
+                          keepLocalCopy: _keepLocalCopy,
+                          onKeepLocalCopyChanged: _busy
+                              ? (_) {}
+                              : _onKeepLocalCopy,
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _busy ? null : _createBackupNow,
+                              icon: const Icon(Icons.save),
+                              label: const Text('Hacer backup ahora'),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Retención'),
+                                const SizedBox(width: 6),
+                                DropdownButton<int>(
+                                  value: _retention,
+                                  onChanged: _busy
+                                      ? null
+                                      : (v) => _setRetention(v!),
+                                  items: const [5, 10, 15, 20, 30]
+                                      .map(
+                                        (v) => DropdownMenuItem(
+                                          value: v,
+                                          child: Text('$v'),
+                                        ),
+                                      )
+                                      .toList(),
                                 ),
-                              )
-                              .toList(),
+                              ],
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: _busy
+                                  ? null
+                                  : () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              const DatabaseSettingsPage(),
+                                        ),
+                                      );
+                                    },
+                              icon: const Icon(Icons.storage_outlined),
+                              label: const Text('Ir a base de datos'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        SettingsLayout.sectionHeading(
+                          context,
+                          title: 'Historial',
+                        ),
+                        const SizedBox(height: 8),
+                        BackupHistoryList(
+                          history: _history,
+                          onRestoreLocal: _busy ? (_) {} : _restoreLocal,
+                          onRestoreCloud: _busy ? (_) {} : _restoreCloud,
+                          onRetryCloudUpload: _busy
+                              ? (_) {}
+                              : _retryCloudUpload,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                BackupHistoryList(
-                  history: _history,
-                  onRestoreLocal: _busy ? (_) {} : _restoreLocal,
-                  onRestoreCloud: _busy ? (_) {} : _restoreCloud,
-                  onRetryCloudUpload: _busy ? (_) {} : _retryCloudUpload,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                ),
-                const SizedBox(height: 12),
-                if (_isAdmin)
-                  DangerZoneActions(
-                    onResetLocal: _busy
-                        ? () {}
-                        : () => _handleDangerAction(
-                            title: 'Resetear Base de Datos',
-                            message:
-                                'Deja la empresa en limpio. Esta accion no se puede deshacer.',
-                            phraseHint: 'Escribe: RESETEAR EMPRESA',
-                            confirmText: 'Resetear',
-                            action: (phrase, pin) => DangerActionsService
-                                .instance
-                                .resetLocal(confirmedPhrase: phrase, pin: pin),
-                          ),
-                    onDeleteLocal: _busy
-                        ? () {}
-                        : () => _handleDangerAction(
-                            title: 'Borrar TODO',
-                            message:
-                                'Elimina la base de datos completa y todos los datos.',
-                            phraseHint: 'Escribe: BORRAR TODO FULLPOS',
-                            confirmText: 'Borrar TODO',
-                            action: (phrase, pin) =>
-                                DangerActionsService.instance.deleteAllLocal(
-                                  confirmedPhrase: phrase,
-                                  pin: pin,
-                                ),
-                          ),
-                  ),
-              ],
-            ),
+                  );
+                },
+              ),
       ),
     );
   }

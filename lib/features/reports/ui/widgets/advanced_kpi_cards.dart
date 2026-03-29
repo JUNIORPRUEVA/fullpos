@@ -16,97 +16,125 @@ class AdvancedKpiCards extends StatelessWidget {
       decimalDigits: 2,
     );
 
-    return Column(
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 980;
+        return Column(
           children: [
-            Expanded(
-              child: _buildMainKpiCard(
+            if (compact) ...[
+              _buildMainKpiCard(
                 title: 'Total Ventas',
                 value: kpis.totalSales,
-                icon: Icons.point_of_sale,
+                icon: Icons.point_of_sale_outlined,
                 color: scheme.primary,
                 subtitle: '${kpis.salesCount} transacciones',
                 currency: currency,
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildMainKpiCard(
+              const SizedBox(height: 12),
+              _buildMainKpiCard(
                 title: 'Ganancia Neta',
-                value: kpis.totalProfit,
+                value: kpis.netProfit,
                 icon: Icons.trending_up,
                 color: scheme.tertiary,
                 subtitle:
-                    '${_calculateMargin(kpis.totalProfit, kpis.totalSales).toStringAsFixed(1)}% margen',
+                    '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto | bruta ${currency.format(kpis.totalProfit)}',
                 currency: currency,
               ),
+            ] else
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMainKpiCard(
+                      title: 'Total Ventas',
+                      value: kpis.totalSales,
+                      icon: Icons.point_of_sale_outlined,
+                      color: scheme.primary,
+                      subtitle: '${kpis.salesCount} transacciones',
+                      currency: currency,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _buildMainKpiCard(
+                      title: 'Ganancia Neta',
+                      value: kpis.netProfit,
+                      icon: Icons.trending_up,
+                      color: scheme.tertiary,
+                      subtitle:
+                          '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto | bruta ${currency.format(kpis.totalProfit)}',
+                      currency: currency,
+                    ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _buildSecondaryKpiCard(
+                  title: 'Ticket Promedio',
+                  value: currency.format(kpis.avgTicket),
+                  icon: Icons.receipt_long_outlined,
+                  color: scheme.secondary,
+                  width: compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                ),
+                _buildSecondaryKpiCard(
+                  title: 'Cotizaciones',
+                  value: '${kpis.quotesCount}',
+                  icon: Icons.description_outlined,
+                  color: scheme.primary,
+                  width: compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                ),
+                _buildSecondaryKpiCard(
+                  title: 'Conversion',
+                  value: kpis.quotesCount > 0
+                      ? '${((kpis.quotesConverted / kpis.quotesCount) * 100).toStringAsFixed(0)}%'
+                      : '0%',
+                  icon: Icons.swap_horiz,
+                  color: scheme.tertiary,
+                  width: compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                ),
+                _buildSecondaryKpiCard(
+                  title: 'Ingresos Caja',
+                  value: currency.format(kpis.cashIncome),
+                  icon: Icons.arrow_downward,
+                  color: scheme.tertiary,
+                  width: compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                ),
+                _buildSecondaryKpiCard(
+                  title: 'Egresos Caja',
+                  value: currency.format(kpis.cashExpense),
+                  icon: Icons.arrow_upward,
+                  color: scheme.error,
+                  width: compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                ),
+                _buildSecondaryKpiCard(
+                  title: 'Balance Caja',
+                  value: currency.format(kpis.cashIncome - kpis.cashExpense),
+                  icon: Icons.account_balance_outlined,
+                  color: (kpis.cashIncome - kpis.cashExpense) >= 0
+                      ? scheme.tertiary
+                      : scheme.error,
+                  width: compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 24) / 3,
+                ),
+              ],
             ),
           ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildSecondaryKpiCard(
-                title: 'Ticket Promedio',
-                value: currency.format(kpis.avgTicket),
-                icon: Icons.receipt_long,
-                color: scheme.secondary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSecondaryKpiCard(
-                title: 'Cotizaciones',
-                value: '${kpis.quotesCount}',
-                icon: Icons.description_outlined,
-                color: scheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSecondaryKpiCard(
-                title: 'Conversion',
-                value: kpis.quotesCount > 0
-                    ? '${((kpis.quotesConverted / kpis.quotesCount) * 100).toStringAsFixed(0)}%'
-                    : '0%',
-                icon: Icons.swap_horiz,
-                color: scheme.tertiary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSecondaryKpiCard(
-                title: 'Ingresos Caja',
-                value: currency.format(kpis.cashIncome),
-                icon: Icons.arrow_downward,
-                color: scheme.tertiary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSecondaryKpiCard(
-                title: 'Egresos Caja',
-                value: currency.format(kpis.cashExpense),
-                icon: Icons.arrow_upward,
-                color: scheme.error,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSecondaryKpiCard(
-                title: 'Balance Caja',
-                value: currency.format(kpis.cashIncome - kpis.cashExpense),
-                icon: Icons.account_balance,
-                color: (kpis.cashIncome - kpis.cashExpense) >= 0
-                    ? scheme.tertiary
-                    : scheme.error,
-              ),
-            ),
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -124,16 +152,16 @@ class AdvancedKpiCards extends StatelessWidget {
       builder: (context) {
         final scheme = Theme.of(context).colorScheme;
         return Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: scheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: color.withOpacity(0.2)),
             boxShadow: [
               BoxShadow(
                 color: color.withOpacity(0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
               ),
             ],
           ),
@@ -164,11 +192,7 @@ class AdvancedKpiCards extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.warning,
-                            size: 12,
-                            color: scheme.error,
-                          ),
+                          Icon(Icons.warning, size: 12, color: scheme.error),
                           const SizedBox(width: 4),
                           Text(
                             alertText,
@@ -221,15 +245,17 @@ class AdvancedKpiCards extends StatelessWidget {
     required String value,
     required IconData icon,
     required Color color,
+    required double width,
   }) {
     return Builder(
       builder: (context) {
         final scheme = Theme.of(context).colorScheme;
         return Container(
+          width: width,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: scheme.surface,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: scheme.outlineVariant),
           ),
           child: Row(

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../features/facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../features/sales/data/sales_model.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/printer_settings_repository.dart';
@@ -67,6 +68,10 @@ class InvoiceLetterPdf {
       }
     }
 
+    final electronicInvoice = sale.id == null
+      ? null
+      : await FacturaElectronicaRepository.getBySaleId(sale.id!);
+
     final brand = _toPdfColor(brandColorArgb);
     final accent = brand;
     final softBorder = PdfColor(0.87, 0.90, 0.95);
@@ -80,18 +85,16 @@ class InvoiceLetterPdf {
     final createdAt = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
 
     Uint8List? logoBytes;
-    if (business.showLogoOnReceipt) {
-      final logoPath = (business.logoPath ?? '').trim();
-      if (logoPath.isNotEmpty) {
-        try {
-          final file = File(logoPath);
-          if (file.existsSync()) {
-            final bytes = await file.readAsBytes();
-            if (bytes.isNotEmpty) logoBytes = bytes;
-          }
-        } catch (_) {
-          // ignore
+    final logoPath = (business.logoPath ?? '').trim();
+    if (logoPath.isNotEmpty) {
+      try {
+        final file = File(logoPath);
+        if (file.existsSync()) {
+          final bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) logoBytes = bytes;
         }
+      } catch (_) {
+        // ignore
       }
     }
 
@@ -175,9 +178,8 @@ class InvoiceLetterPdf {
           }
 
           final String invoiceTitle;
-          if (sale.fiscalEnabled == 1 &&
-              (sale.ncfFull ?? '').trim().isNotEmpty) {
-            invoiceTitle = 'FACTURA FISCAL (NCF)';
+          if ((electronicInvoice?.ecf ?? '').trim().isNotEmpty) {
+            invoiceTitle = 'FACTURA ELECTRONICA (e-CF)';
           } else {
             invoiceTitle = 'FACTURA DE VENTA';
           }
@@ -321,8 +323,7 @@ class InvoiceLetterPdf {
                               style: const pw.TextStyle(fontSize: 10),
                             ),
                           ),
-                        if (sale.fiscalEnabled == 1 &&
-                            (sale.ncfFull ?? '').trim().isNotEmpty) ...[
+                        if ((electronicInvoice?.ecf ?? '').trim().isNotEmpty) ...[
                           pw.SizedBox(height: 8),
                           pw.Container(
                             padding: const pw.EdgeInsets.all(8),
@@ -335,7 +336,7 @@ class InvoiceLetterPdf {
                                   pw.MainAxisAlignment.spaceBetween,
                               children: [
                                 pw.Text(
-                                  'NCF:',
+                                  'e-CF:',
                                   style: pw.TextStyle(
                                     fontSize: 10,
                                     fontWeight: pw.FontWeight.bold,
@@ -343,7 +344,7 @@ class InvoiceLetterPdf {
                                   ),
                                 ),
                                 pw.Text(
-                                  _sanitize(sale.ncfFull!.trim()),
+                                  _sanitize(electronicInvoice!.ecf!.trim()),
                                   style: pw.TextStyle(
                                     fontSize: 10,
                                     fontWeight: pw.FontWeight.bold,
@@ -353,6 +354,17 @@ class InvoiceLetterPdf {
                               ],
                             ),
                           ),
+                          if ((electronicInvoice.mensajeDgii ?? '').trim().isNotEmpty)
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.only(top: 6),
+                              child: pw.Text(
+                                _sanitize(electronicInvoice.mensajeDgii!.trim()),
+                                style: pw.TextStyle(
+                                  fontSize: 9,
+                                  color: accent,
+                                ),
+                              ),
+                            ),
                         ],
                       ],
                     ),

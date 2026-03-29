@@ -287,12 +287,12 @@ class TicketPrinter {
       );
     }
 
-    if ((settings.showNcf == 1 || sale.fiscalEnabled == 1) &&
-        (sale.ncfFull ?? '').isNotEmpty) {
+    if ((settings.showElectronicInvoiceReference == 1 || sale.electronicInvoiceEnabled == 1) &&
+        (sale.electronicInvoiceCode ?? '').isNotEmpty) {
       content.add(
         pw.Center(
           child: pw.Text(
-            'NCF: ${sale.ncfFull}',
+            'e-CF: ${sale.electronicInvoiceCode}',
             style: pw.TextStyle(font: baseFont, fontSize: normalSize),
           ),
         ),

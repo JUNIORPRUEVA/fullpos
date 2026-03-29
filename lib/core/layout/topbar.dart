@@ -5,15 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../constants/app_sizes.dart';
 import '../theme/app_status_theme.dart';
+import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
-import '../window/window_service.dart';
-import '../../features/settings/providers/theme_provider.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/cash/data/operation_flow_service.dart';
 import '../../features/cash/ui/cash_open_dialog.dart';
-import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 
 /// Topbar del layout principal con fecha/hora y usuario
@@ -51,83 +49,6 @@ class _TopbarState extends ConsumerState<Topbar>
   int? _openCashSessionId;
   bool _loadingOpenCashSessionId = false;
   bool _isCashHover = false;
-
-  Future<void> _minimize() async {
-    await WindowService.minimize();
-  }
-
-  Future<void> _toggleFullScreen() async {
-    await WindowService.toggleFullScreen();
-  }
-
-  Future<void> _closeApp() async {
-    // Con sesión activa no se permite salir sin cierre.
-    if (_openCashSessionId != null) {
-      final action = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Sesión activa'),
-          content: Text(
-            'La sesión #$_openCashSessionId sigue activa. Debes cerrarla antes de salir.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'close_session'),
-              child: const Text('Cerrar sesión'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('Cancelar'),
-            ),
-          ],
-        ),
-      );
-
-      if (action == 'close_session') {
-        final sessionId = _openCashSessionId;
-        if (sessionId == null || !context.mounted) return;
-
-        final closed = await CashCloseDialog.show(
-          context,
-          sessionId: sessionId,
-          logoutAfterClose: true,
-        );
-        await _loadOpenCashSessionId();
-        if (!context.mounted) return;
-
-        if (closed == true) return;
-        return;
-      }
-
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cerrar aplicación'),
-        content: const Text('¿Estás seguro que deseas cerrar la aplicación?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            child: const Text('Cerrar aplicación'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await WindowService.close();
-    }
-  }
 
   @override
   void initState() {
@@ -280,14 +201,15 @@ class _TopbarState extends ConsumerState<Topbar>
 
   @override
   Widget build(BuildContext context) {
-    final themeSettings = ref.watch(themeProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();
-    final appBarBg = themeSettings.topbarColor;
+    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final appBarBg = tokens.topbarBackground.withOpacity(0.92);
     final appBarFg = ColorUtils.ensureReadableColor(
-      themeSettings.topbarTextColor,
+      tokens.topbarText,
       appBarBg,
+      minRatio: 4.5,
     );
 
     return LayoutBuilder(
@@ -305,136 +227,25 @@ class _TopbarState extends ConsumerState<Topbar>
           20.0,
         );
 
-        Widget actionIconButton({
-          required IconData icon,
-          required String tooltip,
-          required VoidCallback onTap,
-          Color? customFg,
-          Color? customBg,
-          Color? borderColor,
-          double borderWidth = 0.0,
-        }) {
-          final btnSize = (36 * s).clamp(32.0, 40.0);
-          final iconSize = (18 * s).clamp(16.0, 20.0);
-          final bg =
-              customBg ??
-              Color.alphaBlend(
-                scheme.surface.withValues(alpha: 0.72),
-                appBarBg.withValues(alpha: 0.18),
-              );
-          final border =
-              borderColor ?? scheme.outlineVariant.withValues(alpha: 0.25);
-          final fg = customFg ?? ColorUtils.ensureReadableColor(appBarFg, bg);
-
-          final shadowAlpha = borderWidth > 0 ? 0.12 : 0.06;
-          final blur = borderWidth > 0 ? 10.0 : 6.0;
-
-          return Tooltip(
-            message: tooltip,
-            waitDuration: const Duration(milliseconds: 350),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  width: btnSize,
-                  height: btnSize,
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(12),
-                    border: borderWidth > 0
-                        ? Border.all(color: border, width: borderWidth)
-                        : null,
-                    boxShadow: [
-                      BoxShadow(
-                        color: scheme.shadow.withValues(alpha: shadowAlpha),
-                        blurRadius: blur,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(icon, size: iconSize, color: fg),
-                ),
-              ),
-            ),
-          );
-        }
-
-        Widget windowControls() {
-          if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-            return const SizedBox.shrink();
-          }
-
-          final winBtnBg = Color.alphaBlend(
-            scheme.surface.withValues(alpha: 0.12),
-            appBarBg.withValues(alpha: 0.06),
-          );
-          // Borde ligeramente más oscuro para un look más profesional
-          final winBtnBorder = appBarFg.withValues(alpha: 0.28);
-
-          return ValueListenableBuilder<bool>(
-            valueListenable: WindowService.fullScreenListenable,
-            builder: (context, isFullScreen, _) => Row(
-              children: [
-                actionIconButton(
-                  icon: Icons.remove,
-                  tooltip: 'Minimizar',
-                  onTap: _minimize,
-                  customFg: appBarFg,
-                  customBg: winBtnBg,
-                  borderColor: winBtnBorder,
-                  borderWidth: 1.2,
-                ),
-                SizedBox(width: spaceS * 0.6),
-                actionIconButton(
-                  icon: isFullScreen
-                      ? Icons.fullscreen_exit
-                      : Icons.fullscreen,
-                  tooltip: isFullScreen
-                      ? 'Salir de pantalla completa'
-                      : 'Pantalla completa',
-                  onTap: _toggleFullScreen,
-                  customFg: appBarFg,
-                  customBg: winBtnBg,
-                  borderColor: winBtnBorder,
-                  borderWidth: 1.2,
-                ),
-                SizedBox(width: spaceS * 0.6),
-                actionIconButton(
-                  icon: Icons.close,
-                  tooltip: 'Cerrar aplicación',
-                  onTap: _closeApp,
-                  customFg: scheme.error,
-                  customBg: winBtnBg,
-                  borderColor: winBtnBorder,
-                  borderWidth: 1.2,
-                ),
-              ],
-            ),
-          );
-        }
-
         return Container(
           height: topbarHeight + topInset,
           decoration: BoxDecoration(
             color: appBarBg,
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
             border: widget.showBottomBorder
                 ? Border(
                     bottom: BorderSide(
-                      color: appBarFg.withValues(alpha: 0.16),
+                      color: Colors.white.withValues(alpha: 0.08),
                       width: 1,
                     ),
                   )
                 : null,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           padding: EdgeInsets.fromLTRB(
             horizontalPad,
@@ -737,9 +548,6 @@ class _TopbarState extends ConsumerState<Topbar>
                 ),
               ),
               SizedBox(width: spaceM),
-              SizedBox(width: spaceS * 1.2),
-              // Window controls at the corner
-              windowControls(),
             ],
           ),
         );

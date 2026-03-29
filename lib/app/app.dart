@@ -8,13 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/bootstrap/app_entry.dart';
 import '../core/bootstrap/bootstrap_loading_screen.dart';
 import '../core/backup/backup_lifecycle.dart';
-import '../core/brand/fullpos_brand_theme.dart';
 import '../core/loading/app_loading_overlay.dart';
 import '../core/shortcuts/app_shortcuts.dart';
 import '../core/window/window_service.dart';
 import '../features/settings/providers/business_settings_provider.dart';
 import '../features/settings/providers/theme_provider.dart';
 import '../core/widgets/app_frame.dart';
+import '../core/widgets/app_global_background.dart';
 import 'router.dart';
 
 /// Aplicación principal FULLPOS
@@ -24,6 +24,13 @@ class FullPosApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeData = ref.watch(themeDataProvider);
+    final lightTheme = themeData.copyWith(
+      brightness: Brightness.light,
+      colorScheme: themeData.colorScheme.copyWith(brightness: Brightness.light),
+      scaffoldBackgroundColor: themeData.scaffoldBackgroundColor,
+      canvasColor: themeData.scaffoldBackgroundColor,
+      dialogBackgroundColor: themeData.colorScheme.surface,
+    );
     final businessSettings = ref.watch(businessSettingsProvider);
     final router = ref.watch(appRouterProvider);
 
@@ -40,14 +47,13 @@ class FullPosApp extends ConsumerWidget {
     return AppShortcuts(
       child: BackupLifecycle(
         child: MaterialApp.router(
-          color: FullposBrandTheme.background,
+          color: themeData.scaffoldBackgroundColor,
           title: businessSettings.businessName.isNotEmpty
               ? businessSettings.businessName
               : 'FULLPOS',
           debugShowCheckedModeBanner: false,
-          theme: themeData.copyWith(
-            scaffoldBackgroundColor: FullposBrandTheme.background,
-          ),
+          theme: lightTheme,
+          themeMode: ThemeMode.light,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -74,18 +80,8 @@ class FullPosApp extends ConsumerWidget {
 
             final safeChild = effectiveChild ?? const BootstrapLoadingScreen();
 
-            final layered = Stack(
-              fit: StackFit.expand,
-              children: [
-                const ColoredBox(color: FullposBrandTheme.background),
-                safeChild,
-              ],
-            );
-            final content = AppEntry(
-              child: AppLoadingOverlay(
-                child: layered,
-              ),
-            );
+            final layered = AppGlobalBackground(child: safeChild);
+            final content = AppEntry(child: AppLoadingOverlay(child: layered));
             return AppFrame(child: content);
           },
         ),

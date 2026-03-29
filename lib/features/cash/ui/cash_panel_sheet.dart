@@ -802,14 +802,14 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             runSpacing: 8,
             children: [
               _buildDetailsMetricChip(
-                label: 'Esperado',
+                label: 'Caja esperada',
                 value: _moneyFormat.format(summary.expectedCash),
                 accent: sidebarAccent,
                 textColor: sidebarText,
                 icon: Icons.account_balance_wallet_rounded,
               ),
               _buildDetailsMetricChip(
-                label: 'Ventas',
+                label: 'Ventas turno',
                 value: _moneyFormat.format(summary.totalSales),
                 accent: status.success,
                 textColor: scheme.onSurface,
@@ -985,7 +985,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Cada cifra que participa en el total esperado del turno.',
+            'La apertura forma parte de la caja esperada, pero no del total de ventas del turno.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: scheme.onSurface.withOpacity(0.64),
               fontWeight: FontWeight.w600,
@@ -1232,7 +1232,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             children: [
               Expanded(
                 child: _buildMiniStatCard(
-                  label: 'Apertura',
+                    label: 'Base inicial',
                   value: _moneyFormat.format(summary.openingAmount),
                   color: scheme.primary,
                   icon: Icons.play_circle_outline_rounded,
@@ -1252,7 +1252,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               const SizedBox(width: 8),
               Expanded(
                 child: _buildMiniStatCard(
-                  label: 'Ventas',
+                    label: 'Ventas turno',
                   value: _moneyFormat.format(summary.totalSales),
                   color: status.success,
                   icon: Icons.trending_up_rounded,

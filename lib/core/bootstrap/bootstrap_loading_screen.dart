@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../features/settings/data/business_settings_repository.dart';
 import '../constants/app_sizes.dart';
-import '../theme/app_gradient_theme.dart';
 import '../theme/color_utils.dart';
 
 class BootstrapLoadingScreen extends StatefulWidget {
@@ -54,30 +53,16 @@ class _BootstrapLoadingScreenState extends State<BootstrapLoadingScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final gradientTheme = theme.extension<AppGradientTheme>();
-    // Fallback azul degradado de la marca
-    final fallbackGradient = LinearGradient(
-      colors: [
-        const Color(0xFF1565C0), // Azul Marca inicio
-        const Color(0xFF1976D2), // Azul Marca medio
-        const Color(0xFF2196F3), // Azul Marca final
-      ],
-      stops: const [0.0, 0.5, 1.0],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-    final backgroundGradient =
-        gradientTheme?.backgroundGradient ?? fallbackGradient;
-    final gradientMid = gradientTheme?.mid ?? scheme.surface;
-    final accent = ColorUtils.ensureReadableColor(scheme.primary, gradientMid);
+    final backgroundColor = Colors.white;
+    final accent = ColorUtils.ensureReadableColor(scheme.primary, backgroundColor);
     final onBackground = ColorUtils.ensureReadableColor(
       scheme.onSurface,
-      gradientMid,
+      backgroundColor,
     );
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: Container(
-        decoration: BoxDecoration(gradient: backgroundGradient),
+      backgroundColor: backgroundColor,
+      body: ColoredBox(
+        color: backgroundColor,
         child: FutureBuilder<_BootstrapBranding>(
           future: _future,
           builder: (context, snapshot) {
@@ -97,12 +82,13 @@ class _BootstrapLoadingScreenState extends State<BootstrapLoadingScreen> {
                     width: 150,
                     height: 150,
                     decoration: BoxDecoration(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: accent.withOpacity(0.3),
-                          blurRadius: 30,
-                          spreadRadius: 5,
+                          color: accent.withOpacity(0.12),
+                          blurRadius: 24,
+                          spreadRadius: 1,
                         ),
                       ],
                     ),

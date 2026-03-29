@@ -41,7 +41,7 @@ import '../features/settings/ui/printer_settings_page.dart';
 import '../features/settings/ui/logs_page.dart';
 import '../features/settings/ui/backup_settings_page.dart';
 import '../features/settings/ui/settings_page.dart';
-import '../features/tools/ui/ncf_page.dart';
+import '../features/tools/ui/electronic_invoicing_page.dart';
 import '../features/tools/ui/tools_page.dart';
 import '../features/license/ui/license_page.dart';
 import '../features/license/ui/license_blocked_page.dart';
@@ -286,7 +286,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) =>
                 const FullposBrandScope(child: LicensePage()),
           ),
-          GoRoute(path: '/ncf', builder: (context, state) => const NcfPage()),
+          GoRoute(path: '/electronic-documents', builder: (context, state) => const ElectronicInvoicingPage()),
           GoRoute(
             path: '/settings',
             builder: (context, state) => PermissionGate(

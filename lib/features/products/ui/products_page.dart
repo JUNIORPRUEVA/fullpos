@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:fullpos/theme/app_colors.dart';
-
 import 'package:fullpos/features/products/ui/tabs/catalog_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/categories_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/inventory_tab.dart';
@@ -17,6 +15,12 @@ class _ProductsPageState extends State<ProductsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  void _goToCatalog() => _tabController.animateTo(0);
+
+  void _goToInventory() => _tabController.animateTo(1);
+
+  void _goToCategories() => _tabController.animateTo(2);
+
   @override
   void initState() {
     super.initState();
@@ -31,95 +35,35 @@ class _ProductsPageState extends State<ProductsPage>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const SizedBox.shrink(),
-        toolbarHeight: 8,
-        backgroundColor: scheme.surface,
-        elevation: 0,
-        surfaceTintColor: scheme.surface,
-        automaticallyImplyLeading: false,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(42),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: scheme.shadow.withOpacity(0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: TabBar(
+      backgroundColor: Colors.transparent,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          const maxContentWidth = 1280.0;
+          final contentWidth = constraints.maxWidth > maxContentWidth
+              ? maxContentWidth
+              : constraints.maxWidth;
+          final side = ((constraints.maxWidth - contentWidth) / 2).clamp(
+            12.0,
+            40.0,
+          );
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(side, 4, side, 10),
+            child: TabBarView(
               controller: _tabController,
-              indicatorColor: AppColors.primaryBlue,
-              indicatorWeight: 3,
-              indicatorSize: TabBarIndicatorSize.label,
-              labelColor: AppColors.primaryBlue,
-              unselectedLabelColor: AppColors.textSecondary,
-              overlayColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.hovered)) {
-                  return AppColors.lightBlueHover.withOpacity(0.55);
-                }
-                return Colors.transparent;
-              }),
-              labelStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Inter',
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                fontFamily: 'Inter',
-              ),
-              tabs: const [
-                Tab(
-                  height: 40,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 18),
-                      SizedBox(width: 6),
-                      Text('Catálogo'),
-                    ],
-                  ),
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                CatalogTab(
+                  onGoToInventory: _goToInventory,
+                  onGoToCategories: _goToCategories,
                 ),
-                Tab(
-                  height: 40,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.dashboard_outlined, size: 18),
-                      SizedBox(width: 6),
-                      Text('Inventario'),
-                    ],
-                  ),
-                ),
-                Tab(
-                  height: 40,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.category_outlined, size: 18),
-                      SizedBox(width: 6),
-                      Text('Categorías'),
-                    ],
-                  ),
-                ),
+                InventoryTab(onBackToCatalog: _goToCatalog),
+                CategoriesTab(onBackToCatalog: _goToCatalog),
               ],
             ),
-          ),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [CatalogTab(), InventoryTab(), CategoriesTab()],
+          );
+        },
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../../core/security/authz/permission_gate.dart';
 import '../data/business_settings_repository.dart';
 import '../data/user_model.dart';
 import '../data/users_repository.dart';
+import 'settings_layout.dart';
 
 enum _RiskLevel { low, medium, high, critical }
 
@@ -74,11 +75,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
   bool _fullQuotesFlowEnabled = false;
   final ScrollController _moduleListController = ScrollController();
   _UserPermissionCategory _selectedCategory = _UserPermissionCategory.sales;
-  static const double _contentMaxWidth = 1200;
-  static const EdgeInsets _outerPadding = EdgeInsets.symmetric(
-    horizontal: 20,
-    vertical: 16,
-  );
 
   @override
   void initState() {
@@ -538,55 +534,59 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      body: SafeArea(
-        child: PermissionGate(
-          permission: Permissions.settingsPermissions,
-          autoPromptOnce: true,
-          reason: 'Acceso a configuración de permisos',
-          resourceType: 'screen',
-          resourceId: 'settings.permissions',
-          child: Column(
-            children: [
-              Padding(padding: _outerPadding, child: _buildHeader()),
-              const SizedBox(height: 16),
-              Expanded(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: _contentMaxWidth,
-                    ),
-                    child: isAdmin
-                        ? _buildAdminMessage()
-                        : _buildPermissionsContent(categories),
+    return Theme(
+      data: SettingsLayout.brandedTheme(context),
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Permisos de usuario')),
+        backgroundColor: scheme.surface,
+        body: SafeArea(
+          child: PermissionGate(
+            permission: Permissions.settingsPermissions,
+            autoPromptOnce: true,
+            reason: 'Acceso a configuración de permisos',
+            resourceType: 'screen',
+            resourceId: 'settings.permissions',
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SettingsLayout.pageFrame(
+                  constraints,
+                  child: Column(
+                    children: [
+                      _buildHeader(),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: isAdmin
+                            ? _buildAdminMessage()
+                            : _buildPermissionsContent(categories),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-            ],
+                );
+              },
+            ),
           ),
         ),
+        floatingActionButton: !isAdmin && _hasChanges && !_isFetching
+            ? FloatingActionButton.extended(
+                onPressed: _isSaving ? null : _savePermissions,
+                backgroundColor: AppColors.teal700,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save, color: Colors.white),
+                label: Text(
+                  _isSaving ? 'Guardando...' : 'Guardar cambios',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              )
+            : null,
       ),
-      floatingActionButton: !isAdmin && _hasChanges && !_isFetching
-          ? FloatingActionButton.extended(
-              onPressed: _isSaving ? null : _savePermissions,
-              backgroundColor: AppColors.teal700,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.save, color: Colors.white),
-              label: Text(
-                _isSaving ? 'Guardando...' : 'Guardar cambios',
-                style: const TextStyle(color: Colors.white),
-              ),
-            )
-          : null,
     );
   }
 
@@ -733,15 +733,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
       ],
     );
 
-    return Card(
-      elevation: 0,
-      color: scheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: border),
-      ),
-      child: Padding(padding: const EdgeInsets.all(18), child: content),
-    );
+    return Padding(padding: const EdgeInsets.all(4), child: content);
   }
 
   Widget _buildModuleTile(
@@ -1113,12 +1105,11 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final screenHeight = MediaQuery.of(context).size.height;
     final listMaxHeight = (screenHeight * 0.55).clamp(280.0, 520.0);
 
-    return Card(
-      elevation: 0,
-      color: scheme.surface,
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface.withOpacity(0.72),
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: border),
+        border: Border.all(color: border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../brand/fullpos_brand_theme.dart';
 import '../debug/render_diagnostics.dart';
 import '../theme/app_gradient_theme.dart';
 import '../window/window_service.dart';
@@ -74,8 +75,23 @@ class _AppFrameState extends ConsumerState<AppFrame>
 
   @override
   void onWindowRestore() {
-    if (!_windowRecoveryArmed) return;
+    if (!_windowRecoveryArmed) {
+      return;
+    }
     unawaited(_recoverAfterResume(forceSizeNudge: true));
+  }
+
+  @override
+  void onWindowFocus() {
+    if (!mounted) return;
+    if (!WindowService.wasRecentWindowModeTransition()) return;
+
+    setState(() {});
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _onFirstFramePainted();
+    });
   }
 
   void _armWindowRecoveryAfterStartup() {
@@ -202,14 +218,8 @@ class _AppFrameState extends ConsumerState<AppFrame>
     );
 
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final gradientTheme = theme.extension<AppGradientTheme>();
-    final fallbackGradient = LinearGradient(
-      colors: [scheme.surface, scheme.primaryContainer],
-      stops: const [0.0, 1.0],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+    const fallbackGradient = FullposBrandTheme.backgroundGradient;
     final backgroundGradient =
         gradientTheme?.backgroundGradient ?? fallbackGradient;
 

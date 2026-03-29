@@ -84,169 +84,99 @@ class _UsersPageState extends State<UsersPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-        backgroundColor: _scheme.surfaceVariant,
-        body: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _scheme.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: _scheme.shadow.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
+        appBar: AppBar(title: const Text('Usuarios')),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return SettingsLayout.pageFrame(
+              constraints,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back),
-                    tooltip: 'Volver',
+                  SettingsLayout.sectionHeading(
+                    context,
+                    title: 'Gestión de usuarios',
+                    subtitle:
+                        'Administra cuentas, credenciales y estado operativo del personal.',
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _scheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(Icons.people, color: _scheme.primary, size: 24),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          onChanged: (v) => setState(() => _searchQuery = v),
+                          decoration: const InputDecoration(
+                            hintText: 'Buscar usuario...',
+                            prefixIcon: Icon(Icons.search, size: 20),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed: () => _showUserDialog(),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Nuevo usuario'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: [
+                      _buildStatCard(
+                        'Total usuarios',
+                        _users.length.toString(),
+                        Icons.people,
+                        _scheme.primary,
+                      ),
+                      _buildStatCard(
+                        'Administradores',
+                        _users.where((u) => u.isAdmin).length.toString(),
+                        Icons.admin_panel_settings,
+                        _scheme.tertiary,
+                      ),
+                      _buildStatCard(
+                        'Cajeros',
+                        _users.where((u) => u.isCashier).length.toString(),
+                        Icons.point_of_sale,
+                        _scheme.secondary,
+                      ),
+                      _buildStatCard(
+                        'Activos',
+                        _users.where((u) => u.isActiveUser).length.toString(),
+                        Icons.check_circle,
+                        _scheme.tertiary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'GESTIÓN DE USUARIOS',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _filteredUsers.isEmpty
+                        ? Center(
+                            child: Text(
+                              _searchQuery.isEmpty
+                                  ? 'No hay usuarios registrados'
+                                  : 'No se encontraron resultados',
+                              style: TextStyle(
+                                color: _scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _filteredUsers.length,
+                            separatorBuilder: (_, _) => const Divider(),
+                            itemBuilder: (context, index) {
+                              final user = _filteredUsers[index];
+                              return _buildUserCard(user);
+                            },
                           ),
-                        ),
-                        Text(
-                          'Administra los accesos al sistema',
-                          style: TextStyle(
-                            color: _scheme.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Buscador
-                  SizedBox(
-                    width: 250,
-                    child: TextField(
-                      onChanged: (v) => setState(() => _searchQuery = v),
-                      decoration: InputDecoration(
-                        hintText: 'Buscar usuario...',
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        filled: true,
-                        fillColor: _scheme.surfaceVariant,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _showUserDialog(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('NUEVO USUARIO'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _scheme.primary,
-                      foregroundColor: _scheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
                   ),
                 ],
               ),
-            ),
-
-            // Stats cards
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  _buildStatCard(
-                    'Total Usuarios',
-                    _users.length.toString(),
-                    Icons.people,
-                    _scheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    'Administradores',
-                    _users.where((u) => u.isAdmin).length.toString(),
-                    Icons.admin_panel_settings,
-                    _scheme.tertiary,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    'Cajeros',
-                    _users.where((u) => u.isCashier).length.toString(),
-                    Icons.point_of_sale,
-                    _scheme.secondary,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    'Activos',
-                    _users.where((u) => u.isActiveUser).length.toString(),
-                    Icons.check_circle,
-                    _scheme.tertiary,
-                  ),
-                ],
-              ),
-            ),
-
-            // Lista de usuarios
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredUsers.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.person_off,
-                            size: 64,
-                            color: _scheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _searchQuery.isEmpty
-                                ? 'No hay usuarios registrados'
-                                : 'No se encontraron resultados',
-                            style: TextStyle(color: _scheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _filteredUsers.length,
-                      itemBuilder: (context, index) {
-                        final user = _filteredUsers[index];
-                        return _buildUserCard(user);
-                      },
-                    ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -258,53 +188,33 @@ class _UsersPageState extends State<UsersPage> {
     IconData icon,
     Color color,
   ) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _scheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+    return SizedBox(
+      width: 180,
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _scheme.onSurfaceVariant,
                 ),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -313,20 +223,18 @@ class _UsersPageState extends State<UsersPage> {
     final isAdmin = user.isAdmin;
     final roleColor = isAdmin ? _scheme.tertiary : _scheme.secondary;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: () => _showUserDetailDialog(user),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
             children: [
-              // Avatar
               Container(
-                width: 50,
-                height: 50,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: roleColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -342,9 +250,8 @@ class _UsersPageState extends State<UsersPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
 
-              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,11 +300,10 @@ class _UsersPageState extends State<UsersPage> {
                 ),
               ),
 
-              // Role badge
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+                  horizontal: 10,
+                  vertical: 5,
                 ),
                 decoration: BoxDecoration(
                   color: roleColor.withOpacity(0.1),
@@ -428,7 +334,6 @@ class _UsersPageState extends State<UsersPage> {
               ),
               const SizedBox(width: 12),
 
-              // PIN indicator
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -462,7 +367,6 @@ class _UsersPageState extends State<UsersPage> {
               ),
               const SizedBox(width: 8),
 
-              // Actions
               PopupMenuButton<String>(
                 onSelected: (action) => _handleUserAction(action, user),
                 itemBuilder: (context) => [

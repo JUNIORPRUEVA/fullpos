@@ -24,9 +24,9 @@ class SaleModel {
   final int? creditDueDateMs;
   final int? creditInstallments;
   final String? creditNote;
-  final int fiscalEnabled;
-  final String? ncfFull;
-  final String? ncfType;
+  final int electronicInvoiceEnabled;
+  final String? electronicInvoiceCode;
+  final String? electronicDocumentType;
   final int? sessionId;
   final int createdAtMs;
   final int updatedAtMs;
@@ -58,9 +58,9 @@ class SaleModel {
     this.creditDueDateMs,
     this.creditInstallments,
     this.creditNote,
-    this.fiscalEnabled = 0,
-    this.ncfFull,
-    this.ncfType,
+    this.electronicInvoiceEnabled = 0,
+    this.electronicInvoiceCode,
+    this.electronicDocumentType,
     this.sessionId,
     required this.createdAtMs,
     required this.updatedAtMs,
@@ -93,9 +93,9 @@ class SaleModel {
     'credit_due_date_ms': creditDueDateMs,
     'credit_installments': creditInstallments,
     'credit_note': creditNote,
-    'fiscal_enabled': fiscalEnabled,
-    'ncf_full': ncfFull,
-    'ncf_type': ncfType,
+    'electronic_invoice_enabled': electronicInvoiceEnabled,
+    'electronic_invoice_code': electronicInvoiceCode,
+    'electronic_document_type': electronicDocumentType,
     'session_id': sessionId,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
@@ -130,9 +130,10 @@ class SaleModel {
     creditDueDateMs: map['credit_due_date_ms'] as int?,
     creditInstallments: map['credit_installments'] as int?,
     creditNote: map['credit_note'] as String?,
-    fiscalEnabled: map['fiscal_enabled'] as int? ?? 0,
-    ncfFull: map['ncf_full'] as String?,
-    ncfType: map['ncf_type'] as String?,
+    electronicInvoiceEnabled:
+      map['electronic_invoice_enabled'] as int? ?? 0,
+    electronicInvoiceCode: map['electronic_invoice_code'] as String?,
+    electronicDocumentType: map['electronic_document_type'] as String?,
     sessionId: map['session_id'] as int?,
     createdAtMs: map['created_at_ms'] as int,
     updatedAtMs: map['updated_at_ms'] as int,
@@ -165,9 +166,9 @@ class SaleModel {
     int? creditDueDateMs,
     int? creditInstallments,
     String? creditNote,
-    int? fiscalEnabled,
-    String? ncfFull,
-    String? ncfType,
+    int? electronicInvoiceEnabled,
+    String? electronicInvoiceCode,
+    String? electronicDocumentType,
     int? sessionId,
     int? createdAtMs,
     int? updatedAtMs,
@@ -198,9 +199,12 @@ class SaleModel {
     creditDueDateMs: creditDueDateMs ?? this.creditDueDateMs,
     creditInstallments: creditInstallments ?? this.creditInstallments,
     creditNote: creditNote ?? this.creditNote,
-    fiscalEnabled: fiscalEnabled ?? this.fiscalEnabled,
-    ncfFull: ncfFull ?? this.ncfFull,
-    ncfType: ncfType ?? this.ncfType,
+    electronicInvoiceEnabled:
+      electronicInvoiceEnabled ?? this.electronicInvoiceEnabled,
+    electronicInvoiceCode:
+      electronicInvoiceCode ?? this.electronicInvoiceCode,
+    electronicDocumentType:
+      electronicDocumentType ?? this.electronicDocumentType,
     sessionId: sessionId ?? this.sessionId,
     createdAtMs: createdAtMs ?? this.createdAtMs,
     updatedAtMs: updatedAtMs ?? this.updatedAtMs,

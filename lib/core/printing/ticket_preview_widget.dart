@@ -174,11 +174,16 @@ class TicketPreviewWidget extends StatelessWidget {
               ),
             ],
 
-            // === NCF ===
-            if (settings.showNcf == 1 &&
-                (previewData.ncf ?? '').isNotEmpty) ...[
+            // === e-CF ===
+            if (settings.showElectronicInvoiceReference == 1 &&
+                (previewData.electronicInvoiceCode ?? '').isNotEmpty) ...[
               const SizedBox(height: 2),
-              _buildRow('NCF:', previewData.ncf!, fontSize, fontFamily),
+              _buildRow(
+                'e-CF:',
+                previewData.electronicInvoiceCode!,
+                fontSize,
+                fontFamily,
+              ),
             ],
 
             // === CAJERO ===
@@ -510,7 +515,7 @@ class TicketPreviewData {
   final String? clientPhone;
   final String? clientRnc;
   final String? cashierName;
-  final String? ncf;
+  final String? electronicInvoiceCode;
   final List<TicketItemData> items;
   final double subtotal;
   final double discount;
@@ -526,7 +531,7 @@ class TicketPreviewData {
     this.clientPhone,
     this.clientRnc,
     this.cashierName,
-    this.ncf,
+    this.electronicInvoiceCode,
     required this.items,
     required this.subtotal,
     required this.discount,
@@ -544,7 +549,7 @@ class TicketPreviewData {
       clientName: 'Cliente Demo',
       clientPhone: '(829) 531-9442',
       cashierName: 'Cajero 1',
-      ncf: 'B0100000001',
+      electronicInvoiceCode: 'E3100000001',
       items: [
         TicketItemData(
           name: 'Producto de Prueba 1',

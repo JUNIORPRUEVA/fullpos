@@ -7,6 +7,7 @@ import '../../../core/services/app_configuration_service.dart';
 /// Notifier para manejar el estado de la configuración del negocio
 class BusinessSettingsNotifier extends StateNotifier<BusinessSettings> {
   final BusinessSettingsRepository _repository;
+  Future<void>? _loadInFlight;
 
   BusinessSettingsNotifier(this._repository, {BusinessSettings? initial})
     : super(initial ?? BusinessSettings.defaultSettings) {
@@ -17,6 +18,22 @@ class BusinessSettingsNotifier extends StateNotifier<BusinessSettings> {
 
   /// Cargar configuración guardada
   Future<void> _loadSettings() async {
+    final existing = _loadInFlight;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final future = _loadSettingsImpl();
+    _loadInFlight = future.whenComplete(() {
+      if (identical(_loadInFlight, future)) {
+        _loadInFlight = null;
+      }
+    });
+    await _loadInFlight;
+  }
+
+  Future<void> _loadSettingsImpl() async {
     final settings = await _repository.loadSettings();
     state = settings;
     // Mantener servicio global inicializado/actualizado.

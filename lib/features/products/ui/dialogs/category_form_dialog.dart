@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../data/categories_repository.dart';
 import '../../models/category_model.dart';
+import '../widgets/products_surface.dart';
 
 /// Diálogo para crear/editar categorías
 class CategoryFormDialog extends StatefulWidget {
@@ -90,9 +91,9 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -101,6 +102,9 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Shortcuts(
       shortcuts: {
         LogicalKeySet(LogicalKeyboardKey.escape): DismissIntent(),
@@ -121,51 +125,97 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
         },
         child: Focus(
           autofocus: true,
-          child: AlertDialog(
-            title: Text(_isEdit ? 'Editar Categoría' : 'Nueva Categoría'),
-            content: Form(
-              key: _formKey,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: ProductsSurface(
+              padding: EdgeInsets.zero,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre *',
-                      hintText: 'Ej: Electrónicos, Ropa, Alimentos',
-                      border: OutlineInputBorder(),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      border: Border(
+                        bottom: BorderSide(color: scheme.outlineVariant),
+                      ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(22),
+                      ),
                     ),
-                    textCapitalization: TextCapitalization.words,
-                    autofocus: true,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'El nombre es requerido';
-                      }
-                      if (value.trim().length < 2) {
-                        return 'El nombre debe tener al menos 2 caracteres';
-                      }
-                      return null;
-                    },
+                    child: ProductsSectionHeader(
+                      eyebrow: 'CATEGORIA',
+                      title: _isEdit ? 'Editar categoría' : 'Nueva categoría',
+                      subtitle: 'Registro breve para el catálogo.',
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Nombre visible',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Nombre *',
+                              hintText: 'Ej: Electrónicos, Ropa, Alimentos',
+                              border: OutlineInputBorder(),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            autofocus: true,
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'El nombre es requerido';
+                              }
+                              if (value.trim().length < 2) {
+                                return 'El nombre debe tener al menos 2 caracteres';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => Navigator.pop(context),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                onPressed: _isLoading ? null : _save,
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(_isEdit ? 'Actualizar' : 'Crear'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: _isLoading ? null : () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _save,
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(_isEdit ? 'Actualizar' : 'Crear'),
-              ),
-            ],
           ),
         ),
       ),

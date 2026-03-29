@@ -77,7 +77,7 @@ class SettingsRepository {
       return AppSettingsModel(
         id: null,
         itbisEnabledDefault: false,
-        fiscalEnabledDefault: false,
+        electronicInvoiceEnabledDefault: false,
         itbisRate: 0.18,
         ticketSize: '80mm',
         updatedAtMs: now,

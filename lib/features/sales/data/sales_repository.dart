@@ -9,6 +9,7 @@ import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/utils/app_event_bus.dart';
 import '../../../core/validation/business_rules.dart';
+import '../../facturacion_electronica/services/facturacion_electronica_service.dart';
 import 'sales_model.dart';
 import 'sale_item_model.dart' as new_models;
 
@@ -56,9 +57,9 @@ class SalesRepository {
     double? paymentTransferAmount,
     int? sessionId,
     int? customerId,
-    String? ncfFull,
-    String? ncfType,
-    bool fiscalEnabled = false,
+    String? electronicInvoiceCode,
+    String? electronicDocumentType,
+    bool electronicInvoiceEnabled = false,
     String? customerName,
     String? customerPhone,
     String? customerRnc,
@@ -331,9 +332,9 @@ class SalesRepository {
           creditDueDateMs: creditDueDateMs,
           creditInstallments: creditInstallments,
           creditNote: creditNote,
-          fiscalEnabled: fiscalEnabled ? 1 : 0,
-          ncfFull: ncfFull,
-          ncfType: ncfType,
+          electronicInvoiceEnabled: electronicInvoiceEnabled ? 1 : 0,
+          electronicInvoiceCode: electronicInvoiceCode,
+          electronicDocumentType: electronicDocumentType,
           sessionId: sessionId,
           items: convertedItems,
           allowNegativeStock: allowNegativeStock,
@@ -387,6 +388,10 @@ class SalesRepository {
       SaleCompletedEvent(saleId: saleId, createdAtMs: createdAtMs),
     );
 
+    if (kind == SaleKind.invoice) {
+      await FacturacionElectronicaService.procesarVenta(saleId);
+    }
+
     return saleId;
   }
 
@@ -416,9 +421,9 @@ class SalesRepository {
     int? creditDueDateMs,
     int? creditInstallments,
     String? creditNote,
-    required int fiscalEnabled,
-    String? ncfFull,
-    String? ncfType,
+    required int electronicInvoiceEnabled,
+    String? electronicInvoiceCode,
+    String? electronicDocumentType,
     int? sessionId,
     required List<Map<String, dynamic>> items,
     bool allowNegativeStock = false,
@@ -457,9 +462,9 @@ class SalesRepository {
           'credit_due_date_ms': creditDueDateMs,
           'credit_installments': creditInstallments,
           'credit_note': creditNote,
-          'fiscal_enabled': fiscalEnabled,
-          'ncf_full': ncfFull,
-          'ncf_type': ncfType,
+          'electronic_invoice_enabled': electronicInvoiceEnabled,
+          'electronic_invoice_code': electronicInvoiceCode,
+          'electronic_document_type': electronicDocumentType,
           'session_id': sessionId,
           'created_at_ms': now,
           'updated_at_ms': now,

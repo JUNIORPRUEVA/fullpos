@@ -5,9 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "FULLPOS (Windows Hot Reload)",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "deviceId": "windows",
+            "flutterMode": "debug",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Prepare FULLPOS Windows Hot Reload"
+        },
+        {
             "name": "FULLPOS",
             "request": "launch",
-            "type": "dart"
+            "type": "dart",
+            "program": "lib/main.dart"
         },
         {
             "name": "FULLPOS (profile mode)",

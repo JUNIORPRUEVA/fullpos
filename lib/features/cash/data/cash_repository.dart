@@ -1011,7 +1011,7 @@ class CashRepository {
         COALESCE(os.customer_name_snapshot, s.customer_name_snapshot) AS customer_name,
         COALESCE(os.customer_phone_snapshot, s.customer_phone_snapshot) AS customer_phone,
         COALESCE(os.customer_rnc_snapshot, s.customer_rnc_snapshot) AS customer_rnc,
-        os.ncf_full AS original_ncf
+        os.electronic_invoice_code AS original_electronic_invoice_code
       FROM ${DbTables.returns} r
       JOIN ${DbTables.sales} s ON r.return_sale_id = s.id
       LEFT JOIN ${DbTables.sales} os ON r.original_sale_id = os.id

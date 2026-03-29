@@ -31,6 +31,10 @@ class AppThemes {
   static const AppTokens _originalTokens = AppTokens.defaultTokens;
 
   static const AppTokens _azulTokens = AppTokens(
+    topbarBackground: Color(0xFF001E40),
+    topbarText: Color(0xFFFFFFFF),
+    footerBackground: Color(0xFF001E40),
+    footerText: Color(0xFFFFFFFF),
     panelBackground: Color(0xFFF5F7FB),
     panelBorder: Color(0xFFE0E4EB),
     cardBackground: Color(0xFFFFFFFF),
@@ -38,6 +42,7 @@ class AppThemes {
     sidebarBackground: Color(0xFF001E40),
     sidebarBorder: Color(0xFF0A3A67),
     sidebarText: Color(0xFFFFFFFF),
+    sidebarActive: Color(0xFF0052CC),
     controlBarBackground: Color(0xFF00336A),
     controlBarBorder: Color(0xFF0052CC),
     controlBarText: Color(0xFFFFFFFF),
@@ -52,24 +57,29 @@ class AppThemes {
   );
 
   static const AppTokens _proPosTokens = AppTokens(
-    panelBackground: Color(0xFF050915),
-    panelBorder: Color(0xFF131C33),
-    cardBackground: Color(0xFF0F1B2C),
-    cardBorder: Color(0xFF233044),
-    sidebarBackground: Color(0xFF050915),
-    sidebarBorder: Color(0xFF101820),
-    sidebarText: Color(0xFFE8EEF7),
-    controlBarBackground: Color(0xFF0F1B2C),
-    controlBarBorder: Color(0xFF233044),
-    controlBarText: Color(0xFFE8EEF7),
-    buttonPrimary: Color(0xFF1E5A88),
-    buttonSecondary: Color(0xFF0D84FF),
-    buttonDanger: Color(0xFFDC2626),
-    searchFieldBackground: Color(0xFF13253A),
-    searchFieldText: Color(0xFFE8EEF7),
-    searchFieldIcon: Color(0xFF9FB0C8),
-    tileHover: Color(0xFF1A2B46),
-    outline: Color(0xFF3B4A61),
+    topbarBackground: Color(0xFF0B1220),
+    topbarText: Color(0xFFE5EDF7),
+    footerBackground: Color(0xFF0B1220),
+    footerText: Color(0xFFE5EDF7),
+    panelBackground: Color(0xFFF8FAFC),
+    panelBorder: Color(0xFFE2E8F0),
+    cardBackground: Color(0xFFFFFFFF),
+    cardBorder: Color(0xFFE2E8F0),
+    sidebarBackground: Color(0xFF0B1220),
+    sidebarBorder: Color(0xFF162033),
+    sidebarText: Color(0xFFE5EDF7),
+    sidebarActive: Color(0xFF3B82F6),
+    controlBarBackground: Color(0xFFFFFFFF),
+    controlBarBorder: Color(0xFFE2E8F0),
+    controlBarText: Color(0xFF0F172A),
+    buttonPrimary: Color(0xFF3B82F6),
+    buttonSecondary: Color(0xFF1E40AF),
+    buttonDanger: Color(0xFFEF4444),
+    searchFieldBackground: Color(0xFFF1F5F9),
+    searchFieldText: Color(0xFF0F172A),
+    searchFieldIcon: Color(0xFF64748B),
+    tileHover: Color(0xFFEFF6FF),
+    outline: Color(0xFFE2E8F0),
   );
 
   // ============================================================================
@@ -477,9 +487,8 @@ class AppThemes {
   // ============================================================================
   // TEMA 3: PROFESIONAL POS (Azul oscuro + negro + blanco ejecutivo)
   // ============================================================================
-  static ThemeData get proPos => AppTheme.fullposSaas().copyWith(
-    extensions: const [_proPosTokens],
-  );
+  static ThemeData get proPos =>
+      AppTheme.fullposSaas().copyWith(extensions: const [_proPosTokens]);
 
   /// Obtener un tema por su enum
   static ThemeData getTheme(AppThemeEnum theme) {

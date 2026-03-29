@@ -4,7 +4,10 @@ import '../../../core/db/tables.dart';
 /// Modelos para los reportes
 class KpisData {
   final double totalSales;
+  // Ganancia bruta operativa basada en ventas - costo - devoluciones.
   final double totalProfit;
+  // Ganancia neta real del rango, descontando gastos/salidas de caja.
+  final double netProfit;
   final double totalCost;
   final int salesCount;
   final int quotesCount;
@@ -17,6 +20,7 @@ class KpisData {
   KpisData({
     required this.totalSales,
     required this.totalProfit,
+    double? netProfit,
     this.totalCost = 0,
     required this.salesCount,
     required this.quotesCount,
@@ -24,7 +28,7 @@ class KpisData {
     required this.avgTicket,
     this.cashIncome = 0,
     this.cashExpense = 0,
-  });
+  }) : netProfit = netProfit ?? totalProfit;
 }
 
 /// Datos para gráfico de distribución de ventas por método de pago
@@ -167,6 +171,116 @@ class SaleRecord {
 /// Repositorio para generar reportes y estadísticas
 class ReportsRepository {
   ReportsRepository._();
+
+  static String _normalizePaymentMethodLabel(String? method) {
+    return switch ((method ?? '').trim().toLowerCase()) {
+      '' || 'cash' || 'efectivo' => 'Efectivo',
+      'card' || 'tarjeta' => 'Tarjeta',
+      'transfer' || 'transferencia' => 'Transferencia',
+      'credit' || 'credito' => 'Crédito',
+      'layaway' || 'apartado' => 'Apartado',
+      'mixed' || 'mixto' => 'Mixto',
+      _ => (method ?? 'Efectivo').trim(),
+    };
+  }
+
+  static Map<String, double> _paymentBucketsForSale({
+    required String? paymentMethod,
+    required double total,
+    required double paymentCashAmount,
+    required double paymentCardAmount,
+    required double paymentTransferAmount,
+  }) {
+    final buckets = <String, double>{};
+
+    void add(String method, double amount) {
+      if (amount.abs() <= 0.009) return;
+      buckets[method] = (buckets[method] ?? 0.0) + amount;
+    }
+
+    final normalizedMethod = _normalizePaymentMethodLabel(paymentMethod);
+    final hasBreakdown =
+        paymentCashAmount.abs() > 0.009 ||
+        paymentCardAmount.abs() > 0.009 ||
+        paymentTransferAmount.abs() > 0.009;
+
+    if (hasBreakdown || normalizedMethod == 'Mixto') {
+      add('Efectivo', paymentCashAmount);
+      add('Tarjeta', paymentCardAmount);
+      add('Transferencia', paymentTransferAmount);
+
+      final assigned =
+          paymentCashAmount + paymentCardAmount + paymentTransferAmount;
+      final residual = total - assigned;
+      if (residual.abs() > 0.009) {
+        add(normalizedMethod == 'Mixto' ? 'Mixto' : normalizedMethod, residual);
+      }
+
+      if (buckets.isNotEmpty) {
+        return buckets;
+      }
+    }
+
+    add(normalizedMethod, total);
+    return buckets;
+  }
+
+  static Map<String, double> _paymentBucketsForReturn({
+    required String? originalPaymentMethod,
+    required double originalTotal,
+    required double returnTotal,
+    required double originalPaymentCashAmount,
+    required double originalPaymentCardAmount,
+    required double originalPaymentTransferAmount,
+  }) {
+    final buckets = <String, double>{};
+
+    void add(String method, double amount) {
+      if (amount.abs() <= 0.009) return;
+      buckets[method] = (buckets[method] ?? 0.0) + amount;
+    }
+
+    final normalizedMethod = _normalizePaymentMethodLabel(originalPaymentMethod);
+    final absoluteOriginalTotal = originalTotal.abs();
+    final hasBreakdown =
+        originalPaymentCashAmount.abs() > 0.009 ||
+        originalPaymentCardAmount.abs() > 0.009 ||
+        originalPaymentTransferAmount.abs() > 0.009;
+
+    if (hasBreakdown && absoluteOriginalTotal > 0.009) {
+      add(
+        'Efectivo',
+        returnTotal * (originalPaymentCashAmount / absoluteOriginalTotal),
+      );
+      add(
+        'Tarjeta',
+        returnTotal * (originalPaymentCardAmount / absoluteOriginalTotal),
+      );
+      add(
+        'Transferencia',
+        returnTotal * (originalPaymentTransferAmount / absoluteOriginalTotal),
+      );
+
+      final assigned =
+          originalPaymentCashAmount +
+          originalPaymentCardAmount +
+          originalPaymentTransferAmount;
+      final residual = absoluteOriginalTotal - assigned;
+      if (residual.abs() > 0.009) {
+        add(
+          normalizedMethod == 'Mixto' ? 'Mixto' : normalizedMethod,
+          returnTotal * (residual / absoluteOriginalTotal),
+        );
+      }
+
+      if (buckets.isNotEmpty) {
+        return buckets;
+      }
+    }
+
+    add(normalizedMethod, returnTotal);
+    return buckets;
+  }
 
   /// Obtiene KPIs para el rango de fechas
   static Future<KpisData> getKpis({
@@ -323,6 +437,7 @@ class ReportsRepository {
     int finalSalesCount = salesCount;
     double finalAvgTicket =
         salesCount > 0 ? (netTotalSales / salesCount) : avgTicket;
+    var usedLegacySalesFallback = false;
 
     // Fallback: si no hay items (datos legados), usar tabla sales con devoluciones incluidas.
     if (salesCount == 0 && totalSales == 0) {
@@ -355,6 +470,7 @@ class ReportsRepository {
       // Sin sale_items no se puede calcular costo/ganancia real.
       finalTotalProfit = 0.0;
       finalTotalCost = 0.0;
+      usedLegacySalesFallback = true;
     }
     // Cotizaciones
     final quotesQuery =
@@ -426,9 +542,14 @@ class ReportsRepository {
       // La tabla puede no existir
     }
 
+    final netProfit = usedLegacySalesFallback
+        ? finalTotalProfit
+        : (finalTotalProfit - cashExpense);
+
     return KpisData(
       totalSales: finalTotalSales,
       totalProfit: finalTotalProfit,
+      netProfit: netProfit,
       totalCost: finalTotalCost,
       salesCount: finalSalesCount,
       quotesCount: quotesCount,
@@ -558,7 +679,7 @@ class ReportsRepository {
       );
     }).toList();
   }
-/// Serie temporal de ganancias por día
+/// Serie temporal de ganancia neta por día
   static Future<List<SeriesDataPoint>> getProfitSeries({
     required int startMs,
     required int endMs,
@@ -607,11 +728,20 @@ class ReportsRepository {
             AND s.created_at_ms >= ?
             AND s.created_at_ms <= ?
           GROUP BY date_label
+          UNION ALL
+          SELECT
+            DATE(datetime(created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
+            -COALESCE(SUM(amount), 0) as daily_profit
+          FROM ${DbTables.cashMovements}
+          WHERE type = 'OUT'
+            AND created_at_ms >= ?
+            AND created_at_ms <= ?
+          GROUP BY date_label
         ) t
         GROUP BY date_label
         ORDER BY date_label ASC
       ''',
-      [startMs, endMs, startMs, endMs],
+      [startMs, endMs, startMs, endMs, startMs, endMs],
     );
 
     var series = results.map((row) {
@@ -963,29 +1093,33 @@ class ReportsRepository {
   }) async {
     final db = await AppDb.database;
 
-    final query =
-        '''
-      SELECT 
-        method,
-        COALESCE(SUM(amount), 0) as amount,
-        COALESCE(SUM(count), 0) as count
-      FROM (
+    final salesRows = await db.rawQuery(
+      '''
         SELECT
-          COALESCE(s.payment_method, 'Efectivo') as method,
-          COALESCE(SUM(s.total), 0) as amount,
-          COUNT(s.id) as count
-        FROM ${DbTables.sales} s
-        WHERE s.kind IN ('invoice', 'sale')
-          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
-          AND s.created_at_ms >= ?
-          AND s.created_at_ms <= ?
-        GROUP BY method
-        UNION ALL
+          payment_method,
+          total,
+          payment_cash_amount,
+          payment_card_amount,
+          payment_transfer_amount
+        FROM ${DbTables.sales}
+        WHERE kind IN ('invoice', 'sale')
+          AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+          AND deleted_at_ms IS NULL
+          AND created_at_ms >= ?
+          AND created_at_ms <= ?
+      ''',
+      [startMs, endMs],
+    );
+
+    final returnRows = await db.rawQuery(
+      '''
         SELECT
-          COALESCE(os.payment_method, 'Efectivo') as method,
-          COALESCE(SUM(rs.total), 0) as amount,
-          0 as count
+          rs.total as return_total,
+          os.total as original_total,
+          os.payment_method as original_payment_method,
+          os.payment_cash_amount as original_payment_cash_amount,
+          os.payment_card_amount as original_payment_card_amount,
+          os.payment_transfer_amount as original_payment_transfer_amount
         FROM ${DbTables.returns} r
         INNER JOIN ${DbTables.sales} rs ON r.return_sale_id = rs.id
         INNER JOIN ${DbTables.sales} os ON r.original_sale_id = os.id
@@ -994,29 +1128,69 @@ class ReportsRepository {
           AND rs.deleted_at_ms IS NULL
           AND rs.created_at_ms >= ?
           AND rs.created_at_ms <= ?
-        GROUP BY method
-      ) t
-      GROUP BY method
-      ORDER BY amount DESC
-    ''';
+      ''',
+      [startMs, endMs],
+    );
 
-    final results = await db.rawQuery(query, [startMs, endMs, startMs, endMs]);
-    var data = results.map((row) {
-      String method = row['method'] as String? ?? 'Efectivo';
-      if (method == 'cash' || method.isEmpty) method = 'Efectivo';
-      if (method == 'card') method = 'Tarjeta';
-      if (method == 'transfer') method = 'Transferencia';
-      if (method == 'credit') method = 'Crédito';
-      if (method == 'layaway') method = 'Apartado';
+    final amountsByMethod = <String, double>{};
+    final countsByMethod = <String, int>{};
 
-      return PaymentMethodData(
-        method: method,
-        amount: (row['amount'] as num?)?.toDouble() ?? 0.0,
-        count: (row['count'] as int?) ?? 0,
+    void addBuckets(Map<String, double> buckets, {required bool countSales}) {
+      for (final entry in buckets.entries) {
+        if (entry.value.abs() <= 0.009) continue;
+        amountsByMethod[entry.key] =
+            (amountsByMethod[entry.key] ?? 0.0) + entry.value;
+        if (countSales) {
+          countsByMethod[entry.key] = (countsByMethod[entry.key] ?? 0) + 1;
+        }
+      }
+    }
+
+    for (final row in salesRows) {
+      addBuckets(
+        _paymentBucketsForSale(
+          paymentMethod: row['payment_method'] as String?,
+          total: (row['total'] as num?)?.toDouble() ?? 0.0,
+          paymentCashAmount:
+              (row['payment_cash_amount'] as num?)?.toDouble() ?? 0.0,
+          paymentCardAmount:
+              (row['payment_card_amount'] as num?)?.toDouble() ?? 0.0,
+          paymentTransferAmount:
+              (row['payment_transfer_amount'] as num?)?.toDouble() ?? 0.0,
+        ),
+        countSales: true,
       );
-    }).toList();
+    }
 
-    data = data.where((entry) => entry.amount > 0).toList();
+    for (final row in returnRows) {
+      addBuckets(
+        _paymentBucketsForReturn(
+          originalPaymentMethod: row['original_payment_method'] as String?,
+          originalTotal: (row['original_total'] as num?)?.toDouble() ?? 0.0,
+          returnTotal: (row['return_total'] as num?)?.toDouble() ?? 0.0,
+          originalPaymentCashAmount:
+              (row['original_payment_cash_amount'] as num?)?.toDouble() ?? 0.0,
+          originalPaymentCardAmount:
+              (row['original_payment_card_amount'] as num?)?.toDouble() ?? 0.0,
+          originalPaymentTransferAmount:
+              (row['original_payment_transfer_amount'] as num?)?.toDouble() ??
+                  0.0,
+        ),
+        countSales: false,
+      );
+    }
+
+    final data = amountsByMethod.entries
+        .map(
+          (entry) => PaymentMethodData(
+            method: entry.key,
+            amount: entry.value,
+            count: countsByMethod[entry.key] ?? 0,
+          ),
+        )
+        .where((entry) => entry.amount > 0.009)
+        .toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
 
     return data;
   }

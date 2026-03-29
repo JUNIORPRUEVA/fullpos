@@ -5,10 +5,7 @@ import '../../data/reports_repository.dart';
 class TopProductsTable extends StatelessWidget {
   final List<TopProduct> products;
 
-  const TopProductsTable({
-    super.key,
-    required this.products,
-  });
+  const TopProductsTable({super.key, required this.products});
 
   @override
   Widget build(BuildContext context) {
@@ -21,8 +18,8 @@ class TopProductsTable extends StatelessWidget {
 
     if (products.isEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
+        child: Container(
+          padding: const EdgeInsets.all(24),
           child: Text(
             'No hay productos para mostrar',
             style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
@@ -35,12 +32,10 @@ class TopProductsTable extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.1),
-              border: Border(
-                bottom: BorderSide(color: scheme.outlineVariant),
-              ),
+              color: scheme.primary.withOpacity(0.06),
+              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
             ),
             child: const Row(
               children: [
@@ -79,7 +74,7 @@ class TopProductsTable extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: Text(
-                    'Ganancia',
+                    'Margen Bruto',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                     textAlign: TextAlign.right,
                   ),
@@ -93,11 +88,11 @@ class TopProductsTable extends StatelessWidget {
             final rankColor = index < 3 ? scheme.tertiary : scheme.onSurface;
 
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
               decoration: BoxDecoration(
                 color: index % 2 == 0
                     ? scheme.surface
-                    : scheme.surfaceContainerHighest,
+                    : scheme.surface.withOpacity(0.72),
                 border: Border(
                   bottom: BorderSide(color: scheme.outlineVariant),
                 ),
@@ -110,8 +105,9 @@ class TopProductsTable extends StatelessWidget {
                       '${index + 1}',
                       style: TextStyle(
                         color: rankColor,
-                        fontWeight:
-                            index < 3 ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: index < 3
+                            ? FontWeight.bold
+                            : FontWeight.w600,
                       ),
                     ),
                   ),
@@ -119,10 +115,7 @@ class TopProductsTable extends StatelessWidget {
                     flex: 3,
                     child: Text(
                       product.productName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface,
-                      ),
+                      style: TextStyle(fontSize: 13, color: scheme.onSurface),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -144,10 +137,7 @@ class TopProductsTable extends StatelessWidget {
                     flex: 1,
                     child: Text(
                       product.totalQty.toStringAsFixed(0),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: scheme.onSurface,
-                      ),
+                      style: TextStyle(fontSize: 13, color: scheme.onSurface),
                       textAlign: TextAlign.right,
                     ),
                   ),

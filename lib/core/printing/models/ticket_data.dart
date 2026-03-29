@@ -53,8 +53,8 @@ class TicketData {
   final DateTime? creditDueDate;
   final String? creditNote;
 
-  /// NCF (Número de Comprobante Fiscal)
-  final String? ncf;
+  /// Codigo de documento electronico
+  final String? electronicInvoiceCode;
 
   /// Es una copia/reimpresión
   final bool isCopy;
@@ -92,7 +92,7 @@ class TicketData {
     this.creditInstallments,
     this.creditDueDate,
     this.creditNote,
-    this.ncf,
+    this.electronicInvoiceCode,
     this.isCopy = false,
     this.extraLegend,
     this.statusLabel,
@@ -142,7 +142,7 @@ class TicketData {
     bool isLayaway = false,
     required double changeAmount,
     required double discountTotal,
-    String? ncfFull,
+    String? electronicInvoiceCode,
     String? customerName,
     String? customerPhone,
     String? customerRnc,
@@ -182,7 +182,7 @@ class TicketData {
       creditInstallments: creditInstallments,
       creditDueDate: creditDueDate,
       creditNote: creditNote,
-      ncf: ncfFull,
+      electronicInvoiceCode: electronicInvoiceCode,
       isCopy: isCopy,
       statusLabel: statusLabel,
       isLayaway: isLayaway,
@@ -230,7 +230,7 @@ class TicketData {
     int? creditInstallments,
     DateTime? creditDueDate,
     String? creditNote,
-    String? ncf,
+    String? electronicInvoiceCode,
     bool? isCopy,
     String? extraLegend,
     String? statusLabel,
@@ -258,7 +258,8 @@ class TicketData {
       creditInstallments: creditInstallments ?? this.creditInstallments,
       creditDueDate: creditDueDate ?? this.creditDueDate,
       creditNote: creditNote ?? this.creditNote,
-      ncf: ncf ?? this.ncf,
+        electronicInvoiceCode:
+          electronicInvoiceCode ?? this.electronicInvoiceCode,
       isCopy: isCopy ?? this.isCopy,
       extraLegend: extraLegend ?? this.extraLegend,
       statusLabel: statusLabel ?? this.statusLabel,

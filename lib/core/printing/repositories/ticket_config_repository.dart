@@ -27,7 +27,7 @@ class TicketConfigRepository {
     'font_family': "TEXT DEFAULT 'arialBlack'",
     'show_date_time': 'INTEGER DEFAULT 1',
     'show_ticket_code': 'INTEGER DEFAULT 1',
-    'show_ncf': 'INTEGER DEFAULT 1',
+    'show_electronic_invoice_reference': 'INTEGER DEFAULT 1',
     'show_itbis': 'INTEGER DEFAULT 1',
     'show_cashier': 'INTEGER DEFAULT 1',
     'show_totals_breakdown': 'INTEGER DEFAULT 1',
@@ -169,7 +169,8 @@ class TicketConfigRepository {
       ),
       showDateTime: (map['show_date_time'] as int? ?? 1) == 1,
       showTicketCode: (map['show_ticket_code'] as int? ?? 1) == 1,
-      showNcf: (map['show_ncf'] as int? ?? 1) == 1,
+        showElectronicInvoiceReference:
+          (map['show_electronic_invoice_reference'] as int? ?? 1) == 1,
       showItbis: (map['show_itbis'] as int? ?? 1) == 1,
       showCashier: (map['show_cashier'] as int? ?? 1) == 1,
       showTotalsBreakdown: (map['show_totals_breakdown'] as int? ?? 1) == 1,
@@ -202,7 +203,8 @@ class TicketConfigRepository {
       'font_family': _fontFamilyToString(config.fontFamily),
       'show_date_time': config.showDateTime ? 1 : 0,
       'show_ticket_code': config.showTicketCode ? 1 : 0,
-      'show_ncf': config.showNcf ? 1 : 0,
+        'show_electronic_invoice_reference':
+          config.showElectronicInvoiceReference ? 1 : 0,
       'show_itbis': config.showItbis ? 1 : 0,
       'show_cashier': config.showCashier ? 1 : 0,
       'show_totals_breakdown': config.showTotalsBreakdown ? 1 : 0,

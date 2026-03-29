@@ -125,7 +125,7 @@ flutter_native_splash:
   image: assets/imagen/lonchericon.png
   android: true
   ios: true
-  fullscreen: true
+  fullscreen: false
   android_12:
     image: assets/imagen/lonchericon.png
     color: "#FFFFFF"
@@ -144,6 +144,7 @@ flutter:
   # Assets de la aplicación
   assets:
     - assets/imagen/
+    - assets/backgrounds/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -80,41 +80,37 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-      appBar: AppBar(title: const Text('Seguridad y permisos')),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final padding = SettingsLayout.contentPadding(constraints);
-          return Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: SettingsLayout.maxWidth(constraints),
+        appBar: AppBar(title: const Text('Seguridad y aprobaciones')),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return SettingsLayout.pageFrame(
+              constraints,
               child: ListView(
-                padding: padding,
                 children: [
-                  Text(
-                    'Aquí configuras cómo se aprueban acciones restringidas (sin manejar permisos por módulos aquí).',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.75),
-                    ),
+                  SettingsLayout.sectionHeading(
+                    context,
+                    title: 'Seguridad operativa',
+                    subtitle:
+                        'Aqui defines como se aprueban acciones restringidas en este terminal, sin editar privilegios por modulo.',
                   ),
                   const SizedBox(height: 12),
                   _SettingsCard(
                     icon: Icons.admin_panel_settings_outlined,
                     title: 'PIN de administrador (offline)',
                     subtitle:
-                        'Aprobaciones locales usando el PIN de cualquier usuario Administrador.',
+                        'Aprobaciones locales usando el PIN de cualquier usuario administrador.',
                     trailing: Switch.adaptive(
                       value: config.offlinePinEnabled,
                       onChanged: (v) =>
                           _save(config.copyWith(offlinePinEnabled: v)),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const Divider(),
                   _SettingsCard(
                     icon: Icons.cloud_outlined,
                     title: 'Token en la nube (remote)',
                     subtitle: cloudEnabled
-                        ? 'El dueño puede aprobar remotamente vía token/online. Puede usarse junto con PIN local.'
+                        ? 'El dueño puede aprobar remotamente vía token u online.'
                         : 'Requiere activar Cloud para usar aprobaciones remotas.',
                     trailing: Switch.adaptive(
                       value: (config.remoteEnabled || config.virtualTokenEnabled),
@@ -128,12 +124,12 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
                           : null,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const Divider(),
                   _SettingsCard(
                     icon: Icons.confirmation_number_outlined,
                     title: 'ID de Terminal/Caja',
                     subtitle:
-                        'Usa este ID para activar aprobaciones remotas por token en Owner/nube.',
+                        'Usa este ID para activar aprobaciones remotas por token en Owner o nube.',
                     trailing: FilledButton.tonalIcon(
                       onPressed: _terminalId.isEmpty
                           ? null
@@ -143,36 +139,20 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
                     ),
                     content: Padding(
                       padding: const EdgeInsets.only(top: 10),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceVariant
-                              .withOpacity(0.55),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: theme.dividerColor.withOpacity(0.4),
-                          ),
-                        ),
-                        child: SelectableText(
-                          _terminalId,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontFamily: 'monospace',
-                            letterSpacing: 0.4,
-                          ),
+                      child: SelectableText(
+                        _terminalId,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontFamily: 'monospace',
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -204,50 +184,41 @@ class _SettingsCard extends StatelessWidget {
       height: 1.25,
     );
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: theme.colorScheme.primary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: titleStyle),
-                        const SizedBox(height: 4),
-                        Text(subtitle, style: subtitleStyle),
-                      ],
-                    ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 28,
+                child: Icon(icon, color: theme.colorScheme.primary, size: 18),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: titleStyle),
+                      const SizedBox(height: 2),
+                      Text(subtitle, style: subtitleStyle),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: trailing,
-                ),
-              ],
-            ),
-            if (content != null) content!,
-          ],
-        ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: trailing,
+              ),
+            ],
+          ),
+          if (content != null) content!,
+        ],
       ),
     );
   }
