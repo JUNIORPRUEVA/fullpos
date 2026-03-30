@@ -7,9 +7,10 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../products/data/products_repository.dart';
 import '../../products/models/product_model.dart';
-import '../data/purchases_repository.dart';
 import '../data/purchase_order_models.dart';
+import '../data/purchases_repository.dart';
 import '../utils/purchase_order_pdf_launcher.dart';
+import 'widgets/purchase_ui.dart';
 
 class PurchaseOrderReceivePage extends StatefulWidget {
   final int orderId;
@@ -64,37 +65,40 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     }
   }
 
-  Future<void> _receiveItem(PurchaseOrderItemDetailDto it) async {
+  Future<void> _receiveItem(PurchaseOrderItemDetailDto item) async {
     final detail = _detail;
     if (detail == null) return;
 
     final status = detail.order.status.trim().toUpperCase();
     if (status == 'RECIBIDA') return;
 
-    final itemId = it.item.id ?? 0;
+    final itemId = item.item.id ?? 0;
     if (itemId <= 0) return;
 
-    if ((it.item.productId ?? 0) <= 0) {
-      await _createProductAndReceive(it);
+    if ((item.item.productId ?? 0) <= 0) {
+      await _createProductAndReceive(item);
       return;
     }
 
-    final ordered = it.item.qty;
-    final received = it.item.receivedQty;
+    final ordered = item.item.qty;
+    final received = item.item.receivedQty;
     final remaining = ordered - received;
     if (remaining <= 0) return;
 
     final qtyCtrl = TextEditingController(text: remaining.toStringAsFixed(2));
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (c) {
+      builder: (dialogContext) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('Recibir producto'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${it.productCode} • ${it.productName}'),
+              Text('${item.productCode} • ${item.productName}'),
               const SizedBox(height: 8),
               Text('Ordenado: ${ordered.toStringAsFixed(2)}'),
               Text('Recibido: ${received.toStringAsFixed(2)}'),
@@ -118,11 +122,11 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(c).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(c).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Recibir'),
             ),
           ],
@@ -137,11 +141,11 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
       return;
     }
 
-    final qtyText = qtyCtrl.text.trim();
+    final parsed = double.tryParse(qtyCtrl.text.trim().replaceAll(',', '.'));
     Future<void>.delayed(const Duration(milliseconds: 300)).then((_) {
       qtyCtrl.dispose();
     });
-    final parsed = double.tryParse(qtyText.replaceAll(',', '.'));
+
     if (parsed == null || parsed <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -191,7 +195,7 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
         e,
         stackTrace: st,
         context: context,
-        onRetry: () => _receiveItem(it),
+        onRetry: () => _receiveItem(item),
         module: 'purchases/receive-item',
       );
     } finally {
@@ -201,28 +205,28 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     }
   }
 
-  Future<void> _createProductAndReceive(PurchaseOrderItemDetailDto it) async {
+  Future<void> _createProductAndReceive(PurchaseOrderItemDetailDto item) async {
     final detail = _detail;
     if (detail == null) return;
 
-    final itemId = it.item.id ?? 0;
+    final itemId = item.item.id ?? 0;
     if (itemId <= 0) return;
 
-    final ordered = it.item.qty;
-    final received = it.item.receivedQty;
+    final ordered = item.item.qty;
+    final received = item.item.receivedQty;
     final remaining = _normalizeQty(ordered - received);
     if (remaining <= 0) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final defaultCode =
-        (it.productCode.trim().isNotEmpty
-                ? it.productCode.trim()
+        (item.productCode.trim().isNotEmpty
+                ? item.productCode.trim()
                 : 'AUTO-${now % 1000000}')
             .toUpperCase();
-    final defaultName = it.productName.trim().isNotEmpty
-        ? it.productName.trim()
+    final defaultName = item.productName.trim().isNotEmpty
+        ? item.productName.trim()
         : 'Producto';
-    final defaultCost = (it.item.unitCost > 0 ? it.item.unitCost : 0.01)
+    final defaultCost = (item.item.unitCost > 0 ? item.item.unitCost : 0.01)
         .toStringAsFixed(2);
 
     final codeCtrl = TextEditingController(text: defaultCode);
@@ -233,15 +237,18 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (c) {
+      builder: (dialogContext) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('Crear producto y recibir'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Item de compra: ${it.productName}'),
+                Text('Item de compra: ${item.productName}'),
                 const SizedBox(height: 10),
                 TextField(
                   controller: codeCtrl,
@@ -302,11 +309,11 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(c).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(c).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Crear y recibir'),
             ),
           ],
@@ -453,7 +460,7 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
         e,
         stackTrace: st,
         context: context,
-        onRetry: () => _createProductAndReceive(it),
+        onRetry: () => _createProductAndReceive(item),
         module: 'purchases/create-product-and-receive',
       );
     } finally {
@@ -470,24 +477,27 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     final detail = _detail;
     if (detail == null) return;
 
-    final anyReceived = detail.items.any((e) => e.item.receivedQty > 0);
+    final anyReceived = detail.items.any((item) => item.item.receivedQty > 0);
     if (!anyReceived) return;
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (c) {
+      builder: (dialogContext) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('Anular recepción'),
           content: const Text(
             'Esto revertirá el inventario (salida de stock) y dejará la orden como PENDIENTE. ¿Continuar?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(c).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(c).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
               child: const Text('Anular'),
             ),
@@ -524,13 +534,322 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
     }
   }
 
+  Color _statusColor(String status) {
+    switch (status.trim().toUpperCase()) {
+      case 'RECIBIDA':
+        return AppColors.success;
+      case 'PARCIAL':
+        return AppColors.warning;
+      default:
+        return AppColors.info;
+    }
+  }
+
+  Widget _buildSummaryCard(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+    PurchaseOrderDetailDto detail,
+    NumberFormat currency,
+    DateFormat dateFormat,
+    String status,
+    double orderedTotal,
+    double receivedTotal,
+    bool anyReceived,
+  ) {
+    final orderDateMs = detail.order.purchaseDateMs ?? detail.order.createdAtMs;
+    final supplierPhone = detail.supplierPhone?.trim() ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSizes.paddingM),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.32),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Orden #${detail.order.id ?? '-'}',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              PurchaseFactTile(label: 'Suplidor', value: detail.supplierName),
+              PurchaseFactTile(
+                label: 'Fecha',
+                value: dateFormat.format(
+                  DateTime.fromMillisecondsSinceEpoch(orderDateMs),
+                ),
+              ),
+              PurchaseFactTile(
+                label: 'Monto orden',
+                value: currency.format(detail.order.total),
+              ),
+              if (supplierPhone.isNotEmpty)
+                PurchaseFactTile(label: 'Teléfono', value: supplierPhone),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              PurchaseStatusBadge(label: status, color: _statusColor(status)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Recibido ${receivedTotal.toStringAsFixed(2)} de ${orderedTotal.toStringAsFixed(2)} unidades',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => PurchaseOrderPdfLauncher.openPreviewDialog(
+                  context: context,
+                  detail: detail,
+                ),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('WhatsApp / PDF'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _canceling || !anyReceived ? null : _cancelReceipt,
+                icon: _canceling
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.undo_rounded),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                ),
+                label: const Text('Anular recepción'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(
+    PurchaseOrderItemDetailDto item,
+    bool isDone,
+    bool hasProduct,
+    bool isReceiving,
+    bool isCreating,
+  ) {
+    if (isDone) {
+      return const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle, color: AppColors.success, size: 18),
+          SizedBox(width: 6),
+          Text(
+            'Completo',
+            style: TextStyle(
+              color: AppColors.success,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (!hasProduct) {
+      return OutlinedButton.icon(
+        onPressed: isCreating ? null : () => _createProductAndReceive(item),
+        icon: isCreating
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add_box_outlined),
+        label: const Text('Crear y recibir'),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: isReceiving ? null : () => _receiveItem(item),
+      icon: isReceiving
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.inventory_2_outlined),
+      label: const Text('Recibir'),
+    );
+  }
+
+  Widget _buildWarningChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.warning.withOpacity(0.35)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.warning),
+          SizedBox(width: 4),
+          Text(
+            'Requiere crear producto',
+            style: TextStyle(
+              color: AppColors.warning,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemRow(
+    BuildContext context,
+    ColorScheme scheme,
+    String orderStatus,
+    PurchaseOrderItemDetailDto item,
+    NumberFormat currency,
+  ) {
+    final itemId = item.item.id ?? 0;
+    final ordered = item.item.qty;
+    final received = item.item.receivedQty;
+    final remaining = ordered - received;
+    final hasProduct = (item.item.productId ?? 0) > 0;
+    final isReceiving = itemId > 0 && _receivingItems.contains(itemId);
+    final isCreating = itemId > 0 && _creatingProductItems.contains(itemId);
+    final isDone = orderStatus == 'RECIBIDA' || remaining <= 0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSizes.paddingM,
+        vertical: 10,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final action = _buildActionButton(
+            item,
+            isDone,
+            hasProduct,
+            isReceiving,
+            isCreating,
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${item.productCode} • ${item.productName}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                if (!hasProduct) ...[
+                  const SizedBox(height: 6),
+                  _buildWarningChip(),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  'Ordenado: ${ordered.toStringAsFixed(2)} • Recibido: ${received.toStringAsFixed(2)} • Pendiente: ${remaining.toStringAsFixed(2)}',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Costo: ${currency.format(item.item.unitCost)} • Total: ${currency.format(item.item.totalLine)}',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 10),
+                Align(alignment: Alignment.centerRight, child: action),
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 7,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${item.productCode} • ${item.productName}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        if (!hasProduct) _buildWarningChip(),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 6,
+                      children: [
+                        Text(
+                          'Ordenado: ${ordered.toStringAsFixed(2)}',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          'Recibido: ${received.toStringAsFixed(2)}',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          'Pendiente: ${remaining.toStringAsFixed(2)}',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          'Costo: ${currency.format(item.item.unitCost)}',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          'Total: ${currency.format(item.item.totalLine)}',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Flexible(
+                child: Align(alignment: Alignment.topRight, child: action),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currency = NumberFormat('#,##0.00', 'en_US');
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-
     final detail = _detail;
 
     return Scaffold(
@@ -572,493 +891,129 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
                 final panelMaxWidth = width > 1500
                     ? 1250.0
                     : (width > 1200 ? 1100.0 : 940.0);
-
                 final orderedTotal = detail.items.fold<double>(
                   0.0,
-                  (sum, e) => sum + (e.item.qty > 0 ? e.item.qty : 0.0),
+                  (sum, item) =>
+                      sum + (item.item.qty > 0 ? item.item.qty : 0.0),
                 );
                 final receivedTotal = detail.items.fold<double>(
                   0.0,
-                  (sum, e) =>
-                      sum + (e.item.receivedQty > 0 ? e.item.receivedQty : 0.0),
+                  (sum, item) =>
+                      sum +
+                      (item.item.receivedQty > 0 ? item.item.receivedQty : 0.0),
                 );
                 final status = detail.order.status.trim().toUpperCase();
                 final anyReceived = detail.items.any(
-                  (e) => e.item.receivedQty > 0,
+                  (item) => item.item.receivedQty > 0,
                 );
 
                 return Padding(
                   padding: EdgeInsets.fromLTRB(
                     pagePadding,
-                    14,
+                    12,
                     pagePadding,
-                    18,
+                    24,
                   ),
                   child: Center(
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: panelMaxWidth),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: scheme.surface,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: scheme.outlineVariant.withOpacity(0.55),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: theme.shadowColor.withOpacity(0.10),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSizes.paddingM),
-                          child: Column(
-                            children: [
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(
-                                  AppSizes.paddingM,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: scheme.surfaceContainerHighest
-                                      .withOpacity(0.35),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: scheme.outlineVariant.withOpacity(
-                                      0.35,
-                                    ),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Orden #${detail.order.id ?? '-'}',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Suplidor: ${detail.supplierName}',
-                                      style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Fecha: ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(detail.order.createdAtMs))}',
-                                      style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Estado: $status',
-                                      style: TextStyle(
-                                        color: status == 'RECIBIDA'
-                                            ? AppColors.success
-                                            : (status == 'PARCIAL'
-                                                  ? AppColors.warning
-                                                  : scheme.onSurfaceVariant),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Recibido: ${receivedTotal.toStringAsFixed(2)} / ${orderedTotal.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Wrap(
-                                      spacing: 10,
-                                      runSpacing: 10,
-                                      children: [
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              PurchaseOrderPdfLauncher.openPreviewDialog(
-                                                context: context,
-                                                detail: detail,
-                                              ),
-                                          icon: const Icon(
-                                            Icons.picture_as_pdf,
-                                          ),
-                                          label: const Text('WhatsApp / PDF'),
-                                        ),
-                                        OutlinedButton.icon(
-                                          onPressed: _canceling || !anyReceived
-                                              ? null
-                                              : _cancelReceipt,
-                                          icon: _canceling
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                      ),
-                                                )
-                                              : const Icon(Icons.undo),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: AppColors.error,
-                                          ),
-                                          label: const Text('Anular recepción'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                      child: Column(
+                        children: [
+                          PurchaseHeroCard(
+                            eyebrow: 'Recepción',
+                            title:
+                                'Confirma entrada de mercadería y corrige inventario en tiempo real.',
+                            subtitle:
+                                'La vista ahora prioriza densidad operativa, lectura rápida y acciones claras por línea sin tocar el flujo funcional.',
+                            stats: [
+                              PurchaseMetricTile(
+                                label: 'Proveedor',
+                                value: detail.supplierName,
+                                icon: Icons.local_shipping_rounded,
                               ),
-                              const SizedBox(height: AppSizes.paddingM),
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: scheme.surface,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: scheme.outlineVariant.withOpacity(
-                                        0.35,
-                                      ),
-                                    ),
-                                  ),
-                                  child: ListView.separated(
-                                    itemCount: detail.items.length,
-                                    separatorBuilder: (_, _) => Divider(
-                                      height: 1,
-                                      color: scheme.outlineVariant.withOpacity(
-                                        0.35,
-                                      ),
-                                    ),
-                                    itemBuilder: (context, index) {
-                                      final it = detail.items[index];
-                                      final ordered = it.item.qty;
-                                      final received = it.item.receivedQty;
-                                      final remaining = ordered - received;
-                                      final itemId = it.item.id ?? 0;
-                                      final isBusy =
-                                          itemId > 0 &&
-                                          _receivingItems.contains(itemId);
-                                      final isCreating =
-                                          itemId > 0 &&
-                                          _creatingProductItems.contains(
-                                            itemId,
-                                          );
-                                      final hasProduct =
-                                          (it.item.productId ?? 0) > 0;
-                                      final isDone =
-                                          detail.order.status
-                                                  .trim()
-                                                  .toUpperCase() ==
-                                              'RECIBIDA' ||
-                                          remaining <= 0;
-
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: AppSizes.paddingM,
-                                          vertical: 10,
-                                        ),
-                                        child: LayoutBuilder(
-                                          builder: (context, itemConstraints) {
-                                            final compact =
-                                                itemConstraints.maxWidth < 720;
-
-                                            Widget action() {
-                                              if (isDone) {
-                                                return const Icon(
-                                                  Icons.check_circle,
-                                                  color: AppColors.success,
-                                                );
-                                              }
-                                              if (!hasProduct) {
-                                                return OutlinedButton.icon(
-                                                  onPressed: isCreating
-                                                      ? null
-                                                      : () =>
-                                                            _createProductAndReceive(
-                                                              it,
-                                                            ),
-                                                  icon: isCreating
-                                                      ? const SizedBox(
-                                                          width: 14,
-                                                          height: 14,
-                                                          child:
-                                                              CircularProgressIndicator(
-                                                                strokeWidth: 2,
-                                                              ),
-                                                        )
-                                                      : const Icon(
-                                                          Icons
-                                                              .add_box_outlined,
-                                                        ),
-                                                  label: const Text('Recibir'),
-                                                );
-                                              }
-                                              return OutlinedButton(
-                                                onPressed: isBusy
-                                                    ? null
-                                                    : () => _receiveItem(it),
-                                                child: isBusy
-                                                    ? const SizedBox(
-                                                        width: 16,
-                                                        height: 16,
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                              strokeWidth: 2,
-                                                            ),
-                                                      )
-                                                    : const Text('Recibir'),
-                                              );
-                                            }
-
-                                            if (compact) {
-                                              return Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    '${it.productCode} • ${it.productName}',
-                                                    style: const TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                  if (!hasProduct) ...[
-                                                    const SizedBox(height: 6),
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 8,
-                                                            vertical: 4,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: AppColors.warning
-                                                            .withOpacity(0.12),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              999,
-                                                            ),
-                                                        border: Border.all(
-                                                          color: AppColors
-                                                              .warning
-                                                              .withOpacity(0.4),
-                                                        ),
-                                                      ),
-                                                      child: const Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .warning_amber_rounded,
-                                                            size: 14,
-                                                            color: AppColors
-                                                                .warning,
-                                                          ),
-                                                          SizedBox(width: 4),
-                                                          Text(
-                                                            'Requiere crear producto',
-                                                            style: TextStyle(
-                                                              color: AppColors
-                                                                  .warning,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              fontSize: 12,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Ordenado: ${ordered.toStringAsFixed(2)} • Recibido: ${received.toStringAsFixed(2)} • Pendiente: ${remaining.toStringAsFixed(2)}',
-                                                    style: TextStyle(
-                                                      color: scheme
-                                                          .onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    'Costo: ${currency.format(it.item.unitCost)} • Total: ${currency.format(it.item.totalLine)}',
-                                                    style: TextStyle(
-                                                      color: scheme
-                                                          .onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 8),
-                                                  Align(
-                                                    alignment:
-                                                        Alignment.centerRight,
-                                                    child: action(),
-                                                  ),
-                                                ],
-                                              );
-                                            }
-
-                                            return Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Text(
-                                                        '${it.productCode} • ${it.productName}',
-                                                        style: const TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                      if (!hasProduct) ...[
-                                                        const SizedBox(
-                                                          height: 6,
-                                                        ),
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 4,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color: AppColors
-                                                                .warning
-                                                                .withOpacity(
-                                                                  0.12,
-                                                                ),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                            border: Border.all(
-                                                              color: AppColors
-                                                                  .warning
-                                                                  .withOpacity(
-                                                                    0.4,
-                                                                  ),
-                                                            ),
-                                                          ),
-                                                          child: const Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            children: [
-                                                              Icon(
-                                                                Icons
-                                                                    .warning_amber_rounded,
-                                                                size: 14,
-                                                                color: AppColors
-                                                                    .warning,
-                                                              ),
-                                                              SizedBox(
-                                                                width: 4,
-                                                              ),
-                                                              Text(
-                                                                'Requiere crear producto',
-                                                                style: TextStyle(
-                                                                  color: AppColors
-                                                                      .warning,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                  fontSize: 12,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        'Ordenado: ${ordered.toStringAsFixed(2)} • Recibido: ${received.toStringAsFixed(2)} • Pendiente: ${remaining.toStringAsFixed(2)}',
-                                                        style: TextStyle(
-                                                          color: scheme
-                                                              .onSurfaceVariant,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 2),
-                                                      Text(
-                                                        'Costo: ${currency.format(it.item.unitCost)}',
-                                                        style: TextStyle(
-                                                          color: scheme
-                                                              .onSurfaceVariant,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.end,
-                                                  children: [
-                                                    Text(
-                                                      currency.format(
-                                                        it.item.totalLine,
-                                                      ),
-                                                      style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    action(),
-                                                  ],
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: AppSizes.paddingM),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(
-                                  AppSizes.paddingM,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: scheme.surfaceContainerHighest
-                                      .withOpacity(0.35),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: scheme.outlineVariant.withOpacity(
-                                      0.35,
-                                    ),
-                                  ),
-                                ),
-                                child: Wrap(
-                                  spacing: 16,
-                                  runSpacing: 8,
-                                  alignment: WrapAlignment.end,
-                                  children: [
-                                    Text(
-                                      'Subtotal: ${currency.format(detail.order.subtotal)}',
-                                    ),
-                                    Text(
-                                      'Impuesto: ${currency.format(detail.order.taxAmount)}',
-                                    ),
-                                    Text(
-                                      'Total: ${currency.format(detail.order.total)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              PurchaseMetricTile(
+                                label: 'Estado',
+                                value: status,
+                                icon: Icons.inventory_2_rounded,
                               ),
                             ],
+                            actions: [
+                              if (anyReceived)
+                                TextButton.icon(
+                                  onPressed: _canceling ? null : _cancelReceipt,
+                                  icon: _canceling
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.undo_rounded,
+                                          color: Colors.white,
+                                        ),
+                                  label: const Text(
+                                    'Anular recepción',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                            ],
                           ),
-                        ),
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: PurchaseSectionCard(
+                              padding: EdgeInsets.zero,
+                              child: Column(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(
+                                      AppSizes.paddingM,
+                                    ),
+                                    child: _buildSummaryCard(
+                                      context,
+                                      theme,
+                                      scheme,
+                                      detail,
+                                      currency,
+                                      dateFormat,
+                                      status,
+                                      orderedTotal,
+                                      receivedTotal,
+                                      anyReceived,
+                                    ),
+                                  ),
+                                  Divider(
+                                    height: 1,
+                                    color: scheme.outlineVariant.withOpacity(
+                                      0.35,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: ListView.separated(
+                                      itemCount: detail.items.length,
+                                      separatorBuilder: (_, _) => Divider(
+                                        height: 1,
+                                        color: scheme.outlineVariant
+                                            .withOpacity(0.35),
+                                      ),
+                                      itemBuilder: (context, index) {
+                                        return _buildItemRow(
+                                          context,
+                                          scheme,
+                                          status,
+                                          detail.items[index],
+                                          currency,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

@@ -57,11 +57,30 @@ class EmpresaConfig {
     return null;
   }
 
+  String get direccionCompleta {
+    final parts = <String>[
+      (direccion ?? '').trim(),
+      (ciudad ?? '').trim(),
+    ].where((value) => value.isNotEmpty).toList(growable: false);
+    return parts.join(', ');
+  }
+
+  bool get hasConfiguredBusinessName {
+    final normalized = nombreEmpresa.trim();
+    return normalized.isNotEmpty && normalized.toUpperCase() != 'FULLPOS';
+  }
+
+  List<String> missingElectronicInvoicingFields() {
+    final missing = <String>[];
+    if (!hasConfiguredBusinessName) missing.add('Nombre empresa');
+    if ((rnc ?? '').trim().isEmpty) missing.add('RNC');
+    if (direccionCompleta.isEmpty) missing.add('Dirección');
+    return missing;
+  }
+
   /// Validar que tenemos datos mínimos
   bool hasMinimalData() {
-    return nombreEmpresa.isNotEmpty &&
-        nombreEmpresa != 'FULLPOS' &&
-        nombreEmpresa != 'FULLPOS';
+    return missingElectronicInvoicingFields().isEmpty;
   }
 
   @override

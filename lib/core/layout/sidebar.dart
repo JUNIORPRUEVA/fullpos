@@ -189,7 +189,11 @@ class _SidebarState extends ConsumerState<Sidebar>
               };
               final shouldShowAdministrationChildren =
                   _isAdministrationExpanded ||
-                  administrationRoutes.contains(currentRoute);
+                  administrationRoutes.any(
+                    (route) =>
+                        currentRoute == route ||
+                        currentRoute.startsWith('$route/'),
+                  );
 
               final primaryEntries =
                   <
@@ -273,6 +277,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                   textColor: itemTextColor ?? effectiveSidebarTextColor,
                   activeColor: itemActiveColor ?? activeColor,
                   activeRoutes: activeRoutes,
+                    currentRoute: currentRoute,
                   hoverColor: hoverColor,
                   scale: navScale,
                   showTrailingChevron:
@@ -695,6 +700,7 @@ class PremiumNavItem extends StatefulWidget {
   final IconData icon;
   final String title;
   final String? route;
+  final String currentRoute;
   final Set<String>? activeRoutes;
   final VoidCallback? onTap;
   final double collapseProgress;
@@ -709,6 +715,7 @@ class PremiumNavItem extends StatefulWidget {
     required this.icon,
     required this.title,
     required this.route,
+    required this.currentRoute,
     this.activeRoutes,
     this.onTap,
     required this.collapseProgress,
@@ -726,25 +733,16 @@ class PremiumNavItem extends StatefulWidget {
 class _PremiumNavItemState extends State<PremiumNavItem> {
   bool _isHover = false;
 
-  String _safeCurrentPath(BuildContext context) {
-    try {
-      return GoRouterState.of(context).uri.path;
-    } catch (_) {}
-
-    try {
-      final router = GoRouter.of(context);
-      return router.routeInformationProvider.value.uri.path;
-    } catch (_) {}
-
-    return '';
+  void _setHover(bool value) {
+    if (!mounted || _isHover == value) return;
+    setState(() => _isHover = value);
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentRoute = _safeCurrentPath(context);
     final isActive =
-        (widget.route != null && currentRoute == widget.route) ||
-        (widget.activeRoutes?.contains(currentRoute) ?? false);
+        (widget.route != null && widget.currentRoute == widget.route) ||
+        (widget.activeRoutes?.contains(widget.currentRoute) ?? false);
     final isEnabled = widget.onTap != null || widget.route != null;
 
     final s = widget.scale.clamp(0.65, 1.12);
@@ -817,8 +815,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
           cursor: isEnabled
               ? SystemMouseCursors.click
               : SystemMouseCursors.basic,
-          onEnter: (_) => setState(() => _isHover = true),
-          onExit: (_) => setState(() => _isHover = false),
+          onEnter: (_) => _setHover(true),
+          onExit: (_) => _setHover(false),
           child: InkWell(
             onTap: widget.onTap,
             borderRadius: itemRadius,

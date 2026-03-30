@@ -8,6 +8,7 @@ import '../providers/purchase_draft_provider.dart';
 import 'widgets/purchase_header_row.dart';
 import 'widgets/purchase_products_grid.dart';
 import 'widgets/purchase_ticket_panel.dart';
+import 'widgets/purchase_ui.dart';
 
 class PurchaseManualPage extends ConsumerStatefulWidget {
   const PurchaseManualPage({super.key});
@@ -110,9 +111,28 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
           ],
         ),
         body: Padding(
-          padding: const EdgeInsets.all(AppSizes.paddingL),
+          padding: kPurchasePagePadding,
           child: Column(
             children: [
+              const PurchaseHeroCard(
+                eyebrow: 'Compra manual',
+                title: 'Arma órdenes rápidas con catálogo, filtros compactos y ticket lateral.',
+                subtitle:
+                    'El flujo mantiene el trabajo operativo en una sola superficie: búsqueda, selección, costo y generación del documento.',
+                stats: [
+                  PurchaseMetricTile(
+                    label: 'Modo',
+                    value: 'Manual',
+                    icon: Icons.point_of_sale_rounded,
+                  ),
+                  PurchaseMetricTile(
+                    label: 'Composición',
+                    value: 'Catálogo + ticket',
+                    icon: Icons.view_sidebar_rounded,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               PurchaseHeaderRow(searchFocusNode: _searchFocus),
               const SizedBox(height: 12),
               Expanded(

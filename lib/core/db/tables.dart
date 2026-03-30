@@ -18,11 +18,11 @@ class DbTables {
   static const String saleItems = 'sale_items';
   static const String returns = 'returns';
 
-  // Configuracion de negocio y documentos electronicos
+  // Configuracion de negocio y fiscal
   static const String businessInfo = 'business_info';
   static const String appSettings = 'app_settings';
-  static const String electronicCompany = 'electronic_company';
-  static const String facturaElectronica = 'factura_electronica';
+  static const String ncfBooks = 'ncf_books';
+  static const String customersNcfUsage = 'customers_ncf_usage';
 
   // Usuarios y caja
   static const String users = 'users';

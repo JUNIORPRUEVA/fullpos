@@ -22,15 +22,15 @@ class DateRangeSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.outlineVariant),
       ),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: 6,
+        runSpacing: 6,
         children: [
           _buildChip(context, 'Hoy', DateRangePeriod.today),
           _buildChip(context, 'Semana', DateRangePeriod.week),
@@ -70,10 +70,14 @@ class DateRangeSelector extends StatelessWidget {
             ? scheme.primary.withOpacity(0.22)
             : scheme.outlineVariant,
       ),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       labelStyle: TextStyle(
         color: isSelected ? scheme.primary : scheme.onSurface,
         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+        fontSize: 12,
       ),
     );
   }

@@ -9,11 +9,9 @@ import 'package:sqflite/sqflite.dart';
 import '../../features/products/models/product_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../db/app_db.dart';
-import '../db/database_manager.dart';
 import '../db/tables.dart';
 import '../logging/app_logger.dart';
 import '../network/api_client.dart';
-import '../session/session_manager.dart';
 import '../services/cloud_sync_service.dart';
 import 'product_sync_event_bus.dart';
 import 'product_sync_outbox_repository.dart';
@@ -31,11 +29,7 @@ class ProductRealtimeEvent {
 }
 
 class ProductSyncService {
-  ProductSyncService._() {
-    _sessionSub = SessionManager.changes.listen((_) {
-      unawaited(_handleSessionChanged());
-    });
-  }
+  ProductSyncService._();
 
   static final ProductSyncService instance = ProductSyncService._();
 
@@ -46,29 +40,14 @@ class ProductSyncService {
 
   Timer? _dispatchDebounce;
   Timer? _pollingTimer;
-  StreamSubscription<void>? _sessionSub;
   bool _draining = false;
   bool _started = false;
-  bool _autoStartRequested = false;
-  int _runGeneration = 0;
   io.Socket? _socket;
   final Set<String> _seenEventIds = <String>{};
 
   void start() {
-    _autoStartRequested = true;
     if (_started) return;
-    unawaited(_startIfAllowed());
-  }
-
-  Future<void> _startIfAllowed() async {
-    if (_started) return;
-    if (!await SessionManager.isLoggedIn()) {
-      _disposeSocket();
-      return;
-    }
-
     _started = true;
-    _runGeneration++;
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       unawaited(_drainOutbox());
@@ -76,33 +55,6 @@ class ProductSyncService {
     });
     unawaited(_drainOutbox());
     unawaited(_ensureRealtimeConnection());
-  }
-
-  Future<void> _handleSessionChanged() async {
-    final loggedIn = await SessionManager.isLoggedIn();
-    if (!loggedIn) {
-      stop();
-      return;
-    }
-    if (_autoStartRequested && !_started) {
-      await _startIfAllowed();
-    }
-  }
-
-  @visibleForTesting
-  bool get hasSessionListener => _sessionSub != null;
-
-  void stop({bool preserveAutoStart = true}) {
-    if (!preserveAutoStart) {
-      _autoStartRequested = false;
-    }
-    _runGeneration++;
-    _started = false;
-    _dispatchDebounce?.cancel();
-    _dispatchDebounce = null;
-    _pollingTimer?.cancel();
-    _pollingTimer = null;
-    _disposeSocket();
   }
 
   void scheduleProcessing({Duration delay = Duration.zero}) {
@@ -126,96 +78,64 @@ class ProductSyncService {
   }
 
   Future<void> retryFailedNow() async {
-    await _runWithDbRecovery(
-      () => _outbox.retryFailedNow(),
-      reason: 'retry_failed_now',
-    );
+    await _outbox.retryFailedNow();
     scheduleProcessing();
   }
 
   Future<void> _drainOutbox() async {
-    if (_draining || !_started) return;
+    if (_draining) return;
     _draining = true;
-    final generation = _runGeneration;
     try {
-      while (_started && generation == _runGeneration) {
-        final items = await _runWithDbRecovery(
-          () => _outbox.listDueItems(limit: 10),
-          reason: 'list_due_items',
-        );
+      while (true) {
+        final items = await _outbox.listDueItems(limit: 10);
         if (items.isEmpty) break;
 
         for (final item in items) {
-          if (!_started || generation != _runGeneration) break;
           final id = item['id'] as int;
           final retryCount = (item['retry_count'] as int?) ?? 0;
-          await _runWithDbRecovery(
-            () => _outbox.markSyncing(id),
-            reason: 'mark_syncing_$id',
-          );
+          await _outbox.markSyncing(id);
           await AppLogger.instance.logInfo(
             'Product sync request start outboxId=$id op=${item['operation_type']}',
             module: 'product_sync',
           );
 
           try {
-            final payload =
-                jsonDecode(item['payload_json'] as String)
-                    as Map<String, dynamic>;
+            final payload = jsonDecode(item['payload_json'] as String)
+                as Map<String, dynamic>;
             final response = await _pushOperation(payload);
-            await _runWithDbRecovery(
-              () => _applyServerProduct(
-                response.product,
-                clearSyncError: true,
-                markNeedsSync: false,
-              ),
-              reason: 'apply_server_product_$id',
+            await _applyServerProduct(
+              response.product,
+              clearSyncError: true,
+              markNeedsSync: false,
             );
-            await _runWithDbRecovery(
-              () => _outbox.markSuccess(id),
-              reason: 'mark_success_$id',
-            );
+            await _outbox.markSuccess(id);
             await AppLogger.instance.logInfo(
               'Product sync success outboxId=$id productId=${response.product.id} type=${response.eventType}',
               module: 'product_sync',
             );
           } on _ProductSyncConflict catch (conflict) {
-            await _runWithDbRecovery(
-              () => _markConflict(conflict.serverProduct, conflict.message),
-              reason: 'mark_conflict_$id',
-            );
-            await _runWithDbRecovery(
-              () => _outbox.markFailure(
-                id,
-                error: conflict.message,
-                retryCount: retryCount + 1,
-                retryDelay: const Duration(minutes: 10),
-              ),
-              reason: 'mark_failure_conflict_$id',
+            await _markConflict(conflict.serverProduct, conflict.message);
+            await _outbox.markFailure(
+              id,
+              error: conflict.message,
+              retryCount: retryCount + 1,
+              retryDelay: const Duration(minutes: 10),
             );
             await AppLogger.instance.logWarn(
               'Conflict detected localProductId=${conflict.localProductId} serverId=${conflict.serverProduct.serverId} message=${conflict.message}',
               module: 'product_sync',
             );
-          } on _ProductSyncStopped {
-            break;
           } catch (error) {
             final nextRetry = _retryDelayForAttempt(retryCount + 1);
-            await _runWithDbRecovery(
-              () => _markProductFailed(
-                localProductId: item['entity_id'] as int,
-                message: error.toString(),
-              ),
-              reason: 'mark_product_failed_$id',
+            await _markProductFailed(
+              localProductId: item['entity_id'] as int,
+              message: error.toString(),
             );
-            await _runWithDbRecovery(
-              () => _outbox.markFailure(
-                id,
-                error: error.toString(),
-                retryCount: retryCount + 1,
-                retryDelay: nextRetry,
-              ),
-              reason: 'mark_failure_$id',
+            await _outbox.markFailure(
+              id,
+              error: error.toString(),
+              retryCount: retryCount + 1,
+              retryDelay: nextRetry,
             );
             await AppLogger.instance.logWarn(
               'Product sync failure outboxId=$id retry=${retryCount + 1} error=$error',
@@ -247,9 +167,7 @@ class ProductSyncService {
       throw StateError('Cloud company not configured');
     }
 
-    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
-      settings,
-    );
+    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(settings);
     final headers = <String, String>{'Content-Type': 'application/json'};
     final cloudKey = settings.cloudApiKey?.trim();
     if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -336,9 +254,7 @@ class ProductSyncService {
   ProductModel _serverProductFromJson(Map<String, dynamic> json) {
     final updatedAt = DateTime.parse(json['updatedAt'] as String);
     final deletedAtRaw = json['deletedAt'] as String?;
-    final deletedAt = deletedAtRaw == null
-        ? null
-        : DateTime.parse(deletedAtRaw);
+    final deletedAt = deletedAtRaw == null ? null : DateTime.parse(deletedAtRaw);
     return ProductModel(
       id: 0,
       businessId: json['businessId']?.toString(),
@@ -384,9 +300,7 @@ class ProductSyncService {
       final localId = localRows.isEmpty
           ? null
           : (localRows.first['id'] as int?);
-      final local = localRows.isEmpty
-          ? null
-          : ProductModel.fromMap(localRows.first);
+      final local = localRows.isEmpty ? null : ProductModel.fromMap(localRows.first);
 
       if (local != null &&
           local.needsSync &&
@@ -410,8 +324,7 @@ class ProductSyncService {
         'stock': serverProduct.stock,
         'is_active': serverProduct.isActive ? 1 : 0,
         'sync_status': markNeedsSync ? 'pending' : 'synced',
-        'local_updated_at_ms':
-            local?.localUpdatedAtMs ?? serverProduct.localUpdatedAtMs,
+        'local_updated_at_ms': local?.localUpdatedAtMs ?? serverProduct.localUpdatedAtMs,
         'server_updated_at_ms': serverProduct.serverUpdatedAtMs,
         'version': serverProduct.version,
         'last_modified_by': serverProduct.lastModifiedBy,
@@ -419,16 +332,19 @@ class ProductSyncService {
         'needs_sync': markNeedsSync ? 1 : 0,
         'last_synced_at_ms': now,
         'deleted_at_ms': serverProduct.deletedAtMs,
-        'updated_at_ms':
-            serverProduct.serverUpdatedAtMs ?? serverProduct.updatedAtMs,
+        'updated_at_ms': serverProduct.serverUpdatedAtMs ?? serverProduct.updatedAtMs,
       };
 
       if (localId == null) {
-        await txn.insert(DbTables.products, {
-          ...serverProduct.toMap(),
-          ...values,
-          'created_at_ms': serverProduct.createdAtMs,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert(
+          DbTables.products,
+          {
+            ...serverProduct.toMap(),
+            ...values,
+            'created_at_ms': serverProduct.createdAtMs,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       } else {
         await txn.update(
           DbTables.products,
@@ -438,8 +354,7 @@ class ProductSyncService {
         );
       }
 
-      final resolvedId =
-          localId ??
+      final resolvedId = localId ??
           Sqflite.firstIntValue(
             await txn.rawQuery(
               'SELECT id FROM ${DbTables.products} WHERE server_id = ? OR code = ? ORDER BY id DESC LIMIT 1',
@@ -462,7 +377,7 @@ class ProductSyncService {
     required int localProductId,
     required String message,
   }) async {
-    final db = await DatabaseManager.instance.database;
+    final db = await AppDb.database;
     await db.update(
       DbTables.products,
       {
@@ -477,17 +392,19 @@ class ProductSyncService {
   }
 
   Future<void> _markConflict(ProductModel serverProduct, String message) async {
-    final db = await DatabaseManager.instance.database;
+    final db = await AppDb.database;
     await db.update(
       DbTables.products,
-      {'sync_status': 'conflict', 'last_sync_error': message},
+      {
+        'sync_status': 'conflict',
+        'last_sync_error': message,
+      },
       where: 'server_id = ? OR code = ?',
       whereArgs: [serverProduct.serverId, serverProduct.code],
     );
   }
 
   Future<void> _ensureRealtimeConnection() async {
-    if (!_started) return;
     final settings = await BusinessSettingsRepository().loadSettings();
     if (!settings.cloudEnabled) {
       _disposeSocket();
@@ -507,9 +424,7 @@ class ProductSyncService {
       return;
     }
 
-    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
-      settings,
-    );
+    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(settings);
     final options = io.OptionBuilder()
         .setTransports(['websocket'])
         .disableAutoConnect()
@@ -562,7 +477,6 @@ class ProductSyncService {
   }
 
   Future<void> _handleRealtimePayload(dynamic data) async {
-    if (!_started) return;
     if (data is! Map) return;
     final payload = Map<String, dynamic>.from(data);
     final eventId = payload['eventId']?.toString() ?? '';
@@ -583,51 +497,18 @@ class ProductSyncService {
       module: 'product_sync',
     );
     try {
-      await _runWithDbRecovery(
-        () => _applyServerProduct(
-          product,
-          clearSyncError: true,
-          markNeedsSync: false,
-        ),
-        reason: 'realtime_apply',
+      await _applyServerProduct(
+        product,
+        clearSyncError: true,
+        markNeedsSync: false,
       );
     } on _ProductSyncConflict catch (conflict) {
-      await _runWithDbRecovery(
-        () => _markConflict(conflict.serverProduct, conflict.message),
-        reason: 'realtime_conflict',
-      );
+      await _markConflict(conflict.serverProduct, conflict.message);
       await AppLogger.instance.logWarn(
         'Conflict detected during realtime apply localProductId=${conflict.localProductId} message=${conflict.message}',
         module: 'product_sync',
       );
     }
-  }
-
-  Future<T> _runWithDbRecovery<T>(
-    Future<T> Function() action, {
-    required String reason,
-  }) async {
-    try {
-      return await action();
-    } catch (error) {
-      if (!_isClosedDatabaseError(error)) rethrow;
-      await AppLogger.instance.logWarn(
-        'Recovering closed database during product sync: $reason error=$error',
-        module: 'product_sync',
-      );
-      await DatabaseManager.instance.reopen(reason: 'product_sync_$reason');
-      if (!_started) {
-        throw const _ProductSyncStopped();
-      }
-      return action();
-    }
-  }
-
-  bool _isClosedDatabaseError(Object error) {
-    final message = error.toString().toLowerCase();
-    return message.contains('database has already been closed') ||
-        message.contains('database_closed') ||
-        message.contains('bad state: this database has already been closed');
   }
 
   void _disposeSocket() {
@@ -657,8 +538,4 @@ class _ProductSyncConflict implements Exception {
 
   @override
   String toString() => message;
-}
-
-class _ProductSyncStopped implements Exception {
-  const _ProductSyncStopped();
 }

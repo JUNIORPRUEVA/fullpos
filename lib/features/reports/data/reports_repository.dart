@@ -240,7 +240,9 @@ class ReportsRepository {
       buckets[method] = (buckets[method] ?? 0.0) + amount;
     }
 
-    final normalizedMethod = _normalizePaymentMethodLabel(originalPaymentMethod);
+    final normalizedMethod = _normalizePaymentMethodLabel(
+      originalPaymentMethod,
+    );
     final absoluteOriginalTotal = originalTotal.abs();
     final hasBreakdown =
         originalPaymentCashAmount.abs() > 0.009 ||
@@ -435,8 +437,9 @@ class ReportsRepository {
     double finalTotalProfit = netTotalProfit;
     double finalTotalCost = netTotalCost;
     int finalSalesCount = salesCount;
-    double finalAvgTicket =
-        salesCount > 0 ? (netTotalSales / salesCount) : avgTicket;
+    double finalAvgTicket = salesCount > 0
+        ? (netTotalSales / salesCount)
+        : avgTicket;
     var usedLegacySalesFallback = false;
 
     // Fallback: si no hay items (datos legados), usar tabla sales con devoluciones incluidas.
@@ -465,8 +468,9 @@ class ReportsRepository {
 
       finalTotalSales = fallbackSales + fallbackReturns;
       finalSalesCount = fallbackSalesCount;
-      finalAvgTicket =
-          fallbackSalesCount > 0 ? (finalTotalSales / fallbackSalesCount) : 0.0;
+      finalAvgTicket = fallbackSalesCount > 0
+          ? (finalTotalSales / fallbackSalesCount)
+          : 0.0;
       // Sin sale_items no se puede calcular costo/ganancia real.
       finalTotalProfit = 0.0;
       finalTotalCost = 0.0;
@@ -679,7 +683,8 @@ class ReportsRepository {
       );
     }).toList();
   }
-/// Serie temporal de ganancia neta por día
+
+  /// Serie temporal de ganancia neta por día
   static Future<List<SeriesDataPoint>> getProfitSeries({
     required int startMs,
     required int endMs,
@@ -775,6 +780,7 @@ class ReportsRepository {
 
     return series;
   }
+
   /// Top productos por ventas
   static Future<List<TopProduct>> getTopProducts({
     required int startMs,
@@ -787,14 +793,19 @@ class ReportsRepository {
         '''
       SELECT
         product_id,
-        product_name,
+        COALESCE(
+          NULLIF(TRIM(master_name), ''),
+          NULLIF(TRIM(MAX(snapshot_name)), ''),
+          'Producto sin nombre'
+        ) as product_name,
         COALESCE(SUM(total_sales), 0) as total_sales,
         COALESCE(SUM(total_qty), 0) as total_qty,
         COALESCE(SUM(total_profit), 0) as total_profit
       FROM (
         SELECT 
-          si.product_id as product_id,
-          (CASE WHEN LENGTH(TRIM(si.product_name_snapshot)) > 0 THEN si.product_name_snapshot ELSE COALESCE(p.name, '') END) as product_name,
+          COALESCE(si.product_id, p.id) as product_id,
+          (CASE WHEN LENGTH(TRIM(COALESCE(si.product_name_snapshot, ''))) > 0 THEN si.product_name_snapshot ELSE COALESCE(p.name, '') END) as snapshot_name,
+          COALESCE(p.name, '') as master_name,
           COALESCE(si.total_line, 0) as total_sales,
           COALESCE(si.qty, 0) as total_qty,
           COALESCE(si.total_line, 0) - (COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)) as total_profit
@@ -813,12 +824,13 @@ class ReportsRepository {
           AND s.created_at_ms <= ?
         UNION ALL
         SELECT
-          COALESCE(ri.product_id, si.product_id) as product_id,
+          COALESCE(ri.product_id, si.product_id, p.id) as product_id,
           (CASE
             WHEN si.product_name_snapshot IS NOT NULL AND LENGTH(TRIM(si.product_name_snapshot)) > 0 THEN si.product_name_snapshot
             WHEN p.name IS NOT NULL AND LENGTH(TRIM(p.name)) > 0 THEN p.name
             ELSE COALESCE(ri.description, '')
-          END) as product_name,
+          END) as snapshot_name,
+          COALESCE(p.name, '') as master_name,
           -COALESCE(ri.total, 0) as total_sales,
           -COALESCE(ri.qty, 0) as total_qty,
           -(
@@ -836,13 +848,21 @@ class ReportsRepository {
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
       ) t
-      GROUP BY product_id, product_name
+      GROUP BY
+        product_id,
+        master_name,
+        CASE WHEN product_id IS NULL THEN snapshot_name ELSE NULL END
       ORDER BY total_sales DESC
       LIMIT ?
     ''';
 
-    final results =
-        await db.rawQuery(query, [startMs, endMs, startMs, endMs, limit]);
+    final results = await db.rawQuery(query, [
+      startMs,
+      endMs,
+      startMs,
+      endMs,
+      limit,
+    ]);
 
     return results.map((row) {
       return TopProduct(
@@ -865,19 +885,31 @@ class ReportsRepository {
 
     final query =
         '''
-      SELECT 
-        s.customer_id as client_id,
-        s.customer_name_snapshot as client_name,
-        COALESCE(SUM(s.total), 0) as total_spent,
-        COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) as purchase_count
-      FROM ${DbTables.sales} s
-      WHERE s.kind IN ('invoice', 'sale', 'return')
-        AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND s.deleted_at_ms IS NULL
-        AND s.customer_id IS NOT NULL
-        AND s.created_at_ms >= ?
-        AND s.created_at_ms <= ?
-      GROUP BY s.customer_id, s.customer_name_snapshot
+      SELECT
+        t.client_id,
+        COALESCE(
+          NULLIF(TRIM(c.nombre), ''),
+          NULLIF(TRIM(t.snapshot_name), ''),
+          'Cliente General'
+        ) AS client_name,
+        t.total_spent,
+        t.purchase_count
+      FROM (
+        SELECT
+          s.customer_id AS client_id,
+          MAX(COALESCE(s.customer_name_snapshot, '')) AS snapshot_name,
+          COALESCE(SUM(s.total), 0) AS total_spent,
+          COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) AS purchase_count
+        FROM ${DbTables.sales} s
+        WHERE s.kind IN ('invoice', 'sale', 'return')
+          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+          AND s.deleted_at_ms IS NULL
+          AND s.customer_id IS NOT NULL
+          AND s.created_at_ms >= ?
+          AND s.created_at_ms <= ?
+        GROUP BY s.customer_id
+      ) t
+      LEFT JOIN ${DbTables.clients} c ON c.id = t.client_id
       ORDER BY total_spent DESC
       LIMIT ?
     ''';
@@ -983,25 +1015,66 @@ class ReportsRepository {
     final query =
         '''
       SELECT
-        s.customer_id AS client_id,
-        COALESCE(NULLIF(TRIM(s.customer_name_snapshot), ''), 'Cliente General') AS client_name,
-        COALESCE(SUM(s.total), 0) AS total_sales,
-        COALESCE(SUM(CASE WHEN COALESCE(LOWER(s.payment_method), '') = 'credit' THEN s.total ELSE 0 END), 0) AS total_credit,
-        COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) AS sales_count,
-        COALESCE(MAX(s.created_at_ms), 0) AS last_purchase_at_ms
-      FROM ${DbTables.sales} s
-      WHERE s.kind IN ('invoice', 'sale', 'return')
-        AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND s.deleted_at_ms IS NULL
-        AND s.customer_id IS NOT NULL
-        AND s.created_at_ms >= ?
-        AND s.created_at_ms <= ?
-      GROUP BY s.customer_id, s.customer_name_snapshot
+        t.client_id,
+        COALESCE(
+          NULLIF(TRIM(c.nombre), ''),
+          NULLIF(TRIM(t.snapshot_name), ''),
+          'Cliente General'
+        ) AS client_name,
+        COALESCE(SUM(t.total_sales), 0) AS total_sales,
+        COALESCE(SUM(t.total_credit), 0) AS total_credit,
+        COALESCE(SUM(t.sales_count), 0) AS sales_count,
+        COALESCE(MAX(t.last_purchase_at_ms), 0) AS last_purchase_at_ms
+      FROM (
+        SELECT
+          s.customer_id AS client_id,
+          MAX(COALESCE(s.customer_name_snapshot, '')) AS snapshot_name,
+          COALESCE(SUM(s.total), 0) AS total_sales,
+          COALESCE(SUM(CASE WHEN COALESCE(LOWER(s.payment_method), '') = 'credit' THEN s.total ELSE 0 END), 0) AS total_credit,
+          COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) AS sales_count,
+          COALESCE(MAX(s.created_at_ms), 0) AS last_purchase_at_ms
+        FROM ${DbTables.sales} s
+        WHERE s.kind IN ('invoice', 'sale')
+          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+          AND s.deleted_at_ms IS NULL
+          AND s.customer_id IS NOT NULL
+          AND s.created_at_ms >= ?
+          AND s.created_at_ms <= ?
+        GROUP BY s.customer_id
+
+        UNION ALL
+
+        SELECT
+          rs.customer_id AS client_id,
+          MAX(COALESCE(rs.customer_name_snapshot, '')) AS snapshot_name,
+          COALESCE(SUM(rs.total), 0) AS total_sales,
+          COALESCE(SUM(CASE WHEN COALESCE(LOWER(os.payment_method), '') = 'credit' THEN rs.total ELSE 0 END), 0) AS total_credit,
+          0 AS sales_count,
+          COALESCE(MAX(rs.created_at_ms), 0) AS last_purchase_at_ms
+        FROM ${DbTables.returns} r
+        INNER JOIN ${DbTables.sales} rs ON r.return_sale_id = rs.id
+        INNER JOIN ${DbTables.sales} os ON r.original_sale_id = os.id
+        WHERE rs.kind = 'return'
+          AND rs.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+          AND rs.deleted_at_ms IS NULL
+          AND rs.customer_id IS NOT NULL
+          AND rs.created_at_ms >= ?
+          AND rs.created_at_ms <= ?
+        GROUP BY rs.customer_id
+      ) t
+      LEFT JOIN ${DbTables.clients} c ON c.id = t.client_id
+      GROUP BY t.client_id, c.nombre
       ORDER BY total_sales DESC
       LIMIT ?
     ''';
 
-    final rows = await db.rawQuery(query, [startMs, endMs, limit]);
+    final rows = await db.rawQuery(query, [
+      startMs,
+      endMs,
+      startMs,
+      endMs,
+      limit,
+    ]);
     return rows
         .map(
           (row) => ClientSalesSummary(
@@ -1174,23 +1247,24 @@ class ReportsRepository {
               (row['original_payment_card_amount'] as num?)?.toDouble() ?? 0.0,
           originalPaymentTransferAmount:
               (row['original_payment_transfer_amount'] as num?)?.toDouble() ??
-                  0.0,
+              0.0,
         ),
         countSales: false,
       );
     }
 
-    final data = amountsByMethod.entries
-        .map(
-          (entry) => PaymentMethodData(
-            method: entry.key,
-            amount: entry.value,
-            count: countsByMethod[entry.key] ?? 0,
-          ),
-        )
-        .where((entry) => entry.amount > 0.009)
-        .toList()
-      ..sort((a, b) => b.amount.compareTo(a.amount));
+    final data =
+        amountsByMethod.entries
+            .map(
+              (entry) => PaymentMethodData(
+                method: entry.key,
+                amount: entry.value,
+                count: countsByMethod[entry.key] ?? 0,
+              ),
+            )
+            .where((entry) => entry.amount > 0.009)
+            .toList()
+          ..sort((a, b) => b.amount.compareTo(a.amount));
 
     return data;
   }
@@ -1283,8 +1357,3 @@ class ReportsRepository {
     };
   }
 }
-
-
-
-
-

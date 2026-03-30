@@ -3,32 +3,9 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
 import '../db/app_db.dart';
-import '../db/database_manager.dart';
 import '../db/tables.dart';
 
 class ProductSyncOutboxRepository {
-  Future<T> _withRecoveredDb<T>(Future<T> Function(Database db) action) async {
-    Future<T> run() async {
-      final db = await AppDb.database;
-      return action(db);
-    }
-
-    try {
-      return await run();
-    } catch (error) {
-      if (!_isClosedDatabaseError(error)) rethrow;
-      await DatabaseManager.instance.reopen(reason: 'product_sync_outbox');
-      return run();
-    }
-  }
-
-  bool _isClosedDatabaseError(Object error) {
-    final message = error.toString().toLowerCase();
-    return message.contains('database has already been closed') ||
-        message.contains('database_closed') ||
-        message.contains('bad state: this database has already been closed');
-  }
-
   Future<void> enqueue({
     required int entityId,
     required String operationType,
@@ -36,35 +13,7 @@ class ProductSyncOutboxRepository {
     int priority = 50,
     DatabaseExecutor? executor,
   }) async {
-    if (executor != null) {
-      await _enqueueWithDb(
-        executor,
-        entityId: entityId,
-        operationType: operationType,
-        payload: payload,
-        priority: priority,
-      );
-      return;
-    }
-
-    await _withRecoveredDb(
-      (db) => _enqueueWithDb(
-        db,
-        entityId: entityId,
-        operationType: operationType,
-        payload: payload,
-        priority: priority,
-      ),
-    );
-  }
-
-  Future<void> _enqueueWithDb(
-    DatabaseExecutor db, {
-    required int entityId,
-    required String operationType,
-    required Map<String, dynamic> payload,
-    required int priority,
-  }) async {
+    final db = executor ?? await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final encodedPayload = jsonEncode(payload);
 
@@ -114,53 +63,50 @@ class ProductSyncOutboxRepository {
   }
 
   Future<List<Map<String, dynamic>>> listDueItems({int limit = 20}) async {
-    return _withRecoveredDb((db) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      return db.query(
-        DbTables.productSyncOutbox,
-        where: '(status = ? OR status = ?) AND next_attempt_at_ms <= ?',
-        whereArgs: ['pending', 'failed', now],
-        orderBy: 'priority DESC, next_attempt_at_ms ASC, id ASC',
-        limit: limit,
-      );
-    });
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return db.query(
+      DbTables.productSyncOutbox,
+      where: '(status = ? OR status = ?) AND next_attempt_at_ms <= ?',
+      whereArgs: ['pending', 'failed', now],
+      orderBy: 'priority DESC, next_attempt_at_ms ASC, id ASC',
+      limit: limit,
+    );
   }
 
   Future<void> markSyncing(int id) async {
-    await _withRecoveredDb((db) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.update(
-        DbTables.productSyncOutbox,
-        {
-          'status': 'syncing',
-          'locked_at_ms': now,
-          'last_attempt_at_ms': now,
-          'updated_at_ms': now,
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      DbTables.productSyncOutbox,
+      {
+        'status': 'syncing',
+        'locked_at_ms': now,
+        'last_attempt_at_ms': now,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<void> markSuccess(int id) async {
-    await _withRecoveredDb((db) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.update(
-        DbTables.productSyncOutbox,
-        {
-          'status': 'synced',
-          'retry_count': 0,
-          'next_attempt_at_ms': now,
-          'locked_at_ms': null,
-          'last_success_at_ms': now,
-          'last_error': null,
-          'updated_at_ms': now,
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      DbTables.productSyncOutbox,
+      {
+        'status': 'synced',
+        'retry_count': 0,
+        'next_attempt_at_ms': now,
+        'locked_at_ms': null,
+        'last_success_at_ms': now,
+        'last_error': null,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<void> markFailure(
@@ -169,66 +115,61 @@ class ProductSyncOutboxRepository {
     required int retryCount,
     required Duration retryDelay,
   }) async {
-    await _withRecoveredDb((db) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.update(
-        DbTables.productSyncOutbox,
-        {
-          'status': 'failed',
-          'retry_count': retryCount,
-          'next_attempt_at_ms': now + retryDelay.inMilliseconds,
-          'locked_at_ms': null,
-          'last_error': error,
-          'updated_at_ms': now,
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    });
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      DbTables.productSyncOutbox,
+      {
+        'status': 'failed',
+        'retry_count': retryCount,
+        'next_attempt_at_ms': now + retryDelay.inMilliseconds,
+        'locked_at_ms': null,
+        'last_error': error,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<List<Map<String, dynamic>>> listStatusRows() async {
-    return _withRecoveredDb(
-      (db) => db.query(
-        DbTables.productSyncOutbox,
-        orderBy: 'status ASC, priority DESC, updated_at_ms DESC',
-      ),
+    final db = await AppDb.database;
+    return db.query(
+      DbTables.productSyncOutbox,
+      orderBy: 'status ASC, priority DESC, updated_at_ms DESC',
     );
   }
 
   Future<int> pendingCount() async {
-    final rows = await _withRecoveredDb(
-      (db) => db.rawQuery(
-        'SELECT COUNT(*) AS count FROM ${DbTables.productSyncOutbox} WHERE status IN (?, ?, ?)',
-        ['pending', 'failed', 'syncing'],
-      ),
+    final db = await AppDb.database;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS count FROM ${DbTables.productSyncOutbox} WHERE status IN (?, ?, ?)',
+      ['pending', 'failed', 'syncing'],
     );
     return (rows.first['count'] as int?) ?? 0;
   }
 
   Future<int?> lastSuccessAtMs() async {
-    final rows = await _withRecoveredDb(
-      (db) => db.rawQuery(
-        'SELECT MAX(last_success_at_ms) AS ts FROM ${DbTables.productSyncOutbox}',
-      ),
+    final db = await AppDb.database;
+    final rows = await db.rawQuery(
+      'SELECT MAX(last_success_at_ms) AS ts FROM ${DbTables.productSyncOutbox}',
     );
     return rows.first['ts'] as int?;
   }
 
   Future<void> retryFailedNow() async {
-    await _withRecoveredDb((db) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.update(
-        DbTables.productSyncOutbox,
-        {
-          'status': 'pending',
-          'next_attempt_at_ms': now,
-          'locked_at_ms': null,
-          'updated_at_ms': now,
-        },
-        where: 'status = ?',
-        whereArgs: ['failed'],
-      );
-    });
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      DbTables.productSyncOutbox,
+      {
+        'status': 'pending',
+        'next_attempt_at_ms': now,
+        'locked_at_ms': null,
+        'updated_at_ms': now,
+      },
+      where: 'status = ?',
+      whereArgs: ['failed'],
+    );
   }
 }

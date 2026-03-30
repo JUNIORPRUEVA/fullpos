@@ -29,19 +29,11 @@ import '../dialogs/product_form_dialog.dart';
 import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/product_card.dart';
 import '../widgets/product_thumbnail.dart';
-import '../widgets/products_surface.dart';
 import '../../../../theme/app_colors.dart' as ui_colors;
 
 /// Tab de Catálogo de Productos
 class CatalogTab extends StatefulWidget {
-  const CatalogTab({
-    super.key,
-    required this.onGoToInventory,
-    required this.onGoToCategories,
-  });
-
-  final VoidCallback onGoToInventory;
-  final VoidCallback onGoToCategories;
+  const CatalogTab({super.key});
 
   @override
   State<CatalogTab> createState() => _CatalogTabState();
@@ -66,33 +58,6 @@ class _CatalogTabState extends State<CatalogTab> {
 
   bool _isAdmin = false;
   UserPermissions _permissions = UserPermissions.cashier();
-
-  ProductFilters _mergeFilters({
-    int? categoryId,
-    bool updateCategoryId = false,
-  }) {
-    final current = _currentFilters;
-    return ProductFilters(
-      categoryId: updateCategoryId ? categoryId : current?.categoryId,
-      supplierId: current?.supplierId,
-      hasLowStock: current?.hasLowStock,
-      isOutOfStock: current?.isOutOfStock,
-      isActive: current?.isActive,
-      createdAfter: current?.createdAfter,
-      createdBefore: current?.createdBefore,
-    );
-  }
-
-  Future<void> _applyQuickCategoryFilter(int? categoryId) async {
-    if (!mounted) return;
-    setState(() {
-      _currentFilters = _mergeFilters(
-        categoryId: categoryId,
-        updateCategoryId: true,
-      );
-    });
-    await _loadProducts();
-  }
 
   Future<void> _exportProductsToExcel() async {
     try {
@@ -416,6 +381,60 @@ class _CatalogTabState extends State<CatalogTab> {
     _loadProducts();
   }
 
+  Future<void> _showCatalogActions() async {
+    if (_isLoading) return;
+
+    if (!(_isAdmin || _permissions.canEditProducts)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No tienes permiso para esta acción.')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Acciones del catálogo'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _handleDeleteAllProducts();
+            },
+            child: const ListTile(
+              dense: true,
+              leading: Icon(Icons.delete_forever, color: Colors.redAccent),
+              title: Text('Eliminar todos los productos'),
+              subtitle: Text('Acción irreversible (se borran del catálogo).'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _handleDeleteAllCategories();
+            },
+            child: const ListTile(
+              dense: true,
+              leading: Icon(Icons.delete_sweep, color: Colors.redAccent),
+              title: Text('Eliminar todas las categorías'),
+              subtitle: Text('Puede dejar productos sin categoría.'),
+            ),
+          ),
+          const SizedBox(height: 4),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Align(
+              alignment: Alignment.centerRight,
+              child: Text('Cancelar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _confirmTyped({
     required String title,
     required String message,
@@ -659,382 +678,312 @@ class _CatalogTabState extends State<CatalogTab> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     if (product == null) {
-      return const SizedBox.shrink();
+      return Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Detalle del producto',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selecciona un producto para ver su información.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
     }
     final canViewPurchasePrice = _isAdmin || _permissions.canViewPurchasePrice;
     final canViewProfit = _isAdmin || _permissions.canViewProfit;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final ultraCompact =
-            constraints.maxHeight < 760 || constraints.maxWidth < 360;
-        final compact =
-            ultraCompact ||
-            constraints.maxHeight < 840 ||
-            constraints.maxWidth < 390;
-        final imageHeight = ultraCompact ? 112.0 : (compact ? 136.0 : 168.0);
-        final metricColumns = constraints.maxWidth >= 340 ? 3 : 2;
-        final metricSpacing = ultraCompact ? 6.0 : 8.0;
-        final metricWidth =
-            (constraints.maxWidth - (metricSpacing * (metricColumns - 1))) /
-            metricColumns;
-        final saleLabel = ultraCompact ? 'Venta' : 'Precio venta';
-        final purchaseLabel = ultraCompact ? 'Compra' : 'Precio compra';
-        final availableLabel = ultraCompact ? 'Disp.' : 'Disponible';
-        final reservedLabel = ultraCompact ? 'Apart.' : 'Apartado';
-        final minimumLabel = ultraCompact ? 'Min.' : 'Stock mínimo';
-        final metricWidgets = <Widget>[
-          SizedBox(
-            width: metricWidth,
-            child: _buildDetailMetric(
-              label: saleLabel,
-              value: '\$${product.salePrice.toStringAsFixed(2)}',
-              color: ui_colors.AppColors.primaryBlue,
-              compact: compact,
-            ),
-          ),
-          SizedBox(
-            width: metricWidth,
-            child: _buildDetailMetric(
-              label: 'Stock',
-              value: product.stock.toStringAsFixed(0),
-              color: product.isOutOfStock
-                  ? scheme.error
-                  : (product.hasLowStock
-                        ? scheme.tertiary
-                        : ui_colors.AppColors.primaryBlue),
-              compact: compact,
-            ),
-          ),
-          SizedBox(
-            width: metricWidth,
-            child: _buildDetailMetric(
-              label: availableLabel,
-              value: product.availableStock.toStringAsFixed(0),
-              color: scheme.secondary,
-              compact: compact,
-            ),
-          ),
-          SizedBox(
-            width: metricWidth,
-            child: _buildDetailMetric(
-              label: reservedLabel,
-              value: product.reservedStock.toStringAsFixed(0),
-              color: scheme.outline,
-              compact: compact,
-            ),
-          ),
-          SizedBox(
-            width: metricWidth,
-            child: _buildDetailMetric(
-              label: minimumLabel,
-              value: product.stockMin.toStringAsFixed(0),
-              color: scheme.tertiary,
-              compact: compact,
-            ),
-          ),
-          SizedBox(
-            width: metricWidth,
-            child: canViewPurchasePrice
-                ? _buildDetailMetric(
-                    label: purchaseLabel,
-                    value: '\$${product.purchasePrice.toStringAsFixed(2)}',
-                    color: scheme.secondary,
-                    compact: compact,
-                  )
-                : _buildDetailMetric(
-                    label: 'Actualizado',
-                    value:
-                        '${product.updatedAt.day.toString().padLeft(2, '0')}/${product.updatedAt.month.toString().padLeft(2, '0')}/${product.updatedAt.year}',
-                    color: scheme.outline,
-                    compact: compact,
+    return Container(
+      decoration: BoxDecoration(
+        color: ui_colors.AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 1,
+        color: ui_colors.AppColors.cardBackground,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: scheme.shadow.withOpacity(0.06),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: ui_colors.AppColors.borderSoft),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: scheme.shadow.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-          ),
-        ];
-
-        if (canViewProfit) {
-          metricWidgets.addAll([
-            SizedBox(
-              width: metricWidth,
-              child: _buildDetailMetric(
-                label: 'Ganancia',
-                value: '\$${product.profit.toStringAsFixed(2)}',
-                color: product.profit >= 0 ? scheme.tertiary : scheme.error,
-                compact: compact,
-              ),
-            ),
-            SizedBox(
-              width: metricWidth,
-              child: _buildDetailMetric(
-                label: 'Margen',
-                value: '${product.profitPercentage.toStringAsFixed(1)}%',
-                color: product.profit >= 0 ? scheme.tertiary : scheme.error,
-                compact: compact,
-              ),
-            ),
-          ]);
-        }
-
-        return ProductsSurface(
-          padding: EdgeInsets.all(ultraCompact ? 12 : (compact ? 14 : 16)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: imageHeight,
-                width: double.infinity,
-                child: ProductThumbnail.fromProduct(
-                  product,
-                  width: double.infinity,
-                  height: imageHeight,
-                  borderRadius: BorderRadius.circular(16),
-                  showBorder: false,
+                  child: SizedBox(
+                    height: 240,
+                    width: double.infinity,
+                    child: ProductThumbnail.fromProduct(
+                      product,
+                      width: double.infinity,
+                      height: 240,
+                      borderRadius: BorderRadius.circular(14),
+                      showBorder: false,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 5,
-                          runSpacing: 5,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(9),
-                              ),
-                              child: Text(
-                                product.code,
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontFamily: 'Inter',
-                                  fontSize: ultraCompact ? 10 : null,
-                                ),
-                              ),
-                            ),
-                            if (product.isDeleted)
-                              _buildStatusBadge('ELIMINADO', scheme.error),
-                            if (!product.isActive && !product.isDeleted)
-                              _buildStatusBadge('INACTIVO', scheme.outline),
-                            if (product.isOutOfStock && product.isActive)
-                              _buildStatusBadge('AGOTADO', scheme.error),
-                            if (product.hasLowStock && product.isActive)
-                              _buildStatusBadge('STOCK BAJO', scheme.tertiary),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: compact ? 10 : 12,
-                            vertical: compact ? 8 : 10,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                ui_colors.AppColors.lightBlueHover,
-                                scheme.surface,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: ui_colors.AppColors.primaryBlue
-                                  .withOpacity(0.12),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Vista operativa',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: ui_colors.AppColors.textSecondary,
-                                  fontWeight: FontWeight.w700,
-                                  fontFamily: 'Inter',
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                product.name,
-                                maxLines: ultraCompact ? 1 : 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: ultraCompact
-                                      ? 15
-                                      : (compact ? 16 : 18),
-                                  fontFamily: 'Inter',
-                                  color: ui_colors.AppColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    width: ultraCompact ? 30 : 32,
-                    height: ultraCompact ? 30 : 32,
-                    child: IconButton(
-                      onPressed: () => _showProductDetails(product),
-                      tooltip: 'Ver detalle',
-                      icon: Icon(
-                        Icons.open_in_new,
-                        size: ultraCompact ? 14 : 15,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: ui_colors.AppColors.cardBackgroundAlt,
-                        foregroundColor: ui_colors.AppColors.primaryBlue,
-                        side: BorderSide(color: ui_colors.AppColors.borderSoft),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (product.categoryId != null || product.supplierId != null) ...[
-                SizedBox(height: ultraCompact ? 8 : 10),
-                Wrap(
-                  spacing: 5,
-                  runSpacing: 5,
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    if (product.categoryId != null)
-                      _buildContextChip(
-                        icon: Icons.category_outlined,
-                        text: _getCategoryName(product.categoryId) ?? '-',
-                        compact: ultraCompact,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
                       ),
-                    if (product.supplierId != null)
-                      _buildContextChip(
-                        icon: Icons.business_outlined,
-                        text: _getSupplierName(product.supplierId) ?? '-',
-                        compact: ultraCompact,
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: ui_colors.AppColors.borderSoft,
+                        ),
                       ),
+                      child: Text(
+                        product.code,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => _showProductDetails(product),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      tooltip: 'Ver detalle',
+                    ),
                   ],
                 ),
-              ],
-              SizedBox(height: ultraCompact ? 8 : 10),
-              Wrap(
-                spacing: metricSpacing,
-                runSpacing: metricSpacing,
-                children: metricWidgets,
-              ),
-              SizedBox(height: ultraCompact ? 8 : 10),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 10 : 12,
-                  vertical: compact ? 8 : 10,
+                const SizedBox(height: 10),
+                Text(
+                  product.name,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontFamily: 'Inter',
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                decoration: BoxDecoration(
-                  color: scheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: ui_colors.AppColors.borderSoft),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (product.isDeleted)
+                      _buildStatusBadge('ELIMINADO', scheme.error),
+                    if (!product.isActive && !product.isDeleted)
+                      _buildStatusBadge('INACTIVO', scheme.outline),
+                    if (product.isOutOfStock && product.isActive)
+                      _buildStatusBadge('AGOTADO', scheme.error),
+                    if (product.hasLowStock && product.isActive)
+                      _buildStatusBadge('STOCK BAJO', scheme.tertiary),
+                  ],
                 ),
-                child: Row(
+                const SizedBox(height: 12),
+                if (product.categoryId != null ||
+                    product.supplierId != null) ...[
+                  if (product.categoryId != null)
+                    _buildInfoLine(
+                      icon: Icons.category_outlined,
+                      label: 'Categoría',
+                      value: _getCategoryName(product.categoryId) ?? '-',
+                    ),
+                  if (product.supplierId != null)
+                    _buildInfoLine(
+                      icon: Icons.business_outlined,
+                      label: 'Suplidor',
+                      value: _getSupplierName(product.supplierId) ?? '-',
+                    ),
+                  const SizedBox(height: 12),
+                ],
+                Row(
                   children: [
                     Expanded(
                       child: _buildDetailMetric(
-                        label: 'Estado',
-                        value: product.isDeleted
-                            ? 'Eliminado'
-                            : (!product.isActive
-                                  ? 'Inactivo'
-                                  : (product.isOutOfStock
-                                        ? 'Agotado'
-                                        : (product.hasLowStock
-                                              ? 'Stock bajo'
-                                              : 'Operativo'))),
-                        color: product.isDeleted
-                            ? scheme.error
-                            : (!product.isActive
-                                  ? scheme.outline
-                                  : (product.isOutOfStock
-                                        ? scheme.error
-                                        : (product.hasLowStock
-                                              ? scheme.tertiary
-                                              : scheme.secondary))),
-                        compact: compact,
+                        label: 'Precio venta',
+                        value: '\$${product.salePrice.toStringAsFixed(2)}',
+                        color: ui_colors.AppColors.primaryBlue,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: _buildDetailMetric(
-                        label: 'Ubicación lógica',
-                        value:
-                            _getCategoryName(product.categoryId) ?? 'General',
-                        color: ui_colors.AppColors.primaryBlue,
-                        compact: compact,
+                        label: 'Stock',
+                        value: product.stock.toStringAsFixed(0),
+                        color: product.isOutOfStock
+                            ? scheme.error
+                            : (product.hasLowStock
+                                  ? scheme.tertiary
+                                  : ui_colors.AppColors.primaryBlue),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const Spacer(),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 10 : 12,
-                  vertical: compact ? 9 : 10,
-                ),
-                decoration: BoxDecoration(
-                  color: ui_colors.AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: ui_colors.AppColors.borderSoft),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Text(
-                      'Registro',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'Inter',
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Disponible',
+                        value: product.availableStock.toStringAsFixed(0),
+                        color: scheme.secondary,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    _buildContextChip(
-                      icon: Icons.calendar_today_outlined,
-                      text:
-                          'Creado ${product.createdAt.day.toString().padLeft(2, '0')}/${product.createdAt.month.toString().padLeft(2, '0')}/${product.createdAt.year}',
-                      compact: ultraCompact,
-                    ),
-                    const SizedBox(height: 6),
-                    _buildContextChip(
-                      icon: Icons.update_outlined,
-                      text:
-                          'Actualizado ${product.updatedAt.day.toString().padLeft(2, '0')}/${product.updatedAt.month.toString().padLeft(2, '0')}/${product.updatedAt.year}',
-                      compact: ultraCompact,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Apartado',
+                        value: product.reservedStock.toStringAsFixed(0),
+                        color: scheme.outline,
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDetailMetric(
+                        label: 'Stock mínimo',
+                        value: product.stockMin.toStringAsFixed(0),
+                        color: scheme.tertiary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: canViewPurchasePrice
+                          ? _buildDetailMetric(
+                              label: 'Precio compra',
+                              value:
+                                  '\$${product.purchasePrice.toStringAsFixed(2)}',
+                              color: scheme.secondary,
+                            )
+                          : _buildDetailMetric(
+                              label: 'Actualizado',
+                              value:
+                                  '${product.updatedAt.day.toString().padLeft(2, '0')}/${product.updatedAt.month.toString().padLeft(2, '0')}/${product.updatedAt.year}',
+                              color: scheme.outline,
+                            ),
+                    ),
+                  ],
+                ),
+                if (canViewProfit) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildDetailMetric(
+                          label: 'Ganancia',
+                          value: '\$${product.profit.toStringAsFixed(2)}',
+                          color: product.profit >= 0
+                              ? scheme.tertiary
+                              : scheme.error,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildDetailMetric(
+                          label: 'Margen',
+                          value:
+                              '${product.profitPercentage.toStringAsFixed(1)}%',
+                          color: product.profit >= 0
+                              ? scheme.tertiary
+                              : scheme.error,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: (_isAdmin || _permissions.canEditProducts)
+                            ? () => _showProductForm(product)
+                            : null,
+                        icon: const Icon(Icons.edit, size: 18),
+                        label: const Text('Editar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ui_colors.AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _requestAdjustStock(product),
+                        icon: const Icon(Icons.add_circle_outline, size: 18),
+                        label: const Text('Stock'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: ui_colors.AppColors.primaryBlue,
+                          side: BorderSide(
+                            color: ui_colors.AppColors.primaryBlue,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
   Widget _buildStatusBadge(String text, Color color) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
@@ -1045,7 +994,7 @@ class _CatalogTabState extends State<CatalogTab> {
           color: color == scheme.outline
               ? ui_colors.AppColors.textSecondary
               : scheme.onSurface,
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
           fontFamily: 'Inter',
           letterSpacing: 0.2,
@@ -1054,18 +1003,43 @@ class _CatalogTabState extends State<CatalogTab> {
     );
   }
 
+  Widget _buildInfoLine({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: scheme.onSurface.withOpacity(0.7)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$label: $value',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.75),
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetailMetric({
     required String label,
     required String value,
     required Color color,
-    bool compact = false,
   }) {
     final theme = Theme.of(context);
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 10 : 11,
-        vertical: compact ? 8 : 10,
-      ),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: ui_colors.AppColors.cardBackground,
         borderRadius: BorderRadius.circular(12),
@@ -1079,59 +1053,15 @@ class _CatalogTabState extends State<CatalogTab> {
             style: theme.textTheme.labelSmall?.copyWith(
               color: ui_colors.AppColors.textSecondary,
               fontFamily: 'Inter',
-              fontSize: compact ? 9 : null,
             ),
           ),
-          SizedBox(height: compact ? 2 : 4),
+          const SizedBox(height: 4),
           Text(
             value,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
               color: color,
               fontFamily: 'Inter',
-              fontSize: compact ? 13 : null,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContextChip({
-    required IconData icon,
-    required String text,
-    bool compact = false,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 5 : 6,
-      ),
-      decoration: BoxDecoration(
-        color: ui_colors.AppColors.cardBackgroundAlt,
-        borderRadius: BorderRadius.circular(compact ? 10 : 12),
-        border: Border.all(color: ui_colors.AppColors.borderSoft),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: compact ? 12 : 14, color: scheme.primary),
-          SizedBox(width: compact ? 5 : 6),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: compact ? 120 : 160),
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: compact ? 10 : 11,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Inter',
-                color: ui_colors.AppColors.textPrimary,
-              ),
             ),
           ),
         ],
@@ -1298,338 +1228,163 @@ class _CatalogTabState extends State<CatalogTab> {
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1200;
         final padding = _contentPadding(constraints);
-        final selectedCategoryId = _currentFilters?.categoryId;
-        final toolbarCompact = constraints.maxWidth < 1080;
-        final categoryWidth = toolbarCompact ? 122.0 : 138.0;
-        final actionSize = toolbarCompact ? 36.0 : 38.0;
-
-        Widget navButton({
-          required String label,
-          required VoidCallback onPressed,
-          required IconData icon,
-        }) {
-          return SizedBox(
-            height: actionSize,
-            child: OutlinedButton.icon(
-              onPressed: onPressed,
-              icon: Icon(icon, size: toolbarCompact ? 15 : 16),
-              label: Text(label),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: ui_colors.AppColors.primaryBlue,
-                backgroundColor: ui_colors.AppColors.lightBlueHover,
-                side: BorderSide(
-                  color: ui_colors.AppColors.primaryBlue.withOpacity(0.14),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: toolbarCompact ? 10 : 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: TextStyle(
-                  fontSize: toolbarCompact ? 11 : 12,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Inter',
-                ),
-              ),
-            ),
-          );
-        }
-
-        Widget toolbarIconButton({
-          required VoidCallback? onPressed,
-          required IconData icon,
-          required String tooltip,
-          Color? foregroundColor,
-          Color? backgroundColor,
-          Color? borderColor,
-        }) {
-          return Tooltip(
-            message: tooltip,
-            child: SizedBox(
-              width: actionSize,
-              height: actionSize,
-              child: IconButton(
-                onPressed: onPressed,
-                icon: Icon(icon, size: toolbarCompact ? 16 : 17),
-                style: IconButton.styleFrom(
-                  foregroundColor:
-                      foregroundColor ?? ui_colors.AppColors.textPrimary,
-                  backgroundColor: backgroundColor ?? Colors.white,
-                  disabledBackgroundColor: Colors.white,
-                  side: BorderSide(
-                    color: borderColor ?? ui_colors.AppColors.borderSoft,
-                  ),
-                  padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-
-        final searchField = TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: ui_colors.AppColors.cardBackgroundAlt,
-            hintText: 'Buscar por código o nombre...',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      _loadProducts();
-                    },
-                  )
-                : null,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        );
-
-        final categoryFilter = DropdownButtonFormField<int?>(
-          value: selectedCategoryId,
-          isDense: true,
-          isExpanded: true,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: ui_colors.AppColors.cardBackgroundAlt,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 9,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-          ),
-          icon: const Icon(Icons.expand_more, size: 18),
-          hint: const Text('Categoría'),
-          items: [
-            const DropdownMenuItem<int?>(
-              value: null,
-              child: Text('Todas', overflow: TextOverflow.ellipsis),
-            ),
-            ..._categories.map(
-              (category) => DropdownMenuItem<int?>(
-                value: category.id,
-                child: Text(
-                  category.name,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ),
-            ),
-          ],
-          onChanged: (value) => _applyQuickCategoryFilter(value),
-        );
-
-        final toolbarActions = [
-          toolbarIconButton(
-            onPressed: () => _showProductForm(),
-            icon: Icons.add_box_outlined,
-            tooltip: 'Crear producto',
-            foregroundColor: Colors.white,
-            backgroundColor: ui_colors.AppColors.primaryBlue,
-            borderColor: ui_colors.AppColors.primaryBlue,
-          ),
-          toolbarIconButton(
-            onPressed: _showFilters,
-            icon: Icons.tune,
-            tooltip: 'Filtros avanzados',
-            foregroundColor: _currentFilters?.hasFilters == true
-                ? scheme.primary
-                : ui_colors.AppColors.textPrimary,
-            backgroundColor: _currentFilters?.hasFilters == true
-                ? scheme.primary.withOpacity(0.10)
-                : Colors.white,
-            borderColor: _currentFilters?.hasFilters == true
-                ? scheme.primary.withOpacity(0.28)
-                : ui_colors.AppColors.borderSoft,
-          ),
-          toolbarIconButton(
-            onPressed: _exportProductsCatalogPdf,
-            icon: Icons.picture_as_pdf_outlined,
-            tooltip: 'Exportar PDF',
-          ),
-          toolbarIconButton(
-            onPressed: _exportProductsToExcel,
-            icon: Icons.table_view_outlined,
-            tooltip: 'Exportar Excel',
-          ),
-          toolbarIconButton(
-            onPressed: _importProductsFromExcel,
-            icon: Icons.upload_file_outlined,
-            tooltip: 'Importar productos',
-          ),
-          toolbarIconButton(
-            onPressed: (_isAdmin || _permissions.canEditProducts)
-                ? _handleDeleteAllProducts
-                : null,
-            icon: Icons.delete_sweep_outlined,
-            tooltip: 'Eliminar productos',
-            foregroundColor: scheme.error,
-            backgroundColor: scheme.error.withOpacity(0.08),
-            borderColor: scheme.error.withOpacity(0.22),
-          ),
-          toolbarIconButton(
-            onPressed: (_isAdmin || _permissions.canEditProducts)
-                ? _handleDeleteAllCategories
-                : null,
-            icon: Icons.category_outlined,
-            tooltip: 'Eliminar categorías',
-            foregroundColor: scheme.error,
-            backgroundColor: scheme.error.withOpacity(0.08),
-            borderColor: scheme.error.withOpacity(0.22),
-          ),
-        ];
-
-        final compactToolbar = LayoutBuilder(
-          builder: (context, toolbarConstraints) {
-            final stackedToolbar = toolbarConstraints.maxWidth < 1160;
-
-            final searchAndFilterRow = Row(
-              children: [
-                Expanded(child: searchField),
-                const SizedBox(width: 8),
-                SizedBox(width: categoryWidth, child: categoryFilter),
-              ],
-            );
-
-            final actionsWrap = Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              alignment: WrapAlignment.end,
-              children: toolbarActions,
-            );
-
-            final navRow = Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                navButton(
-                  label: 'Inventario',
-                  onPressed: widget.onGoToInventory,
-                  icon: Icons.inventory_2_outlined,
-                ),
-                navButton(
-                  label: 'Categorías',
-                  onPressed: widget.onGoToCategories,
-                  icon: Icons.category_outlined,
-                ),
-              ],
-            );
-
-            if (stackedToolbar) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  searchAndFilterRow,
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Flexible(child: actionsWrap),
-                      const SizedBox(width: 8),
-                      navRow,
-                    ],
-                  ),
-                ],
-              );
-            }
-
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: searchAndFilterRow),
-                const SizedBox(width: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 320),
-                  child: actionsWrap,
-                ),
-                const SizedBox(width: 10),
-                navRow,
-              ],
-            );
-          },
-        );
 
         final listContent = Column(
           children: [
-            ProductsSurface(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-              radius: 18,
-              child: compactToolbar,
-            ),
-            const SizedBox(height: 6),
-            Expanded(
-              child: ProductsSurface(
-                padding: EdgeInsets.zero,
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _products.isEmpty
-                    ? ProductsEmptyState(
-                        icon: Icons.inventory_2_outlined,
-                        title: _searchController.text.isNotEmpty
-                            ? 'Sin resultados'
-                            : 'Sin productos',
-                        message: _searchController.text.isNotEmpty ? '' : '',
-                        action: (_isAdmin || _permissions.canEditProducts)
-                            ? FilledButton.icon(
-                                onPressed: () => _showProductForm(),
-                                icon: const Icon(Icons.add),
-                                label: const Text('Crear producto'),
-                              )
-                            : null,
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadProducts,
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(8),
-                          itemCount: _products.length,
-                          separatorBuilder: (_, index) =>
-                              const SizedBox(height: 6),
-                          itemBuilder: (context, index) {
-                            final product = _products[index];
-                            return ProductCard(
-                              product: product,
-                              isSelected: _selectedProduct?.id == product.id,
-                              categoryName: _getCategoryName(
-                                product.categoryId,
-                              ),
-                              supplierName: _getSupplierName(
-                                product.supplierId,
-                              ),
-                              onTap: () =>
-                                  _selectProduct(product, showDetails: !isWide),
-                              onEdit: (_isAdmin || _permissions.canEditProducts)
-                                  ? () => _showProductForm(product)
-                                  : null,
-                              onDelete: () => _softDelete(product),
-                              onToggleActive:
-                                  (_isAdmin || _permissions.canEditProducts)
-                                  ? () => _toggleActive(product)
-                                  : null,
-                              onAddStock: () => _requestAdjustStock(product),
-                              showPurchasePrice:
-                                  _isAdmin || _permissions.canViewPurchasePrice,
-                              showProfit:
-                                  _isAdmin || _permissions.canViewProfit,
-                            );
-                          },
+            // Barra de búsqueda y filtros
+            Material(
+              elevation: 0,
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Buscar por código o nombre...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _loadProducts();
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(
+                        Icons.filter_list,
+                        color: _currentFilters?.hasFilters == true
+                            ? scheme.primary
+                            : null,
+                      ),
+                      onPressed: _showFilters,
+                      tooltip: 'Filtros',
+                    ),
+                    const SizedBox(width: 6),
+                    ElevatedButton.icon(
+                      onPressed: () => _showProductForm(),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Agregar producto'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.more_vert),
+                      onPressed: _showCatalogActions,
+                      tooltip: 'Acciones',
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.table_view),
+                      onPressed: _exportProductsToExcel,
+                      tooltip: 'Exportar a Excel',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.upload_file),
+                      onPressed: _importProductsFromExcel,
+                      tooltip: 'Importar Excel',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.picture_as_pdf),
+                      onPressed: _exportProductsCatalogPdf,
+                      tooltip: 'Catálogo PDF',
+                    ),
+                  ],
+                ),
               ),
+            ),
+            const SizedBox(height: 8),
+            // Lista de productos
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _products.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 64,
+                            color: scheme.onSurface.withOpacity(0.3),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _searchController.text.isNotEmpty
+                                ? 'No se encontraron productos'
+                                : 'No hay productos registrados',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: scheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed:
+                                (_isAdmin || _permissions.canEditProducts)
+                                ? () => _showProductForm()
+                                : null,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Crear Primer Producto'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadProducts,
+                      child: ListView.builder(
+                        itemCount: _products.length,
+                        itemBuilder: (context, index) {
+                          final product = _products[index];
+                          return ProductCard(
+                            product: product,
+                            isSelected: _selectedProduct?.id == product.id,
+                            categoryName: _getCategoryName(product.categoryId),
+                            supplierName: _getSupplierName(product.supplierId),
+                            onTap: () =>
+                                _selectProduct(product, showDetails: !isWide),
+                            onEdit: (_isAdmin || _permissions.canEditProducts)
+                                ? () => _showProductForm(product)
+                                : null,
+                            onDelete: () => _softDelete(product),
+                            onToggleActive:
+                                (_isAdmin || _permissions.canEditProducts)
+                                ? () => _toggleActive(product)
+                                : null,
+                            onAddStock: () => _requestAdjustStock(product),
+                            showPurchasePrice:
+                                _isAdmin || _permissions.canViewPurchasePrice,
+                            showProfit: _isAdmin || _permissions.canViewProfit,
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         );
@@ -1638,7 +1393,7 @@ class _CatalogTabState extends State<CatalogTab> {
           return Padding(padding: padding, child: listContent);
         }
 
-        final sideWidth = (constraints.maxWidth * 0.335).clamp(332.0, 450.0);
+        final sideWidth = (constraints.maxWidth * 0.28).clamp(280.0, 360.0);
 
         return Padding(
           padding: padding,
@@ -1646,13 +1401,11 @@ class _CatalogTabState extends State<CatalogTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: listContent),
-              if (_selectedProduct != null) ...[
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: sideWidth,
-                  child: _buildDetailsPanel(_selectedProduct),
-                ),
-              ],
+              const SizedBox(width: 16),
+              SizedBox(
+                width: sideWidth,
+                child: _buildDetailsPanel(_selectedProduct),
+              ),
             ],
           ),
         );

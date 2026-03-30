@@ -511,4 +511,403 @@ void main() {
       expect(clientTwoSalesOutOfRange, isEmpty);
     },
   );
+
+  test(
+    'client sales summaries net credit returns and do not split same client by snapshot name',
+    () async {
+      final db = await AppDb.database;
+      final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
+      final shiftId = await _insertOpenShift(db, cashboxId: cashboxId);
+      final now = DateTime(2026, 3, 24, 10).millisecondsSinceEpoch;
+
+      await db.insert(DbTables.clients, {
+        'id': 201,
+        'nombre': 'Cliente Consolidado',
+        'telefono': '8090000201',
+        'direccion': 'Zona 201',
+        'rnc': null,
+        'cedula': null,
+        'is_active': 1,
+        'has_credit': 1,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+        'deleted_at_ms': null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      final originalSaleId = await SalesRepository.createSale(
+        localCode: 'V-CLIENT-NET-001',
+        kind: 'invoice',
+        items: [
+          {
+            'product_code_snapshot': 'P-NET-1',
+            'product_name_snapshot': 'Producto neto',
+            'qty': 1.0,
+            'unit_price': 100.0,
+            'purchase_price_snapshot': 40.0,
+            'discount_line': 0.0,
+            'total_line': 100.0,
+          },
+        ],
+        customerId: 201,
+        customerName: 'Cliente Nombre Viejo',
+        itbisEnabled: false,
+        subtotalOverride: 100.0,
+        itbisAmountOverride: 0.0,
+        totalOverride: 100.0,
+        paymentMethod: 'credit',
+        paymentCashAmount: 0.0,
+        paymentCardAmount: 0.0,
+        paymentTransferAmount: 0.0,
+        sessionId: shiftId,
+        paidAmount: 0.0,
+        changeAmount: 0.0,
+      );
+
+      await db.update(
+        DbTables.sales,
+        {'created_at_ms': now, 'updated_at_ms': now},
+        where: 'id = ?',
+        whereArgs: [originalSaleId],
+      );
+
+      final returnSaleId = await db.insert(DbTables.sales, {
+        'local_code': 'DEV-CLIENT-NET-001',
+        'kind': 'return',
+        'status': 'completed',
+        'customer_id': 201,
+        'customer_name_snapshot': 'Cliente Nombre Nuevo',
+        'itbis_enabled': 0,
+        'itbis_rate': 0.0,
+        'discount_total': 0.0,
+        'subtotal': -25.0,
+        'itbis_amount': 0.0,
+        'total': -25.0,
+        'payment_method': 'return',
+        'paid_amount': 0.0,
+        'change_amount': 0.0,
+        'electronic_invoice_enabled': 0,
+        'session_id': shiftId,
+        'created_at_ms': now + 1,
+        'updated_at_ms': now + 1,
+        'deleted_at_ms': null,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      final returnId = await db.insert(DbTables.returns, {
+        'original_sale_id': originalSaleId,
+        'return_sale_id': returnSaleId,
+        'note': 'devolucion credito',
+        'created_at_ms': now + 1,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      await db.insert(DbTables.returnItems, {
+        'return_id': returnId,
+        'sale_item_id': null,
+        'product_id': null,
+        'description': 'Producto neto',
+        'qty': 1.0,
+        'price': 25.0,
+        'total': 25.0,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      final summaries = await ReportsRepository.getClientSalesSummaries(
+        startMs: now - 1000,
+        endMs: now + 60000,
+      );
+      final topClients = await ReportsRepository.getTopClients(
+        startMs: now - 1000,
+        endMs: now + 60000,
+      );
+
+      expect(summaries.length, 1);
+      expect(summaries.first.clientName, 'Cliente Consolidado');
+      expect(summaries.first.totalSales, 75.0);
+      expect(summaries.first.totalCredit, 75.0);
+      expect(topClients.length, 1);
+      expect(topClients.first.clientName, 'Cliente Consolidado');
+      expect(topClients.first.totalSpent, 75.0);
+    },
+  );
+
+  test(
+    'top products consolidate renamed snapshots and resolved product ids',
+    () async {
+      final db = await AppDb.database;
+      final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
+      final shiftId = await _insertOpenShift(db, cashboxId: cashboxId);
+      final now = DateTime(2026, 3, 24, 12).millisecondsSinceEpoch;
+
+      await db.insert(DbTables.products, {
+        'id': 401,
+        'code': 'P-TOP-401',
+        'name': 'Producto Maestro',
+        'category_id': null,
+        'supplier_id': null,
+        'purchase_price': 30.0,
+        'sale_price': 100.0,
+        'stock': 10.0,
+        'reserved_stock': 0.0,
+        'stock_min': 0.0,
+        'is_active': 1,
+        'deleted_at_ms': null,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      final firstSaleId = await SalesRepository.createSale(
+        localCode: 'V-TOP-001',
+        kind: 'invoice',
+        items: [
+          {
+            'product_id': 401,
+            'product_code_snapshot': 'P-TOP-401',
+            'product_name_snapshot': 'Producto Version Antigua',
+            'qty': 1.0,
+            'unit_price': 100.0,
+            'purchase_price_snapshot': 30.0,
+            'discount_line': 0.0,
+            'total_line': 100.0,
+          },
+        ],
+        itbisEnabled: false,
+        subtotalOverride: 100.0,
+        itbisAmountOverride: 0.0,
+        totalOverride: 100.0,
+        paymentMethod: 'cash',
+        paymentCashAmount: 100.0,
+        paymentCardAmount: 0.0,
+        paymentTransferAmount: 0.0,
+        sessionId: shiftId,
+        paidAmount: 100.0,
+        changeAmount: 0.0,
+      );
+
+      final secondSaleId = await SalesRepository.createSale(
+        localCode: 'V-TOP-002',
+        kind: 'invoice',
+        items: [
+          {
+            'product_code_snapshot': 'P-TOP-401',
+            'product_name_snapshot': 'Producto Renombrado en Snapshot',
+            'qty': 1.0,
+            'unit_price': 50.0,
+            'purchase_price_snapshot': 30.0,
+            'discount_line': 0.0,
+            'total_line': 50.0,
+          },
+        ],
+        itbisEnabled: false,
+        subtotalOverride: 50.0,
+        itbisAmountOverride: 0.0,
+        totalOverride: 50.0,
+        paymentMethod: 'cash',
+        paymentCashAmount: 50.0,
+        paymentCardAmount: 0.0,
+        paymentTransferAmount: 0.0,
+        sessionId: shiftId,
+        paidAmount: 50.0,
+        changeAmount: 0.0,
+      );
+
+      await db.update(
+        DbTables.sales,
+        {'created_at_ms': now, 'updated_at_ms': now},
+        where: 'id IN (?, ?)',
+        whereArgs: [firstSaleId, secondSaleId],
+      );
+
+      final topProducts = await ReportsRepository.getTopProducts(
+        startMs: now - 1000,
+        endMs: now + 60000,
+      );
+
+      expect(topProducts.length, 1);
+      expect(topProducts.first.productId, 401);
+      expect(topProducts.first.productName, 'Producto Maestro');
+      expect(topProducts.first.totalSales, 150.0);
+      expect(topProducts.first.totalQty, 2.0);
+    },
+  );
+
+  test(
+    'top products net returns for the same resolved product without splitting rows',
+    () async {
+      final db = await AppDb.database;
+      final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
+      final shiftId = await _insertOpenShift(db, cashboxId: cashboxId);
+      final now = DateTime(2026, 3, 24, 13).millisecondsSinceEpoch;
+
+      await db.insert(DbTables.products, {
+        'id': 402,
+        'code': 'P-TOP-402',
+        'name': 'Producto Retornable',
+        'category_id': null,
+        'supplier_id': null,
+        'purchase_price': 25.0,
+        'sale_price': 80.0,
+        'stock': 10.0,
+        'reserved_stock': 0.0,
+        'stock_min': 0.0,
+        'is_active': 1,
+        'deleted_at_ms': null,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      final saleId = await SalesRepository.createSale(
+        localCode: 'V-TOP-RET-001',
+        kind: 'invoice',
+        items: [
+          {
+            'product_id': 402,
+            'product_code_snapshot': 'P-TOP-402',
+            'product_name_snapshot': 'Producto Snapshot Venta',
+            'qty': 2.0,
+            'unit_price': 80.0,
+            'purchase_price_snapshot': 25.0,
+            'discount_line': 0.0,
+            'total_line': 160.0,
+          },
+        ],
+        itbisEnabled: false,
+        subtotalOverride: 160.0,
+        itbisAmountOverride: 0.0,
+        totalOverride: 160.0,
+        paymentMethod: 'cash',
+        paymentCashAmount: 160.0,
+        paymentCardAmount: 0.0,
+        paymentTransferAmount: 0.0,
+        sessionId: shiftId,
+        paidAmount: 160.0,
+        changeAmount: 0.0,
+      );
+
+      await db.update(
+        DbTables.sales,
+        {'created_at_ms': now, 'updated_at_ms': now},
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      final saleItems = await db.query(
+        DbTables.saleItems,
+        columns: ['id'],
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+        limit: 1,
+      );
+      final saleItemId = saleItems.first['id'] as int;
+
+      final returnSaleId = await db.insert(DbTables.sales, {
+        'local_code': 'DEV-TOP-RET-001',
+        'kind': 'return',
+        'status': 'completed',
+        'itbis_enabled': 0,
+        'itbis_rate': 0.0,
+        'discount_total': 0.0,
+        'subtotal': -80.0,
+        'itbis_amount': 0.0,
+        'total': -80.0,
+        'payment_method': 'return',
+        'paid_amount': 0.0,
+        'change_amount': 0.0,
+        'electronic_invoice_enabled': 0,
+        'session_id': shiftId,
+        'created_at_ms': now + 1,
+        'updated_at_ms': now + 1,
+        'deleted_at_ms': null,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      final returnId = await db.insert(DbTables.returns, {
+        'original_sale_id': saleId,
+        'return_sale_id': returnSaleId,
+        'note': 'devolucion parcial producto top',
+        'created_at_ms': now + 1,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      await db.insert(DbTables.returnItems, {
+        'return_id': returnId,
+        'sale_item_id': saleItemId,
+        'product_id': null,
+        'description': 'Producto Snapshot Devolucion',
+        'qty': 1.0,
+        'price': 80.0,
+        'total': 80.0,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+
+      final topProducts = await ReportsRepository.getTopProducts(
+        startMs: now - 1000,
+        endMs: now + 60000,
+      );
+
+      expect(topProducts.length, 1);
+      expect(topProducts.first.productId, 402);
+      expect(topProducts.first.productName, 'Producto Retornable');
+      expect(topProducts.first.totalSales, 80.0);
+      expect(topProducts.first.totalQty, 1.0);
+      expect(topProducts.first.totalProfit, 55.0);
+    },
+  );
+
+  test('customer purchase summary includes paid invoices', () async {
+    final db = await AppDb.database;
+    final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
+    final shiftId = await _insertOpenShift(db, cashboxId: cashboxId);
+    final now = DateTime(2026, 3, 25, 10).millisecondsSinceEpoch;
+
+    await db.insert(DbTables.clients, {
+      'id': 301,
+      'nombre': 'Cliente Paid',
+      'telefono': '8090000301',
+      'direccion': 'Zona paid',
+      'rnc': null,
+      'cedula': null,
+      'is_active': 1,
+      'has_credit': 0,
+      'created_at_ms': now,
+      'updated_at_ms': now,
+      'deleted_at_ms': null,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    final saleId = await SalesRepository.createSale(
+      localCode: 'V-PAID-001',
+      kind: 'invoice',
+      items: [
+        {
+          'product_code_snapshot': 'P-PAID-1',
+          'product_name_snapshot': 'Producto paid',
+          'qty': 1.0,
+          'unit_price': 55.0,
+          'purchase_price_snapshot': 20.0,
+          'discount_line': 0.0,
+          'total_line': 55.0,
+        },
+      ],
+      customerId: 301,
+      customerName: 'Cliente Paid',
+      itbisEnabled: false,
+      subtotalOverride: 55.0,
+      itbisAmountOverride: 0.0,
+      totalOverride: 55.0,
+      paymentMethod: 'cash',
+      paymentCashAmount: 55.0,
+      paymentCardAmount: 0.0,
+      paymentTransferAmount: 0.0,
+      sessionId: shiftId,
+      paidAmount: 55.0,
+      changeAmount: 0.0,
+    );
+
+    await db.update(
+      DbTables.sales,
+      {'status': 'PAID', 'created_at_ms': now, 'updated_at_ms': now},
+      where: 'id = ?',
+      whereArgs: [saleId],
+    );
+
+    final summary = await SalesRepository.getCustomerPurchaseSummary(301);
+
+    expect(summary['count'], 1);
+    expect(summary['total'], 55.0);
+    expect(summary['lastAtMs'], now);
+  });
 }

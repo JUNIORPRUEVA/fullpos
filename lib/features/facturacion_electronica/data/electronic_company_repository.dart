@@ -19,20 +19,40 @@ class ElectronicCompanyRepository {
 
   static Future<ElectronicCompanyModel> save(ElectronicCompanyModel model) async {
     final db = await AppDb.database;
-    final payload = model.copyWith(
+    final payload = ElectronicCompanyModel(
+      id: model.id,
+      businessName: '',
+      tradeName: '',
+      rnc: '',
+      emissionAddress: '',
+      phone: '',
+      email: '',
+      environment: model.environment,
+      apiToken: model.apiToken,
+      certificateName: model.certificateName,
+      automaticEmission: model.automaticEmission,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
+    final persisted = <String, Object?>{
+      'business_name': '',
+      'trade_name': '',
+      'rnc': '',
+      'emission_address': '',
+      'phone': '',
+      'email': '',
+      ...payload.toMap(),
+    };
 
     final existing = await db.query(DbTables.electronicCompany, limit: 1);
     if (existing.isEmpty) {
-      final id = await db.insert(DbTables.electronicCompany, payload.toMap());
+      final id = await db.insert(DbTables.electronicCompany, persisted);
       return payload.copyWith(id: id);
     }
 
     final id = payload.id ?? existing.first['id'] as int?;
     await db.update(
       DbTables.electronicCompany,
-      payload.toMap(),
+      persisted,
       where: 'id = ?',
       whereArgs: [id],
     );

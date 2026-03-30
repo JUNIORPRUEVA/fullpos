@@ -26,6 +26,9 @@ class ProductDetailsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.42).clamp(520.0, 680.0);
+    final dialogHeight = (viewport.height - 24).clamp(560.0, 840.0);
     final currencyFormat = NumberFormat.currency(
       symbol: '\$',
       decimalDigits: 2,
@@ -49,212 +52,252 @@ class ProductDetailsDialog extends StatelessWidget {
         },
         child: Focus(
           autofocus: true,
-          child: Dialog(
-            backgroundColor: Colors.transparent,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 680),
-              child: ProductsSurface(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: ProductsSectionHeader(
-                              eyebrow: 'PRODUCTO',
-                              title: product.name,
-                              subtitle: 'Detalle comercial e inventario.',
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.primary.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              product.code,
-                              style: TextStyle(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                                fontFamily: 'Inter',
-                              ),
-                            ),
-                          ),
-                          if (product.isDeleted)
-                            _buildBadge('ELIMINADO', scheme.error),
-                          if (!product.isActive && !product.isDeleted)
-                            _buildBadge('INACTIVO', scheme.outline),
-                          if (product.isOutOfStock && product.isActive)
-                            _buildBadge('AGOTADO', scheme.error),
-                          if (product.hasLowStock && product.isActive)
-                            _buildBadge('STOCK BAJO', scheme.tertiary),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 200,
-                        width: double.infinity,
-                        child: ProductThumbnail.fromProduct(
-                          product,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(72, 12, 12, 12),
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: EdgeInsets.zero,
+                child: SizedBox(
+                  width: dialogWidth,
+                  height: dialogHeight,
+                  child: ProductsSurface(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
                           width: double.infinity,
-                          height: 200,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _buildSection(context, 'Información general', [
-                        if (categoryName != null)
-                          _buildInfoRow(
-                            context,
-                            'Categoría',
-                            categoryName!,
-                            Icons.category,
-                          ),
-                        if (supplierName != null)
-                          _buildInfoRow(
-                            context,
-                            'Suplidor',
-                            supplierName!,
-                            Icons.business,
-                          ),
-                      ]),
-                      _buildSection(context, 'Precios y finanzas', [
-                        if (showPurchasePrice)
-                          _buildInfoRow(
-                            context,
-                            'Precio de Compra',
-                            currencyFormat.format(product.purchasePrice),
-                            Icons.shopping_cart,
-                            valueColor: scheme.primary,
-                          ),
-                        _buildInfoRow(
-                          context,
-                          'Precio de Venta',
-                          currencyFormat.format(product.salePrice),
-                          Icons.sell,
-                          valueColor: scheme.tertiary,
-                        ),
-                        if (showProfit)
-                          _buildInfoRow(
-                            context,
-                            'Ganancia Unitaria',
-                            currencyFormat.format(product.profit),
-                            Icons.attach_money,
-                            valueColor: product.profit > 0
-                                ? scheme.tertiary
-                                : scheme.error,
-                          ),
-                        if (showProfit)
-                          _buildInfoRow(
-                            context,
-                            'Margen de Ganancia',
-                            '${product.profitPercentage.toStringAsFixed(2)}%',
-                            Icons.percent,
-                            valueColor: product.profit > 0
-                                ? scheme.tertiary
-                                : scheme.error,
-                          ),
-                      ]),
-                      _buildSection(context, 'Inventario', [
-                        _buildInfoRow(
-                          context,
-                          'Stock Actual',
-                          numberFormat.format(product.stock),
-                          Icons.inventory_2,
-                          valueColor: product.isOutOfStock
-                              ? scheme.error
-                              : product.hasLowStock
-                              ? scheme.tertiary
-                              : scheme.onSurface,
-                        ),
-                        _buildInfoRow(
-                          context,
-                          'Stock Mínimo',
-                          numberFormat.format(product.stockMin),
-                          Icons.warning_amber,
-                          valueColor: scheme.tertiary,
-                        ),
-                        if (showPurchasePrice)
-                          _buildInfoRow(
-                            context,
-                            'Valor en Inventario',
-                            currencyFormat.format(product.inventoryValue),
-                            Icons.account_balance_wallet,
-                            valueColor: scheme.secondary,
-                          ),
-                        if (showProfit)
-                          _buildInfoRow(
-                            context,
-                            'Ganancia Potencial',
-                            currencyFormat.format(
-                              product.profit * product.stock,
+                          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border(
+                              bottom: BorderSide(color: scheme.outlineVariant),
                             ),
-                            Icons.trending_up,
-                            valueColor: scheme.primary,
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(22),
+                            ),
                           ),
-                        _buildInfoRow(
-                          context,
-                          'Valor de Venta Potencial',
-                          currencyFormat.format(product.potentialRevenue),
-                          Icons.monetization_on,
-                          valueColor: scheme.tertiary,
-                        ),
-                      ]),
-                      _buildSection(context, 'Registro', [
-                        _buildInfoRow(
-                          context,
-                          'Fecha de Creación',
-                          dateFormat.format(product.createdAt),
-                          Icons.calendar_today,
-                        ),
-                        _buildInfoRow(
-                          context,
-                          'Última Actualización',
-                          dateFormat.format(product.updatedAt),
-                          Icons.update,
-                        ),
-                        if (product.isDeleted && product.deletedAt != null)
-                          _buildInfoRow(
-                            context,
-                            'Fecha de Eliminación',
-                            dateFormat.format(product.deletedAt!),
-                            Icons.delete_forever,
-                            valueColor: scheme.error,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'DETALLE DE PRODUCTO',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.close),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            ],
                           ),
-                      ]),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          child: const Text('Cerrar'),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  product.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _buildBadge(product.code, scheme.primary),
+                                    if (product.isDeleted)
+                                      _buildBadge('ELIMINADO', scheme.error),
+                                    if (!product.isActive && !product.isDeleted)
+                                      _buildBadge('INACTIVO', scheme.outline),
+                                    if (product.isOutOfStock &&
+                                        product.isActive)
+                                      _buildBadge('AGOTADO', scheme.error),
+                                    if (product.hasLowStock && product.isActive)
+                                      _buildBadge(
+                                        'STOCK BAJO',
+                                        scheme.tertiary,
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 160,
+                                  width: double.infinity,
+                                  child: ProductThumbnail.fromProduct(
+                                    product,
+                                    width: double.infinity,
+                                    height: 160,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _buildSection(context, 'General', [
+                                  if (categoryName != null)
+                                    _buildInfoRow(
+                                      context,
+                                      'Categoría',
+                                      categoryName!,
+                                      Icons.category,
+                                    ),
+                                  if (supplierName != null)
+                                    _buildInfoRow(
+                                      context,
+                                      'Suplidor',
+                                      supplierName!,
+                                      Icons.business,
+                                    ),
+                                ]),
+                                _buildSection(context, 'Precios', [
+                                  if (showPurchasePrice)
+                                    _buildInfoRow(
+                                      context,
+                                      'Compra',
+                                      currencyFormat.format(
+                                        product.purchasePrice,
+                                      ),
+                                      Icons.shopping_cart,
+                                      valueColor: scheme.primary,
+                                    ),
+                                  _buildInfoRow(
+                                    context,
+                                    'Venta',
+                                    currencyFormat.format(product.salePrice),
+                                    Icons.sell,
+                                    valueColor: scheme.tertiary,
+                                  ),
+                                  if (showProfit)
+                                    _buildInfoRow(
+                                      context,
+                                      'Ganancia',
+                                      currencyFormat.format(product.profit),
+                                      Icons.attach_money,
+                                      valueColor: product.profit > 0
+                                          ? scheme.tertiary
+                                          : scheme.error,
+                                    ),
+                                  if (showProfit)
+                                    _buildInfoRow(
+                                      context,
+                                      'Margen',
+                                      '${product.profitPercentage.toStringAsFixed(2)}%',
+                                      Icons.percent,
+                                      valueColor: product.profit > 0
+                                          ? scheme.tertiary
+                                          : scheme.error,
+                                    ),
+                                ]),
+                                _buildSection(context, 'Inventario', [
+                                  _buildInfoRow(
+                                    context,
+                                    'Stock',
+                                    numberFormat.format(product.stock),
+                                    Icons.inventory_2,
+                                    valueColor: product.isOutOfStock
+                                        ? scheme.error
+                                        : product.hasLowStock
+                                        ? scheme.tertiary
+                                        : scheme.onSurface,
+                                  ),
+                                  _buildInfoRow(
+                                    context,
+                                    'Mínimo',
+                                    numberFormat.format(product.stockMin),
+                                    Icons.warning_amber,
+                                    valueColor: scheme.tertiary,
+                                  ),
+                                  if (showPurchasePrice)
+                                    _buildInfoRow(
+                                      context,
+                                      'Valor inventario',
+                                      currencyFormat.format(
+                                        product.inventoryValue,
+                                      ),
+                                      Icons.account_balance_wallet,
+                                      valueColor: scheme.secondary,
+                                    ),
+                                  if (showProfit)
+                                    _buildInfoRow(
+                                      context,
+                                      'Ganancia potencial',
+                                      currencyFormat.format(
+                                        product.profit * product.stock,
+                                      ),
+                                      Icons.trending_up,
+                                      valueColor: scheme.primary,
+                                    ),
+                                  _buildInfoRow(
+                                    context,
+                                    'Venta potencial',
+                                    currencyFormat.format(
+                                      product.potentialRevenue,
+                                    ),
+                                    Icons.monetization_on,
+                                    valueColor: scheme.tertiary,
+                                  ),
+                                ]),
+                                _buildSection(context, 'Registro', [
+                                  _buildInfoRow(
+                                    context,
+                                    'Creado',
+                                    dateFormat.format(product.createdAt),
+                                    Icons.calendar_today,
+                                  ),
+                                  _buildInfoRow(
+                                    context,
+                                    'Actualizado',
+                                    dateFormat.format(product.updatedAt),
+                                    Icons.update,
+                                  ),
+                                  if (product.isDeleted &&
+                                      product.deletedAt != null)
+                                    _buildInfoRow(
+                                      context,
+                                      'Eliminado',
+                                      dateFormat.format(product.deletedAt!),
+                                      Icons.delete_forever,
+                                      valueColor: scheme.error,
+                                    ),
+                                ]),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border(
+                              top: BorderSide(color: scheme.outlineVariant),
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(22),
+                            ),
+                          ),
+                          child: FilledButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: const Text('Cerrar'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -270,6 +313,9 @@ class ProductDetailsDialog extends StatelessWidget {
     String title,
     List<Widget> children,
   ) {
+    if (children.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

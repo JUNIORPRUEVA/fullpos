@@ -11,8 +11,6 @@ import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
 import '../data/client_model.dart';
 import '../data/clients_repository.dart';
-import '../../sales/data/sale_model.dart' as legacy_sales;
-import '../../sales/data/sales_model.dart';
 import '../../sales/data/sales_repository.dart';
 import 'client_details_dialog.dart';
 import 'client_form_dialog.dart';
@@ -87,15 +85,10 @@ class _ClientsPageState extends State<ClientsPage> {
   bool _showDetailsPanel = false;
   bool _isLoading = false;
 
-  DateTime? _statsFromDate;
-  DateTime? _statsToDate;
-  late Future<Map<String, dynamic>> _statsFuture;
-
   @override
   void initState() {
     super.initState();
     _loadClients();
-    _refreshStats();
   }
 
   @override
@@ -171,286 +164,6 @@ class _ClientsPageState extends State<ClientsPage> {
         );
       }
     }
-  }
-
-  void _refreshStats() {
-    _statsFuture = SalesRepository.getClientsKpis(
-      dateFrom: _statsFromDate,
-      dateTo: _statsToDate,
-    );
-  }
-
-  List<SaleModel> _normalizeSalesList(Iterable<dynamic> rawSales) {
-    return rawSales
-        .map<SaleModel?>((rawSale) {
-          if (rawSale is SaleModel) {
-            return rawSale;
-          }
-          if (rawSale is legacy_sales.SaleModel) {
-            return SaleModel(
-              id: rawSale.id,
-              localCode: rawSale.localCode,
-              kind: rawSale.kind,
-              status: rawSale.status,
-              customerId: rawSale.customerId,
-              customerNameSnapshot: rawSale.customerNameSnapshot,
-              customerPhoneSnapshot: rawSale.customerPhoneSnapshot,
-              customerRncSnapshot: rawSale.customerRncSnapshot,
-              itbisEnabled: rawSale.itbisEnabled ? 1 : 0,
-              itbisRate: rawSale.itbisRate,
-              discountTotal: rawSale.discountTotal,
-              subtotal: rawSale.subtotal,
-              itbisAmount: rawSale.itbisAmount,
-              total: rawSale.total,
-              paymentMethod: rawSale.paymentMethod,
-              paidAmount: rawSale.paidAmount,
-              changeAmount: rawSale.changeAmount,
-              creditInterestRate: rawSale.creditInterestRate,
-              creditTermDays: rawSale.creditTermDays,
-              creditDueDateMs: rawSale.creditDueDateMs,
-              creditInstallments: rawSale.creditInstallments,
-              creditNote: rawSale.creditNote,
-              electronicInvoiceEnabled: rawSale.electronicInvoiceEnabled
-                  ? 1
-                  : 0,
-              electronicInvoiceCode: rawSale.electronicInvoiceCode,
-              electronicDocumentType: rawSale.electronicDocumentType,
-              sessionId: rawSale.sessionId,
-              createdAtMs: rawSale.createdAtMs,
-              updatedAtMs: rawSale.updatedAtMs,
-              deletedAtMs: rawSale.deletedAtMs,
-            );
-          }
-          return null;
-        })
-        .whereType<SaleModel>()
-        .toList(growable: false);
-  }
-
-  Future<void> _selectStatsDate(bool isFrom) async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: isFrom
-          ? (_statsFromDate ?? DateTime.now())
-          : (_statsToDate ?? DateTime.now()),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-
-    if (date == null) return;
-    if (!mounted) return;
-    setState(() {
-      if (isFrom) {
-        _statsFromDate = date;
-      } else {
-        _statsToDate = date;
-      }
-      _refreshStats();
-    });
-  }
-
-  Widget _buildKpiTile({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final mutedText = scheme.onSurface.withOpacity(0.7);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: scheme.primary, size: 16),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: mutedText,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: scheme.onSurface,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _paymentMethodLabel(String? method) {
-    switch (method) {
-      case 'cash':
-        return 'Efectivo';
-      case 'card':
-        return 'Tarjeta';
-      case 'transfer':
-        return 'Transferencia';
-      case 'mixed':
-        return 'Mixto';
-      default:
-        return method ?? 'N/A';
-    }
-  }
-
-  Widget _buildAnalyticsPanel() {
-    final dateFormat = DateFormat('dd/MM/yyyy');
-    final money = NumberFormat.currency(symbol: 'RD\$ ', decimalDigits: 2);
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Resumen',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _selectStatsDate(true),
-                    icon: const Icon(Icons.calendar_today, size: 16),
-                    label: Text(
-                      _statsFromDate != null
-                          ? dateFormat.format(_statsFromDate!)
-                          : 'Desde',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSizes.spaceM),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _selectStatsDate(false),
-                    icon: const Icon(Icons.calendar_today, size: 16),
-                    label: Text(
-                      _statsToDate != null
-                          ? dateFormat.format(_statsToDate!)
-                          : 'Hasta',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (_statsFromDate != null || _statsToDate != null) ...[
-              const SizedBox(height: AppSizes.spaceS),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _statsFromDate = null;
-                    _statsToDate = null;
-                    _refreshStats();
-                  });
-                },
-                icon: const Icon(Icons.clear, size: 16),
-                label: const Text('Limpiar fechas'),
-              ),
-            ],
-            const SizedBox(height: 10),
-            FutureBuilder<Map<String, dynamic>>(
-              future: _statsFuture,
-              builder: (context, snapshot) {
-                final loading =
-                    snapshot.connectionState == ConnectionState.waiting;
-                if (snapshot.hasError) {
-                  return Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSizes.paddingM),
-                    decoration: BoxDecoration(
-                      color: scheme.error.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                      border: Border.all(color: scheme.error.withOpacity(0.35)),
-                    ),
-                    child: Text(
-                      'Error cargando resumen: ${snapshot.error}',
-                      style: TextStyle(color: scheme.onSurface),
-                    ),
-                  );
-                }
-
-                final data = snapshot.data ?? const <String, dynamic>{};
-                final clientsTotal = (data['clientsTotal'] as int?) ?? 0;
-                final visitsCount = (data['visitsCount'] as int?) ?? 0;
-                final totalPurchased =
-                    (data['totalPurchased'] as num?)?.toDouble() ?? 0.0;
-
-                return Row(
-                  children: [
-                    Expanded(
-                      child: _buildKpiTile(
-                        icon: Icons.people,
-                        label: 'Clientes',
-                        value: loading ? '...' : clientsTotal.toString(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildKpiTile(
-                        icon: Icons.receipt_long,
-                        label: 'Visitas',
-                        value: loading ? '...' : visitsCount.toString(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildKpiTile(
-                        icon: Icons.payments,
-                        label: 'Comprado',
-                        value: loading ? '...' : money.format(totalPurchased),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _showClientDialog([ClientModel? client]) async {
@@ -1048,8 +761,7 @@ class _ClientsPageState extends State<ClientsPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final muted = scheme.onSurface.withOpacity(0.7);
-    final money = NumberFormat.currency(symbol: 'RD\$ ', decimalDigits: 2);
-    final dateLabel = DateFormat('dd/MM/yy HH:mm');
+    final dateLabel = DateFormat('dd/MM/yy');
 
     if (client == null) {
       return const SizedBox.shrink();
@@ -1071,24 +783,8 @@ class _ClientsPageState extends State<ClientsPage> {
         ? client.direccion!
         : '-';
 
-    Future<Map<String, dynamic>> loadPurchasesData() async {
-      final summary = await SalesRepository.getCustomerPurchaseSummary(
-        client.id!,
-      );
-      final rawPurchases = await SalesRepository.listCustomerPurchases(
-        client.id!,
-        limit: 15,
-      );
-      final purchases = _normalizeSalesList(rawPurchases);
-      final creditAmount = purchases
-          .where((sale) => (sale.paymentMethod ?? '').toLowerCase() == 'credit')
-          .fold<double>(0.0, (sum, sale) => sum + sale.total);
-      return {
-        'summary': summary,
-        'purchases': purchases,
-        'creditAmount': creditAmount,
-      };
-    }
+    Future<Map<String, dynamic>> loadActivityData() =>
+        SalesRepository.getCustomerPurchaseSummary(client.id!);
 
     Widget badge(String label, String value, Color color, {IconData? icon}) {
       return Expanded(
@@ -1219,16 +915,8 @@ class _ClientsPageState extends State<ClientsPage> {
     }
 
     Widget buildActivityPanel(Map<String, dynamic> data) {
-      final summary =
-          (data['summary'] as Map<String, dynamic>?) ??
-          const <String, dynamic>{};
-      final purchases = _normalizeSalesList(
-        (data['purchases'] as List?) ?? const <dynamic>[],
-      );
-      final creditAmount = (data['creditAmount'] as num?)?.toDouble() ?? 0.0;
-      final purchasesCount = (summary['count'] as int?) ?? 0;
-      final totalPurchased = (summary['total'] as num?)?.toDouble() ?? 0.0;
-      final lastAtMs = (summary['lastAtMs'] as int?) ?? 0;
+      final purchasesCount = (data['count'] as int?) ?? 0;
+      final lastAtMs = (data['lastAtMs'] as int?) ?? 0;
       final hasLastDate = lastAtMs > 0;
 
       return Column(
@@ -1245,7 +933,7 @@ class _ClientsPageState extends State<ClientsPage> {
             children: [
               Expanded(
                 child: miniStat(
-                  label: 'Ventas',
+                  label: 'Compras registradas',
                   value: purchasesCount.toString(),
                   icon: Icons.receipt_long,
                 ),
@@ -1253,16 +941,20 @@ class _ClientsPageState extends State<ClientsPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: miniStat(
-                  label: 'Comprado',
-                  value: money.format(totalPurchased),
-                  icon: Icons.payments,
+                  label: 'Última compra',
+                  value: hasLastDate
+                      ? dateLabel.format(
+                          DateTime.fromMillisecondsSinceEpoch(lastAtMs),
+                        )
+                      : 'Sin actividad',
+                  icon: Icons.history_toggle_off,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: miniStat(
-                  label: 'Crédito',
-                  value: money.format(creditAmount),
+                  label: 'Cliente desde',
+                  value: createdLabel,
                   icon: Icons.credit_card,
                 ),
               ),
@@ -1272,108 +964,40 @@ class _ClientsPageState extends State<ClientsPage> {
           Row(
             children: [
               badge(
-                'Total comprado',
-                money.format(totalPurchased),
+                'Estado',
+                client.isActive ? 'Operativo' : 'Inactivo',
                 scheme.primary,
               ),
               const SizedBox(width: 8),
               badge(
-                'Última actividad',
-                hasLastDate
-                    ? dateLabel.format(
-                        DateTime.fromMillisecondsSinceEpoch(lastAtMs),
-                      )
-                    : '-',
+                'Crédito',
+                client.hasCredit ? 'Habilitado' : 'No disponible',
                 scheme.tertiary,
+                icon: client.hasCredit
+                    ? Icons.credit_card
+                    : Icons.block_outlined,
               ),
             ],
           ),
           const SizedBox(height: 12),
-          if (purchases.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: scheme.outlineVariant),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Text(
+              hasLastDate
+                  ? 'Última interacción registrada el ${dateLabel.format(DateTime.fromMillisecondsSinceEpoch(lastAtMs))}.'
+                  : 'Sin actividad comercial registrada todavía.',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w700,
               ),
-              child: Text(
-                'Sin historial',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: muted,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            )
-          else
-            ...purchases.take(8).map((sale) {
-              final saleDate = DateTime.fromMillisecondsSinceEpoch(
-                sale.createdAtMs,
-              );
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: scheme.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: scheme.primary.withOpacity(0.10),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.receipt_long_outlined,
-                        size: 18,
-                        color: scheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            sale.localCode,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '${dateLabel.format(saleDate)} • ${_paymentMethodLabel(sale.paymentMethod)}',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: muted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      money.format(sale.total),
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+            ),
+          ),
         ],
       );
     }
@@ -1532,7 +1156,7 @@ class _ClientsPageState extends State<ClientsPage> {
                   ),
                   const SizedBox(height: 12),
                   FutureBuilder<Map<String, dynamic>>(
-                    future: loadPurchasesData(),
+                    future: loadActivityData(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Padding(
@@ -1553,7 +1177,7 @@ class _ClientsPageState extends State<ClientsPage> {
                             ),
                           ),
                           child: Text(
-                            'No se pudo cargar compras del cliente.',
+                            'No se pudo cargar la actividad del cliente.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: scheme.onSurface,
                               fontWeight: FontWeight.w600,
@@ -1666,7 +1290,7 @@ class _ClientsPageState extends State<ClientsPage> {
                               client: client,
                               isSelected: isSelected,
                               onViewDetails: () =>
-                                  _selectClient(client, showDetails: isWide),
+                                  _selectClient(client, showDetails: true),
                               onEdit: () => _showClientDialog(client),
                               onToggleActive: () => _toggleActive(client),
                               onToggleCredit: () => _toggleCredit(client),
@@ -1711,10 +1335,20 @@ class _ClientsPageState extends State<ClientsPage> {
                       )
                     : Column(
                         children: [
-                          Flexible(flex: 3, child: listCard),
-                          if (isNarrow) ...[
+                          Flexible(
+                            flex: _showDetailsPanel && _selectedClient != null
+                                ? 2
+                                : 1,
+                            child: listCard,
+                          ),
+                          if (isNarrow &&
+                              _showDetailsPanel &&
+                              _selectedClient != null) ...[
                             const SizedBox(height: AppSizes.spaceM),
-                            Flexible(flex: 2, child: _buildAnalyticsPanel()),
+                            Flexible(
+                              flex: 3,
+                              child: _buildClientDetailsPanel(_selectedClient),
+                            ),
                           ],
                         ],
                       ),

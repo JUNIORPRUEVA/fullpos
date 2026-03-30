@@ -10,6 +10,7 @@ import 'dart:math' as math;
 
 import '../../../core/errors/error_handler.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/services/empresa_service.dart';
 import '../../../core/ui/responsive_grid.dart';
 import '../../../core/printing/invoice_letter_pdf.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
@@ -121,6 +122,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           end: Alignment.bottomRight,
         );
   }
+
+  Color get salesDetailPanelColor {
+    final gradientTheme = Theme.of(
+      context,
+    ).extension<SalesDetailGradientTheme>();
+    final base = gradientTheme?.mid ?? scheme.surface;
+    return Color.alphaBlend(scheme.surface.withOpacity(0.08), base);
+  }
+
+  Color get salesDetailBorderColor => salesDetailTextColor.withOpacity(0.14);
+
+  Color get salesDetailMutedTextColor => salesDetailTextColor.withOpacity(0.7);
 
   final List<_Cart> _carts = [_Cart(name: 'Ticket 1')];
   int _currentCartIndex = 0;
@@ -449,7 +462,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ..discount = (cartMap['discount'] as num).toDouble()
           ..itbisEnabled = (cartMap['itbis_enabled'] as int) == 1
           ..itbisRate = (cartMap['itbis_rate'] as num).toDouble()
-            ..electronicInvoiceEnabled =
+          ..electronicInvoiceEnabled =
               (cartMap['electronic_invoice_enabled'] as int) == 1
           ..discountTotalType = cartMap['discount_total_type'] as String?
           ..discountTotalValue = (cartMap['discount_total_value'] as num?)
@@ -1205,7 +1218,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           return _DialogHotkeys(
             onEnter: saveItemChanges,
             child: AlertDialog(
-              backgroundColor: Colors.white,
+              backgroundColor: scheme.surface,
               insetPadding: const EdgeInsets.symmetric(
                 horizontal: 32,
                 vertical: 32,
@@ -1214,30 +1227,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              titleTextStyle: const TextStyle(
-                color: Colors.black,
+              titleTextStyle: TextStyle(
+                color: scheme.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
               ),
-              contentTextStyle: const TextStyle(
-                color: Colors.black,
+              contentTextStyle: TextStyle(
+                color: scheme.onSurface,
                 fontSize: 14,
               ),
               title: Row(
                 children: [
-                  const Icon(Icons.percent, color: Colors.black),
+                  Icon(Icons.percent, color: scheme.primary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       item.productNameSnapshot,
-                      style: const TextStyle(color: Colors.black),
+                      style: TextStyle(color: scheme.onSurface),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Colors.black),
+                    icon: Icon(Icons.close, color: scheme.onSurface),
                   ),
                 ],
               ),
@@ -1250,16 +1263,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     children: [
                       Text(
                         'C?digo: ${item.productCodeSnapshot}',
-                        style: const TextStyle(
-                          color: Colors.black54,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
                           fontSize: 13,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Precio unitario: ${item.unitPrice.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: Colors.black54,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
                           fontSize: 13,
                         ),
                       ),
@@ -1316,9 +1329,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: scheme.surface,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
+                          border: Border.all(color: scheme.outlineVariant),
                         ),
                         child: Column(
                           children: [
@@ -1370,10 +1383,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                                 Text(
                                   total.toStringAsFixed(2),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black,
+                                    color: scheme.onSurface,
                                   ),
                                 ),
                               ],
@@ -1423,7 +1436,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       missing.add('ITBIS');
     }
 
-    final company = _electronicCompany ?? await ElectronicCompanyRepository.getOrCreate();
+    final company =
+        _electronicCompany ?? await ElectronicCompanyRepository.getOrCreate();
+    final empresaConfig = await EmpresaService.getEmpresaConfig();
     if (!mounted) return missing;
     if (_electronicCompany?.updatedAtMs != company.updatedAtMs) {
       setState(() => _electronicCompany = company);
@@ -1431,7 +1446,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (company.automaticEmission != 1) {
       missing.add('Emisión automática e-CF');
     }
-    missing.addAll(company.missingRequiredFields());
+    missing.addAll(empresaConfig.missingElectronicInvoicingFields());
 
     return missing;
   }
@@ -2240,8 +2255,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   final theme = Theme.of(context);
                   final tokens =
                       theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-                  final salesProducts =
-                      theme.extension<SalesProductsTheme>();
+                  final salesProducts = theme.extension<SalesProductsTheme>();
                   final gridBackground =
                       (salesProducts?.gridBackgroundColor.opacity ?? 0) == 0
                       ? theme.scaffoldBackgroundColor
@@ -2530,12 +2544,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 decoration: BoxDecoration(
                                   color: theme.cardColor,
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: tokens.outline,
-                                  ),
+                                  border: Border.all(color: tokens.outline),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black12,
+                                      color: theme.shadowColor.withOpacity(
+                                        0.12,
+                                      ),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     ),
@@ -2675,23 +2689,23 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ? 'Sin stock'
         : 'Stock ${effectiveStock.toInt()}';
     final cardColor = isHovered
-      ? (salesProducts?.cardAltBackgroundColor.opacity ?? 0) == 0
-        ? Colors.white
-        : salesProducts!.cardAltBackgroundColor
-      : (salesProducts?.cardBackgroundColor.opacity ?? 0) == 0
+        ? (salesProducts?.cardAltBackgroundColor.opacity ?? 0) == 0
+              ? scheme.surface
+              : salesProducts!.cardAltBackgroundColor
+        : (salesProducts?.cardBackgroundColor.opacity ?? 0) == 0
         ? scheme.surface.withOpacity(0.7)
         : salesProducts!.cardBackgroundColor;
     final cardBorderColor = isHovered
-      ? scheme.primary.withOpacity(0.22)
-      : (salesProducts?.cardBorderColor.opacity ?? 0) == 0
+        ? scheme.primary.withOpacity(0.22)
+        : (salesProducts?.cardBorderColor.opacity ?? 0) == 0
         ? scheme.outlineVariant
         : salesProducts!.cardBorderColor;
     final cardTextColor = (salesProducts?.cardTextColor.opacity ?? 0) == 0
-      ? scheme.onSurface
-      : salesProducts!.cardTextColor;
+        ? scheme.onSurface
+        : salesProducts!.cardTextColor;
     final priceColor = (salesProducts?.priceColor.opacity ?? 0) == 0
-      ? scheme.onSurface
-      : salesProducts!.priceColor;
+        ? scheme.onSurface
+        : salesProducts!.priceColor;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hoveredProductIndexes.add(index)),
@@ -2859,11 +2873,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
     final dropdownBorder = resolve(
       salesTheme?.controlBarDropdownBorderColor,
-      AppColors.borderSoft,
+      scheme.outlineVariant,
     );
     final dropdownText = resolve(
       salesTheme?.controlBarDropdownTextColor,
-      AppColors.textPrimary,
+      scheme.onSurface,
     );
     final menuBg = resolve(
       salesTheme?.controlBarPopupBackgroundColor,
@@ -2987,15 +3001,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
     final controlText = resolve(
       salesTheme?.controlBarTextColor,
-      AppColors.textPrimary,
+      scheme.onSurface,
     );
     final controlBorder = resolve(
       salesTheme?.controlBarBorderColor,
-      AppColors.borderSoft,
+      scheme.outlineVariant,
     );
     final controlContentBg = resolve(
       salesTheme?.controlBarContentBackgroundColor,
-      Colors.white,
+      scheme.surface,
     );
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -3003,17 +3017,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         final isCompact = width < 980;
 
         final fieldTextColor = ColorUtils.ensureReadableColor(
-          AppColors.textPrimary,
+          scheme.onSurface,
           controlContentBg,
         );
 
-        final hintCandidate = AppColors.textSecondary.withOpacity(0.92);
+        final hintCandidate = scheme.onSurfaceVariant.withOpacity(0.92);
         var hintColor = ColorUtils.ensureReadableColor(
           hintCandidate,
           controlContentBg,
           minRatio: 3.0,
         );
-        if (hintColor == Colors.black || hintColor == Colors.white) {
+        final luminance = hintColor.computeLuminance();
+        if (luminance < 0.02 || luminance > 0.98) {
           hintColor = hintColor.withOpacity(0.65);
         }
 
@@ -3176,13 +3191,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.hovered)) {
-              return const Color(0xFFF1F5F9);
+              return scheme.primary.withOpacity(0.08);
             }
-            return const Color(0xFFFFFFFF);
+            return scheme.surface;
           }),
           foregroundColor: WidgetStatePropertyAll(contrastColor),
           side: WidgetStatePropertyAll(
-            BorderSide(color: borderColor ?? const Color(0xFFE2E8F0)),
+            BorderSide(color: borderColor ?? scheme.outlineVariant),
           ),
           padding: const WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 14, vertical: 0),
@@ -3192,7 +3207,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ),
           elevation: const WidgetStatePropertyAll(0),
           shadowColor: const WidgetStatePropertyAll(Colors.transparent),
-          overlayColor: const WidgetStatePropertyAll(Color(0xFFF1F5F9)),
+          overlayColor: WidgetStatePropertyAll(
+            scheme.primary.withOpacity(0.08),
+          ),
           minimumSize: const WidgetStatePropertyAll(Size(0, 42)),
         ),
       ),
@@ -3200,14 +3217,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Widget _buildTicketsFooter() {
-    final unifiedColor = const Color(0xFFFFFFFF);
-    final unifiedTextColor = const Color(0xFF0F172A);
-    final unifiedBorderColor = const Color(0xFFE2E8F0);
+    final unifiedColor = scheme.surface;
+    final unifiedTextColor = scheme.onSurface;
+    final unifiedBorderColor = scheme.outlineVariant;
     return Container(
       height: _ticketsFooterHeight,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
-        border: Border(top: BorderSide(color: AppColors.borderSoft)),
+        color: scheme.surface.withOpacity(0.96),
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3364,9 +3381,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderSoft),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -3382,10 +3399,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
+                      color: scheme.primary.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(icon, size: 18, color: const Color(0xFF2563EB)),
+                    child: Icon(icon, size: 18, color: scheme.primary),
                   ),
                 ),
               ),
@@ -3409,9 +3426,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     height: 34,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: scheme.surfaceContainerHighest.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.borderSoft),
+                      border: Border.all(color: scheme.outlineVariant),
                     ),
                     child: Row(
                       children: [
@@ -3419,14 +3436,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
+                            color: scheme.primary.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(
-                            icon,
-                            size: 16,
-                            color: const Color(0xFF2563EB),
-                          ),
+                          child: Icon(icon, size: 16, color: scheme.primary),
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -3434,8 +3447,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
+                            style: TextStyle(
+                              color: scheme.onSurface,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                               height: 1,
@@ -3457,9 +3470,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 height: 34,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: scheme.surfaceContainerHighest.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.borderSoft),
+                  border: Border.all(color: scheme.outlineVariant),
                 ),
                 child: Row(
                   children: [
@@ -3467,20 +3480,20 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: scheme.primary.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.inventory_2_outlined,
                         size: 16,
-                        color: Color(0xFF2563EB),
+                        color: scheme.primary,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       '$itemCount',
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
+                      style: TextStyle(
+                        color: scheme.onSurface,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                         height: 1,
@@ -3526,9 +3539,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildItemsListCard({bool embedded = false}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: salesDetailPanelColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderSoft),
+        border: Border.all(color: salesDetailBorderColor),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -3579,7 +3592,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     Text(
                       'Detalle',
                       style: TextStyle(
-                        color: AppColors.textPrimary,
+                        color: salesDetailTextColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -3587,8 +3600,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     const Spacer(),
                     Text(
                       '${_currentCart.items.length} líneas',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: salesDetailMutedTextColor,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -3596,7 +3609,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppColors.borderSoft),
+              Divider(height: 1, color: salesDetailBorderColor),
               Expanded(child: listContent),
             ],
           );
@@ -3656,7 +3669,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildCartItemRow(SaleItemModel item, int index) {
     final isSelected = _selectedCartItemIndex == index;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
-    final rowDividerColor = AppColors.borderSoft;
+    final rowDividerColor = salesDetailBorderColor;
 
     return InkWell(
       onTap: () => setState(() => _selectedCartItemIndex = index),
@@ -3687,7 +3700,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                    color: salesDetailTextColor,
                   ),
                 ),
               ),
@@ -3703,7 +3716,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: salesDetailTextColor,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -3713,7 +3726,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     '${item.productCodeSnapshot}  •  RD\$${item.unitPrice.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 10,
-                      color: AppColors.textSecondary,
+                      color: salesDetailMutedTextColor,
                     ),
                   ),
                 ],
@@ -3757,7 +3770,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                    color: salesDetailTextColor,
                   ),
                 ),
               ],
@@ -3803,7 +3816,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         child: Icon(
           icon,
           size: 14,
-          color: AppColors.textPrimary.withOpacity(0.86),
+          color: salesDetailTextColor.withOpacity(0.86),
         ),
       ),
     );
@@ -3818,11 +3831,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           child: Column(
             children: [
               Row(
-                children: const [
+                children: [
                   Text(
                     'Resumen',
                     style: TextStyle(
-                      color: AppColors.textPrimary,
+                      color: salesDetailTextColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -3831,7 +3844,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   Text(
                     'e-CF y total',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: salesDetailMutedTextColor,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -3859,7 +3872,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
+                                color: salesDetailTextColor,
                               ),
                             ),
                           ),
@@ -3895,7 +3908,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
+                                color: salesDetailTextColor,
                               ),
                             ),
                           ),
@@ -3936,11 +3949,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       child: Text(
                         _electronicCompany == null
                             ? 'e-CF: cargando configuracion electronica...'
-                          : 'e-CF ${_electronicCompany!.environment.toUpperCase()} listo para DGII',
+                            : 'e-CF ${_electronicCompany!.environment.toUpperCase()} listo para DGII',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
+                          color: salesDetailMutedTextColor,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -3958,7 +3971,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             ],
           ),
         ),
-        const Divider(height: 1, color: AppColors.borderSoft),
+        Divider(height: 1, color: salesDetailBorderColor),
 
         Container(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -3995,9 +4008,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   if (_currentCart.itbisEnabled || discountsCombined > 0) ...[
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: const Divider(
+                      child: Divider(
                         thickness: 1,
-                        color: AppColors.borderSoft,
+                        color: salesDetailBorderColor,
                       ),
                     ),
                   ],
@@ -4043,7 +4056,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               style: TextStyle(
                                 fontSize: 26,
                                 fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
+                                color: salesDetailTextColor,
                               ),
                             ),
                           ],
@@ -4081,11 +4094,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _currentCart.items.isEmpty
-                          ? scheme.surface
-                          : const Color(0xFF2563EB),
+                          ? scheme.surfaceContainerHighest
+                          : scheme.primary,
                       foregroundColor: _currentCart.items.isEmpty
-                          ? scheme.onSurface
-                          : Colors.white,
+                          ? scheme.onSurfaceVariant
+                          : scheme.onPrimary,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -4107,7 +4120,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     size: 18,
                     color: _currentCart.items.isEmpty
                         ? scheme.onSurface.withOpacity(0.38)
-                        : const Color(0xFF2563EB),
+                        : scheme.primary,
                   ),
                   label: Text(
                     'Cotizar',
@@ -4119,7 +4132,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       letterSpacing: 0.2,
                       color: _currentCart.items.isEmpty
                           ? scheme.onSurface.withOpacity(0.38)
-                          : const Color(0xFF2563EB),
+                          : scheme.primary,
                     ),
                   ),
                   style: ButtonStyle(
@@ -4131,26 +4144,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                         return scheme.surface;
                       }
                       if (states.contains(WidgetState.hovered)) {
-                        return const Color(0xFFEEF2FF);
+                        return scheme.primary.withOpacity(0.08);
                       }
-                      return const Color(0xFFFFFFFF);
+                      return scheme.surface;
                     }),
                     foregroundColor: WidgetStateProperty.resolveWith((states) {
                       if (_currentCart.items.isEmpty) {
                         return scheme.onSurface.withOpacity(0.38);
                       }
-                      return const Color(0xFF2563EB);
+                      return scheme.primary;
                     }),
                     shape: WidgetStatePropertyAll(
                       RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    side: const WidgetStatePropertyAll(
-                      BorderSide(color: Color(0xFFCBD5F5)),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(
+                        color: _currentCart.items.isEmpty
+                            ? scheme.outlineVariant
+                            : scheme.primary.withOpacity(0.22),
+                      ),
                     ),
-                    overlayColor: const WidgetStatePropertyAll(
-                      Color(0xFFEEF2FF),
+                    overlayColor: WidgetStatePropertyAll(
+                      scheme.primary.withOpacity(0.08),
                     ),
                     elevation: const WidgetStatePropertyAll(0),
                   ),
@@ -4164,9 +4181,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: salesDetailPanelColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderSoft),
+        border: Border.all(color: salesDetailBorderColor),
       ),
       margin: EdgeInsets.zero,
       child: ConstrainedBox(
@@ -4182,8 +4199,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     bool isTotal, {
     Color? color,
   }) {
-    final baseColor = AppColors.textPrimary;
-    final labelColor = color ?? AppColors.textSecondary;
+    final baseColor = salesDetailTextColor;
+    final labelColor = color ?? salesDetailMutedTextColor;
     final valueColor = color ?? baseColor;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4393,7 +4410,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               onChanged: (value) async {
                                 if (!value) {
                                   _updateCurrentCart(() {
-                                    _currentCart.electronicInvoiceEnabled = false;
+                                    _currentCart.electronicInvoiceEnabled =
+                                        false;
                                   });
                                   return;
                                 }
@@ -4439,7 +4457,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                        _electronicCompany == null
+                                      _electronicCompany == null
                                           ? 'Cargando configuracion electronica...'
                                           : 'Ambiente ${_electronicCompany!.environment.toUpperCase()} listo para emitir y enviar a DGII.',
                                       style: TextStyle(
@@ -4450,7 +4468,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   ),
                                   const SizedBox(width: 8),
                                   OutlinedButton.icon(
-                                    onPressed: () => context.push('/electronic-documents'),
+                                    onPressed: () =>
+                                        context.push('/electronic-documents'),
                                     icon: const Icon(
                                       Icons.settings_outlined,
                                       size: 16,

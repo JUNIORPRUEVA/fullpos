@@ -40,35 +40,14 @@ class AppDb {
   ];
 
   static const String demoProductCodePrefix = 'DEMO-';
-  static const int _dbVersion = 37;
 
-  static String _fromUnits(List<int> units) => String.fromCharCodes(units);
-
-  static String get _legacyAppInvoiceToggleColumn => _fromUnits([
-    102, 105, 115, 99, 97, 108, 95, 101, 110, 97, 98, 108, 101, 100, 95, 100,
-    101, 102, 97, 117, 108, 116,
-  ]);
-
-  static String get _legacySaleInvoiceToggleColumn => _fromUnits([
-    102, 105, 115, 99, 97, 108, 95, 101, 110, 97, 98, 108, 101, 100,
-  ]);
-
-  static String get _legacySaleInvoiceCodeColumn =>
-      _fromUnits([110, 99, 102, 95, 102, 117, 108, 108]);
-
-  static String get _legacySaleDocumentTypeColumn =>
-      _fromUnits([110, 99, 102, 95, 116, 121, 112, 101]);
-
-  static String get _legacyPrinterReferenceColumn =>
-      _fromUnits([115, 104, 111, 119, 95, 110, 99, 102]);
-
-  static String get _legacyEmitterTable => _fromUnits([
-    101, 109, 112, 114, 101, 115, 97, 95, 102, 105, 115, 99, 97, 108,
-  ]);
+  // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
+  static const int _dbVersion = 33;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
 
+  // Por defecto usamos SIEMPRE la DB de producción.
   // Si necesitas simular migraciones localmente, ejecuta en debug con:
   // `--dart-define=USE_TEST_DB=true`
   static bool get isUsingTestDb =>
@@ -80,6 +59,7 @@ class AppDb {
 
   /// Snapshot síncrono del estado de la DB (para diagnósticos/logs).
   ///
+  /// No abre la base de datos ni hace I/O.
   static Map<String, Object?> diagnosticsSnapshot() {
     final db = _database;
     return <String, Object?>{
@@ -745,8 +725,8 @@ class AppDb {
       DbTables.returnItems,
       DbTables.businessInfo,
       DbTables.appSettings,
-      DbTables.electronicCompany,
-      DbTables.facturaElectronica,
+      DbTables.ncfBooks,
+      DbTables.customersNcfUsage,
       DbTables.users,
       DbTables.cashSessions,
       DbTables.cashMovements,
@@ -1030,7 +1010,7 @@ class AppDb {
     }
 
     if (oldVersion < 4) {
-      // Migración de v3 a v4: Módulo de ventas completo + configuración electrónica
+      // Migración de v3 a v4: Módulo de ventas completo + configuración fiscal
 
       // === Información del Negocio ===
       await db.execute('''
@@ -1060,7 +1040,7 @@ class AppDb {
         CREATE TABLE ${DbTables.appSettings} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           itbis_enabled_default INTEGER NOT NULL DEFAULT 0,
-          electronic_invoice_enabled_default INTEGER NOT NULL DEFAULT 0,
+          fiscal_enabled_default INTEGER NOT NULL DEFAULT 0,
           itbis_rate REAL NOT NULL DEFAULT 0.18,
           ticket_size TEXT NOT NULL DEFAULT '80mm',
           updated_at_ms INTEGER NOT NULL
@@ -1070,11 +1050,47 @@ class AppDb {
       // Insertar configuración por defecto
       await db.insert(DbTables.appSettings, {
         'itbis_enabled_default': 0,
-        'electronic_invoice_enabled_default': 0,
+        'fiscal_enabled_default': 0,
         'itbis_rate': 0.18,
         'ticket_size': '80mm',
         'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
       });
+
+      // === Libros de NCF (Talonarios) ===
+      await db.execute('''
+        CREATE TABLE ${DbTables.ncfBooks} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          series TEXT,
+          from_n INTEGER NOT NULL,
+          to_n INTEGER NOT NULL,
+          next_n INTEGER NOT NULL,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          expires_at_ms INTEGER,
+          note TEXT,
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          deleted_at_ms INTEGER
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_ncf_type_active 
+        ON ${DbTables.ncfBooks}(type, is_active)
+      ''');
+
+      // === Uso de NCF por clientes ===
+      await db.execute('''
+        CREATE TABLE ${DbTables.customersNcfUsage} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          sale_id INTEGER NOT NULL,
+          ncf_book_id INTEGER NOT NULL,
+          ncf_full TEXT NOT NULL UNIQUE,
+          created_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (sale_id) REFERENCES ${DbTables.sales}(id),
+          FOREIGN KEY (ncf_book_id) REFERENCES ${DbTables.ncfBooks}(id)
+        )
+      ''');
 
       // === Usuarios ===
       await db.execute('''
@@ -1192,9 +1208,6 @@ class AppDb {
           itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
-          payment_cash_amount REAL NOT NULL DEFAULT 0,
-          payment_card_amount REAL NOT NULL DEFAULT 0,
-          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -1202,9 +1215,9 @@ class AppDb {
           credit_due_date_ms INTEGER,
           credit_installments INTEGER,
           credit_note TEXT,
-          electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
-          electronic_invoice_code TEXT UNIQUE,
-          electronic_document_type TEXT,
+          fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+          ncf_full TEXT UNIQUE,
+          ncf_type TEXT,
           session_id INTEGER,
           created_at_ms INTEGER NOT NULL,
           updated_at_ms INTEGER NOT NULL,
@@ -1401,7 +1414,7 @@ class AppDb {
           chars_per_line INTEGER NOT NULL DEFAULT 48,
           auto_print_on_payment INTEGER NOT NULL DEFAULT 0,
           show_itbis INTEGER NOT NULL DEFAULT 1,
-          show_electronic_invoice_reference INTEGER NOT NULL DEFAULT 1,
+          show_ncf INTEGER NOT NULL DEFAULT 1,
           show_cashier INTEGER NOT NULL DEFAULT 1,
           show_client INTEGER NOT NULL DEFAULT 1,
           show_payment_method INTEGER NOT NULL DEFAULT 1,
@@ -1430,7 +1443,7 @@ class AppDb {
         'chars_per_line': 48,
         'auto_print_on_payment': 0,
         'show_itbis': 1,
-        'show_electronic_invoice_reference': 1,
+        'show_ncf': 1,
         'show_cashier': 1,
         'show_client': 1,
         'show_payment_method': 1,
@@ -1905,11 +1918,11 @@ class AppDb {
 
     if (oldVersion < 29) {
       // Migración v29:
-      // - Default controlado del switch de e-CF en ventas.
+      // - Default controlado del switch de NCF (comprobante fiscal) en ventas.
       await _addColumnIfMissing(
         db,
         DbTables.appSettings,
-        'electronic_invoice_enabled_default',
+        'fiscal_enabled_default',
         'INTEGER NOT NULL DEFAULT 0',
       );
     }
@@ -2055,140 +2068,6 @@ class AppDb {
       );
       await _ensureProductSyncOutboxTable(db);
     }
-
-    if (oldVersion < 35) {
-      await _ensureSalesPaymentBreakdownColumns(db);
-    }
-
-    if (oldVersion < 36) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS ${DbTables.electronicCompany} (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          business_name TEXT NOT NULL DEFAULT 'FULLPOS',
-          trade_name TEXT,
-          rnc TEXT NOT NULL DEFAULT '',
-          emission_address TEXT NOT NULL DEFAULT '',
-          phone TEXT,
-          email TEXT,
-          environment TEXT NOT NULL DEFAULT 'pruebas',
-          api_token TEXT,
-          certificate_name TEXT,
-          automatic_emission INTEGER NOT NULL DEFAULT 1,
-          updated_at_ms INTEGER NOT NULL
-        )
-      ''');
-
-      final electronicCompanyRows =
-          Sqflite.firstIntValue(
-            await db.rawQuery(
-              'SELECT COUNT(*) FROM ${DbTables.electronicCompany}',
-            ),
-          ) ??
-          0;
-      if (electronicCompanyRows == 0) {
-        await db.insert(DbTables.electronicCompany, {
-          'business_name': 'FULLPOS',
-          'trade_name': 'FULLPOS',
-          'rnc': '',
-          'emission_address': '',
-          'phone': '',
-          'email': '',
-          'environment': 'pruebas',
-          'api_token': '',
-          'certificate_name': '',
-          'automatic_emission': 1,
-          'updated_at_ms': now,
-        });
-      }
-
-      await db.execute('''
-        CREATE TABLE IF NOT EXISTS ${DbTables.facturaElectronica} (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          sale_id INTEGER NOT NULL UNIQUE,
-          local_code TEXT NOT NULL,
-          ecf TEXT,
-          tipo_documento TEXT NOT NULL DEFAULT 'venta',
-          xml_payload TEXT,
-          xml_firmado TEXT,
-          dgii_track_id TEXT,
-          estado_dgii TEXT NOT NULL DEFAULT 'local',
-          codigo_dgii TEXT,
-          mensaje_dgii TEXT,
-          ambiente TEXT,
-          monto_total REAL NOT NULL DEFAULT 0,
-          cliente_nombre TEXT,
-          cliente_rnc TEXT,
-          created_at_ms INTEGER NOT NULL,
-          updated_at_ms INTEGER NOT NULL,
-          sent_at_ms INTEGER,
-          acknowledged_at_ms INTEGER,
-          FOREIGN KEY (sale_id) REFERENCES ${DbTables.sales}(id)
-        )
-      ''');
-      await _createIndexIfMissing(
-        db,
-        'idx_factura_electronica_estado',
-        DbTables.facturaElectronica,
-        'estado_dgii',
-      );
-      await _createIndexIfMissing(
-        db,
-        'idx_factura_electronica_created',
-        DbTables.facturaElectronica,
-        'created_at_ms',
-      );
-    }
-
-    if (oldVersion < 37) {
-      await _ensureElectronicInvoiceSchemaCompatibility(db);
-    }
-  }
-
-  static Future<void> _ensureSalesPaymentBreakdownColumns(
-    DatabaseExecutor db,
-  ) async {
-    if (!await _tableExists(db, DbTables.sales)) return;
-
-    await _addColumnIfMissing(
-      db,
-      DbTables.sales,
-      'payment_cash_amount',
-      'REAL NOT NULL DEFAULT 0',
-    );
-    await _addColumnIfMissing(
-      db,
-      DbTables.sales,
-      'payment_card_amount',
-      'REAL NOT NULL DEFAULT 0',
-    );
-    await _addColumnIfMissing(
-      db,
-      DbTables.sales,
-      'payment_transfer_amount',
-      'REAL NOT NULL DEFAULT 0',
-    );
-
-    await db.execute('''
-      UPDATE ${DbTables.sales}
-      SET payment_cash_amount = CASE
-            WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash' THEN total
-            ELSE COALESCE(payment_cash_amount, 0)
-          END,
-          payment_card_amount = CASE
-            WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'card' THEN total
-            ELSE COALESCE(payment_card_amount, 0)
-          END,
-          payment_transfer_amount = CASE
-            WHEN LOWER(TRIM(COALESCE(payment_method, ''))) IN ('transfer', 'transferencia')
-              THEN total
-            ELSE COALESCE(payment_transfer_amount, 0)
-          END
-      WHERE COALESCE(payment_cash_amount, 0) = 0
-        AND COALESCE(payment_card_amount, 0) = 0
-        AND COALESCE(payment_transfer_amount, 0) = 0
-    ''');
   }
 
   static Future<void> _migratePurchaseOrderItemsToSnapshots(
@@ -2906,7 +2785,7 @@ class AppDb {
       CREATE TABLE ${DbTables.appSettings} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         itbis_enabled_default INTEGER NOT NULL DEFAULT 0,
-        electronic_invoice_enabled_default INTEGER NOT NULL DEFAULT 0,
+        fiscal_enabled_default INTEGER NOT NULL DEFAULT 0,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
         ticket_size TEXT NOT NULL DEFAULT '80mm',
         updated_at_ms INTEGER NOT NULL
@@ -2914,73 +2793,32 @@ class AppDb {
     ''');
     await db.insert(DbTables.appSettings, {
       'itbis_enabled_default': 0,
-      'electronic_invoice_enabled_default': 0,
+      'fiscal_enabled_default': 0,
       'itbis_rate': 0.18,
       'ticket_size': '80mm',
       'updated_at_ms': now,
     });
 
+    // Libros de NCF
     await db.execute('''
-      CREATE TABLE ${DbTables.electronicCompany} (
+      CREATE TABLE ${DbTables.ncfBooks} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        business_name TEXT NOT NULL DEFAULT 'FULLPOS',
-        trade_name TEXT,
-        rnc TEXT NOT NULL DEFAULT '',
-        emission_address TEXT NOT NULL DEFAULT '',
-        phone TEXT,
-        email TEXT,
-        environment TEXT NOT NULL DEFAULT 'pruebas',
-        api_token TEXT,
-        certificate_name TEXT,
-        automatic_emission INTEGER NOT NULL DEFAULT 1,
-        updated_at_ms INTEGER NOT NULL
-      )
-    ''');
-    await db.insert(DbTables.electronicCompany, {
-      'business_name': 'FULLPOS',
-      'trade_name': 'FULLPOS',
-      'rnc': '',
-      'emission_address': '',
-      'phone': '',
-      'email': '',
-      'environment': 'pruebas',
-      'api_token': '',
-      'certificate_name': '',
-      'automatic_emission': 1,
-      'updated_at_ms': now,
-    });
-
-    await db.execute('''
-      CREATE TABLE ${DbTables.facturaElectronica} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sale_id INTEGER NOT NULL UNIQUE,
-        local_code TEXT NOT NULL,
-        ecf TEXT,
-        tipo_documento TEXT NOT NULL DEFAULT 'venta',
-        xml_payload TEXT,
-        xml_firmado TEXT,
-        dgii_track_id TEXT,
-        estado_dgii TEXT NOT NULL DEFAULT 'local',
-        codigo_dgii TEXT,
-        mensaje_dgii TEXT,
-        ambiente TEXT,
-        monto_total REAL NOT NULL DEFAULT 0,
-        cliente_nombre TEXT,
-        cliente_rnc TEXT,
+        type TEXT NOT NULL,
+        series TEXT,
+        from_n INTEGER NOT NULL,
+        to_n INTEGER NOT NULL,
+        next_n INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        expires_at_ms INTEGER,
+        note TEXT,
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
-        sent_at_ms INTEGER,
-        acknowledged_at_ms INTEGER,
-        FOREIGN KEY (sale_id) REFERENCES ${DbTables.sales}(id)
+        deleted_at_ms INTEGER
       )
     ''');
     await db.execute('''
-      CREATE INDEX idx_factura_electronica_estado
-      ON ${DbTables.facturaElectronica}(estado_dgii)
-    ''');
-    await db.execute('''
-      CREATE INDEX idx_factura_electronica_created
-      ON ${DbTables.facturaElectronica}(created_at_ms)
+      CREATE INDEX idx_ncf_type_active 
+      ON ${DbTables.ncfBooks}(type, is_active)
     ''');
 
     // Usuarios
@@ -3075,7 +2913,6 @@ class AppDb {
       CREATE INDEX idx_cash_session_status 
       ON ${DbTables.cashSessions}(status)
     ''');
-    await _ensureCashSessionIntegrityIndexes(db);
 
     // Movimientos de caja
     await db.execute('''
@@ -3118,9 +2955,6 @@ class AppDb {
         itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
-          payment_cash_amount REAL NOT NULL DEFAULT 0,
-          payment_card_amount REAL NOT NULL DEFAULT 0,
-          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -3128,9 +2962,9 @@ class AppDb {
           credit_due_date_ms INTEGER,
           credit_installments INTEGER,
           credit_note TEXT,
-          electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
-          electronic_invoice_code TEXT UNIQUE,
-          electronic_document_type TEXT,
+          fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+          ncf_full TEXT UNIQUE,
+          ncf_type TEXT,
         session_id INTEGER,
         cash_session_id INTEGER REFERENCES ${DbTables.cashSessions}(id),
         created_at_ms INTEGER NOT NULL,
@@ -3161,6 +2995,19 @@ class AppDb {
       ON ${DbTables.sales}(cash_session_id)
     ''');
 
+    // Uso de NCF
+    await db.execute('''
+      CREATE TABLE ${DbTables.customersNcfUsage} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER NOT NULL,
+        ncf_book_id INTEGER NOT NULL,
+        ncf_full TEXT NOT NULL UNIQUE,
+        created_at_ms INTEGER NOT NULL,
+        FOREIGN KEY (sale_id) REFERENCES ${DbTables.sales}(id),
+        FOREIGN KEY (ncf_book_id) REFERENCES ${DbTables.ncfBooks}(id)
+      )
+    ''');
+
     // Items de venta
     await db.execute('''
       CREATE TABLE ${DbTables.saleItems} (
@@ -3179,7 +3026,6 @@ class AppDb {
         FOREIGN KEY (product_id) REFERENCES ${DbTables.products}(id)
       )
     ''');
-
     await db.execute('''
       CREATE INDEX idx_sale_items_sale 
       ON ${DbTables.saleItems}(sale_id)
@@ -3255,7 +3101,7 @@ class AppDb {
         discount REAL NOT NULL DEFAULT 0,
         itbis_enabled INTEGER NOT NULL DEFAULT 1,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
-        electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
+        fiscal_enabled INTEGER NOT NULL DEFAULT 0,
         discount_total_type TEXT,
         discount_total_value REAL,
         created_at_ms INTEGER NOT NULL,
@@ -3355,7 +3201,7 @@ class AppDb {
         chars_per_line INTEGER NOT NULL DEFAULT 48,
         auto_print_on_payment INTEGER NOT NULL DEFAULT 0,
         show_itbis INTEGER NOT NULL DEFAULT 1,
-        show_electronic_invoice_reference INTEGER NOT NULL DEFAULT 1,
+        show_ncf INTEGER NOT NULL DEFAULT 1,
         show_cashier INTEGER NOT NULL DEFAULT 1,
         show_client INTEGER NOT NULL DEFAULT 1,
         show_payment_method INTEGER NOT NULL DEFAULT 1,
@@ -3386,7 +3232,7 @@ class AppDb {
       'chars_per_line': 48,
       'auto_print_on_payment': 0,
       'show_itbis': 1,
-      'show_electronic_invoice_reference': 1,
+      'show_ncf': 1,
       'show_cashier': 1,
       'show_client': 1,
       'show_payment_method': 1,
@@ -4152,9 +3998,6 @@ class AppDb {
         itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
-          payment_cash_amount REAL NOT NULL DEFAULT 0,
-          payment_card_amount REAL NOT NULL DEFAULT 0,
-          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -4162,9 +4005,9 @@ class AppDb {
           credit_due_date_ms INTEGER,
           credit_installments INTEGER,
           credit_note TEXT,
-          electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
-          electronic_invoice_code TEXT UNIQUE,
-          electronic_document_type TEXT,
+          fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+          ncf_full TEXT UNIQUE,
+          ncf_type TEXT,
         session_id INTEGER,
         cash_session_id INTEGER REFERENCES ${DbTables.cashSessions}(id),
         created_at_ms INTEGER NOT NULL,
@@ -4176,84 +4019,6 @@ class AppDb {
     ''');
 
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS ${DbTables.electronicCompany} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        business_name TEXT NOT NULL DEFAULT 'FULLPOS',
-        trade_name TEXT,
-        rnc TEXT NOT NULL DEFAULT '',
-        emission_address TEXT NOT NULL DEFAULT '',
-        phone TEXT,
-        email TEXT,
-        environment TEXT NOT NULL DEFAULT 'pruebas',
-        api_token TEXT,
-        certificate_name TEXT,
-        automatic_emission INTEGER NOT NULL DEFAULT 1,
-        updated_at_ms INTEGER NOT NULL
-      )
-    ''');
-
-    final electronicCompanyRows =
-        Sqflite.firstIntValue(
-          await db.rawQuery(
-            'SELECT COUNT(*) FROM ${DbTables.electronicCompany}',
-          ),
-        ) ??
-        0;
-    if (electronicCompanyRows == 0) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.insert(DbTables.electronicCompany, {
-        'business_name': 'FULLPOS',
-        'trade_name': 'FULLPOS',
-        'rnc': '',
-        'emission_address': '',
-        'phone': '',
-        'email': '',
-        'environment': 'pruebas',
-        'api_token': '',
-        'certificate_name': '',
-        'automatic_emission': 1,
-        'updated_at_ms': now,
-      });
-    }
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS ${DbTables.facturaElectronica} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sale_id INTEGER NOT NULL UNIQUE,
-        local_code TEXT NOT NULL,
-        ecf TEXT,
-        tipo_documento TEXT NOT NULL DEFAULT 'venta',
-        xml_payload TEXT,
-        xml_firmado TEXT,
-        dgii_track_id TEXT,
-        estado_dgii TEXT NOT NULL DEFAULT 'local',
-        codigo_dgii TEXT,
-        mensaje_dgii TEXT,
-        ambiente TEXT,
-        monto_total REAL NOT NULL DEFAULT 0,
-        cliente_nombre TEXT,
-        cliente_rnc TEXT,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL,
-        sent_at_ms INTEGER,
-        acknowledged_at_ms INTEGER,
-        FOREIGN KEY (sale_id) REFERENCES ${DbTables.sales}(id)
-      )
-    ''');
-    await _createIndexIfMissing(
-      db,
-      'idx_factura_electronica_estado',
-      DbTables.facturaElectronica,
-      'estado_dgii',
-    );
-    await _createIndexIfMissing(
-      db,
-      'idx_factura_electronica_created',
-      DbTables.facturaElectronica,
-      'created_at_ms',
-    );
-
-    await db.execute('''
       CREATE TABLE IF NOT EXISTS ${DbTables.printerSettings} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         selected_printer_name TEXT,
@@ -4261,7 +4026,7 @@ class AppDb {
         chars_per_line INTEGER NOT NULL DEFAULT 48,
         auto_print_on_payment INTEGER NOT NULL DEFAULT 0,
         show_itbis INTEGER NOT NULL DEFAULT 1,
-        show_electronic_invoice_reference INTEGER NOT NULL DEFAULT 1,
+        show_ncf INTEGER NOT NULL DEFAULT 1,
         show_cashier INTEGER NOT NULL DEFAULT 1,
         show_client INTEGER NOT NULL DEFAULT 1,
         show_payment_method INTEGER NOT NULL DEFAULT 1,
@@ -4537,8 +4302,6 @@ class AppDb {
         SET business_date = strftime('%Y-%m-%d', opened_at_ms / 1000, 'unixepoch', 'localtime')
         WHERE business_date IS NULL OR TRIM(business_date) = ''
       ''');
-      await _normalizeActiveCashSessions(db);
-      await _ensureCashSessionIntegrityIndexes(db);
     }
 
     // cash_movements
@@ -4590,10 +4353,7 @@ class AppDb {
         DbTables.sales,
         'cash_session_id',
       );
-      await _ensureSalesPaymentBreakdownColumns(db);
     }
-
-    await _ensureElectronicInvoiceSchemaCompatibility(db);
 
     // printer_settings
     if (await _tableExists(db, DbTables.printerSettings)) {
@@ -4642,7 +4402,7 @@ class AppDb {
       await _addColumnIfMissing(
         db,
         DbTables.printerSettings,
-        'show_electronic_invoice_reference',
+        'show_ncf',
         'INTEGER NOT NULL DEFAULT 1',
       );
       await _addColumnIfMissing(
@@ -4869,7 +4629,7 @@ class AppDb {
           'auto_print_on_payment': 0,
           'auto_open_drawer_on_charge_without_ticket': 0,
           'show_itbis': 1,
-          'show_electronic_invoice_reference': 1,
+          'show_ncf': 1,
           'show_cashier': 1,
           'show_client': 1,
           'show_payment_method': 1,
@@ -5173,7 +4933,7 @@ class AppDb {
         discount REAL NOT NULL DEFAULT 0,
         itbis_enabled INTEGER NOT NULL DEFAULT 1,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
-        electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
+        fiscal_enabled INTEGER NOT NULL DEFAULT 0,
         discount_total_type TEXT,
         discount_total_value REAL,
         created_at_ms INTEGER NOT NULL,
@@ -5429,9 +5189,6 @@ class AppDb {
         // No romper apertura por integridad.
       }
     }
-
-    await _normalizeActiveCashSessions(db);
-    await _ensureCashSessionIntegrityIndexes(db);
   }
 
   static Future<bool> _tableExists(DatabaseExecutor db, String table) async {
@@ -5440,208 +5197,6 @@ class AppDb {
       [table],
     );
     return result.isNotEmpty;
-  }
-
-  static Future<void> _ensureElectronicInvoiceSchemaCompatibility(
-    DatabaseExecutor db,
-  ) async {
-    if (await _tableExists(db, DbTables.appSettings)) {
-      await _addColumnIfMissing(
-        db,
-        DbTables.appSettings,
-        'electronic_invoice_enabled_default',
-        'INTEGER NOT NULL DEFAULT 0',
-      );
-      await _copyLegacyIntColumn(
-        db,
-        table: DbTables.appSettings,
-        legacyColumn: _legacyAppInvoiceToggleColumn,
-        newColumn: 'electronic_invoice_enabled_default',
-      );
-    }
-
-    if (await _tableExists(db, DbTables.sales)) {
-      await _addColumnIfMissing(
-        db,
-        DbTables.sales,
-        'electronic_invoice_enabled',
-        'INTEGER NOT NULL DEFAULT 0',
-      );
-      await _addColumnIfMissing(
-        db,
-        DbTables.sales,
-        'electronic_invoice_code',
-        'TEXT',
-      );
-      await _addColumnIfMissing(
-        db,
-        DbTables.sales,
-        'electronic_document_type',
-        'TEXT',
-      );
-      await _copyLegacyIntColumn(
-        db,
-        table: DbTables.sales,
-        legacyColumn: _legacySaleInvoiceToggleColumn,
-        newColumn: 'electronic_invoice_enabled',
-      );
-      await _copyLegacyTextColumn(
-        db,
-        table: DbTables.sales,
-        legacyColumn: _legacySaleInvoiceCodeColumn,
-        newColumn: 'electronic_invoice_code',
-      );
-      await _copyLegacyTextColumn(
-        db,
-        table: DbTables.sales,
-        legacyColumn: _legacySaleDocumentTypeColumn,
-        newColumn: 'electronic_document_type',
-      );
-    }
-
-    if (await _tableExists(db, DbTables.tempCarts)) {
-      await _addColumnIfMissing(
-        db,
-        DbTables.tempCarts,
-        'electronic_invoice_enabled',
-        'INTEGER NOT NULL DEFAULT 0',
-      );
-      await _copyLegacyIntColumn(
-        db,
-        table: DbTables.tempCarts,
-        legacyColumn: _legacySaleInvoiceToggleColumn,
-        newColumn: 'electronic_invoice_enabled',
-      );
-    }
-
-    if (await _tableExists(db, DbTables.printerSettings)) {
-      await _addColumnIfMissing(
-        db,
-        DbTables.printerSettings,
-        'show_electronic_invoice_reference',
-        'INTEGER NOT NULL DEFAULT 1',
-      );
-      await _copyLegacyIntColumn(
-        db,
-        table: DbTables.printerSettings,
-        legacyColumn: _legacyPrinterReferenceColumn,
-        newColumn: 'show_electronic_invoice_reference',
-      );
-    }
-
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS ${DbTables.electronicCompany} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        business_name TEXT NOT NULL DEFAULT 'FULLPOS',
-        trade_name TEXT,
-        rnc TEXT NOT NULL DEFAULT '',
-        emission_address TEXT NOT NULL DEFAULT '',
-        phone TEXT,
-        email TEXT,
-        environment TEXT NOT NULL DEFAULT 'pruebas',
-        api_token TEXT,
-        certificate_name TEXT,
-        automatic_emission INTEGER NOT NULL DEFAULT 1,
-        updated_at_ms INTEGER NOT NULL
-      )
-    ''');
-
-    final electronicCompanyRows =
-        Sqflite.firstIntValue(
-          await db.rawQuery(
-            'SELECT COUNT(*) FROM ${DbTables.electronicCompany}',
-          ),
-        ) ??
-        0;
-
-    if (electronicCompanyRows == 0 &&
-      await _tableExists(db, _legacyEmitterTable)) {
-      await db.execute('''
-        INSERT INTO ${DbTables.electronicCompany} (
-          business_name,
-          trade_name,
-          rnc,
-          emission_address,
-          phone,
-          email,
-          environment,
-          api_token,
-          certificate_name,
-          automatic_emission,
-          updated_at_ms
-        )
-        SELECT
-          COALESCE(razon_social, 'FULLPOS'),
-          nombre_comercial,
-          COALESCE(rnc, ''),
-          COALESCE(direccion, ''),
-          telefono,
-          email,
-          COALESCE(ambiente, 'pruebas'),
-          api_token,
-          certificado_nombre,
-          COALESCE(emision_automatica, 1),
-          COALESCE(updated_at_ms, ${DateTime.now().millisecondsSinceEpoch})
-        FROM $_legacyEmitterTable
-        ORDER BY id ASC
-        LIMIT 1
-      ''');
-    }
-
-    final ensuredRows =
-        Sqflite.firstIntValue(
-          await db.rawQuery(
-            'SELECT COUNT(*) FROM ${DbTables.electronicCompany}',
-          ),
-        ) ??
-        0;
-    if (ensuredRows == 0) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await db.insert(DbTables.electronicCompany, {
-        'business_name': 'FULLPOS',
-        'trade_name': 'FULLPOS',
-        'rnc': '',
-        'emission_address': '',
-        'phone': '',
-        'email': '',
-        'environment': 'pruebas',
-        'api_token': '',
-        'certificate_name': '',
-        'automatic_emission': 1,
-        'updated_at_ms': now,
-      });
-    }
-  }
-
-  static Future<void> _copyLegacyIntColumn(
-    DatabaseExecutor db, {
-    required String table,
-    required String legacyColumn,
-    required String newColumn,
-  }) async {
-    final columns = await _getTableColumns(db, table);
-    if (!columns.contains(legacyColumn) || !columns.contains(newColumn)) return;
-    await db.execute('''
-      UPDATE $table
-      SET $newColumn = CASE
-        WHEN $newColumn IS NULL OR $newColumn = 0 THEN COALESCE($legacyColumn, 0)
-        ELSE $newColumn
-      END
-    ''');
-  }
-
-  static Future<void> _copyLegacyTextColumn(
-    DatabaseExecutor db, {
-    required String table,
-    required String legacyColumn,
-    required String newColumn,
-  }) async {
-    final columns = await _getTableColumns(db, table);
-    if (!columns.contains(legacyColumn) || !columns.contains(newColumn)) return;
-    await db.execute('''
-      UPDATE $table
-      SET $newColumn = COALESCE(NULLIF($newColumn, ''), $legacyColumn)
-    ''');
   }
 
   static Future<Set<String>> _getTableColumns(
@@ -5685,83 +5240,6 @@ class AppDb {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS $indexName ON $table($columns)',
     );
-  }
-
-  static Future<void> _ensureCashSessionIntegrityIndexes(
-    DatabaseExecutor db,
-  ) async {
-    if (!await _tableExists(db, DbTables.cashSessions)) return;
-
-    await db.execute('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_sessions_one_open_user
-      ON ${DbTables.cashSessions}(opened_by_user_id)
-      WHERE status = 'OPEN' AND closed_at_ms IS NULL
-    ''');
-
-    await db.execute('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_sessions_one_open_cashbox
-      ON ${DbTables.cashSessions}(cashbox_daily_id)
-      WHERE cashbox_daily_id IS NOT NULL
-        AND status = 'OPEN'
-        AND closed_at_ms IS NULL
-    ''');
-  }
-
-  static Future<void> _normalizeActiveCashSessions(DatabaseExecutor db) async {
-    if (!await _tableExists(db, DbTables.cashSessions)) return;
-
-    final rows = await db.query(
-      DbTables.cashSessions,
-      columns: [
-        'id',
-        'opened_by_user_id',
-        'cashbox_daily_id',
-        'business_date',
-        'opened_at_ms',
-        'initial_amount',
-      ],
-      where: "status = 'OPEN' AND closed_at_ms IS NULL",
-      orderBy: 'opened_at_ms DESC',
-    );
-    if (rows.length <= 1) return;
-
-    final seenUsers = <int>{};
-    final seenCashboxes = <String>{};
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    for (final row in rows) {
-      final id = row['id'] as int?;
-      final userId = row['opened_by_user_id'] as int?;
-      if (id == null || userId == null) continue;
-
-      final cashboxId = row['cashbox_daily_id'] as int?;
-      final businessDate = (row['business_date'] as String? ?? '').trim();
-      final cashKey = cashboxId != null
-          ? 'cash:$cashboxId'
-          : 'date:$businessDate';
-
-      if (!seenUsers.contains(userId) && !seenCashboxes.contains(cashKey)) {
-        seenUsers.add(userId);
-        seenCashboxes.add(cashKey);
-        continue;
-      }
-
-      final openingAmount = (row['initial_amount'] as num?)?.toDouble() ?? 0.0;
-      await db.update(
-        DbTables.cashSessions,
-        {
-          'status': 'CLOSED',
-          'closed_at_ms': now,
-          'closed_by_user_id': userId,
-          'closing_amount': openingAmount,
-          'expected_cash': openingAmount,
-          'difference': 0.0,
-          'note': 'Cierre automático por migración a sesión única',
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
-    }
   }
 
   /// Cierra la base de datos

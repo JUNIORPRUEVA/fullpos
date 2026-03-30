@@ -30,8 +30,8 @@ class ElectronicCompanyModel {
   factory ElectronicCompanyModel.defaults() {
     final now = DateTime.now().millisecondsSinceEpoch;
     return ElectronicCompanyModel(
-      businessName: 'FULLPOS',
-      tradeName: 'FULLPOS',
+      businessName: '',
+      tradeName: '',
       rnc: '',
       emissionAddress: '',
       phone: '',
@@ -48,9 +48,6 @@ class ElectronicCompanyModel {
 
   List<String> missingRequiredFields({bool requireToken = false}) {
     final missing = <String>[];
-    if (businessName.trim().isEmpty) missing.add('Nombre del emisor');
-    if (rnc.trim().isEmpty) missing.add('RNC');
-    if (emissionAddress.trim().isEmpty) missing.add('Direccion de emision');
     if (requireToken && apiToken.trim().isEmpty) missing.add('Token DGII');
     return missing;
   }
@@ -59,12 +56,6 @@ class ElectronicCompanyModel {
 
   Map<String, dynamic> toMap() => {
     if (id != null) 'id': id,
-    'business_name': businessName,
-    'trade_name': tradeName,
-    'rnc': rnc,
-    'emission_address': emissionAddress,
-    'phone': phone,
-    'email': email,
     'environment': environment,
     'api_token': apiToken,
     'certificate_name': certificateName,
@@ -75,12 +66,12 @@ class ElectronicCompanyModel {
   factory ElectronicCompanyModel.fromMap(Map<String, dynamic> map) {
     return ElectronicCompanyModel(
       id: map['id'] as int?,
-      businessName: map['business_name'] as String? ?? 'FULLPOS',
-      tradeName: map['trade_name'] as String? ?? '',
-      rnc: map['rnc'] as String? ?? '',
-      emissionAddress: map['emission_address'] as String? ?? '',
-      phone: map['phone'] as String? ?? '',
-      email: map['email'] as String? ?? '',
+      businessName: '',
+      tradeName: '',
+      rnc: '',
+      emissionAddress: '',
+      phone: '',
+      email: '',
       environment: map['environment'] as String? ?? 'pruebas',
       apiToken: map['api_token'] as String? ?? '',
       certificateName: map['certificate_name'] as String? ?? '',

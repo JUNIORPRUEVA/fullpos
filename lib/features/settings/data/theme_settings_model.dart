@@ -208,179 +208,218 @@ class ThemeSettings {
     isDarkMode: false,
   );
 
+  static Color _colorFromStoredValue(dynamic value, Color fallback) {
+    if (value is int) return Color(value);
+    if (value is num) return Color(value.toInt());
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return fallback;
+
+      final directInt = int.tryParse(trimmed);
+      if (directInt != null) {
+        return Color(directInt);
+      }
+
+      final normalized = trimmed
+          .replaceAll('#', '')
+          .replaceFirst(RegExp(r'^0x', caseSensitive: false), '')
+          .toUpperCase();
+      final hex = normalized.length == 6 ? 'FF$normalized' : normalized;
+      if (RegExp(r'^[0-9A-F]{8}$').hasMatch(hex)) {
+        return Color(int.parse(hex, radix: 16));
+      }
+    }
+    return fallback;
+  }
+
   /// Crear desde Map (para cargar desde DB)
   factory ThemeSettings.fromMap(Map<String, dynamic> map) {
     final defaults = ThemeSettings.defaultSettings;
-    final appBarColor = Color(
-      map['appBarColor'] as int? ?? defaults.appBarColor.value,
+    final appBarColor = _colorFromStoredValue(
+      map['appBarColor'],
+      defaults.appBarColor,
     );
-    final appBarTextColor = Color(
-      map['appBarTextColor'] as int? ?? defaults.appBarTextColor.value,
+    final appBarTextColor = _colorFromStoredValue(
+      map['appBarTextColor'],
+      defaults.appBarTextColor,
     );
 
     return ThemeSettings(
-      primaryColor: Color(
-        map['primaryColor'] as int? ?? defaults.primaryColor.value,
+      primaryColor: _colorFromStoredValue(
+        map['primaryColor'],
+        defaults.primaryColor,
       ),
-      accentColor: Color(
-        map['accentColor'] as int? ?? defaults.accentColor.value,
+      accentColor: _colorFromStoredValue(
+        map['accentColor'],
+        defaults.accentColor,
       ),
-      backgroundColor: Color(
-        map['backgroundColor'] as int? ?? defaults.backgroundColor.value,
+      backgroundColor: _colorFromStoredValue(
+        map['backgroundColor'],
+        defaults.backgroundColor,
       ),
-      surfaceColor: Color(
-        map['surfaceColor'] as int? ?? defaults.surfaceColor.value,
+      surfaceColor: _colorFromStoredValue(
+        map['surfaceColor'],
+        defaults.surfaceColor,
       ),
-      textColor: Color(map['textColor'] as int? ?? defaults.textColor.value),
-      hoverColor: Color(map['hoverColor'] as int? ?? defaults.hoverColor.value),
+      textColor: _colorFromStoredValue(map['textColor'], defaults.textColor),
+      hoverColor: _colorFromStoredValue(map['hoverColor'], defaults.hoverColor),
       appBarColor: appBarColor,
       appBarTextColor: appBarTextColor,
       // Backwards compatible: si no existe topbarColor, heredarlo de appBarColor.
-      topbarColor: Color(map['topbarColor'] as int? ?? appBarColor.value),
-      topbarTextColor: Color(
-        map['topbarTextColor'] as int? ?? appBarTextColor.value,
+      topbarColor: _colorFromStoredValue(map['topbarColor'], appBarColor),
+      topbarTextColor: _colorFromStoredValue(
+        map['topbarTextColor'],
+        appBarTextColor,
       ),
-      cardColor: Color(map['cardColor'] as int? ?? defaults.cardColor.value),
-      buttonColor: Color(
-        map['buttonColor'] as int? ?? defaults.buttonColor.value,
+      cardColor: _colorFromStoredValue(map['cardColor'], defaults.cardColor),
+      buttonColor: _colorFromStoredValue(
+        map['buttonColor'],
+        defaults.buttonColor,
       ),
-      successColor: Color(
-        map['successColor'] as int? ?? defaults.successColor.value,
+      successColor: _colorFromStoredValue(
+        map['successColor'],
+        defaults.successColor,
       ),
-      errorColor: Color(map['errorColor'] as int? ?? defaults.errorColor.value),
-      warningColor: Color(
-        map['warningColor'] as int? ?? defaults.warningColor.value,
+      errorColor: _colorFromStoredValue(map['errorColor'], defaults.errorColor),
+      warningColor: _colorFromStoredValue(
+        map['warningColor'],
+        defaults.warningColor,
       ),
-      sidebarColor: Color(
-        map['sidebarColor'] as int? ?? defaults.sidebarColor.value,
+      sidebarColor: _colorFromStoredValue(
+        map['sidebarColor'],
+        defaults.sidebarColor,
       ),
-      sidebarTextColor: Color(
-        map['sidebarTextColor'] as int? ?? defaults.sidebarTextColor.value,
+      sidebarTextColor: _colorFromStoredValue(
+        map['sidebarTextColor'],
+        defaults.sidebarTextColor,
       ),
-      sidebarActiveColor: Color(
-        map['sidebarActiveColor'] as int? ?? defaults.sidebarActiveColor.value,
+      sidebarActiveColor: _colorFromStoredValue(
+        map['sidebarActiveColor'],
+        defaults.sidebarActiveColor,
       ),
-      footerColor: Color(
-        map['footerColor'] as int? ?? defaults.footerColor.value,
+      footerColor: _colorFromStoredValue(
+        map['footerColor'],
+        defaults.footerColor,
       ),
-      footerTextColor: Color(
-        map['footerTextColor'] as int? ?? defaults.footerTextColor.value,
+      footerTextColor: _colorFromStoredValue(
+        map['footerTextColor'],
+        defaults.footerTextColor,
       ),
-      backgroundGradientStart: Color(
-        map['backgroundGradientStart'] as int? ??
-            defaults.backgroundGradientStart.value,
+      backgroundGradientStart: _colorFromStoredValue(
+        map['backgroundGradientStart'],
+        defaults.backgroundGradientStart,
       ),
-      backgroundGradientMid: Color(
-        map['backgroundGradientMid'] as int? ??
-            defaults.backgroundGradientMid.value,
+      backgroundGradientMid: _colorFromStoredValue(
+        map['backgroundGradientMid'],
+        defaults.backgroundGradientMid,
       ),
-      backgroundGradientEnd: Color(
-        map['backgroundGradientEnd'] as int? ??
-            defaults.backgroundGradientEnd.value,
+      backgroundGradientEnd: _colorFromStoredValue(
+        map['backgroundGradientEnd'],
+        defaults.backgroundGradientEnd,
       ),
-      salesDetailGradientStart: Color(
-        map['salesDetailGradientStart'] as int? ??
-            defaults.salesDetailGradientStart.value,
+      salesDetailGradientStart: _colorFromStoredValue(
+        map['salesDetailGradientStart'],
+        defaults.salesDetailGradientStart,
       ),
-      salesDetailGradientMid: Color(
-        map['salesDetailGradientMid'] as int? ??
-            defaults.salesDetailGradientMid.value,
+      salesDetailGradientMid: _colorFromStoredValue(
+        map['salesDetailGradientMid'],
+        defaults.salesDetailGradientMid,
       ),
-      salesDetailGradientEnd: Color(
-        map['salesDetailGradientEnd'] as int? ??
-            defaults.salesDetailGradientEnd.value,
+      salesDetailGradientEnd: _colorFromStoredValue(
+        map['salesDetailGradientEnd'],
+        defaults.salesDetailGradientEnd,
       ),
-      salesDetailTextColor: Color(
-        map['salesDetailTextColor'] as int? ??
-            defaults.salesDetailTextColor.value,
+      salesDetailTextColor: _colorFromStoredValue(
+        map['salesDetailTextColor'],
+        defaults.salesDetailTextColor,
       ),
-      salesGridBackgroundColor: Color(
-        map['salesGridBackgroundColor'] as int? ??
-            defaults.salesGridBackgroundColor.value,
+      salesGridBackgroundColor: _colorFromStoredValue(
+        map['salesGridBackgroundColor'],
+        defaults.salesGridBackgroundColor,
       ),
-      salesProductCardBackgroundColor: Color(
-        map['salesProductCardBackgroundColor'] as int? ??
-            defaults.salesProductCardBackgroundColor.value,
+      salesProductCardBackgroundColor: _colorFromStoredValue(
+        map['salesProductCardBackgroundColor'],
+        defaults.salesProductCardBackgroundColor,
       ),
-      salesProductCardBorderColor: Color(
-        map['salesProductCardBorderColor'] as int? ??
-            defaults.salesProductCardBorderColor.value,
+      salesProductCardBorderColor: _colorFromStoredValue(
+        map['salesProductCardBorderColor'],
+        defaults.salesProductCardBorderColor,
       ),
-      salesProductCardTextColor: Color(
-        map['salesProductCardTextColor'] as int? ??
-            defaults.salesProductCardTextColor.value,
+      salesProductCardTextColor: _colorFromStoredValue(
+        map['salesProductCardTextColor'],
+        defaults.salesProductCardTextColor,
       ),
-      salesProductCardAltBackgroundColor: Color(
-        map['salesProductCardAltBackgroundColor'] as int? ??
-            defaults.salesProductCardAltBackgroundColor.value,
+      salesProductCardAltBackgroundColor: _colorFromStoredValue(
+        map['salesProductCardAltBackgroundColor'],
+        defaults.salesProductCardAltBackgroundColor,
       ),
-      salesProductCardAltBorderColor: Color(
-        map['salesProductCardAltBorderColor'] as int? ??
-            defaults.salesProductCardAltBorderColor.value,
+      salesProductCardAltBorderColor: _colorFromStoredValue(
+        map['salesProductCardAltBorderColor'],
+        defaults.salesProductCardAltBorderColor,
       ),
-      salesProductCardAltTextColor: Color(
-        map['salesProductCardAltTextColor'] as int? ??
-            defaults.salesProductCardAltTextColor.value,
+      salesProductCardAltTextColor: _colorFromStoredValue(
+        map['salesProductCardAltTextColor'],
+        defaults.salesProductCardAltTextColor,
       ),
-      salesProductPriceColor: Color(
-        map['salesProductPriceColor'] as int? ??
-            defaults.salesProductPriceColor.value,
+      salesProductPriceColor: _colorFromStoredValue(
+        map['salesProductPriceColor'],
+        defaults.salesProductPriceColor,
       ),
-      salesControlBarBackgroundColor: Color(
-        map['salesControlBarBackgroundColor'] as int? ??
-            defaults.salesControlBarBackgroundColor.value,
+      salesControlBarBackgroundColor: _colorFromStoredValue(
+        map['salesControlBarBackgroundColor'],
+        defaults.salesControlBarBackgroundColor,
       ),
-      salesControlBarContentBackgroundColor: Color(
-        map['salesControlBarContentBackgroundColor'] as int? ??
-            defaults.salesControlBarContentBackgroundColor.value,
+      salesControlBarContentBackgroundColor: _colorFromStoredValue(
+        map['salesControlBarContentBackgroundColor'],
+        defaults.salesControlBarContentBackgroundColor,
       ),
-      salesControlBarBorderColor: Color(
-        map['salesControlBarBorderColor'] as int? ??
-            defaults.salesControlBarBorderColor.value,
+      salesControlBarBorderColor: _colorFromStoredValue(
+        map['salesControlBarBorderColor'],
+        defaults.salesControlBarBorderColor,
       ),
-      salesControlBarTextColor: Color(
-        map['salesControlBarTextColor'] as int? ??
-            defaults.salesControlBarTextColor.value,
+      salesControlBarTextColor: _colorFromStoredValue(
+        map['salesControlBarTextColor'],
+        defaults.salesControlBarTextColor,
       ),
-      salesControlBarDropdownBackgroundColor: Color(
-        map['salesControlBarDropdownBackgroundColor'] as int? ??
-            defaults.salesControlBarDropdownBackgroundColor.value,
+      salesControlBarDropdownBackgroundColor: _colorFromStoredValue(
+        map['salesControlBarDropdownBackgroundColor'],
+        defaults.salesControlBarDropdownBackgroundColor,
       ),
-      salesControlBarDropdownBorderColor: Color(
-        map['salesControlBarDropdownBorderColor'] as int? ??
-            defaults.salesControlBarDropdownBorderColor.value,
+      salesControlBarDropdownBorderColor: _colorFromStoredValue(
+        map['salesControlBarDropdownBorderColor'],
+        defaults.salesControlBarDropdownBorderColor,
       ),
-      salesControlBarDropdownTextColor: Color(
-        map['salesControlBarDropdownTextColor'] as int? ??
-            defaults.salesControlBarDropdownTextColor.value,
+      salesControlBarDropdownTextColor: _colorFromStoredValue(
+        map['salesControlBarDropdownTextColor'],
+        defaults.salesControlBarDropdownTextColor,
       ),
-      salesControlBarPopupBackgroundColor: Color(
-        map['salesControlBarPopupBackgroundColor'] as int? ??
-            defaults.salesControlBarPopupBackgroundColor.value,
+      salesControlBarPopupBackgroundColor: _colorFromStoredValue(
+        map['salesControlBarPopupBackgroundColor'],
+        defaults.salesControlBarPopupBackgroundColor,
       ),
-      salesControlBarPopupTextColor: Color(
-        map['salesControlBarPopupTextColor'] as int? ??
-            defaults.salesControlBarPopupTextColor.value,
+      salesControlBarPopupTextColor: _colorFromStoredValue(
+        map['salesControlBarPopupTextColor'],
+        defaults.salesControlBarPopupTextColor,
       ),
-      salesControlBarPopupSelectedBackgroundColor: Color(
-        map['salesControlBarPopupSelectedBackgroundColor'] as int? ??
-            defaults.salesControlBarPopupSelectedBackgroundColor.value,
+      salesControlBarPopupSelectedBackgroundColor: _colorFromStoredValue(
+        map['salesControlBarPopupSelectedBackgroundColor'],
+        defaults.salesControlBarPopupSelectedBackgroundColor,
       ),
-      salesControlBarPopupSelectedTextColor: Color(
-        map['salesControlBarPopupSelectedTextColor'] as int? ??
-            defaults.salesControlBarPopupSelectedTextColor.value,
+      salesControlBarPopupSelectedTextColor: _colorFromStoredValue(
+        map['salesControlBarPopupSelectedTextColor'],
+        defaults.salesControlBarPopupSelectedTextColor,
       ),
-      salesFooterButtonsBackgroundColor: Color(
-        map['salesFooterButtonsBackgroundColor'] as int? ??
-            defaults.salesFooterButtonsBackgroundColor.value,
+      salesFooterButtonsBackgroundColor: _colorFromStoredValue(
+        map['salesFooterButtonsBackgroundColor'],
+        defaults.salesFooterButtonsBackgroundColor,
       ),
-      salesFooterButtonsTextColor: Color(
-        map['salesFooterButtonsTextColor'] as int? ??
-            defaults.salesFooterButtonsTextColor.value,
+      salesFooterButtonsTextColor: _colorFromStoredValue(
+        map['salesFooterButtonsTextColor'],
+        defaults.salesFooterButtonsTextColor,
       ),
-      salesFooterButtonsBorderColor: Color(
-        map['salesFooterButtonsBorderColor'] as int? ??
-            defaults.salesFooterButtonsBorderColor.value,
+      salesFooterButtonsBorderColor: _colorFromStoredValue(
+        map['salesFooterButtonsBorderColor'],
+        defaults.salesFooterButtonsBorderColor,
       ),
       fontSize: (map['fontSize'] as num?)?.toDouble() ?? defaults.fontSize,
       fontFamily: map['fontFamily'] as String? ?? defaults.fontFamily,

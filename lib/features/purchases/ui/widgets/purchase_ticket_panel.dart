@@ -14,6 +14,7 @@ import '../../data/purchases_repository.dart';
 import '../../providers/purchase_catalog_provider.dart';
 import '../../providers/purchase_draft_provider.dart';
 import '../../utils/purchase_order_pdf_launcher.dart';
+import 'purchase_ui.dart';
 
 class PurchaseTicketPanel extends ConsumerStatefulWidget {
   final void Function(int orderId)? onOrderCreated;
@@ -70,6 +71,9 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                       .toList(growable: false);
 
             return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: const Text('Seleccionar proveedor'),
               content: SizedBox(
                 width: 520,
@@ -346,6 +350,9 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       barrierDismissible: false,
       builder: (c) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text('Producto no inventario'),
           content: SizedBox(
             width: 520,
@@ -482,12 +489,12 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
 
     final panelDecoration = BoxDecoration(
       color: scheme.surface,
-      borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-      border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: scheme.outlineVariant.withOpacity(0.52)),
       boxShadow: [
         BoxShadow(
-          color: theme.shadowColor.withOpacity(0.10),
-          blurRadius: 16,
+          color: theme.shadowColor.withOpacity(0.055),
+          blurRadius: 14,
           offset: const Offset(0, 6),
         ),
       ],
@@ -500,7 +507,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
         color: draft.supplier == null
             ? AppColors.warningLight
             : scheme.primaryContainer.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
       ),
       child: Row(
@@ -540,7 +547,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
       }
 
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
             Expanded(
@@ -651,7 +658,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
     );
 
     final bottomBar = Container(
-      padding: const EdgeInsets.all(AppSizes.paddingM),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
         color: scheme.surface,
         border: Border(
@@ -713,7 +720,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(AppSizes.paddingM),
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -727,14 +734,19 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                             ),
                           ),
                         ),
-                        Text(
-                          'Borrador',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.onSurface.withOpacity(0.65),
-                            fontWeight: FontWeight.w800,
-                          ),
+                        const PurchaseStatusBadge(
+                          label: 'BORRADOR',
+                          color: AppColors.info,
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Proveedor, fecha, impuestos y líneas de compra en una sola columna operativa.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -792,20 +804,17 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Icon(
-                          Icons.event,
-                          size: 16,
-                          color: scheme.onSurface.withOpacity(0.65),
+                        PurchaseFactTile(
+                          label: 'Fecha compra',
+                          value: dateFormat.format(draft.purchaseDate),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          dateFormat.format(draft.purchaseDate),
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: scheme.onSurface.withOpacity(0.75),
-                          ),
+                        PurchaseFactTile(
+                          label: 'Líneas',
+                          value: '${draft.lines.length} productos',
                         ),
                       ],
                     ),
@@ -846,8 +855,11 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
               ),
               Expanded(child: itemsList),
               Padding(
-                padding: const EdgeInsets.all(AppSizes.paddingM),
-                child: summary,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: PurchaseSectionCard(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: summary,
+                ),
               ),
               bottomBar,
             ],
@@ -882,7 +894,7 @@ class _TicketEmpty extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Haz clic en un producto del catálogo para añadirlo.',
+              'Selecciona productos del catálogo o agrega una línea manual no inventariable.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurface.withOpacity(0.7),
@@ -951,8 +963,8 @@ class _QtyStepper extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        color: scheme.surfaceContainerHighest.withOpacity(0.22),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
       ),
       child: Row(

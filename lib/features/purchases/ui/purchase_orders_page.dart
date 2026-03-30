@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../products/models/product_model.dart';
 import '../../products/models/supplier_model.dart';
@@ -16,6 +15,7 @@ import '../providers/purchase_orders_providers.dart';
 import '../utils/purchase_order_pdf_launcher.dart';
 import 'widgets/purchase_order_detail_panel.dart';
 import 'widgets/purchase_orders_list.dart';
+import 'widgets/purchase_ui.dart';
 
 class PurchaseOrdersPage extends ConsumerStatefulWidget {
   const PurchaseOrdersPage({super.key});
@@ -27,16 +27,6 @@ class PurchaseOrdersPage extends ConsumerStatefulWidget {
 class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
   final TextEditingController _searchCtrl = TextEditingController();
   bool _routeBootstrapped = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(() {
-      if (!mounted) return;
-      ref.invalidate(purchaseOrdersListProvider);
-      ref.invalidate(purchaseSelectedOrderDetailProvider);
-    });
-  }
 
   @override
   void didChangeDependencies() {
@@ -53,11 +43,9 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
 
       ref.read(purchaseOrdersFiltersProvider.notifier).state =
           PurchaseOrdersFilterState.initial();
-      ref.invalidate(purchaseOrdersListProvider);
 
       if (orderId != null && orderId > 0) {
         ref.read(purchaseSelectedOrderIdProvider.notifier).state = orderId;
-        ref.invalidate(purchaseSelectedOrderDetailProvider);
       }
     });
   }
@@ -85,20 +73,8 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
     }
 
     Widget header() {
-      return Container(
-        padding: const EdgeInsets.all(AppSizes.paddingM),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.12),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
+      return PurchaseSectionCard(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isNarrow = constraints.maxWidth < 980;
@@ -271,6 +247,14 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
                       refresh,
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Busca por proveedor o número, filtra por estado y entra al panel lateral para seguimiento o recepción.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   search,
                   const SizedBox(height: 10),
@@ -300,12 +284,25 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
               child: Row(
                 children: [
                   SizedBox(
-                    width: 190,
-                    child: Text(
-                      'Registro de Órdenes',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                    width: 220,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Registro de Órdenes',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Control y recepción',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -518,9 +515,28 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingL),
+        padding: kPurchasePagePadding,
         child: Column(
           children: [
+            const PurchaseHeroCard(
+              eyebrow: 'Órdenes de compra',
+              title: 'Supervisa el ciclo completo desde emisión hasta recepción parcial o total.',
+              subtitle:
+                  'La vista principal concentra filtros, listado compacto y un panel lateral fijo para acciones, duplicado, impresión y recepción.',
+              stats: [
+                PurchaseMetricTile(
+                  label: 'Vista',
+                  value: 'Lista + detalle',
+                  icon: Icons.splitscreen_rounded,
+                ),
+                PurchaseMetricTile(
+                  label: 'Operaciones',
+                  value: 'Seguimiento continuo',
+                  icon: Icons.inventory_2_rounded,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             header(),
             const SizedBox(height: 12),
             Expanded(

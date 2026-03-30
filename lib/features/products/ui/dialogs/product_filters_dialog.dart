@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/products_repository.dart';
 import '../../models/category_model.dart';
@@ -24,6 +25,8 @@ class ProductFiltersDialog extends StatefulWidget {
 }
 
 class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
+  final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
+
   int? _selectedCategoryId;
   int? _selectedSupplierId;
   bool? _hasLowStock;
@@ -71,8 +74,33 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
     Navigator.pop(context, filters);
   }
 
+  Future<void> _pickDate(bool isStart) async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: isStart
+          ? (_createdAfter ?? DateTime.now())
+          : (_createdBefore ?? DateTime.now()),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (selected == null || !mounted) return;
+    setState(() {
+      if (isStart) {
+        _createdAfter = selected;
+      } else {
+        _createdBefore = selected;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.34).clamp(420.0, 540.0);
+
     return Shortcuts(
       shortcuts: {
         LogicalKeySet(LogicalKeyboardKey.escape): DismissIntent(),
@@ -92,148 +120,243 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
         },
         child: Focus(
           autofocus: true,
-          child: Dialog(
-            backgroundColor: Colors.transparent,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: ProductsSurface(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const ProductsSectionHeader(
-                        eyebrow: 'FILTROS',
-                        title: 'Refinar catálogo',
-                        subtitle:
-                            'Combina criterios de categoría, suplidor, stock y estado para limpiar la vista operativa del catálogo.',
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Clasificación',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      DropdownButtonFormField<int>(
-                        initialValue: _selectedCategoryId,
-                        decoration: const InputDecoration(
-                          labelText: 'Categoría',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('Todas'),
-                          ),
-                          ...widget.categories.map(
-                            (c) => DropdownMenuItem(
-                              value: c.id,
-                              child: Text(c.name),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(72, 12, 12, 12),
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: EdgeInsets.zero,
+                child: SizedBox(
+                  width: dialogWidth,
+                  child: ProductsSurface(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border(
+                              bottom: BorderSide(color: scheme.outlineVariant),
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(22),
                             ),
                           ),
-                        ],
-                        onChanged: (value) =>
-                            setState(() => _selectedCategoryId = value),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<int>(
-                        initialValue: _selectedSupplierId,
-                        decoration: const InputDecoration(
-                          labelText: 'Suplidor',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('Todos'),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'FILTROS DE CATÁLOGO',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(Icons.close),
+                              ),
+                            ],
                           ),
-                          ...widget.suppliers.map(
-                            (s) => DropdownMenuItem(
-                              value: s.id,
-                              child: Text(s.name),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Clasificación',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<int?>(
+                                  value: _selectedCategoryId,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Categoría',
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<int?>(
+                                      value: null,
+                                      child: Text('Todas'),
+                                    ),
+                                    ...widget.categories.map(
+                                      (c) => DropdownMenuItem<int?>(
+                                        value: c.id,
+                                        child: Text(c.name),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (value) => setState(
+                                    () => _selectedCategoryId = value,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                DropdownButtonFormField<int?>(
+                                  value: _selectedSupplierId,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Suplidor',
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<int?>(
+                                      value: null,
+                                      child: Text('Todos'),
+                                    ),
+                                    ...widget.suppliers.map(
+                                      (s) => DropdownMenuItem<int?>(
+                                        value: s.id,
+                                        child: Text(s.name),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (value) => setState(
+                                    () => _selectedSupplierId = value,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Stock',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    FilterChip(
+                                      label: const Text('Stock bajo'),
+                                      selected: _hasLowStock == true,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _hasLowStock = selected ? true : null;
+                                        });
+                                      },
+                                    ),
+                                    FilterChip(
+                                      label: const Text('Agotados'),
+                                      selected: _isOutOfStock == true,
+                                      onSelected: (selected) {
+                                        setState(() {
+                                          _isOutOfStock = selected
+                                              ? true
+                                              : null;
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Estado',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ChoiceChip(
+                                      label: const Text('Todos'),
+                                      selected: _isActive == null,
+                                      onSelected: (_) =>
+                                          setState(() => _isActive = null),
+                                    ),
+                                    ChoiceChip(
+                                      label: const Text('Activos'),
+                                      selected: _isActive == true,
+                                      onSelected: (_) =>
+                                          setState(() => _isActive = true),
+                                    ),
+                                    ChoiceChip(
+                                      label: const Text('Inactivos'),
+                                      selected: _isActive == false,
+                                      onSelected: (_) =>
+                                          setState(() => _isActive = false),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Fechas',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () => _pickDate(true),
+                                        icon: const Icon(Icons.event_outlined),
+                                        label: Text(
+                                          _createdAfter == null
+                                              ? 'Desde'
+                                              : _dateFormat.format(
+                                                  _createdAfter!,
+                                                ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () => _pickDate(false),
+                                        icon: const Icon(Icons.event_outlined),
+                                        label: Text(
+                                          _createdBefore == null
+                                              ? 'Hasta'
+                                              : _dateFormat.format(
+                                                  _createdBefore!,
+                                                ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    TextButton(
+                                      onPressed: _clearFilters,
+                                      child: const Text('Limpiar'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    FilledButton(
+                                      onPressed: _applyFilters,
+                                      child: const Text('Aplicar'),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                        onChanged: (value) =>
-                            setState(() => _selectedSupplierId = value),
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Stock',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'Inter',
                         ),
-                      ),
-                      CheckboxListTile(
-                        title: const Text('Stock Bajo'),
-                        value: _hasLowStock ?? false,
-                        onChanged: (value) =>
-                            setState(() => _hasLowStock = value),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      CheckboxListTile(
-                        title: const Text('Agotados'),
-                        value: _isOutOfStock ?? false,
-                        onChanged: (value) =>
-                            setState(() => _isOutOfStock = value),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Estado',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                      RadioListTile<bool?>(
-                        title: const Text('Todos'),
-                        value: null,
-                        groupValue: _isActive,
-                        onChanged: (value) => setState(() => _isActive = value),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      RadioListTile<bool?>(
-                        title: const Text('Solo Activos'),
-                        value: true,
-                        groupValue: _isActive,
-                        onChanged: (value) => setState(() => _isActive = value),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      RadioListTile<bool?>(
-                        title: const Text('Solo Inactivos'),
-                        value: false,
-                        groupValue: _isActive,
-                        onChanged: (value) => setState(() => _isActive = value),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancelar'),
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(
-                            onPressed: _clearFilters,
-                            child: const Text('Limpiar'),
-                          ),
-                          const SizedBox(width: 8),
-                          FilledButton(
-                            onPressed: _applyFilters,
-                            child: const Text('Aplicar'),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

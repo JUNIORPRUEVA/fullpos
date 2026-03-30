@@ -6,6 +6,7 @@ import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/theme/app_status_theme.dart';
 import '../../../../core/theme/color_utils.dart';
 import '../../providers/purchase_orders_providers.dart';
+import 'purchase_ui.dart';
 
 class PurchaseOrdersList extends ConsumerWidget {
   final void Function(int orderId)? onOpenPdf;
@@ -100,19 +101,20 @@ class PurchaseOrdersList extends ConsumerWidget {
               return Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSizes.paddingM,
-                  vertical: 10,
+                  vertical: 12,
                 ),
                 color: scheme.surfaceContainerHighest.withOpacity(0.35),
                 child: Row(
                   children: [
-                    const SizedBox(width: 70, child: Text('Orden')),
+                    const SizedBox(width: 80, child: Text('Orden')),
                     Expanded(child: Text('Proveedor')),
-                    const SizedBox(width: 150, child: Text('Fecha')),
+                    const SizedBox(width: 148, child: Text('Fecha')),
+                    const SizedBox(width: 92, child: Text('Impuesto')),
                     const SizedBox(
-                      width: 120,
+                      width: 110,
                       child: Text('Total', textAlign: TextAlign.right),
                     ),
-                    const SizedBox(width: 120, child: Text('Estado')),
+                    const SizedBox(width: 124, child: Text('Estado')),
                     const SizedBox(width: 164, child: Text('Acciones')),
                   ],
                 ),
@@ -135,38 +137,72 @@ class PurchaseOrdersList extends ConsumerWidget {
 
             return Material(
               color: bg,
+              borderRadius: BorderRadius.circular(10),
               child: InkWell(
                 onTap: () {
                   ref.read(purchaseSelectedOrderIdProvider.notifier).state = id;
                 },
+                borderRadius: BorderRadius.circular(10),
+                hoverColor: scheme.primary.withOpacity(0.04),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSizes.paddingM,
-                    vertical: 10,
+                    vertical: 12,
                   ),
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 70,
-                        child: Text(
-                          '#$id',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+                        width: 80,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '#$id',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              dto.order.isAuto == 1 ? 'AUTO' : 'MANUAL',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Expanded(
-                        child: Text(
-                          dto.supplierName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              dto.supplierName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              (dto.order.notes?.trim().isNotEmpty ?? false)
+                                  ? dto.order.notes!.trim()
+                                  : 'Sin notas',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: scheme.onSurface.withOpacity(0.62),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       SizedBox(
-                        width: 150,
+                        width: 148,
                         child: Text(
                           dateFormat.format(created),
                           style: theme.textTheme.labelMedium?.copyWith(
@@ -176,7 +212,17 @@ class PurchaseOrdersList extends ConsumerWidget {
                         ),
                       ),
                       SizedBox(
-                        width: 120,
+                        width: 92,
+                        child: Text(
+                          '${dto.order.taxRate.toStringAsFixed(0)}%',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 110,
                         child: Text(
                           currency.format(dto.order.total),
                           textAlign: TextAlign.right,
@@ -186,26 +232,14 @@ class PurchaseOrdersList extends ConsumerWidget {
                         ),
                       ),
                       SizedBox(
-                        width: 120,
+                        width: 124,
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusBg,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              status,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: statusFg,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
+                          child: PurchaseStatusBadge(
+                            label: status,
+                            color: statusFg == Colors.white
+                                ? statusBg
+                                : statusBg,
                           ),
                         ),
                       ),
@@ -320,14 +354,15 @@ class _OrdersListSkeleton extends StatelessWidget {
             color: scheme.surfaceContainerHighest.withOpacity(0.35),
             child: const Row(
               children: [
-                SizedBox(width: 70, child: Text('Orden')),
+                SizedBox(width: 80, child: Text('Orden')),
                 Expanded(child: Text('Proveedor')),
-                SizedBox(width: 150, child: Text('Fecha')),
+                SizedBox(width: 148, child: Text('Fecha')),
+                SizedBox(width: 92, child: Text('Items')),
                 SizedBox(
-                  width: 120,
+                  width: 110,
                   child: Text('Total', textAlign: TextAlign.right),
                 ),
-                SizedBox(width: 120, child: Text('Estado')),
+                SizedBox(width: 124, child: Text('Estado')),
                 SizedBox(width: 120, child: Text('Acciones')),
               ],
             ),

@@ -478,18 +478,16 @@ class _ReportsPageState extends State<ReportsPage>
   }
 
   Widget _buildHeaderBadge({
-    required String label,
-    required String value,
+    required String text,
     required Color color,
     IconData? icon,
   }) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withOpacity(0.20)),
       ),
       child: Row(
@@ -500,15 +498,7 @@ class _ReportsPageState extends State<ReportsPage>
             const SizedBox(width: 6),
           ],
           Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurface.withOpacity(0.68),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            value,
+            text,
             style: theme.textTheme.labelMedium?.copyWith(
               color: color,
               fontWeight: FontWeight.w800,
@@ -560,188 +550,186 @@ class _ReportsPageState extends State<ReportsPage>
         : _periodLabel();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: BoxDecoration(
           color: scheme.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: scheme.outlineVariant),
           boxShadow: [
             BoxShadow(
               color: scheme.shadow.withOpacity(0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Column(
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final stacked = constraints.maxWidth < 1120;
-                final identity = Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () {
-                        if (context.canPop()) {
-                          context.pop();
-                          return;
-                        }
-                        context.go('/sales');
-                      },
-                      tooltip: 'Volver',
-                      style: IconButton.styleFrom(
-                        backgroundColor: scheme.surfaceContainerHighest,
-                        foregroundColor: scheme.onSurface,
-                      ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 1180;
+            final stats = Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildHeaderBadge(
+                  text: periodCaption,
+                  color: scheme.primary,
+                  icon: Icons.calendar_today_outlined,
+                ),
+                _buildHeaderBadge(
+                  text: '${_salesList.length} ventas',
+                  color: scheme.tertiary,
+                  icon: Icons.receipt_long_outlined,
+                ),
+                _buildHeaderBadge(
+                  text: '${_topClients.length} clientes top',
+                  color: scheme.secondary,
+                  icon: Icons.people_outline,
+                ),
+              ],
+            );
+
+            final identity = Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                      return;
+                    }
+                    context.go('/sales');
+                  },
+                  tooltip: 'Volver',
+                  style: IconButton.styleFrom(
+                    backgroundColor: scheme.surfaceContainerHighest,
+                    foregroundColor: scheme.onSurface,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: scheme.primary.withOpacity(0.18)),
+                  ),
+                  child: Icon(
+                    Icons.analytics_outlined,
+                    color: scheme.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Centro de reportes',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
                     ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.all(11),
-                      decoration: BoxDecoration(
-                        color: scheme.primary.withOpacity(0.10),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: scheme.primary.withOpacity(0.18),
+                  ),
+                ),
+              ],
+            );
+
+            final actions = Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                _buildActionButton(
+                  icon: Icons.people_alt_outlined,
+                  label: 'Ventas por cliente',
+                  color: scheme.tertiary,
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ClientSalesReportPage(),
+                      ),
+                    );
+                  },
+                ),
+                _buildActionButton(
+                  icon: Icons.picture_as_pdf_outlined,
+                  label: 'PDF',
+                  color: scheme.error,
+                  onPressed: _exportPdf,
+                ),
+                _buildActionButton(
+                  icon: Icons.download_outlined,
+                  label: 'CSV',
+                  color: scheme.primary,
+                  onPressed: _exportCSV,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: _loadData,
+                  tooltip: 'Recargar datos',
+                  style: IconButton.styleFrom(
+                    backgroundColor: scheme.primary.withOpacity(0.10),
+                    foregroundColor: scheme.primary,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (stacked) ...[
+                  Row(children: [Expanded(child: identity)]),
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight, child: actions),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(child: identity),
+                      const SizedBox(width: 12),
+                      actions,
+                    ],
+                  ),
+                const SizedBox(height: 8),
+                if (stacked) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: DateRangeSelector(
+                      selectedPeriod: _selectedPeriod,
+                      customStart: _customStart,
+                      customEnd: _customEnd,
+                      onPeriodChanged: _onPeriodChanged,
+                      onCustomRangeChanged: _onCustomRangeChanged,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerLeft, child: stats),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: DateRangeSelector(
+                            selectedPeriod: _selectedPeriod,
+                            customStart: _customStart,
+                            customEnd: _customEnd,
+                            onPeriodChanged: _onPeriodChanged,
+                            onCustomRangeChanged: _onCustomRangeChanged,
+                          ),
                         ),
                       ),
-                      child: Icon(
-                        Icons.analytics_outlined,
-                        color: scheme.primary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Centro de reportes',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: scheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Vista operativa de ventas, utilidad, caja y clientes.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurface.withOpacity(0.66),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-
-                final actions = Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.end,
-                  children: [
-                    _buildActionButton(
-                      icon: Icons.people_alt_outlined,
-                      label: 'Ventas por cliente',
-                      color: scheme.tertiary,
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ClientSalesReportPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildActionButton(
-                      icon: Icons.picture_as_pdf_outlined,
-                      label: 'PDF',
-                      color: scheme.error,
-                      onPressed: _exportPdf,
-                    ),
-                    _buildActionButton(
-                      icon: Icons.download_outlined,
-                      label: 'CSV',
-                      color: scheme.primary,
-                      onPressed: _exportCSV,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded),
-                      onPressed: _loadData,
-                      tooltip: 'Recargar datos',
-                      style: IconButton.styleFrom(
-                        backgroundColor: scheme.primary.withOpacity(0.10),
-                        foregroundColor: scheme.primary,
-                      ),
-                    ),
-                  ],
-                );
-
-                return Column(
-                  children: [
-                    if (stacked) ...[
-                      identity,
-                      const SizedBox(height: 12),
-                      Align(alignment: Alignment.centerRight, child: actions),
-                    ] else
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: identity),
-                          const SizedBox(width: 12),
-                          actions,
-                        ],
-                      ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _buildHeaderBadge(
-                                label: 'Periodo',
-                                value: periodCaption,
-                                color: scheme.primary,
-                                icon: Icons.calendar_today_outlined,
-                              ),
-                              _buildHeaderBadge(
-                                label: 'Ventas cargadas',
-                                value: _salesList.length.toString(),
-                                color: scheme.tertiary,
-                                icon: Icons.receipt_long_outlined,
-                              ),
-                              _buildHeaderBadge(
-                                label: 'Top clientes',
-                                value: _topClients.length.toString(),
-                                color: scheme.secondary,
-                                icon: Icons.people_outline,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: DateRangeSelector(
-                        selectedPeriod: _selectedPeriod,
-                        customStart: _customStart,
-                        customEnd: _customEnd,
-                        onPeriodChanged: _onPeriodChanged,
-                        onCustomRangeChanged: _onCustomRangeChanged,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
+                      const SizedBox(width: 12),
+                      stats,
+                    ],
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -760,7 +748,10 @@ class _ReportsPageState extends State<ReportsPage>
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        minimumSize: const Size(0, 40),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
       ),

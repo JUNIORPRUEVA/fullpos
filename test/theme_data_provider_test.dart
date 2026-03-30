@@ -18,7 +18,10 @@ class _MemoryThemeSettingsRepository extends ThemeSettingsRepository {
   Future<ThemeSettings> loadThemeSettings({int? companyId}) async => _current;
 
   @override
-  Future<bool> saveThemeSettings(ThemeSettings settings, {int? companyId}) async {
+  Future<bool> saveThemeSettings(
+    ThemeSettings settings, {
+    int? companyId,
+  }) async {
     _current = settings;
     return true;
   }
@@ -31,6 +34,22 @@ class _MemoryThemeSettingsRepository extends ThemeSettingsRepository {
 }
 
 void main() {
+  test(
+    'ThemeSettings restores arbitrary custom colors from numeric and hex values',
+    () {
+      const customPrimary = Color(0xFF12AB7C);
+      const customDetailMid = Color(0xFF2B4057);
+
+      final restored = ThemeSettings.fromMap({
+        'primaryColor': customPrimary.value,
+        'salesDetailGradientMid': '#2B4057',
+      });
+
+      expect(restored.primaryColor.value, customPrimary.value);
+      expect(restored.salesDetailGradientMid.value, customDetailMid.value);
+    },
+  );
+
   test('Visible appearance options are reflected in ThemeData', () async {
     final customSettings = ThemeSettings.defaultSettings.copyWith(
       backgroundColor: const Color(0xFFF4EFE5),
@@ -78,9 +97,7 @@ void main() {
     );
     final repository = _MemoryThemeSettingsRepository(customSettings);
     final container = ProviderContainer(
-      overrides: [
-        themeRepositoryProvider.overrideWithValue(repository),
-      ],
+      overrides: [themeRepositoryProvider.overrideWithValue(repository)],
     );
     addTearDown(container.dispose);
 
@@ -94,7 +111,10 @@ void main() {
     final salesPage = theme.extension<SalesPageTheme>();
     final salesText = theme.extension<SalesDetailTextTheme>();
 
-    expect(theme.scaffoldBackgroundColor.value, customSettings.backgroundColor.value);
+    expect(
+      theme.scaffoldBackgroundColor.value,
+      customSettings.backgroundColor.value,
+    );
     expect(theme.colorScheme.surface.value, customSettings.surfaceColor.value);
     expect(theme.textTheme.bodyMedium?.fontFamily, customSettings.fontFamily);
     expect(theme.textTheme.bodyMedium?.fontSize, customSettings.fontSize);
@@ -110,42 +130,123 @@ void main() {
     expect(tokens.tileHover.value, customSettings.hoverColor.value);
 
     expect(appGradient, isNotNull);
-    expect(appGradient!.start.value, customSettings.backgroundGradientStart.value);
+    expect(
+      appGradient!.start.value,
+      customSettings.backgroundGradientStart.value,
+    );
     expect(appGradient.mid.value, customSettings.backgroundGradientMid.value);
     expect(appGradient.end.value, customSettings.backgroundGradientEnd.value);
 
     expect(salesProducts, isNotNull);
-    expect(salesProducts!.gridBackgroundColor.value, customSettings.salesGridBackgroundColor.value);
-    expect(salesProducts.cardBackgroundColor.value, customSettings.salesProductCardBackgroundColor.value);
-    expect(salesProducts.cardBorderColor.value, customSettings.salesProductCardBorderColor.value);
-    expect(salesProducts.cardTextColor.value, customSettings.salesProductCardTextColor.value);
-    expect(salesProducts.cardAltBackgroundColor.value, customSettings.salesProductCardAltBackgroundColor.value);
-    expect(salesProducts.cardAltBorderColor.value, customSettings.salesProductCardAltBorderColor.value);
-    expect(salesProducts.cardAltTextColor.value, customSettings.salesProductCardAltTextColor.value);
-    expect(salesProducts.priceColor.value, customSettings.salesProductPriceColor.value);
+    expect(
+      salesProducts!.gridBackgroundColor.value,
+      customSettings.salesGridBackgroundColor.value,
+    );
+    expect(
+      salesProducts.cardBackgroundColor.value,
+      customSettings.salesProductCardBackgroundColor.value,
+    );
+    expect(
+      salesProducts.cardBorderColor.value,
+      customSettings.salesProductCardBorderColor.value,
+    );
+    expect(
+      salesProducts.cardTextColor.value,
+      customSettings.salesProductCardTextColor.value,
+    );
+    expect(
+      salesProducts.cardAltBackgroundColor.value,
+      customSettings.salesProductCardAltBackgroundColor.value,
+    );
+    expect(
+      salesProducts.cardAltBorderColor.value,
+      customSettings.salesProductCardAltBorderColor.value,
+    );
+    expect(
+      salesProducts.cardAltTextColor.value,
+      customSettings.salesProductCardAltTextColor.value,
+    );
+    expect(
+      salesProducts.priceColor.value,
+      customSettings.salesProductPriceColor.value,
+    );
 
     expect(salesGradient, isNotNull);
-    expect(salesGradient!.start.value, customSettings.salesDetailGradientStart.value);
-    expect(salesGradient.mid.value, customSettings.salesDetailGradientMid.value);
-    expect(salesGradient.end.value, customSettings.salesDetailGradientEnd.value);
+    expect(
+      salesGradient!.start.value,
+      customSettings.salesDetailGradientStart.value,
+    );
+    expect(
+      salesGradient.mid.value,
+      customSettings.salesDetailGradientMid.value,
+    );
+    expect(
+      salesGradient.end.value,
+      customSettings.salesDetailGradientEnd.value,
+    );
 
     expect(salesText, isNotNull);
-    expect(salesText!.textColor.value, customSettings.salesDetailTextColor.value);
+    expect(
+      salesText!.textColor.value,
+      customSettings.salesDetailTextColor.value,
+    );
 
     expect(salesPage, isNotNull);
-    expect(salesPage!.controlBarBackgroundColor.value, customSettings.salesControlBarBackgroundColor.value);
-    expect(salesPage.controlBarContentBackgroundColor.value, customSettings.salesControlBarContentBackgroundColor.value);
-    expect(salesPage.controlBarBorderColor.value, customSettings.salesControlBarBorderColor.value);
-    expect(salesPage.controlBarTextColor.value, customSettings.salesControlBarTextColor.value);
-    expect(salesPage.controlBarDropdownBackgroundColor.value, customSettings.salesControlBarDropdownBackgroundColor.value);
-    expect(salesPage.controlBarDropdownBorderColor.value, customSettings.salesControlBarDropdownBorderColor.value);
-    expect(salesPage.controlBarDropdownTextColor.value, customSettings.salesControlBarDropdownTextColor.value);
-    expect(salesPage.controlBarPopupBackgroundColor.value, customSettings.salesControlBarPopupBackgroundColor.value);
-    expect(salesPage.controlBarPopupTextColor.value, customSettings.salesControlBarPopupTextColor.value);
-    expect(salesPage.controlBarPopupSelectedBackgroundColor.value, customSettings.salesControlBarPopupSelectedBackgroundColor.value);
-    expect(salesPage.controlBarPopupSelectedTextColor.value, customSettings.salesControlBarPopupSelectedTextColor.value);
-    expect(salesPage.footerButtonsBackgroundColor.value, customSettings.salesFooterButtonsBackgroundColor.value);
-    expect(salesPage.footerButtonsTextColor.value, customSettings.salesFooterButtonsTextColor.value);
-    expect(salesPage.footerButtonsBorderColor.value, customSettings.salesFooterButtonsBorderColor.value);
+    expect(
+      salesPage!.controlBarBackgroundColor.value,
+      customSettings.salesControlBarBackgroundColor.value,
+    );
+    expect(
+      salesPage.controlBarContentBackgroundColor.value,
+      customSettings.salesControlBarContentBackgroundColor.value,
+    );
+    expect(
+      salesPage.controlBarBorderColor.value,
+      customSettings.salesControlBarBorderColor.value,
+    );
+    expect(
+      salesPage.controlBarTextColor.value,
+      customSettings.salesControlBarTextColor.value,
+    );
+    expect(
+      salesPage.controlBarDropdownBackgroundColor.value,
+      customSettings.salesControlBarDropdownBackgroundColor.value,
+    );
+    expect(
+      salesPage.controlBarDropdownBorderColor.value,
+      customSettings.salesControlBarDropdownBorderColor.value,
+    );
+    expect(
+      salesPage.controlBarDropdownTextColor.value,
+      customSettings.salesControlBarDropdownTextColor.value,
+    );
+    expect(
+      salesPage.controlBarPopupBackgroundColor.value,
+      customSettings.salesControlBarPopupBackgroundColor.value,
+    );
+    expect(
+      salesPage.controlBarPopupTextColor.value,
+      customSettings.salesControlBarPopupTextColor.value,
+    );
+    expect(
+      salesPage.controlBarPopupSelectedBackgroundColor.value,
+      customSettings.salesControlBarPopupSelectedBackgroundColor.value,
+    );
+    expect(
+      salesPage.controlBarPopupSelectedTextColor.value,
+      customSettings.salesControlBarPopupSelectedTextColor.value,
+    );
+    expect(
+      salesPage.footerButtonsBackgroundColor.value,
+      customSettings.salesFooterButtonsBackgroundColor.value,
+    );
+    expect(
+      salesPage.footerButtonsTextColor.value,
+      customSettings.salesFooterButtonsTextColor.value,
+    );
+    expect(
+      salesPage.footerButtonsBorderColor.value,
+      customSettings.salesFooterButtonsBorderColor.value,
+    );
   });
 }

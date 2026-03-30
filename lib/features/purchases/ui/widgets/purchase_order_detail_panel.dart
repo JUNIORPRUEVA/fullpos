@@ -7,6 +7,7 @@ import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/theme/color_utils.dart';
 import '../../data/purchase_order_models.dart';
 import '../../providers/purchase_orders_providers.dart';
+import 'purchase_ui.dart';
 
 class PurchaseOrderDetailPanel extends ConsumerWidget {
   final void Function(PurchaseOrderDetailDto detail)? onOpenPdf;
@@ -31,21 +32,8 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
 
     final detailAsync = ref.watch(purchaseSelectedOrderDetailProvider);
 
-    final decoration = BoxDecoration(
-      color: scheme.surface,
-      borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-      border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
-      boxShadow: [
-        BoxShadow(
-          color: theme.shadowColor.withOpacity(0.10),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
-        ),
-      ],
-    );
-
     return Container(
-      decoration: decoration,
+      decoration: purchaseSectionDecoration(context),
       child: detailAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -93,59 +81,83 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(AppSizes.paddingM),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Orden #${detail.order.id ?? '-'}',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            detail.supplierName,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurface.withOpacity(0.8),
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            dateFormat.format(
-                              DateTime.fromMillisecondsSinceEpoch(
-                                detail.order.createdAtMs,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Orden #${detail.order.id ?? '-'}',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
-                            ),
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: scheme.onSurface.withOpacity(0.65),
-                              fontWeight: FontWeight.w700,
+                              const SizedBox(height: 4),
+                              Text(
+                                detail.supplierName,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: scheme.onSurface.withOpacity(0.8),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PurchaseStatusBadge(
+                          label: status,
+                          color: isReceived
+                              ? AppColors.success
+                              : (isPartial
+                                    ? AppColors.warning
+                                    : scheme.primary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        PurchaseFactTile(
+                          label: 'Fecha de emisión',
+                          value: dateFormat.format(
+                            DateTime.fromMillisecondsSinceEpoch(
+                              detail.order.createdAtMs,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        PurchaseFactTile(
+                          label: 'Proveedor',
+                          value: detail.supplierPhone ?? 'Sin teléfono',
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    OutlinedButton.icon(
-                      onPressed: () => onOpenPdf?.call(detail),
-                      icon: const Icon(Icons.picture_as_pdf),
-                      label: const Text('Abrir PDF'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: isReceived
-                          ? null
-                          : () => onReceive?.call(detail.order.id ?? 0),
-                      icon: const Icon(Icons.inventory_outlined),
-                      label: Text(
-                        isReceived
-                            ? 'Recibida'
-                            : (isPartial ? 'Continuar recepción' : 'Recibir'),
-                      ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => onOpenPdf?.call(detail),
+                          icon: const Icon(Icons.picture_as_pdf),
+                          label: const Text('Abrir PDF'),
+                        ),
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          onPressed: isReceived
+                              ? null
+                              : () => onReceive?.call(detail.order.id ?? 0),
+                          icon: const Icon(Icons.inventory_outlined),
+                          label: Text(
+                            isReceived
+                                ? 'Recibida'
+                                : (isPartial ? 'Continuar recepción' : 'Recibir'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

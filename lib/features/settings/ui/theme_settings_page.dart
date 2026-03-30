@@ -37,13 +37,28 @@ class ThemeSettingsPage extends ConsumerWidget {
                       child: Column(
                         children: [
                           _ColorRow(
-                            label: 'Color de AppBar principal, sidebar y footer',
+                            label:
+                                'Color de AppBar principal, sidebar y footer',
                             color: settings.topbarColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                topbarColor: color,
+                                sidebarColor: color,
+                                footerColor: color,
+                              ),
+                            ),
                             onPick: notifier.updateChromeBackgroundColor,
                           ),
                           _ColorRow(
                             label: 'Texto e iconos del chrome principal',
                             color: settings.topbarTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                topbarTextColor: color,
+                                sidebarTextColor: color,
+                                footerTextColor: color,
+                              ),
+                            ),
                             onPick: notifier.updateChromeTextColor,
                           ),
                         ],
@@ -57,21 +72,33 @@ class ThemeSettingsPage extends ConsumerWidget {
                           _ColorRow(
                             label: 'Fondo del sidebar',
                             color: settings.sidebarColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(sidebarColor: color),
+                            ),
                             onPick: notifier.updateSidebarColor,
                           ),
                           _ColorRow(
                             label: 'Texto e iconos del sidebar',
                             color: settings.sidebarTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(sidebarTextColor: color),
+                            ),
                             onPick: notifier.updateSidebarTextColor,
                           ),
                           _ColorRow(
                             label: 'Color activo del sidebar',
                             color: settings.sidebarActiveColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(sidebarActiveColor: color),
+                            ),
                             onPick: notifier.updateSidebarActiveColor,
                           ),
                           _ColorRow(
                             label: 'Hover del sidebar',
                             color: settings.hoverColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(hoverColor: color),
+                            ),
                             onPick: notifier.updateHoverColor,
                           ),
                         ],
@@ -85,21 +112,33 @@ class ThemeSettingsPage extends ConsumerWidget {
                           _ColorRow(
                             label: 'Fondo principal de la aplicación',
                             color: settings.backgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(backgroundColor: color),
+                            ),
                             onPick: notifier.updateBackgroundColor,
                           ),
                           _ColorRow(
                             label: 'Paneles y superficies',
                             color: settings.surfaceColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(surfaceColor: color),
+                            ),
                             onPick: notifier.updateSurfaceColor,
                           ),
                           _ColorRow(
                             label: 'Tarjetas',
                             color: settings.cardColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(cardColor: color),
+                            ),
                             onPick: notifier.updateCardColor,
                           ),
                           _ColorRow(
                             label: 'Texto general',
                             color: settings.textColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(textColor: color),
+                            ),
                             onPick: notifier.updateTextColor,
                           ),
                         ],
@@ -159,27 +198,50 @@ class ThemeSettingsPage extends ConsumerWidget {
                           _ColorRow(
                             label: 'Fondo del grid de productos',
                             color: settings.salesGridBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesGridBackgroundColor: color,
+                              ),
+                            ),
                             onPick: notifier.updateSalesGridBackgroundColor,
                           ),
                           _ColorRow(
                             label: 'Fondo de la tarjeta de producto',
                             color: settings.salesProductCardBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesProductCardBackgroundColor: color,
+                              ),
+                            ),
                             onPick:
                                 notifier.updateSalesProductCardBackgroundColor,
                           ),
                           _ColorRow(
                             label: 'Borde de la tarjeta de producto',
                             color: settings.salesProductCardBorderColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesProductCardBorderColor: color,
+                              ),
+                            ),
                             onPick: notifier.updateSalesProductCardBorderColor,
                           ),
                           _ColorRow(
                             label: 'Texto de la tarjeta de producto',
                             color: settings.salesProductCardTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesProductCardTextColor: color,
+                              ),
+                            ),
                             onPick: notifier.updateSalesProductCardTextColor,
                           ),
                           _ColorRow(
                             label: 'Precio de producto',
                             color: settings.salesProductPriceColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(salesProductPriceColor: color),
+                            ),
                             onPick: notifier.updateSalesProductPriceColor,
                           ),
                         ],
@@ -193,21 +255,35 @@ class ThemeSettingsPage extends ConsumerWidget {
                           _ColorRow(
                             label: 'Gradiente inicio',
                             color: settings.salesDetailGradientStart,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesDetailGradientStart: color,
+                              ),
+                            ),
                             onPick: notifier.updateSalesDetailGradientStart,
                           ),
                           _ColorRow(
                             label: 'Gradiente medio',
                             color: settings.salesDetailGradientMid,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(salesDetailGradientMid: color),
+                            ),
                             onPick: notifier.updateSalesDetailGradientMid,
                           ),
                           _ColorRow(
                             label: 'Gradiente final',
                             color: settings.salesDetailGradientEnd,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(salesDetailGradientEnd: color),
+                            ),
                             onPick: notifier.updateSalesDetailGradientEnd,
                           ),
                           _ColorRow(
                             label: 'Texto de la columna de detalle',
                             color: settings.salesDetailTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(salesDetailTextColor: color),
+                            ),
                             onPick: notifier.updateSalesDetailTextColor,
                           ),
                         ],
@@ -287,11 +363,13 @@ class _ColorRow extends StatelessWidget {
   final String label;
   final Color color;
   final ValueChanged<Color> onPick;
+  final ValueChanged<Color>? onPreview;
 
   const _ColorRow({
     required this.label,
     required this.color,
     required this.onPick,
+    this.onPreview,
   });
 
   @override
@@ -307,8 +385,16 @@ class _ColorRow extends StatelessWidget {
           const SizedBox(width: 12),
           InkWell(
             onTap: () async {
-              final picked = await _pickColor(context, initial: color);
-              if (picked != null) onPick(picked);
+              final picked = await _pickColor(
+                context,
+                initial: color,
+                onChanged: onPreview,
+              );
+              if (picked == null) {
+                onPreview?.call(color);
+                return;
+              }
+              onPick(picked);
             },
             borderRadius: BorderRadius.circular(10),
             child: Container(
@@ -336,6 +422,7 @@ class _ColorRow extends StatelessWidget {
   Future<Color?> _pickColor(
     BuildContext context, {
     required Color initial,
+    ValueChanged<Color>? onChanged,
   }) async {
     Color current = initial;
     int a = initial.alpha;
@@ -398,6 +485,7 @@ class _ColorRow extends StatelessWidget {
                   syncThemeFromCurrent();
                   controller.text = toHex(current);
                 });
+                onChanged?.call(c);
               }
 
               void setFromSliders() {

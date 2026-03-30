@@ -10,7 +10,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-Command",
-				"Get-Process fullpos -ErrorAction SilentlyContinue | Stop-Process -Force; exit 0"
+				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAsset = Join-Path $PWD 'build\\native_assets\\windows\\sqlite3.dll'; Remove-Item -LiteralPath $nativeAsset -Force -ErrorAction SilentlyContinue; exit 0"
 			],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -20,6 +20,10 @@
 		{
 			"label": "Run FULLPOS Debug Windows",
 			"type": "shell",
+			"dependsOn": [
+				"Prepare FULLPOS Windows Hot Reload"
+			],
+			"dependsOrder": "sequence",
 			"command": "flutter",
 			"args": [
 				"run",
@@ -35,6 +39,10 @@
 		{
 			"label": "Run FULLPOS Debug Windows 2",
 			"type": "shell",
+			"dependsOn": [
+				"Prepare FULLPOS Windows Hot Reload"
+			],
+			"dependsOrder": "sequence",
 			"command": "flutter",
 			"args": [
 				"run",

@@ -9,6 +9,7 @@ import '../../../products/models/product_model.dart';
 import '../../../products/ui/widgets/product_thumbnail.dart';
 import '../../providers/purchase_catalog_provider.dart';
 import '../../providers/purchase_draft_provider.dart';
+import 'purchase_ui.dart';
 
 class PurchaseProductsGrid extends ConsumerWidget {
   const PurchaseProductsGrid({super.key});
@@ -50,7 +51,7 @@ class PurchaseProductsGrid extends ConsumerWidget {
         if (products.isEmpty) {
           return _EmptyProducts(
             title: 'Sin productos',
-            message: 'Prueba ajustar el filtro o buscar por código/nombre.',
+            message: 'Ajusta el filtro, el proveedor o la categoría para recuperar inventario elegible.',
           );
         }
 
@@ -68,7 +69,7 @@ class PurchaseProductsGrid extends ConsumerWidget {
             }
 
             return GridView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              padding: kPurchasePagePadding,
               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: maxExtent,
                 mainAxisExtent: cardSize * _productCardAspect,
@@ -138,7 +139,12 @@ class _ProductCardState extends State<_ProductCard> {
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,
         decoration: BoxDecoration(
-          color: scheme.surface,
+          color: _hovered
+              ? Color.alphaBlend(
+                  scheme.primary.withOpacity(0.025),
+                  scheme.surface,
+                )
+              : scheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: border),
           boxShadow: [

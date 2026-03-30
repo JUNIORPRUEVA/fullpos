@@ -12,6 +12,7 @@ import '../../settings/data/business_settings_repository.dart';
 import '../providers/purchase_draft_provider.dart';
 import '../services/purchase_order_auto_service.dart';
 import 'widgets/purchase_ticket_panel.dart';
+import 'widgets/purchase_ui.dart';
 import '../../products/models/product_model.dart';
 
 enum PurchaseAutoStrategy { stockMin, outOfStock, recentSales }
@@ -341,22 +342,11 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
     }
 
     final leftPanel = Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withOpacity(0.10),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+      decoration: purchaseSectionDecoration(context),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(AppSizes.paddingM),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -376,6 +366,14 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
                       label: const Text('Generar sugerencias'),
                     ),
                   ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Configura la estrategia, genera propuestas y envíalas al ticket lateral.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 strategySelector(),
@@ -428,26 +426,49 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSizes.paddingL),
+        padding: kPurchasePagePadding,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isNarrow = constraints.maxWidth < 1100;
 
-            if (isNarrow) {
-              return Column(
-                children: [
-                  Expanded(child: leftPanel),
-                  const SizedBox(height: 12),
-                  SizedBox(height: 520, child: ticket),
-                ],
-              );
-            }
+            final content = isNarrow
+                ? Column(
+                    children: [
+                      Expanded(child: leftPanel),
+                      const SizedBox(height: 12),
+                      SizedBox(height: 520, child: ticket),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(flex: 6, child: leftPanel),
+                      const SizedBox(width: 12),
+                      Expanded(flex: 4, child: ticket),
+                    ],
+                  );
 
-            return Row(
+            return Column(
               children: [
-                Expanded(flex: 6, child: leftPanel),
-                const SizedBox(width: 12),
-                Expanded(flex: 4, child: ticket),
+                const PurchaseHeroCard(
+                  eyebrow: 'Compra automática',
+                  title: 'Convierte inventario y ventas recientes en una orden accionable.',
+                  subtitle:
+                      'La pantalla prioriza configuración breve, lista densa de sugerencias y ticket operativo para aprobar el abastecimiento sin fricción.',
+                  stats: [
+                    PurchaseMetricTile(
+                      label: 'Entrada',
+                      value: 'Proveedor + estrategia',
+                      icon: Icons.hub_rounded,
+                    ),
+                    PurchaseMetricTile(
+                      label: 'Salida',
+                      value: 'Ticket listo',
+                      icon: Icons.playlist_add_check_rounded,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(child: content),
               ],
             );
           },

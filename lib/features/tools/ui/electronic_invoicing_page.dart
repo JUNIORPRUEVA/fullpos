@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/empresa_service.dart';
+import '../../../core/theme/app_status_theme.dart';
 import '../../facturacion_electronica/data/electronic_company_repository.dart';
 import '../../facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
 import '../../facturacion_electronica/data/models/factura_electronica_model.dart';
+import '../../settings/ui/business_sections_settings_page.dart';
 import '../../settings/ui/settings_layout.dart';
 
 class ElectronicInvoicingPage extends StatefulWidget {
@@ -17,20 +20,13 @@ class ElectronicInvoicingPage extends StatefulWidget {
 }
 
 class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _razonSocialController = TextEditingController();
-  final _nombreComercialController = TextEditingController();
-  final _rncController = TextEditingController();
-  final _direccionController = TextEditingController();
-  final _telefonoController = TextEditingController();
-  final _emailController = TextEditingController();
   final _apiTokenController = TextEditingController();
   final _certificadoController = TextEditingController();
 
   ElectronicCompanyModel? _company;
+  EmpresaConfig? _empresaConfig;
   Map<String, int> _summary = <String, int>{};
-  List<FacturaElectronicaModel> _recentInvoices =
-      <FacturaElectronicaModel>[];
+  List<FacturaElectronicaModel> _recentInvoices = <FacturaElectronicaModel>[];
   bool _loading = true;
   bool _saving = false;
 
@@ -42,12 +38,6 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
 
   @override
   void dispose() {
-    _razonSocialController.dispose();
-    _nombreComercialController.dispose();
-    _rncController.dispose();
-    _direccionController.dispose();
-    _telefonoController.dispose();
-    _emailController.dispose();
     _apiTokenController.dispose();
     _certificadoController.dispose();
     super.dispose();
@@ -55,14 +45,23 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
-    final company = await ElectronicCompanyRepository.getOrCreate();
-    final summary = await FacturaElectronicaRepository.getStatusSummary();
-    final invoices = await FacturaElectronicaRepository.getRecent(limit: 18);
+    final results = await Future.wait<dynamic>([
+      ElectronicCompanyRepository.getOrCreate(),
+      FacturaElectronicaRepository.getStatusSummary(),
+      FacturaElectronicaRepository.getRecent(limit: 18),
+      EmpresaService.getEmpresaConfig(),
+    ]);
     if (!mounted) return;
+
+    final company = results[0] as ElectronicCompanyModel;
+    final summary = results[1] as Map<String, int>;
+    final invoices = results[2] as List<FacturaElectronicaModel>;
+    final empresaConfig = results[3] as EmpresaConfig;
 
     _syncControllers(company);
     setState(() {
       _company = company;
+      _empresaConfig = empresaConfig;
       _summary = summary;
       _recentInvoices = invoices;
       _loading = false;
@@ -70,30 +69,35 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
   }
 
   void _syncControllers(ElectronicCompanyModel company) {
-    _razonSocialController.text = company.businessName;
-    _nombreComercialController.text = company.tradeName;
-    _rncController.text = company.rnc;
-    _direccionController.text = company.emissionAddress;
-    _telefonoController.text = company.phone;
-    _emailController.text = company.email;
     _apiTokenController.text = company.apiToken;
     _certificadoController.text = company.certificateName;
+  }
+
+  List<String> _missingCompanyFields() {
+    final empresaConfig = _empresaConfig;
+    if (empresaConfig == null) {
+      return const <String>['Nombre empresa', 'RNC', 'Dirección'];
+    }
+    return empresaConfig.missingElectronicInvoicingFields();
+  }
+
+  Future<void> _openCompanySettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const CompanyProfileSettingsPage(),
+      ),
+    );
+    if (!mounted) return;
+    await _loadData();
   }
 
   Future<void> _save() async {
     final company = _company;
     if (company == null) return;
-    if (!_formKey.currentState!.validate()) return;
 
     setState(() => _saving = true);
     final saved = await ElectronicCompanyRepository.save(
       company.copyWith(
-        businessName: _razonSocialController.text.trim(),
-        tradeName: _nombreComercialController.text.trim(),
-        rnc: _rncController.text.trim(),
-        emissionAddress: _direccionController.text.trim(),
-        phone: _telefonoController.text.trim(),
-        email: _emailController.text.trim(),
         apiToken: _apiTokenController.text.trim(),
         certificateName: _certificadoController.text.trim(),
       ),
@@ -160,6 +164,8 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
                           const SizedBox(height: 16),
                           _buildSummary(),
                           const SizedBox(height: 16),
+                          _buildCompanyDataSection(context),
+                          const SizedBox(height: 16),
                           _buildConfigForm(context),
                           const SizedBox(height: 16),
                           _buildRecentDocuments(context),
@@ -175,8 +181,17 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
 
   Widget _buildHeader(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final statusTheme = Theme.of(context).extension<AppStatusTheme>();
+    final resolvedStatus =
+        statusTheme ??
+        AppStatusTheme(
+          success: scheme.primary,
+          warning: scheme.tertiary,
+          error: scheme.error,
+          info: scheme.secondary,
+        );
     final company = _company!;
-    final missing = company.missingRequiredFields();
+    final missing = _missingCompanyFields();
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -193,9 +208,9 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
               children: [
                 Text(
                   'DGII lista para operar desde el POS',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -211,14 +226,18 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
             children: [
               _StatusChip(
                 label: company.isEnabled ? 'Emision activa' : 'Emision pausada',
-                color: company.isEnabled ? Colors.green : Colors.orange,
+                color: company.isEnabled
+                    ? resolvedStatus.success
+                    : resolvedStatus.warning,
               ),
               const SizedBox(height: 8),
               _StatusChip(
                 label: missing.isEmpty
                     ? 'Configuracion completa'
                     : 'Faltan ${missing.length} campos',
-                color: missing.isEmpty ? Colors.blueGrey : Colors.redAccent,
+                color: missing.isEmpty
+                    ? resolvedStatus.info
+                    : resolvedStatus.error,
               ),
             ],
           ),
@@ -228,6 +247,16 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
   }
 
   Widget _buildSummary() {
+    final scheme = Theme.of(context).colorScheme;
+    final statusTheme = Theme.of(context).extension<AppStatusTheme>();
+    final resolvedStatus =
+        statusTheme ??
+        AppStatusTheme(
+          success: scheme.primary,
+          warning: scheme.tertiary,
+          error: scheme.error,
+          info: scheme.secondary,
+        );
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -236,25 +265,25 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
           label: 'Locales',
           value: (_summary[FacturaElectronicaModel.statusLocal] ?? 0)
               .toString(),
-          color: Colors.blueGrey,
+          color: resolvedStatus.info,
         ),
         _MetricCard(
           label: 'Pendientes DGII',
           value: (_summary[FacturaElectronicaModel.statusPending] ?? 0)
               .toString(),
-          color: Colors.blue,
+          color: scheme.primary,
         ),
         _MetricCard(
           label: 'Aceptadas',
           value: (_summary[FacturaElectronicaModel.statusAccepted] ?? 0)
               .toString(),
-          color: Colors.green,
+          color: resolvedStatus.success,
         ),
         _MetricCard(
           label: 'Configurar',
           value: (_summary[FacturaElectronicaModel.statusConfigPending] ?? 0)
               .toString(),
-          color: Colors.orange,
+          color: resolvedStatus.warning,
         ),
       ],
     );
@@ -271,113 +300,121 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Empresa emisora',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Configuración DGII',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Aquí solo se administran parámetros propios de facturación electrónica.',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _FieldBox(
+                width: 220,
+                child: _EnvironmentField(
+                  value: company.environment,
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(
+                      () => _company = company.copyWith(environment: value),
+                    );
+                  },
+                ),
               ),
+              _FieldBox(
+                width: 320,
+                child: _LabeledField(
+                  label: 'Token DGII',
+                  controller: _apiTokenController,
+                ),
+              ),
+              _FieldBox(
+                width: 320,
+                child: _LabeledField(
+                  label: 'Certificado / alias',
+                  controller: _certificadoController,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Emitir e-CF automaticamente'),
+            subtitle: const Text(
+              'Al cobrar un documento electrónico se guarda XML, firma y estado DGII.',
             ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
+            value: company.automaticEmission == 1,
+            onChanged: (value) {
+              setState(
+                () => _company = company.copyWith(
+                  automaticEmission: value ? 1 : 0,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompanyDataSection(BuildContext context) {
+    final empresaConfig = _empresaConfig;
+    final missing = _missingCompanyFields();
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: scheme.outlineVariant.withOpacity(0.45),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Datos de la empresa',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          if (empresaConfig == null || missing.isNotEmpty)
+            _MissingCompanyDataState(onOpenSettings: _openCompanySettings)
+          else
+            Column(
               children: [
-                _FieldBox(
-                  width: 360,
-                  child: _LabeledField(
-                    label: 'Razon social',
-                    controller: _razonSocialController,
-                    validator: _required,
-                  ),
+                _ReadOnlyDataItem(
+                  label: 'Empresa',
+                  value: empresaConfig.nombreEmpresa,
                 ),
-                _FieldBox(
-                  width: 280,
-                  child: _LabeledField(
-                    label: 'Nombre comercial',
-                    controller: _nombreComercialController,
-                  ),
+                const SizedBox(height: 8),
+                _ReadOnlyDataItem(
+                  label: 'RNC',
+                  value: (empresaConfig.rnc ?? '').trim(),
                 ),
-                _FieldBox(
-                  width: 220,
-                  child: _LabeledField(
-                    label: 'RNC',
-                    controller: _rncController,
-                    validator: _required,
-                  ),
-                ),
-                _FieldBox(
-                  width: 420,
-                  child: _LabeledField(
-                    label: 'Direccion de emision',
-                    controller: _direccionController,
-                    validator: _required,
-                  ),
-                ),
-                _FieldBox(
-                  width: 220,
-                  child: _LabeledField(
-                    label: 'Telefono',
-                    controller: _telefonoController,
-                  ),
-                ),
-                _FieldBox(
-                  width: 280,
-                  child: _LabeledField(
-                    label: 'Correo',
-                    controller: _emailController,
-                  ),
-                ),
-                _FieldBox(
-                  width: 220,
-                  child: _EnvironmentField(
-                    value: company.environment,
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(
-                        () => _company = company.copyWith(environment: value),
-                      );
-                    },
-                  ),
-                ),
-                _FieldBox(
-                  width: 320,
-                  child: _LabeledField(
-                    label: 'Token DGII',
-                    controller: _apiTokenController,
-                  ),
-                ),
-                _FieldBox(
-                  width: 320,
-                  child: _LabeledField(
-                    label: 'Certificado / alias',
-                    controller: _certificadoController,
-                  ),
+                const SizedBox(height: 8),
+                _ReadOnlyDataItem(
+                  label: 'Dirección',
+                  value: empresaConfig.direccionCompleta,
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Emitir e-CF automaticamente'),
-              subtitle: const Text(
-                'Al cobrar un documento electronico se guarda XML, firma y estado DGII.',
-              ),
-              value: company.automaticEmission == 1,
-              onChanged: (value) {
-                setState(
-                  () => _company = company.copyWith(
-                    automaticEmission: value ? 1 : 0,
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -485,23 +522,28 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
     );
   }
 
-  String? _required(String? value) {
-    if ((value ?? '').trim().isEmpty) return 'Requerido';
-    return null;
-  }
-
   Color _statusColor(String status) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusTheme = Theme.of(context).extension<AppStatusTheme>();
+    final resolvedStatus =
+        statusTheme ??
+        AppStatusTheme(
+          success: scheme.primary,
+          warning: scheme.tertiary,
+          error: scheme.error,
+          info: scheme.secondary,
+        );
     switch (status) {
       case FacturaElectronicaModel.statusAccepted:
-        return Colors.green;
+        return resolvedStatus.success;
       case FacturaElectronicaModel.statusPending:
-        return Colors.blue;
+        return scheme.primary;
       case FacturaElectronicaModel.statusRejected:
-        return Colors.redAccent;
+        return resolvedStatus.error;
       case FacturaElectronicaModel.statusConfigPending:
-        return Colors.orange;
+        return resolvedStatus.warning;
       default:
-        return Colors.blueGrey;
+        return resolvedStatus.info;
     }
   }
 }
@@ -591,20 +633,97 @@ class _FieldBox extends StatelessWidget {
 class _LabeledField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
-  final String? Function(String?)? validator;
 
-  const _LabeledField({
-    required this.label,
-    required this.controller,
-    this.validator,
-  });
+  const _LabeledField({required this.label, required this.controller});
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
-      validator: validator,
       decoration: InputDecoration(labelText: label),
+    );
+  }
+}
+
+class _ReadOnlyDataItem extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ReadOnlyDataItem({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 3,
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MissingCompanyDataState extends StatelessWidget {
+  final VoidCallback onOpenSettings;
+
+  const _MissingCompanyDataState({required this.onOpenSettings});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: scheme.outlineVariant.withOpacity(0.45),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              'Complete la información de empresa en configuración',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            onPressed: onOpenSettings,
+            icon: const Icon(Icons.settings_outlined),
+            label: const Text('Ir a configuración'),
+          ),
+        ],
+      ),
     );
   }
 }

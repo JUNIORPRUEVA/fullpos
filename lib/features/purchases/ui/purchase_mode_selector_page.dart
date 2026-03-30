@@ -2,23 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
+import 'widgets/purchase_ui.dart';
 
 class PurchaseModeSelectorPage extends StatelessWidget {
   const PurchaseModeSelectorPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.textDark,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        shadowColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Compras',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -26,7 +19,7 @@ class PurchaseModeSelectorPage extends StatelessWidget {
         toolbarHeight: 48,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        padding: kPurchasePagePadding,
         child: LayoutBuilder(
           builder: (context, viewportConstraints) {
             final contentWidth = viewportConstraints.maxWidth > 1080
@@ -39,48 +32,29 @@ class PurchaseModeSelectorPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 16,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppColors.surfaceLightBorder.withOpacity(0.85),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.shadowColor.withOpacity(0.05),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
+                      const PurchaseHeroCard(
+                        eyebrow: 'Centro de compras',
+                        title: 'Escoge el flujo de abastecimiento según la operación.',
+                        subtitle:
+                            'Compra manual para ejecución rápida, automática para reposición guiada y registro de órdenes para seguimiento y recepción.',
+                        stats: [
+                          PurchaseMetricTile(
+                            label: 'Flujos',
+                            value: '3 modos',
+                            icon: Icons.grid_view_rounded,
+                          ),
+                          PurchaseMetricTile(
+                            label: 'Objetivo',
+                            value: 'Operación compacta',
+                            icon: Icons.tune_rounded,
+                          ),
+                          PurchaseMetricTile(
+                            label: 'Estilo',
+                            value: 'CRM SaaS',
+                            icon: Icons.auto_awesome_rounded,
                           ),
                         ],
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Selecciona un tipo de compra',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textDark,
-                              fontSize: 22,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Manual (catálogo + ticket), Automática (sugerencias) o Registro de órdenes.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textDarkSecondary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                     const SizedBox(height: 16),
                     Wrap(
                       spacing: 14,
@@ -138,91 +112,113 @@ class _PurchaseModeActionButton extends StatefulWidget {
 class _PurchaseModeActionButtonState extends State<_PurchaseModeActionButton> {
   bool _hovered = false;
 
+  void _setHovered(bool value) {
+    if (!mounted || _hovered == value) return;
+    setState(() => _hovered = value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
+      onEnter: (_) => _setHovered(true),
+      onExit: (_) => _setHovered(false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         width: 320,
-        constraints: const BoxConstraints(minHeight: 110),
+        height: 148,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: _hovered
+              ? Color.alphaBlend(
+                  AppColors.brandBlue.withOpacity(0.03),
+                  scheme.surface,
+                )
+              : scheme.surface,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: AppColors.surfaceLightBorder.withOpacity(0.95),
+            color: scheme.outlineVariant.withOpacity(_hovered ? 0.72 : 0.52),
           ),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withOpacity(_hovered ? 0.08 : 0.04),
-              blurRadius: _hovered ? 10 : 7,
-              offset: Offset(0, _hovered ? 4 : 2),
+              color: theme.shadowColor.withOpacity(_hovered ? 0.08 : 0.045),
+              blurRadius: _hovered ? 18 : 10,
+              offset: Offset(0, _hovered ? 8 : 4),
             ),
           ],
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             onTap: widget.onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: AppColors.brandBlue.withOpacity(
-                        _hovered ? 0.16 : 0.10,
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: AppColors.brandBlue.withOpacity(
+                                _hovered ? 0.16 : 0.09,
+                              ),
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(
+                              widget.icon,
+                              color: AppColors.brandBlueDark,
+                              size: 20,
+                            ),
+                          ),
+                          const Spacer(),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 18,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ],
                       ),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      widget.icon,
-                      color: AppColors.brandBlueDark,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: AppColors.textDark,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
+                      const SizedBox(height: 14),
+                      Text(
+                        widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: AppColors.textDark,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.textDarkSecondary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
-                          ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textDarkSecondary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11.5,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 13,
-                    color: AppColors.textDarkSecondary,
+                  Text(
+                    'Abrir flujo',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: AppColors.brandBlue,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ],
               ),

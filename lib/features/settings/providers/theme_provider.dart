@@ -447,6 +447,11 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
     await _repository.saveThemeSettings(settings);
   }
 
+  /// Vista previa temporal del tema sin persistirlo.
+  void previewSettings(ThemeSettings settings) {
+    state = settings;
+  }
+
   ThemeSettings _autoAdjustForMode(
     ThemeSettings settings, {
     required bool isDark,

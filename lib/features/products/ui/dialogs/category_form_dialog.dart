@@ -104,6 +104,8 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.28).clamp(360.0, 460.0);
 
     return Shortcuts(
       shortcuts: {
@@ -125,95 +127,120 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
         },
         child: Focus(
           autofocus: true,
-          child: Dialog(
-            backgroundColor: Colors.transparent,
-            child: ProductsSurface(
-              padding: EdgeInsets.zero,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      border: Border(
-                        bottom: BorderSide(color: scheme.outlineVariant),
-                      ),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(22),
-                      ),
-                    ),
-                    child: ProductsSectionHeader(
-                      eyebrow: 'CATEGORIA',
-                      title: _isEdit ? 'Editar categoría' : 'Nueva categoría',
-                      subtitle: 'Registro breve para el catálogo.',
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Nombre visible',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(72, 12, 12, 12),
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: EdgeInsets.zero,
+                child: SizedBox(
+                  width: dialogWidth,
+                  child: ProductsSurface(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border(
+                              bottom: BorderSide(color: scheme.outlineVariant),
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(22),
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _nameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Nombre *',
-                              hintText: 'Ej: Electrónicos, Ropa, Alimentos',
-                              border: OutlineInputBorder(),
-                            ),
-                            textCapitalization: TextCapitalization.words,
-                            autofocus: true,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'El nombre es requerido';
-                              }
-                              if (value.trim().length < 2) {
-                                return 'El nombre debe tener al menos 2 caracteres';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          child: Row(
                             children: [
-                              TextButton(
-                                onPressed: _isLoading
-                                    ? null
-                                    : () => Navigator.pop(context),
-                                child: const Text('Cancelar'),
+                              Expanded(
+                                child: Text(
+                                  _isEdit
+                                      ? 'EDITAR CATEGORÍA'
+                                      : 'CREAR CATEGORÍA',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
                               ),
-                              const SizedBox(width: 8),
-                              FilledButton(
-                                onPressed: _isLoading ? null : _save,
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Text(_isEdit ? 'Actualizar' : 'Crear'),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(Icons.close),
                               ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                TextFormField(
+                                  controller: _nameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Nombre *',
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                  textCapitalization: TextCapitalization.words,
+                                  autofocus: true,
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'El nombre es requerido';
+                                    }
+                                    if (value.trim().length < 2) {
+                                      return 'Mínimo 2 caracteres';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : () => Navigator.pop(context),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    FilledButton(
+                                      onPressed: _isLoading ? null : _save,
+                                      child: _isLoading
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : Text(_isEdit ? 'Guardar' : 'Crear'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),

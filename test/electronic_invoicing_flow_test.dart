@@ -7,6 +7,8 @@ import 'package:fullpos/features/facturacion_electronica/data/electronic_company
 import 'package:fullpos/features/facturacion_electronica/data/factura_electronica_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/models/factura_electronica_model.dart';
 import 'package:fullpos/features/sales/data/sales_repository.dart';
+import 'package:fullpos/features/settings/data/business_settings_model.dart';
+import 'package:fullpos/features/settings/data/business_settings_repository.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
@@ -48,13 +50,17 @@ void main() {
   test('invoice sale stores simulated e-CF document', () async {
     await AppDb.resetForTests();
 
+    await BusinessSettingsRepository().saveSettings(
+      BusinessSettings(
+        businessName: 'FULLPOS SRL',
+        rnc: '101010101',
+        address: 'Santo Domingo',
+      ),
+    );
+
     final company = await ElectronicCompanyRepository.getOrCreate();
     await ElectronicCompanyRepository.save(
       company.copyWith(
-        businessName: 'FULLPOS SRL',
-        tradeName: 'FULLPOS',
-        rnc: '101010101',
-        emissionAddress: 'Santo Domingo',
         environment: 'pruebas',
         automaticEmission: 1,
       ),

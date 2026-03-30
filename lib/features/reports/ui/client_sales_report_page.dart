@@ -162,33 +162,25 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
 
   Widget _headerBadge(
     BuildContext context,
-    String label,
-    String value,
+    String text,
     IconData icon,
     Color color,
   ) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withOpacity(0.20)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 6),
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
           Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            value,
+            text,
             style: theme.textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.w800,
               color: color,
@@ -208,156 +200,173 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
     return Scaffold(
       backgroundColor: scheme.surface,
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
                 color: scheme.surface,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: scheme.outlineVariant),
                 boxShadow: [
                   BoxShadow(
                     color: scheme.shadow.withOpacity(0.05),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
-              child: Column(
-                children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final stacked = constraints.maxWidth < 980;
-                      final identity = Row(
-                        children: [
-                          IconButton(
-                            onPressed: () => Navigator.of(context).maybePop(),
-                            icon: const Icon(Icons.arrow_back_rounded),
-                            tooltip: 'Volver',
-                            style: IconButton.styleFrom(
-                              backgroundColor: scheme.surfaceContainerHighest,
-                            ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 980;
+                  final titleRow = Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                        tooltip: 'Volver',
+                        style: IconButton.styleFrom(
+                          backgroundColor: scheme.surfaceContainerHighest,
+                          minimumSize: const Size(36, 36),
+                          padding: const EdgeInsets.all(8),
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: scheme.tertiary.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: scheme.tertiary.withOpacity(0.18),
                           ),
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.all(11),
-                            decoration: BoxDecoration(
-                              color: scheme.tertiary.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: scheme.tertiary.withOpacity(0.18),
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.people_alt_outlined,
-                              color: scheme.tertiary,
-                              size: 22,
-                            ),
+                        ),
+                        child: Icon(
+                          Icons.people_alt_outlined,
+                          color: scheme.tertiary,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Ventas por cliente',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Ventas por cliente',
-                                  style: theme.textTheme.headlineSmall
-                                      ?.copyWith(fontWeight: FontWeight.w800),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Lectura comercial por cliente, credito y facturas del rango.',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: scheme.onSurface.withOpacity(0.66),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
+                        ),
+                      ),
+                    ],
+                  );
 
-                      final actions = Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: _loadData,
-                            icon: const Icon(Icons.refresh_rounded, size: 18),
-                            label: const Text('Recargar'),
-                          ),
-                        ],
-                      );
+                  final reloadButton = OutlinedButton.icon(
+                    onPressed: _loadData,
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Recargar'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  );
 
-                      return Column(
-                        children: [
-                          if (stacked) ...[
-                            identity,
-                            const SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: actions,
-                            ),
-                          ] else
-                            Row(
-                              children: [
-                                Expanded(child: identity),
-                                actions,
-                              ],
-                            ),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _headerBadge(
-                                  context,
-                                  'Periodo',
-                                  _periodLabel(),
-                                  Icons.calendar_today_outlined,
-                                  scheme.primary,
-                                ),
-                                _headerBadge(
-                                  context,
-                                  'Clientes',
-                                  _clientSummaries.length.toString(),
-                                  Icons.people_outline,
-                                  scheme.tertiary,
-                                ),
-                                _headerBadge(
-                                  context,
-                                  'Facturas visibles',
-                                  _selectedClientSales.length.toString(),
-                                  Icons.receipt_long_outlined,
-                                  scheme.secondary,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: DateRangeSelector(
+                  final statusBadges = Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _headerBadge(
+                        context,
+                        _periodLabel(),
+                        Icons.calendar_today_outlined,
+                        scheme.primary,
+                      ),
+                      _headerBadge(
+                        context,
+                        '${_clientSummaries.length} clientes',
+                        Icons.people_outline,
+                        scheme.tertiary,
+                      ),
+                      _headerBadge(
+                        context,
+                        '${_selectedClientSales.length} movimientos',
+                        Icons.receipt_long_outlined,
+                        scheme.secondary,
+                      ),
+                    ],
+                  );
+
+                  final selectorRow = stacked
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DateRangeSelector(
                               selectedPeriod: _selectedPeriod,
                               customStart: _customStart,
                               customEnd: _customEnd,
                               onPeriodChanged: _onPeriodChanged,
                               onCustomRangeChanged: _onCustomRangeChanged,
                             ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
+                            const SizedBox(height: 8),
+                            statusBadges,
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: DateRangeSelector(
+                                selectedPeriod: _selectedPeriod,
+                                customStart: _customStart,
+                                customEnd: _customEnd,
+                                onPeriodChanged: _onPeriodChanged,
+                                onCustomRangeChanged: _onCustomRangeChanged,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 320),
+                              child: Align(
+                                alignment: Alignment.topRight,
+                                child: statusBadges,
+                              ),
+                            ),
+                          ],
+                        );
+
+                  return Column(
+                    children: [
+                      if (stacked) ...[
+                        titleRow,
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: reloadButton,
+                        ),
+                      ] else
+                        Row(
+                          children: [
+                            Expanded(child: titleRow),
+                            reloadButton,
+                          ],
+                        ),
+                      const SizedBox(height: 10),
+                      selectorRow,
+                    ],
+                  );
+                },
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (_isLoading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else
@@ -366,7 +375,7 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                     ? Row(
                         children: [
                           Expanded(flex: 2, child: _buildGeneralPanel(context)),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 12),
                           Expanded(
                             flex: 3,
                             child: _buildClientDetailPanel(context),
@@ -376,7 +385,7 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                     : Column(
                         children: [
                           Expanded(child: _buildGeneralPanel(context)),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           Expanded(child: _buildClientDetailPanel(context)),
                         ],
                       ),
@@ -402,117 +411,140 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
     );
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Resumen general',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _statTile(
-            context,
-            'Ventas totales',
-            money.format(totalSales),
-            Icons.payments,
-          ),
-          const SizedBox(height: 8),
-          _statTile(
-            context,
-            'Créditos totales',
-            money.format(totalCredits),
-            Icons.credit_card,
-          ),
-          const SizedBox(height: 8),
-          _statTile(
-            context,
-            'Clientes con compras',
-            _clientSummaries.length.toString(),
-            Icons.people,
-          ),
-          const SizedBox(height: 8),
-          _statTile(
-            context,
-            'Cliente top',
-            _topClient == null
-                ? '-'
-                : '${_topClient!.clientName} · ${money.format(_topClient!.totalSpent)}',
-            Icons.workspace_premium,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Productos más vendidos',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _topProducts.isEmpty
-                ? Center(
-                    child: Text(
-                      'Sin datos en el rango seleccionado.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final tileWidth = constraints.maxWidth >= 420
+              ? (constraints.maxWidth - 8) / 2
+              : constraints.maxWidth;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Resumen general',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: tileWidth,
+                    child: _statTile(
+                      context,
+                      'Ventas totales',
+                      money.format(totalSales),
+                      Icons.payments,
                     ),
-                  )
-                : ListView.separated(
-                    itemCount: _topProducts.length,
-                    separatorBuilder: (_, _) => Divider(
-                      color: scheme.outlineVariant.withOpacity(0.6),
-                      height: 12,
-                    ),
-                    itemBuilder: (context, index) {
-                      final item = _topProducts[index];
-                      return Row(
-                        children: [
-                          SizedBox(
-                            width: 24,
-                            child: Text(
-                              '${index + 1}',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: scheme.primary,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              item.productName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${item.totalQty.toStringAsFixed(0)} u',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ],
-                      );
-                    },
                   ),
-          ),
-        ],
+                  SizedBox(
+                    width: tileWidth,
+                    child: _statTile(
+                      context,
+                      'Créditos totales',
+                      money.format(totalCredits),
+                      Icons.credit_card,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _statTile(
+                      context,
+                      'Clientes con compras',
+                      _clientSummaries.length.toString(),
+                      Icons.people,
+                    ),
+                  ),
+                  SizedBox(
+                    width: tileWidth,
+                    child: _statTile(
+                      context,
+                      'Cliente top',
+                      _topClient == null
+                          ? '-'
+                          : '${_topClient!.clientName} · ${money.format(_topClient!.totalSpent)}',
+                      Icons.workspace_premium,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Productos más vendidos',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: _topProducts.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Sin datos en el rango seleccionado.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _topProducts.length,
+                        separatorBuilder: (_, _) => Divider(
+                          color: scheme.outlineVariant.withOpacity(0.6),
+                          height: 10,
+                        ),
+                        itemBuilder: (context, index) {
+                          final item = _topProducts[index];
+                          return Row(
+                            children: [
+                              SizedBox(
+                                width: 22,
+                                child: Text(
+                                  '${index + 1}',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: scheme.primary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  item.productName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${item.totalQty.toStringAsFixed(0)} u',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -524,24 +556,25 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
     final date = DateFormat('dd/MM/yyyy HH:mm');
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 760;
+
+          Widget clientList() {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -574,7 +607,7 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                                 margin: const EdgeInsets.only(bottom: 8),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
-                                  vertical: 10,
+                                  vertical: 9,
                                 ),
                                 decoration: BoxDecoration(
                                   color: selected
@@ -599,7 +632,7 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                                             fontWeight: FontWeight.w800,
                                           ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 3),
                                     Text(
                                       '${money.format(item.totalSales)} · ${item.salesCount} ventas',
                                       style: theme.textTheme.labelSmall
@@ -616,12 +649,11 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                         ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            flex: 3,
-            child: Column(
+            );
+          }
+
+          Widget detailList() {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -633,8 +665,8 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                 const SizedBox(height: 10),
                 if (_selectedClient != null) ...[
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
                       _pill(context, 'Ventas: ${_selectedClient!.salesCount}'),
                       _pill(
@@ -683,11 +715,7 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        date.format(
-                                          DateTime.fromMillisecondsSinceEpoch(
-                                            sale.createdAtMs,
-                                          ),
-                                        ),
+                                        '${sale.kind == 'return' ? 'Devolución' : 'Factura'} • ${date.format(DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs))}',
                                         style: theme.textTheme.labelSmall
                                             ?.copyWith(
                                               color: scheme.onSurfaceVariant,
@@ -696,6 +724,7 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: 8),
                                 Text(
                                   money.format(sale.total),
                                   style: theme.textTheme.bodyMedium?.copyWith(
@@ -709,9 +738,27 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
                         ),
                 ),
               ],
-            ),
-          ),
-        ],
+            );
+          }
+
+          if (stacked) {
+            return Column(
+              children: [
+                Expanded(child: clientList()),
+                const SizedBox(height: 12),
+                Expanded(child: detailList()),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(flex: 2, child: clientList()),
+              const SizedBox(width: 12),
+              Expanded(flex: 3, child: detailList()),
+            ],
+          );
+        },
       ),
     );
   }
@@ -725,42 +772,47 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: scheme.primary.withOpacity(0.04),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: scheme.outlineVariant),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 16, color: scheme.primary),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 16, color: scheme.primary),
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],

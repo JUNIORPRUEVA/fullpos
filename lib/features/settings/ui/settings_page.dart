@@ -7,7 +7,7 @@ import 'device_hardware_settings_page.dart';
 import 'printer_settings_page.dart';
 import 'system_about_page.dart';
 import 'system_license_summary_page.dart';
-import 'user_permissions_directory_page.dart';
+import 'permissions_page.dart';
 import 'users_page.dart';
 import 'theme_settings_page.dart' as theme_page;
 import 'logs_page.dart';
@@ -328,7 +328,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _openUserPermissionsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const UserPermissionsDirectoryPage()),
+      MaterialPageRoute(builder: (_) => const PermissionsPage()),
     );
   }
 

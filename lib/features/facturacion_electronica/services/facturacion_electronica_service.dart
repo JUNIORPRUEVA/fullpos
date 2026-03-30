@@ -1,5 +1,6 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/services/empresa_service.dart';
 import '../../sales/data/sale_item_model.dart';
 import '../../sales/data/sales_model.dart' as legacy_sales;
 import '../data/electronic_company_repository.dart';
@@ -108,6 +109,7 @@ class FacturacionElectronicaService {
     required List<SaleItemModel> items,
   }) async {
     final company = await ElectronicCompanyRepository.getOrCreate();
+    final empresaConfig = await EmpresaService.getEmpresaConfig();
     final now = DateTime.now().millisecondsSinceEpoch;
 
     if (sale.electronicInvoiceEnabled != 1) {
@@ -128,7 +130,7 @@ class FacturacionElectronicaService {
       );
     }
 
-    final missing = company.missingRequiredFields();
+    final missing = empresaConfig.missingElectronicInvoicingFields();
     if (missing.isNotEmpty) {
       return FacturaElectronicaRepository.upsert(
         FacturaElectronicaModel(
@@ -154,8 +156,8 @@ class FacturacionElectronicaService {
       ecf: ecf,
       tipoDocumento: 'eCF',
       ambiente: company.environment,
-      razonSocial: company.businessName,
-      rncEmisor: company.rnc,
+      razonSocial: empresaConfig.nombreEmpresa,
+      rncEmisor: (empresaConfig.rnc ?? '').trim(),
       clienteNombre: sale.customerNameSnapshot ?? 'Consumidor final',
       clienteRnc: sale.customerRncSnapshot ?? '',
       total: sale.total,

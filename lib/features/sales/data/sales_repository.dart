@@ -782,8 +782,8 @@ class SalesRepository {
     final db = await AppDb.database;
 
     final statusClause = includePartialRefund
-        ? "status IN ('completed', 'PARTIAL_REFUND')"
-        : "status = 'completed'";
+        ? "status IN ('completed', 'PAID', 'PARTIAL_REFUND')"
+        : "status IN ('completed', 'PAID')";
 
     final rows = await db.rawQuery(
       '''
@@ -818,8 +818,8 @@ class SalesRepository {
     final db = await AppDb.database;
 
     final statusClause = includePartialRefund
-        ? "status IN ('completed', 'PARTIAL_REFUND')"
-        : "status = 'completed'";
+        ? "status IN ('completed', 'PAID', 'PARTIAL_REFUND')"
+        : "status IN ('completed', 'PAID')";
 
     final maps = await db.query(
       DbTables.sales,

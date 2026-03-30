@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/theme/app_gradient_theme.dart';
 import '../../../../core/theme/color_utils.dart';
 import '../../../products/models/category_model.dart';
 import '../../../products/ui/dialogs/supplier_form_dialog.dart';
 import '../../providers/purchase_catalog_provider.dart';
+import 'purchase_ui.dart';
 
 class PurchaseHeaderRow extends ConsumerStatefulWidget {
   final FocusNode? searchFocusNode;
@@ -107,19 +107,6 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
       );
     }
 
-    final containerDecoration = BoxDecoration(
-      color: Color.alphaBlend(scheme.surface.withOpacity(0.96), bg),
-      borderRadius: BorderRadius.circular(AppSizes.radiusXL),
-      border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
-      boxShadow: [
-        BoxShadow(
-          color: theme.shadowColor.withOpacity(0.10),
-          blurRadius: 14,
-          offset: const Offset(0, 5),
-        ),
-      ],
-    );
-
     return Shortcuts(
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.f2): _FocusSearchIntent(),
@@ -135,8 +122,8 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
         },
         child: FocusableActionDetector(
           child: Container(
-            decoration: containerDecoration,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: purchaseSectionDecoration(context, highlighted: true),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isNarrow = constraints.maxWidth < 860;
@@ -255,6 +242,22 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      Text(
+                        'Catálogo de compra',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: onBg,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Busca, filtra y limita al proveedor actual sin salir del flujo.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: onBg.withOpacity(0.72),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       search,
                       const SizedBox(height: 10),
                       category,
@@ -272,6 +275,30 @@ class _PurchaseHeaderRowState extends ConsumerState<PurchaseHeaderRow> {
 
                 return Row(
                   children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Catálogo de compra',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: onBg,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Búsqueda y filtros compactos',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: onBg.withOpacity(0.7),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(flex: 6, child: search),
                     const SizedBox(width: 12),
                     Expanded(flex: 4, child: category),
