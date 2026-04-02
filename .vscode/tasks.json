@@ -10,7 +10,7 @@
 				"-ExecutionPolicy",
 				"Bypass",
 				"-Command",
-				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAsset = Join-Path $PWD 'build\\native_assets\\windows\\sqlite3.dll'; Remove-Item -LiteralPath $nativeAsset -Force -ErrorAction SilentlyContinue; exit 0"
+				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAssetsWin = Join-Path $PWD 'build\\native_assets\\windows'; Remove-Item -LiteralPath $nativeAssetsWin -Recurse -Force -ErrorAction SilentlyContinue; exit 0"
 			],
 			"options": {
 				"cwd": "${workspaceFolder}"

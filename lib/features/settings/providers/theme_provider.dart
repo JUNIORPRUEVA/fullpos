@@ -607,13 +607,14 @@ ThemeData _buildThemeData(ThemeSettings settings) {
   );
   final outlineVariant = brightness == Brightness.dark
       ? Colors.white.withOpacity(0.08)
-      : PremiumThemeColors.appBarBorder.withOpacity(0.82);
+      : PremiumThemeColors.appBarBorder;
   final surfaceAlt = brightness == Brightness.dark
       ? Color.alphaBlend(Colors.white.withOpacity(0.04), surfaceColor)
       : PremiumThemeColors.surfaceAlt;
   final subtleShadow = Colors.black.withOpacity(
-    brightness == Brightness.dark ? 0.16 : 0.035,
+    brightness == Brightness.dark ? 0.16 : 0.06,
   );
+  const inactiveTone = PremiumThemeColors.inactive;
   final hoverTint = brightness == Brightness.dark
       ? Colors.white.withOpacity(0.04)
       : settings.primaryColor.withOpacity(0.045);
@@ -694,7 +695,10 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     hoverColor: hoverTint,
     focusColor: focusTint,
     splashColor: settings.primaryColor.withOpacity(0.08),
+    disabledColor: inactiveTone,
+    unselectedWidgetColor: inactiveTone,
     highlightColor: Colors.transparent,
+    iconTheme: IconThemeData(color: effectiveTextColor),
 
     // AppBar
     appBarTheme: AppBarTheme(
@@ -724,7 +728,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     // Cards
     cardTheme: CardThemeData(
       color: settings.cardColor,
-      elevation: 0,
+      elevation: 1,
       margin: EdgeInsets.zero,
       surfaceTintColor: Colors.transparent,
       shadowColor: subtleShadow,
@@ -738,6 +742,8 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: brightness == Brightness.dark ? surfaceAlt : scheme.surface,
+      prefixIconColor: inactiveTone,
+      suffixIconColor: inactiveTone,
       hintStyle: TextStyle(
         color: secondaryTextColor,
         fontFamily: settings.fontFamily,
@@ -861,7 +867,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     popupMenuTheme: PopupMenuThemeData(
       color: scheme.surface,
       surfaceTintColor: Colors.transparent,
-      elevation: 0,
+      elevation: 2,
       shadowColor: subtleShadow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusM),
@@ -880,6 +886,14 @@ ThemeData _buildThemeData(ThemeSettings settings) {
       circularTrackColor: surfaceAlt,
     ),
 
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: effectiveTextColor,
+        disabledForegroundColor: inactiveTone,
+        hoverColor: hoverTint,
+      ),
+    ),
+
     checkboxTheme: CheckboxThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
@@ -896,7 +910,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         if (states.contains(WidgetState.selected)) {
           return scheme.primary;
         }
-        return secondaryTextColor;
+        return inactiveTone;
       }),
     ),
 
@@ -905,13 +919,13 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         if (states.contains(WidgetState.selected)) {
           return scheme.primary.withOpacity(0.35);
         }
-        return outlineVariant;
+        return inactiveTone.withOpacity(0.45);
       }),
       thumbColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           return scheme.primary;
         }
-        return scheme.surface;
+        return inactiveTone;
       }),
     ),
 
@@ -926,7 +940,8 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
-      elevation: 0,
+      elevation: 2,
+      shadowColor: subtleShadow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusL + 2),
         side: BorderSide(color: outlineColor, width: 1.0),
@@ -948,7 +963,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: snackBarBackground,
-      elevation: 0,
+      elevation: 2,
       insetPadding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppSizes.radiusL),

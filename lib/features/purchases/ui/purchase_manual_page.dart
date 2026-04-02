@@ -85,27 +85,68 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
     return BoxConstraints(minWidth: min, maxWidth: max);
   }
 
+  Future<void> _goBack() async {
+    final ok = await _confirmExitIfDirty(context);
+    if (!ok || !mounted) return;
+
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      context.pop();
+      return;
+    }
+
+    context.go('/sales');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return WillPopScope(
       onWillPop: () => _confirmExitIfDirty(context),
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            onPressed: _goBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Volver',
+          ),
           title: const Text(
             'Compra Manual',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           toolbarHeight: 48,
           actions: [
-            TextButton(
-              onPressed: () async {
-                final ok = await _confirmExitIfDirty(context);
-                if (!ok) return;
-                if (!context.mounted) return;
-                context.go('/purchases');
-              },
-              child: const Text('Volver'),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: OutlinedButton.icon(
+                onPressed: () => context.go('/purchases/auto'),
+                icon: const Icon(Icons.auto_awesome, size: 16),
+                label: const Text('Automáticas'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  textStyle: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: FilledButton.icon(
+                onPressed: () => context.go('/purchases/orders'),
+                icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                label: const Text('Órdenes'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  textStyle: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
             const SizedBox(width: 8),
           ],
@@ -114,25 +155,6 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
           padding: kPurchasePagePadding,
           child: Column(
             children: [
-              const PurchaseHeroCard(
-                eyebrow: 'Compra manual',
-                title: 'Arma órdenes rápidas con catálogo, filtros compactos y ticket lateral.',
-                subtitle:
-                    'El flujo mantiene el trabajo operativo en una sola superficie: búsqueda, selección, costo y generación del documento.',
-                stats: [
-                  PurchaseMetricTile(
-                    label: 'Modo',
-                    value: 'Manual',
-                    icon: Icons.point_of_sale_rounded,
-                  ),
-                  PurchaseMetricTile(
-                    label: 'Composición',
-                    value: 'Catálogo + ticket',
-                    icon: Icons.view_sidebar_rounded,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
               PurchaseHeaderRow(searchFocusNode: _searchFocus),
               const SizedBox(height: 12),
               Expanded(

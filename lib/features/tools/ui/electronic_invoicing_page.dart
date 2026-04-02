@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/empresa_service.dart';
 import '../../../core/theme/app_status_theme.dart';
+import '../../settings/providers/business_settings_provider.dart';
 import '../../facturacion_electronica/data/electronic_company_repository.dart';
 import '../../facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
@@ -11,15 +13,16 @@ import '../../facturacion_electronica/data/models/factura_electronica_model.dart
 import '../../settings/ui/business_sections_settings_page.dart';
 import '../../settings/ui/settings_layout.dart';
 
-class ElectronicInvoicingPage extends StatefulWidget {
+class ElectronicInvoicingPage extends ConsumerStatefulWidget {
   const ElectronicInvoicingPage({super.key});
 
   @override
-  State<ElectronicInvoicingPage> createState() =>
+  ConsumerState<ElectronicInvoicingPage> createState() =>
       _ElectronicInvoicingPageState();
 }
 
-class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
+class _ElectronicInvoicingPageState
+    extends ConsumerState<ElectronicInvoicingPage> {
   final _apiTokenController = TextEditingController();
   final _certificadoController = TextEditingController();
 
@@ -29,6 +32,7 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
   List<FacturaElectronicaModel> _recentInvoices = <FacturaElectronicaModel>[];
   bool _loading = true;
   bool _saving = false;
+  bool _savingVisibility = false;
 
   @override
   void initState() {
@@ -113,8 +117,25 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
     );
   }
 
+  Future<void> _updateSalesVisibility(bool enabled) async {
+    if (_savingVisibility) return;
+
+    setState(() => _savingVisibility = true);
+    try {
+      await ref
+          .read(businessSettingsProvider.notifier)
+          .updateElectronicInvoicingEnabled(enabled);
+    } finally {
+      if (mounted) {
+        setState(() => _savingVisibility = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final businessSettings = ref.watch(businessSettingsProvider);
+
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
@@ -160,9 +181,19 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
                       child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          _buildHeader(context),
+                          _buildHeader(
+                            context,
+                            salesVisibilityEnabled:
+                                businessSettings.electronicInvoicingEnabled,
+                          ),
                           const SizedBox(height: 16),
                           _buildSummary(),
+                          const SizedBox(height: 16),
+                          _buildSalesActivationSection(
+                            context,
+                            enabled:
+                                businessSettings.electronicInvoicingEnabled,
+                          ),
                           const SizedBox(height: 16),
                           _buildCompanyDataSection(context),
                           const SizedBox(height: 16),
@@ -179,7 +210,10 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(
+    BuildContext context, {
+    required bool salesVisibilityEnabled,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final statusTheme = Theme.of(context).extension<AppStatusTheme>();
     final resolvedStatus =
@@ -190,7 +224,6 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
           error: scheme.error,
           info: scheme.secondary,
         );
-    final company = _company!;
     final missing = _missingCompanyFields();
 
     return Container(
@@ -225,8 +258,10 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               _StatusChip(
-                label: company.isEnabled ? 'Emision activa' : 'Emision pausada',
-                color: company.isEnabled
+                label: salesVisibilityEnabled
+                    ? 'Visible en ventas'
+                    : 'Oculta en ventas',
+                color: salesVisibilityEnabled
                     ? resolvedStatus.success
                     : resolvedStatus.warning,
               ),
@@ -240,6 +275,79 @@ class _ElectronicInvoicingPageState extends State<ElectronicInvoicingPage> {
                     : resolvedStatus.error,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalesActivationSection(
+    BuildContext context, {
+    required bool enabled,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Disponibilidad en ventas',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withOpacity(0.28),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: scheme.outlineVariant.withOpacity(0.45),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.receipt_long_outlined,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Activar facturación electrónica',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Muestra las opciones de comprobante electrónico en ventas',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Switch.adaptive(
+                  value: enabled,
+                  onChanged: _savingVisibility ? null : _updateSalesVisibility,
+                ),
+              ],
+            ),
           ),
         ],
       ),

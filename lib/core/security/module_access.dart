@@ -20,11 +20,10 @@ class ModuleAccess {
     if (path == '/no-access') return true;
 
     if (path == '/sales') return permissions.canSell;
-    if (path == '/sales-list') return permissions.canViewSalesHistory;
+    if (path == '/factura') return permissions.canViewSalesHistory;
 
     if (path == '/quotes' || path == '/quotes-list') return permissions.canViewQuotes;
     if (path == '/credits' || path == '/credits-list') return permissions.canViewCredits;
-    if (path == '/returns' || path == '/returns-list') return permissions.canProcessReturns;
 
     if (path == '/products') return permissions.canViewProducts;
     if (path == '/products/history') return permissions.canViewProducts;
@@ -57,10 +56,9 @@ class ModuleAccess {
 
   static String moduleLabelForPath(String path) {
     if (path == '/sales') return 'Ventas';
-    if (path == '/sales-list') return 'Historial de ventas';
+    if (path == '/factura') return 'Factura';
     if (path == '/quotes' || path == '/quotes-list') return 'Cotizaciones';
     if (path == '/credits' || path == '/credits-list') return 'Creditos';
-    if (path == '/returns' || path == '/returns-list') return 'Devoluciones';
     if (path.startsWith('/products')) return 'Catalogo';
     if (path == '/clients') return 'Clientes';
     if (path.startsWith('/purchases')) return 'Compras';

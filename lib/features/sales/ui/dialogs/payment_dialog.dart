@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
 
 enum PaymentMethod { cash, card, transfer, mixed, credit, layaway }
 enum PaymentOutputMode { ticket, pdf, none }
+enum PaymentDocumentType { consumidorFinal, creditoFiscal, cotizacion }
 
 /// Diálogo de pago profesional
 class PaymentDialog extends StatefulWidget {
@@ -17,6 +19,10 @@ class PaymentDialog extends StatefulWidget {
   final String? initialChargeOutputMode;
   final String? cartFingerprint;
   final ClientModel? selectedClient;
+  final PaymentDocumentType initialDocumentType;
+  final bool allowElectronicInvoiceOption;
+  final Future<PaymentDocumentType> Function(PaymentDocumentType type)
+      onDocumentTypeChanged;
   final Future<ClientModel?> Function() onSelectClient;
   final Future<ClientModel?> Function(ClientModel client)? onEditClient;
 
@@ -28,6 +34,9 @@ class PaymentDialog extends StatefulWidget {
     this.initialChargeOutputMode,
     this.cartFingerprint,
     this.selectedClient,
+    this.initialDocumentType = PaymentDocumentType.consumidorFinal,
+    this.allowElectronicInvoiceOption = true,
+    required this.onDocumentTypeChanged,
     required this.onSelectClient,
     this.onEditClient,
   });
@@ -67,6 +76,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   late final String _paymentAttemptId;
   String _lastTriggerSource = 'unknown';
   int _lastSubmitAtMs = 0;
+  late PaymentDocumentType _selectedDocumentType;
 
   bool get _printTicket => _outputMode == PaymentOutputMode.ticket;
   bool get _downloadInvoicePdf => _outputMode == PaymentOutputMode.pdf;
@@ -187,6 +197,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _paymentAttemptId = _buildPaymentRequestId();
     _outputMode = _resolveInitialOutputMode();
+    _selectedDocumentType = widget.initialDocumentType;
     _selectedClient = widget.selectedClient;
     if (_selectedClient != null) {
       _syncLayawayFromClient(_selectedClient!);
@@ -462,6 +473,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     final result = {
       'paymentRequestId': paymentRequestId,
       'triggerSource': _lastTriggerSource,
+      'documentType': _selectedDocumentType,
       'method': _selectedMethod,
       'cash': cashAmount,
       'card': cardAmount,
@@ -497,6 +509,23 @@ class _PaymentDialogState extends State<PaymentDialog> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: scheme.error),
     );
+  }
+
+  Future<void> _selectDocumentType(PaymentDocumentType type) async {
+    final resolved = await widget.onDocumentTypeChanged(type);
+    if (!mounted) return;
+    setState(() => _selectedDocumentType = resolved);
+  }
+
+  String _documentTypeLabel(PaymentDocumentType type) {
+    switch (type) {
+      case PaymentDocumentType.consumidorFinal:
+        return 'Factura cliente final';
+      case PaymentDocumentType.creditoFiscal:
+        return 'Crédito fiscal';
+      case PaymentDocumentType.cotizacion:
+        return 'Cotización';
+    }
   }
 
   @override
@@ -570,6 +599,73 @@ class _PaymentDialogState extends State<PaymentDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            const Text(
+                              'TIPO DE DOCUMENTO',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<PaymentDocumentType>(
+                              isExpanded: true,
+                              value: _selectedDocumentType,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: scheme.surface,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: scheme.outlineVariant,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: scheme.primary),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                              ),
+                              items: [
+                                DropdownMenuItem(
+                                  value: PaymentDocumentType.consumidorFinal,
+                                  child: Text(
+                                    _documentTypeLabel(
+                                      PaymentDocumentType.consumidorFinal,
+                                    ),
+                                  ),
+                                ),
+                                if (widget.allowElectronicInvoiceOption)
+                                  DropdownMenuItem(
+                                    value: PaymentDocumentType.creditoFiscal,
+                                    child: Text(
+                                      _documentTypeLabel(
+                                        PaymentDocumentType.creditoFiscal,
+                                      ),
+                                    ),
+                                  ),
+                                DropdownMenuItem(
+                                  value: PaymentDocumentType.cotizacion,
+                                  child: Text(
+                                    _documentTypeLabel(
+                                      PaymentDocumentType.cotizacion,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                unawaited(_selectDocumentType(value));
+                              },
+                            ),
+
+                            const SizedBox(height: 24),
+
                             // Total a pagar
                             Container(
                               padding: const EdgeInsets.all(16),
@@ -581,11 +677,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                   width: 2,
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                              child: Wrap(
+                                alignment: WrapAlignment.spaceBetween,
+                                runSpacing: 8,
+                                spacing: 12,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
                                   Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
                                         Icons.attach_money,
@@ -717,54 +816,62 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              _change >= 0
-                                                  ? Icons.arrow_back
-                                                  : Icons.warning,
-                                              color: _change > 0
-                                                  ? status.success
-                                                  : (_change < 0
-                                                        ? status.error
-                                                        : scheme.onSurface
-                                                              .withAlpha(153)),
-                                              size: 22,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              _change >= 0
-                                                  ? 'DEVUELTA:'
-                                                  : 'FALTA:',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: _change > 0
-                                                    ? status.success
-                                                    : (_change < 0
-                                                          ? status.error
-                                                          : scheme.onSurface
-                                                                .withAlpha(
-                                                                  153,
-                                                                )),
+                                        Expanded(
+                                          child: Wrap(
+                                            alignment: WrapAlignment.spaceBetween,
+                                            runSpacing: 8,
+                                            spacing: 12,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            children: [
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    _change >= 0
+                                                        ? Icons.arrow_back
+                                                        : Icons.warning,
+                                                    color: _change > 0
+                                                        ? status.success
+                                                        : (_change < 0
+                                                              ? status.error
+                                                              : scheme.onSurface
+                                                                    .withAlpha(153)),
+                                                    size: 22,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    _change >= 0
+                                                        ? 'DEVUELTA:'
+                                                        : 'FALTA:',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: _change > 0
+                                                          ? status.success
+                                                          : (_change < 0
+                                                                ? status.error
+                                                                : scheme.onSurface
+                                                                      .withAlpha(153)),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                        Text(
-                                          '\$${_change.abs().toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                            color: _change > 0
-                                                ? status.success
-                                                : (_change < 0
-                                                      ? status.error
-                                                      : scheme.onSurface
-                                                            .withAlpha(153)),
+                                              Text(
+                                                '\$${_change.abs().toStringAsFixed(2)}',
+                                                style: TextStyle(
+                                                  fontSize: 24,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: _change > 0
+                                                      ? status.success
+                                                      : (_change < 0
+                                                            ? status.error
+                                                            : scheme.onSurface
+                                                                  .withAlpha(153)),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -886,23 +993,32 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                   ),
                                 ),
                                 child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    const Text(
-                                      'DIFERENCIA:',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      '\$${_change.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: _change.abs() < 0.01
-                                            ? status.success
-                                            : status.warning,
+                                    Expanded(
+                                      child: Wrap(
+                                        alignment: WrapAlignment.spaceBetween,
+                                        runSpacing: 8,
+                                        spacing: 12,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          const Text(
+                                            'DIFERENCIA:',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          Text(
+                                            '\$${_change.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: _change.abs() < 0.01
+                                                  ? status.success
+                                                  : status.warning,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -1257,8 +1373,10 @@ class _PaymentDialogState extends State<PaymentDialog> {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            runSpacing: 10,
+                            spacing: 12,
                             children: [
                               TextButton(
                                 onPressed: _isProcessingPayment
@@ -1266,7 +1384,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                     : () => Navigator.of(context).maybePop(),
                                 child: const Text('CANCELAR'),
                               ),
-                              const SizedBox(width: 12),
                               ElevatedButton.icon(
                                 onPressed: _isProcessingPayment
                                     ? null
@@ -1299,6 +1416,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   String _chargeActionLabel() {
+    if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
+      return 'GUARDAR COTIZACIÓN';
+    }
     switch (_outputMode) {
       case PaymentOutputMode.ticket:
         return 'COBRAR E IMPRIMIR';
@@ -1310,6 +1430,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   IconData _chargeActionIcon() {
+    if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
+      return Icons.request_quote_outlined;
+    }
     switch (_outputMode) {
       case PaymentOutputMode.ticket:
         return Icons.print;

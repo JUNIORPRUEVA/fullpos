@@ -449,25 +449,6 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
 
             return Column(
               children: [
-                const PurchaseHeroCard(
-                  eyebrow: 'Compra automática',
-                  title: 'Convierte inventario y ventas recientes en una orden accionable.',
-                  subtitle:
-                      'La pantalla prioriza configuración breve, lista densa de sugerencias y ticket operativo para aprobar el abastecimiento sin fricción.',
-                  stats: [
-                    PurchaseMetricTile(
-                      label: 'Entrada',
-                      value: 'Proveedor + estrategia',
-                      icon: Icons.hub_rounded,
-                    ),
-                    PurchaseMetricTile(
-                      label: 'Salida',
-                      value: 'Ticket listo',
-                      icon: Icons.playlist_add_check_rounded,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
                 Expanded(child: content),
               ],
             );

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 import '../../features/auth/services/logout_flow_service.dart';
 import '../bootstrap/app_bootstrap_controller.dart';
@@ -11,6 +12,20 @@ import '../errors/error_handler.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
 import '../theme/app_tokens.dart';
+
+const _sidebarBaseColor = Color(0xFF0F172A);
+const _sidebarHoverColor = Color(0xFF263552);
+const _sidebarActiveTopColor = Color(0xFF2563EB);
+const _sidebarActiveBottomColor = Color(0xFF1D4ED8);
+const _sidebarTooltipColor = Color(0xFF111827);
+const _sidebarTextBaseColor = Color(0xFFE2E8F0);
+
+class _SidebarIconPair {
+  final IconData outline;
+  final IconData filled;
+
+  const _SidebarIconPair({required this.outline, required this.filled});
+}
 
 class Sidebar extends ConsumerStatefulWidget {
   final bool? forcedCollapsed;
@@ -119,17 +134,9 @@ class _SidebarState extends ConsumerState<Sidebar>
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
     final screenSize = MediaQuery.of(context).size;
 
-    final sidebarBg = tokens.sidebarBackground;
-    final sidebarTextColor = tokens.sidebarText;
-    final isSidebarVeryLight = sidebarBg.computeLuminance() > 0.78;
-    final isTextVeryDark = sidebarTextColor.computeLuminance() < 0.12;
-    final effectiveSidebarTextColor = (isSidebarVeryLight && isTextVeryDark)
-        ? sidebarTextColor.withOpacity(0.76)
-        : sidebarTextColor;
-
-    final activeColor = tokens.sidebarActive;
-    final hoverColor = tokens.tileHover;
-    final borderColor = tokens.sidebarBorder;
+    final effectiveSidebarTextColor =
+        Color.lerp(tokens.sidebarText, _sidebarTextBaseColor, 0.78) ??
+        _sidebarTextBaseColor;
     final currentRoute = _safeCurrentPath(context);
 
     final baseScale = widget.scale.clamp(0.65, 1.12);
@@ -157,225 +164,310 @@ class _SidebarState extends ConsumerState<Sidebar>
 
         return Container(
           width: currentWidth,
-          clipBehavior: Clip.antiAlias,
+          clipBehavior: Clip.none,
           decoration: BoxDecoration(
-            color: sidebarBg,
-            border: Border(right: BorderSide(color: borderColor, width: 1)),
+            color: _sidebarBaseColor,
+            border: Border(
+              right: BorderSide(
+                color: Colors.white.withOpacity(0.045),
+                width: 1,
+              ),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.34),
+                blurRadius: 30,
+                spreadRadius: -16,
+                offset: const Offset(10, 0),
+              ),
+            ],
           ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compactHeight = constraints.maxHeight < 780;
-              final ultraCompactHeight = constraints.maxHeight < 690;
-              final navScale = (baseScale * (constraints.maxHeight / 860))
-                  .clamp(0.72, 1.0);
-              final railPaddingH = visualCollapsed
-                  ? (6 * navScale).clamp(4.0, 8.0)
-                  : (13 * navScale).clamp(11.0, 16.0);
-              final railPaddingV = (8 * navScale).clamp(6.0, 10.0);
-              final expandedContentMaxWidth = visualCollapsed
-                  ? 74.0
-                  : (186 * navScale).clamp(176.0, 194.0);
-              final showHeaderSubtitle = !compactHeight;
-              final showSectionLabels = !ultraCompactHeight;
-              final headerHeight = compactHeight
-                  ? (topbarHeight - (4 * baseScale)).clamp(48.0, topbarHeight)
-                  : topbarHeight;
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withOpacity(0.035),
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.22),
+                        ],
+                        stops: const [0.0, 0.34, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compactHeight = constraints.maxHeight < 780;
+                  final ultraCompactHeight = constraints.maxHeight < 690;
+                  final navScale = (baseScale * (constraints.maxHeight / 860))
+                      .clamp(0.72, 1.0);
+                  final railPaddingH = visualCollapsed
+                      ? (10 * navScale).clamp(8.0, 12.0)
+                      : (16 * navScale).clamp(14.0, 18.0);
+                  final railPaddingV = visualCollapsed
+                      ? (14 * navScale).clamp(12.0, 16.0)
+                      : (9 * navScale).clamp(8.0, 11.0);
+                  final expandedContentMaxWidth = visualCollapsed
+                      ? 74.0
+                      : (194 * navScale).clamp(184.0, 202.0);
+                  final showHeaderSubtitle = !compactHeight;
+                  final showSectionLabels = !ultraCompactHeight;
+                  final headerHeight = compactHeight
+                      ? (topbarHeight - (4 * baseScale)).clamp(
+                          48.0,
+                          topbarHeight,
+                        )
+                      : topbarHeight;
 
-              final reportRoutes = <String>{'/reports', '/sales-list'};
-              final administrationRoutes = <String>{
-                '/purchases',
-                '/cash/expenses',
-                '/quotes-list',
-              };
-              final shouldShowAdministrationChildren =
-                  _isAdministrationExpanded ||
-                  administrationRoutes.any(
-                    (route) =>
-                        currentRoute == route ||
-                        currentRoute.startsWith('$route/'),
-                  );
+                  final reportRoutes = <String>{'/reports', '/factura'};
+                  final administrationRoutes = <String>{
+                    '/purchases',
+                    '/cash/expenses',
+                  };
+                  final shouldShowAdministrationChildren =
+                      _isAdministrationExpanded ||
+                      administrationRoutes.any(
+                        (route) =>
+                            currentRoute == route ||
+                            currentRoute.startsWith('$route/'),
+                      );
 
-              final primaryEntries =
-                  <
-                    ({
-                      IconData icon,
-                      String title,
-                      String? route,
-                      VoidCallback onTap,
-                    })
-                  >[
-                    (
-                      icon: Icons.point_of_sale_outlined,
-                      title: 'Ventas',
-                      route: '/sales',
-                      onTap: () => _go(context, '/sales'),
-                    ),
-                    (
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Productos',
-                      route: '/products',
-                      onTap: () => _go(context, '/products'),
-                    ),
-                    (
-                      icon: Icons.people_alt_outlined,
-                      title: 'Clientes',
-                      route: '/clients',
-                      onTap: () => _go(context, '/clients'),
-                    ),
-                    (
-                      icon: Icons.bar_chart_outlined,
-                      title: 'Reportes',
-                      route: '/reports',
-                      onTap: () => _go(context, '/reports'),
-                    ),
-                  ];
+                  final primaryEntries =
+                      <
+                        ({
+                          _SidebarIconPair icon,
+                          String title,
+                          String route,
+                          VoidCallback onTap,
+                        })
+                      >[
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.storefront(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.storefront(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Ventas',
+                          route: '/sales',
+                          onTap: () => _go(context, '/sales'),
+                        ),
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.package(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.package(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Productos',
+                          route: '/products',
+                          onTap: () => _go(context, '/products'),
+                        ),
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.usersThree(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.usersThree(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Clientes',
+                          route: '/clients',
+                          onTap: () => _go(context, '/clients'),
+                        ),
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.chartBar(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.chartBar(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Reportes',
+                          route: '/reports',
+                          onTap: () => _go(context, '/reports'),
+                        ),
+                      ];
 
-              final administrationEntries =
-                  <({IconData icon, String title, String route})>[
-                    (
-                      icon: Icons.shopping_cart_outlined,
-                      title: 'Compras',
-                      route: '/purchases',
-                    ),
-                    (
-                      icon: Icons.payments_outlined,
-                      title: 'Gastos',
-                      route: '/cash/expenses',
-                    ),
-                    (
-                      icon: Icons.request_quote_outlined,
-                      title: 'Cotizaciones',
-                      route: '/quotes-list',
-                    ),
-                  ];
+                  final administrationEntries =
+                      <({_SidebarIconPair icon, String title, String route})>[
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.shoppingCart(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.shoppingCart(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Compras',
+                          route: '/purchases',
+                        ),
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.currencyDollar(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.currencyDollar(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Gastos',
+                          route: '/cash/expenses',
+                        ),
+                      ];
 
-              final systemEntries =
-                  <({IconData icon, String title, String route})>[
-                    (
-                      icon: Icons.settings_outlined,
-                      title: 'Configuración',
-                      route: '/settings',
-                    ),
-                  ];
+                  final systemEntries =
+                      <({_SidebarIconPair icon, String title, String route})>[
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.gear(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.gear(PhosphorIconsStyle.fill),
+                          ),
+                          title: 'Configuración',
+                          route: '/settings',
+                        ),
+                      ];
 
-              Widget buildNavEntry({
-                required IconData icon,
-                required String title,
-                required String? route,
-                required VoidCallback onTap,
-                Color? itemTextColor,
-                Color? itemActiveColor,
-                Set<String>? activeRoutes,
-                bool showTrailingChevron = true,
-              }) {
-                return PremiumNavItem(
-                  icon: icon,
-                  title: title,
-                  route: route,
-                  onTap: onTap,
-                  collapseProgress: collapse,
-                  textColor: itemTextColor ?? effectiveSidebarTextColor,
-                  activeColor: itemActiveColor ?? activeColor,
-                  activeRoutes: activeRoutes,
-                    currentRoute: currentRoute,
-                  hoverColor: hoverColor,
-                  scale: navScale,
-                  showTrailingChevron:
-                      showTrailingChevron && !visualCollapsed && !compactHeight,
-                );
-              }
+                  Widget buildNavEntry({
+                    required _SidebarIconPair icon,
+                    required String title,
+                    required String? route,
+                    required VoidCallback onTap,
+                    Color? itemTextColor,
+                    Color? itemActiveColor,
+                    Set<String>? activeRoutes,
+                    bool lowEmphasis = false,
+                    bool showTrailingChevron = true,
+                  }) {
+                    return PremiumNavItem(
+                      outlineIcon: icon.outline,
+                      activeIcon: icon.filled,
+                      title: title,
+                      route: route,
+                      onTap: onTap,
+                      collapseProgress: collapse,
+                      textColor: itemTextColor ?? effectiveSidebarTextColor,
+                      activeColor: itemActiveColor ?? tokens.sidebarActive,
+                      activeRoutes: activeRoutes,
+                      currentRoute: currentRoute,
+                      hoverColor: _sidebarHoverColor,
+                      scale: navScale,
+                      lowEmphasis: lowEmphasis,
+                      showTrailingChevron:
+                          showTrailingChevron &&
+                          !visualCollapsed &&
+                          !compactHeight,
+                    );
+                  }
 
-              final header = LayoutBuilder(
-                builder: (context, headerConstraints) {
-                  final availableWidth = headerConstraints.maxWidth;
-                  final horizontalPad = visualCollapsed
-                      ? (padS * 0.6).clamp(4.0, 10.0)
-                      : (padM * 1.08).clamp(16.0, 20.0);
-                  final contentWidth = math.max(
-                    0.0,
-                    availableWidth - (horizontalPad * 2),
-                  );
-                  final desiredBrandSize = visualCollapsed
-                      ? (44 * baseScale).clamp(36.0, 48.0)
-                      : (40 * baseScale).clamp(34.0, 44.0);
-                  final brandSize = math.min(desiredBrandSize, contentWidth);
-                  final desiredBtnSize = (40 * baseScale).clamp(32.0, 44.0);
-                  final btnSize = math.min(desiredBtnSize, contentWidth);
+                  final header = LayoutBuilder(
+                    builder: (context, headerConstraints) {
+                      final availableWidth = headerConstraints.maxWidth;
+                      final horizontalPad = visualCollapsed
+                          ? (padS * 0.6).clamp(4.0, 10.0)
+                          : (padM * 1.08).clamp(16.0, 20.0);
+                      final contentWidth = math.max(
+                        0.0,
+                        availableWidth - (horizontalPad * 2),
+                      );
+                      final desiredBrandSize = visualCollapsed
+                          ? (44 * baseScale).clamp(36.0, 48.0)
+                          : (40 * baseScale).clamp(34.0, 44.0);
+                      final brandSize = math.min(
+                        desiredBrandSize,
+                        contentWidth,
+                      );
+                      final desiredBtnSize = (40 * baseScale).clamp(32.0, 44.0);
+                      final btnSize = math.min(desiredBtnSize, contentWidth);
 
-                  Widget brandIconShell() {
-                    return SizedBox(
-                      width: brandSize,
-                      height: brandSize,
-                      child: Center(
-                        child: SizedBox(
-                          width: (24 * baseScale).clamp(20.0, 26.0),
-                          height: (24 * baseScale).clamp(20.0, 26.0),
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                Icons.receipt_long_outlined,
-                                size: (21.5 * baseScale).clamp(18.0, 23.0),
-                                color: effectiveSidebarTextColor.withOpacity(
-                                  0.96,
-                                ),
-                              ),
-                              Positioned(
-                                right: -1,
-                                top: 2,
-                                child: Icon(
-                                  Icons.memory_outlined,
-                                  size: (9.8 * baseScale).clamp(8.5, 11.0),
-                                  color: effectiveSidebarTextColor.withOpacity(
-                                    0.88,
-                                  ),
-                                ),
+                      Widget brandIconShell() {
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeInOut,
+                          width: brandSize,
+                          height: brandSize,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withOpacity(0.08),
+                                Colors.white.withOpacity(0.02),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.08),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.18),
+                                blurRadius: 18,
+                                spreadRadius: -10,
+                                offset: const Offset(0, 8),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  if (visualCollapsed) {
-                    return SizedBox(
-                      height: headerHeight,
-                      child: Center(
-                        child: Tooltip(
-                          message: 'Expandir menú',
-                          waitDuration: const Duration(milliseconds: 350),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _toggleSidebar,
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(2),
-                                child: brandIconShell(),
+                          child: Center(
+                            child: SizedBox(
+                              width: (25 * baseScale).clamp(22.0, 27.0),
+                              height: (25 * baseScale).clamp(22.0, 27.0),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                alignment: Alignment.center,
+                                children: [
+                                  PhosphorIcon(
+                                    PhosphorIcons.receipt(
+                                      PhosphorIconsStyle.regular,
+                                    ),
+                                    size: (22.5 * baseScale).clamp(20.0, 24.0),
+                                    color: Colors.white,
+                                  ),
+                                  Positioned(
+                                    right: -1,
+                                    top: 1,
+                                    child: PhosphorIcon(
+                                      PhosphorIcons.squaresFour(
+                                        PhosphorIconsStyle.fill,
+                                      ),
+                                      size: (9.8 * baseScale).clamp(8.5, 11.2),
+                                      color: const Color(0xFF93C5FD),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ),
-                    );
-                  }
+                        );
+                      }
 
-                  return SizedBox(
-                    height: headerHeight,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: horizontalPad),
-                      child: Row(
-                        children: [
-                          Tooltip(
-                            message: visualCollapsed ? 'Expandir menú' : 'Menú',
-                            waitDuration: const Duration(milliseconds: 350),
+                      if (visualCollapsed) {
+                        return SizedBox(
+                          height: headerHeight,
+                          child: Center(
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: visualCollapsed ? _toggleSidebar : null,
+                                onTap: _toggleSidebar,
                                 borderRadius: BorderRadius.circular(16),
+                                hoverColor: Colors.transparent,
                                 child: Padding(
                                   padding: const EdgeInsets.all(2),
                                   child: brandIconShell(),
@@ -383,312 +475,359 @@ class _SidebarState extends ConsumerState<Sidebar>
                               ),
                             ),
                           ),
-                          if (expanded > 0.001)
-                            Expanded(
-                              child: ClipRect(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  widthFactor: expanded,
-                                  child: Opacity(
-                                    opacity: expanded,
-                                    child: Padding(
-                                      padding: EdgeInsets.only(left: padS),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'FULLPOS',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color:
-                                                        effectiveSidebarTextColor,
-                                                    fontWeight: FontWeight.w900,
-                                                    fontSize: (14.8 * baseScale)
-                                                        .clamp(12.5, 15.8),
-                                                    letterSpacing: 0.35,
-                                                  ),
-                                                ),
-                                                if (showHeaderSubtitle) ...[
-                                                  const SizedBox(height: 3),
-                                                  Text(
-                                                    'Point of sale',
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      color:
-                                                          effectiveSidebarTextColor
-                                                              .withOpacity(
-                                                                0.62,
-                                                              ),
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      fontSize:
-                                                          (11.0 * baseScale)
-                                                              .clamp(9.5, 12.0),
-                                                      letterSpacing: 0.16,
+                        );
+                      }
+
+                      return SizedBox(
+                        height: headerHeight,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: horizontalPad,
+                          ),
+                          child: Row(
+                            children: [
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: visualCollapsed
+                                      ? _toggleSidebar
+                                      : null,
+                                  borderRadius: BorderRadius.circular(16),
+                                  hoverColor: Colors.transparent,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(2),
+                                    child: brandIconShell(),
+                                  ),
+                                ),
+                              ),
+                              if (expanded > 0.001)
+                                Expanded(
+                                  child: ClipRect(
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: expanded,
+                                      child: Opacity(
+                                        opacity: expanded,
+                                        child: Padding(
+                                          padding: EdgeInsets.only(left: padS),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      'FULLPOS',
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        fontSize:
+                                                            (14.8 * baseScale)
+                                                                .clamp(
+                                                                  12.5,
+                                                                  15.8,
+                                                                ),
+                                                        letterSpacing: 0.28,
+                                                      ),
                                                     ),
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          IconButton(
-                                            tooltip: 'Colapsar menú',
-                                            onPressed: _toggleSidebar,
-                                            padding: EdgeInsets.zero,
-                                            constraints:
-                                                BoxConstraints.tightFor(
-                                                  width: btnSize,
-                                                  height: btnSize,
+                                                    if (showHeaderSubtitle) ...[
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        'Enterprise POS',
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          color: const Color(
+                                                            0xFF94A3B8,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          fontSize:
+                                                              (11.0 * baseScale)
+                                                                  .clamp(
+                                                                    9.5,
+                                                                    12.0,
+                                                                  ),
+                                                          letterSpacing: 0.18,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
                                                 ),
-                                            iconSize: (22 * baseScale).clamp(
-                                              18.0,
-                                              24.0,
-                                            ),
-                                            icon: Icon(
-                                              Icons.chevron_left,
-                                              color: effectiveSidebarTextColor
-                                                  .withOpacity(0.95),
-                                            ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              IconButton(
+                                                onPressed: _toggleSidebar,
+                                                padding: EdgeInsets.zero,
+                                                constraints:
+                                                    BoxConstraints.tightFor(
+                                                      width: btnSize,
+                                                      height: btnSize,
+                                                    ),
+                                                iconSize: (22 * baseScale)
+                                                    .clamp(18.0, 24.0),
+                                                style: IconButton.styleFrom(
+                                                  backgroundColor: Colors.white
+                                                      .withOpacity(0.04),
+                                                  foregroundColor: Colors.white,
+                                                ),
+                                                icon: PhosphorIcon(
+                                                  PhosphorIcons.caretLeft(
+                                                    PhosphorIconsStyle.bold,
+                                                  ),
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-
-              Widget sectionLabel(String text) {
-                if (!showSectionLabels || expanded <= 0.001) {
-                  return const SizedBox.shrink();
-                }
-                return ClipRect(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    heightFactor: expanded,
-                    child: Opacity(
-                      opacity: expanded,
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          railPaddingH,
-                          (8 * navScale).clamp(6.0, 8.0),
-                          railPaddingH,
-                          (4 * navScale).clamp(3.0, 6.0),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              text.toUpperCase(),
-                              style: TextStyle(
-                                color: effectiveSidebarTextColor.withOpacity(
-                                  0.65,
-                                ),
-                                fontSize: (9.1 * navScale).clamp(8.2, 10.2),
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.9,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: effectiveSidebarTextColor.withOpacity(
-                                  0.16,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              return Column(
-                children: [
-                  SizedBox(height: (3 * navScale).clamp(2.0, 6.0)),
-                  header,
-                  Divider(
-                    color: effectiveSidebarTextColor.withOpacity(0.12),
-                    height: 1,
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        railPaddingH,
-                        railPaddingV,
-                        railPaddingH,
-                        railPaddingV,
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: expandedContentMaxWidth,
+                            ],
                           ),
+                        ),
+                      );
+                    },
+                  );
+
+                  Widget sectionLabel(String text) {
+                    if (!showSectionLabels || expanded <= 0.001) {
+                      return const SizedBox.shrink();
+                    }
+                    return ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        heightFactor: expanded,
+                        child: Opacity(
+                          opacity: expanded,
                           child: Padding(
                             padding: EdgeInsets.fromLTRB(
-                              visualCollapsed ? 2 : 0,
-                              (6 * navScale).clamp(4.0, 8.0),
-                              visualCollapsed ? 2 : 0,
-                              (6 * navScale).clamp(4.0, 8.0),
+                              railPaddingH,
+                              (8 * navScale).clamp(6.0, 10.0),
+                              railPaddingH,
+                              (5 * navScale).clamp(4.0, 7.0),
                             ),
-                            child: Column(
-                              children: [
-                                sectionLabel('Principal'),
-                                for (final entry in primaryEntries)
-                                  buildNavEntry(
-                                    icon: entry.icon,
-                                    title: entry.title,
-                                    route: entry.route,
-                                    onTap: entry.onTap,
-                                    activeRoutes: entry.title == 'Reportes'
-                                        ? reportRoutes
-                                        : null,
-                                  ),
-                                SizedBox(
-                                  height: (4 * navScale).clamp(2.0, 6.0),
+                            child: Text(
+                              text.toUpperCase(),
+                              style: TextStyle(
+                                color: const Color(
+                                  0xFF94A3B8,
+                                ).withOpacity(0.92),
+                                fontSize: (9.3 * navScale).clamp(8.4, 10.4),
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.18,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: [
+                      SizedBox(height: (8 * navScale).clamp(6.0, 10.0)),
+                      header,
+                      SizedBox(height: (8 * navScale).clamp(6.0, 10.0)),
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            railPaddingH,
+                            railPaddingV,
+                            railPaddingH,
+                            railPaddingV,
+                          ),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: expandedContentMaxWidth,
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  visualCollapsed ? 2 : 0,
+                                  (2 * navScale).clamp(1.0, 4.0),
+                                  visualCollapsed ? 2 : 0,
+                                  (4 * navScale).clamp(3.0, 6.0),
                                 ),
-                                buildNavEntry(
-                                  icon: Icons.folder_open_outlined,
-                                  title: 'Administración',
-                                  route: null,
-                                  onTap: () {
-                                    if (visualCollapsed) {
-                                      _setCollapsed(false);
-                                      setState(
-                                        () => _isAdministrationExpanded = true,
-                                      );
-                                      return;
-                                    }
-                                    setState(
-                                      () => _isAdministrationExpanded =
-                                          !_isAdministrationExpanded,
-                                    );
-                                  },
-                                  activeRoutes: administrationRoutes,
-                                ),
-                                if (shouldShowAdministrationChildren &&
-                                    !visualCollapsed)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 12),
-                                    child: Column(
-                                      children: [
-                                        for (final entry
-                                            in administrationEntries)
-                                          buildNavEntry(
-                                            icon: entry.icon,
-                                            title: entry.title,
-                                            route: entry.route,
-                                            onTap: () =>
-                                                _go(context, entry.route),
-                                            showTrailingChevron: false,
+                                child: Column(
+                                  children: [
+                                    sectionLabel('Principal'),
+                                    for (final entry in primaryEntries)
+                                      buildNavEntry(
+                                        icon: entry.icon,
+                                        title: entry.title,
+                                        route: entry.route,
+                                        onTap: entry.onTap,
+                                        activeRoutes: entry.title == 'Reportes'
+                                            ? reportRoutes
+                                            : null,
+                                      ),
+                                    SizedBox(
+                                      height: (5 * navScale).clamp(4.0, 7.0),
+                                    ),
+                                    buildNavEntry(
+                                      icon: _SidebarIconPair(
+                                        outline: PhosphorIcons.squaresFour(
+                                          PhosphorIconsStyle.regular,
+                                        ),
+                                        filled: PhosphorIcons.squaresFour(
+                                          PhosphorIconsStyle.fill,
+                                        ),
+                                      ),
+                                      title: 'Administración',
+                                      route: null,
+                                      onTap: () {
+                                        if (visualCollapsed) {
+                                          _setCollapsed(false);
+                                          setState(
+                                            () => _isAdministrationExpanded =
+                                                true,
+                                          );
+                                          return;
+                                        }
+                                        setState(
+                                          () => _isAdministrationExpanded =
+                                              !_isAdministrationExpanded,
+                                        );
+                                      },
+                                      activeRoutes: administrationRoutes,
+                                    ),
+                                    if (shouldShowAdministrationChildren &&
+                                        !visualCollapsed)
+                                      Padding(
+                                        padding: EdgeInsets.only(
+                                          left: (16 * navScale).clamp(
+                                            12.0,
+                                            18.0,
                                           ),
-                                      ],
+                                          top: (4 * navScale).clamp(2.0, 6.0),
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            for (final entry
+                                                in administrationEntries)
+                                              buildNavEntry(
+                                                icon: entry.icon,
+                                                title: entry.title,
+                                                route: entry.route,
+                                                onTap: () =>
+                                                    _go(context, entry.route),
+                                                showTrailingChevron: false,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    const Spacer(),
+                                    Container(
+                                      margin: EdgeInsets.fromLTRB(
+                                        visualCollapsed ? 10 : 8,
+                                        (10 * navScale).clamp(8.0, 12.0),
+                                        visualCollapsed ? 10 : 8,
+                                        (8 * navScale).clamp(6.0, 10.0),
+                                      ),
+                                      height: 1,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                          colors: [
+                                            Colors.transparent,
+                                            Colors.white.withOpacity(0.08),
+                                            Colors.transparent,
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                const Spacer(),
-                                Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                    visualCollapsed ? 10 : 8,
-                                    (6 * navScale).clamp(3.0, 7.0),
-                                    visualCollapsed ? 10 : 8,
-                                    (6 * navScale).clamp(3.0, 7.0),
-                                  ),
-                                  child: Divider(
-                                    color: scheme.outlineVariant.withOpacity(
-                                      0.22,
+                                    sectionLabel('Sistema'),
+                                    for (final entry in systemEntries)
+                                      buildNavEntry(
+                                        icon: entry.icon,
+                                        title: entry.title,
+                                        route: entry.route,
+                                        onTap: () => _go(context, entry.route),
+                                        lowEmphasis: true,
+                                      ),
+                                    SizedBox(
+                                      height: (6 * navScale).clamp(4.0, 8.0),
                                     ),
-                                    height: 1,
-                                  ),
-                                ),
-                                sectionLabel('Sistema'),
-                                for (final entry in systemEntries)
-                                  buildNavEntry(
-                                    icon: entry.icon,
-                                    title: entry.title,
-                                    route: entry.route,
-                                    onTap: () => _go(context, entry.route),
-                                  ),
-                                SizedBox(
-                                  height: (5 * navScale).clamp(3.0, 7.0),
-                                ),
-                                buildNavEntry(
-                                  icon: Icons.logout_outlined,
-                                  title: 'Cerrar sesión',
-                                  route: null,
-                                  onTap: () async {
-                                    try {
-                                      await LogoutFlowService.requestLogout(
-                                        context,
-                                        performLogout: () async {
-                                          ref
-                                              .read(appBootstrapProvider)
-                                              .forceLoggedOut();
-                                          await SessionManager.logout();
-                                          await ref
-                                              .read(appBootstrapProvider)
-                                              .refreshAuth();
+                                    buildNavEntry(
+                                      icon: _SidebarIconPair(
+                                        outline: PhosphorIcons.signOut(
+                                          PhosphorIconsStyle.regular,
+                                        ),
+                                        filled: PhosphorIcons.signOut(
+                                          PhosphorIconsStyle.fill,
+                                        ),
+                                      ),
+                                      title: 'Cerrar sesión',
+                                      route: null,
+                                      onTap: () async {
+                                        try {
+                                          await LogoutFlowService.requestLogout(
+                                            context,
+                                            performLogout: () async {
+                                              ref
+                                                  .read(appBootstrapProvider)
+                                                  .forceLoggedOut();
+                                              await SessionManager.logout();
+                                              await ref
+                                                  .read(appBootstrapProvider)
+                                                  .refreshAuth();
+                                              if (!context.mounted) {
+                                                return;
+                                              }
+                                              final rootCtx =
+                                                  ErrorHandler
+                                                      .navigatorKey
+                                                      .currentContext ??
+                                                  context;
+                                              GoRouter.of(rootCtx).refresh();
+                                              GoRouter.of(rootCtx).go('/login');
+                                            },
+                                          );
+                                        } catch (e) {
                                           if (!context.mounted) {
                                             return;
                                           }
-                                          final rootCtx =
-                                              ErrorHandler
-                                                  .navigatorKey
-                                                  .currentContext ??
-                                              context;
-                                          GoRouter.of(rootCtx).refresh();
-                                          GoRouter.of(rootCtx).go('/login');
-                                        },
-                                      );
-                                    } catch (e) {
-                                      if (!context.mounted) {
-                                        return;
-                                      }
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'No se pudo cerrar sesión: $e',
-                                          ),
-                                          backgroundColor: scheme.error,
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  itemTextColor: effectiveSidebarTextColor,
-                                  itemActiveColor: scheme.error,
-                                  showTrailingChevron: false,
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'No se pudo cerrar sesión: $e',
+                                              ),
+                                              backgroundColor: scheme.error,
+                                            ),
+                                          );
+                                        }
+                                      },
+                                      itemTextColor: effectiveSidebarTextColor,
+                                      itemActiveColor: scheme.error,
+                                      lowEmphasis: true,
+                                      showTrailingChevron: false,
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
         );
       },
@@ -697,7 +836,8 @@ class _SidebarState extends ConsumerState<Sidebar>
 }
 
 class PremiumNavItem extends StatefulWidget {
-  final IconData icon;
+  final IconData outlineIcon;
+  final IconData activeIcon;
   final String title;
   final String? route;
   final String currentRoute;
@@ -708,11 +848,13 @@ class PremiumNavItem extends StatefulWidget {
   final Color activeColor;
   final Color hoverColor;
   final double scale;
+  final bool lowEmphasis;
   final bool showTrailingChevron;
 
   const PremiumNavItem({
     super.key,
-    required this.icon,
+    required this.outlineIcon,
+    required this.activeIcon,
     required this.title,
     required this.route,
     required this.currentRoute,
@@ -723,6 +865,7 @@ class PremiumNavItem extends StatefulWidget {
     required this.activeColor,
     required this.hoverColor,
     this.scale = 1.0,
+    this.lowEmphasis = false,
     this.showTrailingChevron = true,
   });
 
@@ -731,11 +874,59 @@ class PremiumNavItem extends StatefulWidget {
 }
 
 class _PremiumNavItemState extends State<PremiumNavItem> {
+  static const _hoverDuration = Duration(milliseconds: 150);
+  static const _tooltipDuration = Duration(milliseconds: 160);
+
   bool _isHover = false;
+  final OverlayPortalController _tooltipController = OverlayPortalController();
+  final LayerLink _tooltipLayerLink = LayerLink();
+
+  void _scheduleTooltipShow() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isHover) return;
+      if (Overlay.maybeOf(context) == null) return;
+      try {
+        _tooltipController.show();
+      } catch (_) {
+        // OverlayPortal can assert in debug if shown before it receives z-order.
+      }
+    });
+  }
+
+  void _scheduleTooltipHide() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isHover) return;
+      try {
+        _tooltipController.hide();
+      } catch (_) {
+        // OverlayPortal can assert in debug if hidden after detaching.
+      }
+    });
+  }
 
   void _setHover(bool value) {
     if (!mounted || _isHover == value) return;
-    setState(() => _isHover = value);
+
+    if (value) {
+      setState(() => _isHover = true);
+      _scheduleTooltipShow();
+      return;
+    }
+
+    setState(() => _isHover = false);
+    Future<void>.delayed(_tooltipDuration, () {
+      if (mounted && !_isHover) {
+        _scheduleTooltipHide();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    try {
+      _tooltipController.hide();
+    } catch (_) {}
+    super.dispose();
   }
 
   @override
@@ -749,188 +940,375 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final collapse = widget.collapseProgress.clamp(0.0, 1.0);
     final expanded = Curves.easeOutCubic.transform(1.0 - collapse);
     final visuallyCollapsed = collapse > 0.9;
-    const duration = Duration(milliseconds: 180);
     final itemRadius = BorderRadius.circular((10 * s).clamp(8.0, 10.0));
-    final hoverBg = Color.alphaBlend(
-      Colors.white.withOpacity(0.035),
-      widget.hoverColor.withOpacity(0.12),
-    );
-    final activeBg = Color.alphaBlend(
-      Colors.white.withOpacity(visuallyCollapsed ? 0.07 : 0.05),
-      widget.activeColor.withOpacity(0.18),
-    );
+    final contentOpacity =
+        (!visuallyCollapsed && widget.lowEmphasis && !_isHover && !isActive)
+        ? 0.6
+        : 1.0;
+    final itemBorderColor = isActive
+        ? Colors.white.withOpacity(0.10)
+        : (_isHover ? Colors.white.withOpacity(0.07) : Colors.transparent);
+    final glowColor =
+        Color.lerp(_sidebarActiveBottomColor, widget.activeColor, 0.18) ??
+        _sidebarActiveBottomColor;
 
-    final baseFg = widget.textColor;
     final fgColor = isActive
         ? Colors.white
-        : baseFg.withOpacity(_isHover ? 0.98 : 0.90);
+        : widget.textColor.withOpacity(_isHover ? 0.98 : 0.88);
     final iconColor = isActive
         ? Colors.white
-        : baseFg.withOpacity(_isHover ? 0.98 : 0.88);
-    final itemBg = visuallyCollapsed
-        ? Colors.transparent
-        : (isActive ? activeBg : (_isHover ? hoverBg : Colors.transparent));
+        : widget.textColor.withOpacity(_isHover ? 0.98 : 0.86);
+    final collapsedIconShellSize = (36 * s).clamp(34.0, 40.0);
+    final collapsedShellBase = isActive
+        ? const Color(0xFF1D4ED8)
+        : (_isHover ? const Color(0xFF22345B) : const Color(0xFF1B2A44));
+    final collapsedShellTop = Color.alphaBlend(
+      Colors.white.withOpacity(isActive ? 0.26 : (_isHover ? 0.20 : 0.16)),
+      collapsedShellBase,
+    );
+    final collapsedShellBottom = Color.alphaBlend(
+      Colors.black.withOpacity(isActive ? 0.04 : (_isHover ? 0.08 : 0.12)),
+      collapsedShellBase,
+    );
+    final tooltipGap = (14 * s).clamp(12.0, 16.0);
+    final rowHeight = visuallyCollapsed
+        ? (48 * s).clamp(46.0, 52.0)
+        : (44 * s).clamp(40.0, 48.0);
 
-    Widget collapsedIconPresentation() {
-      return SizedBox.expand(
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            if (isActive)
-              Positioned(
-                left: 0,
-                child: Container(
-                  width: (2.0 * s).clamp(2.0, 2.4),
-                  height: (18 * s).clamp(16.0, 20.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.94),
-                    borderRadius: BorderRadius.circular(999),
+    return OverlayPortal(
+      controller: _tooltipController,
+      overlayChildBuilder: (context) {
+        return IgnorePointer(
+          child: CompositedTransformFollower(
+            link: _tooltipLayerLink,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.centerRight,
+            followerAnchor: Alignment.centerLeft,
+            offset: Offset(tooltipGap, 0),
+            child: UnconstrainedBox(
+              alignment: Alignment.centerLeft,
+              child: AnimatedSlide(
+                duration: _tooltipDuration,
+                curve: Curves.easeInOut,
+                offset: _isHover ? Offset.zero : const Offset(-0.08, 0),
+                child: AnimatedOpacity(
+                  duration: _tooltipDuration,
+                  curve: Curves.easeInOut,
+                  opacity: _isHover ? 1 : 0,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 190),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: _sidebarTooltipColor,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.06),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.28),
+                            blurRadius: 20,
+                            spreadRadius: -10,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          widget.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.08,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            Icon(
-              widget.icon,
-              color: iconColor,
-              size: (20.4 * s).clamp(18.0, 20.8),
             ),
-          ],
-        ),
-      );
-    }
-
-    final item = Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: visuallyCollapsed
-            ? 0
-            : ((8 - (4 * collapse)) * s).clamp(2.0, 8.0),
-        vertical: visuallyCollapsed
-            ? (2.8 * s).clamp(2.0, 3.6)
-            : (2.2 * s).clamp(1.0, 3.0),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: itemRadius),
-        clipBehavior: Clip.antiAlias,
-        child: MouseRegion(
-          cursor: isEnabled
-              ? SystemMouseCursors.click
-              : SystemMouseCursors.basic,
-          onEnter: (_) => _setHover(true),
-          onExit: (_) => _setHover(false),
-          child: InkWell(
-            onTap: widget.onTap,
-            borderRadius: itemRadius,
-            hoverColor: Colors.transparent,
-            child: AnimatedContainer(
-              duration: duration,
-              curve: Curves.easeOut,
-              padding: EdgeInsets.symmetric(
-                horizontal: visuallyCollapsed
-                    ? 0
-                    : ((7.0 * expanded) * s).clamp(0.0, 8.0),
-                vertical: visuallyCollapsed
-                    ? 0
-                    : ((6.0 + (0.8 * expanded)) * s).clamp(4.5, 6.8),
-              ),
-              decoration: BoxDecoration(
-                color: itemBg,
-                borderRadius: itemRadius,
-              ),
-              child: SizedBox(
-                height: visuallyCollapsed
-                    ? (32 * s).clamp(28.0, 34.0)
-                    : ((31 + (2.5 * expanded)) * s).clamp(26.0, 34.0),
-                child: visuallyCollapsed
-                    ? collapsedIconPresentation()
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          AnimatedContainer(
-                            duration: duration,
-                            width: isActive ? 2.0 * expanded : 0,
-                            height: (17 * s).clamp(15.0, 18.0),
-                            decoration: BoxDecoration(
-                              color: isActive
-                                  ? Colors.white.withOpacity(0.92)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
-                          if (isActive && expanded > 0.08)
-                            SizedBox(
-                              width: ((6 * expanded) * s).clamp(0.0, 6.0),
-                            ),
-                          Icon(
-                            widget.icon,
-                            color: iconColor,
-                            size: (18.5 * s).clamp(15.0, 18.5),
-                          ),
-                          if (expanded > 0.001)
-                            Expanded(
-                              child: ClipRect(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  widthFactor: expanded,
-                                  child: Opacity(
-                                    opacity: expanded,
-                                    child: Padding(
-                                      padding: EdgeInsets.only(
-                                        left: ((7 * expanded) * s).clamp(
-                                          0.0,
-                                          7.0,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              widget.title,
-                                              style: TextStyle(
-                                                color: fgColor,
-                                                fontSize: (12.35 * s).clamp(
-                                                  10.4,
-                                                  12.6,
-                                                ),
-                                                fontWeight: isActive
-                                                    ? FontWeight.w600
-                                                    : FontWeight.w600,
-                                                letterSpacing: 0.08,
+          ),
+        );
+      },
+      child: CompositedTransformTarget(
+        link: _tooltipLayerLink,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: visuallyCollapsed
+                ? (10 * s).clamp(8.0, 12.0)
+                : (6 * s).clamp(4.0, 8.0),
+          ),
+          child: MouseRegion(
+            cursor: isEnabled
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.basic,
+            onEnter: (_) => _setHover(true),
+            onExit: (_) => _setHover(false),
+            child: AnimatedScale(
+              duration: _hoverDuration,
+              curve: Curves.easeInOut,
+              scale: _isHover ? 1.05 : 1.0,
+              alignment: visuallyCollapsed
+                  ? Alignment.center
+                  : Alignment.centerLeft,
+              child: Material(
+                color: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: itemRadius),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: widget.onTap,
+                  borderRadius: itemRadius,
+                  hoverColor: Colors.transparent,
+                  splashColor: Colors.white.withOpacity(0.03),
+                  highlightColor: Colors.white.withOpacity(0.02),
+                  child: AnimatedContainer(
+                    duration: _hoverDuration,
+                    curve: Curves.easeInOut,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: visuallyCollapsed
+                          ? 0
+                          : (14 * s).clamp(12.0, 16.0),
+                      vertical: visuallyCollapsed
+                          ? 0
+                          : (6.5 * s).clamp(5.0, 8.0),
+                    ),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? null
+                          : (_isHover ? widget.hoverColor : Colors.transparent),
+                      gradient: isActive
+                          ? const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                _sidebarActiveTopColor,
+                                _sidebarActiveBottomColor,
+                              ],
+                            )
+                          : null,
+                      borderRadius: itemRadius,
+                      border: Border.all(color: itemBorderColor),
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                color: glowColor.withOpacity(0.42),
+                                blurRadius: 20,
+                                spreadRadius: -8,
+                                offset: const Offset(0, 10),
+                              ),
+                            ]
+                          : _isHover
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.16),
+                                blurRadius: 14,
+                                spreadRadius: -8,
+                                offset: const Offset(0, 8),
+                              ),
+                            ]
+                          : [const BoxShadow(color: Colors.transparent)],
+                    ),
+                    child: Opacity(
+                      opacity: contentOpacity,
+                      child: SizedBox(
+                        height: rowHeight,
+                        child: visuallyCollapsed
+                            ? Center(
+                                child: AnimatedContainer(
+                                  duration: _hoverDuration,
+                                  curve: Curves.easeInOut,
+                                  width: collapsedIconShellSize,
+                                  height: collapsedIconShellSize,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        collapsedShellTop,
+                                        collapsedShellBottom,
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isActive
+                                          ? Colors.white.withOpacity(0.18)
+                                          : Colors.white.withOpacity(
+                                              _isHover ? 0.11 : 0.08,
+                                            ),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: isActive
+                                            ? glowColor.withOpacity(0.44)
+                                            : Colors.black.withOpacity(
+                                                _isHover ? 0.18 : 0.10,
                                               ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              softWrap: false,
+                                        blurRadius: isActive ? 18 : 12,
+                                        spreadRadius: -8,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: IgnorePointer(
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                  colors: [
+                                                    Colors.white.withOpacity(
+                                                      isActive
+                                                          ? 0.16
+                                                          : (_isHover
+                                                                ? 0.12
+                                                                : 0.10),
+                                                    ),
+                                                    Colors.transparent,
+                                                    Colors.black.withOpacity(
+                                                      isActive ? 0.06 : 0.10,
+                                                    ),
+                                                  ],
+                                                  stops: const [0.0, 0.55, 1.0],
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                          if (widget.showTrailingChevron)
-                                            Icon(
-                                              Icons.chevron_right,
-                                              size: (14 * s).clamp(12.0, 14.0),
-                                              color: fgColor.withOpacity(0.56),
+                                        ),
+                                        Positioned(
+                                          left: 8,
+                                          right: 8,
+                                          top: 7,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              height: 1.2,
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.centerLeft,
+                                                  end: Alignment.centerRight,
+                                                  colors: [
+                                                    Colors.transparent,
+                                                    Colors.white.withOpacity(
+                                                      isActive
+                                                          ? 0.32
+                                                          : (_isHover
+                                                                ? 0.26
+                                                                : 0.22),
+                                                    ),
+                                                    Colors.transparent,
+                                                  ],
+                                                ),
+                                              ),
                                             ),
-                                        ],
-                                      ),
+                                          ),
+                                        ),
+                                        Center(
+                                          child: PhosphorIcon(
+                                            isActive
+                                                ? widget.activeIcon
+                                                : widget.outlineIcon,
+                                            color: isActive
+                                                ? Colors.white
+                                                : widget.textColor.withOpacity(
+                                                    _isHover ? 1.0 : 0.98,
+                                                  ),
+                                            size: (22.5 * s).clamp(21.5, 24.0),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  PhosphorIcon(
+                                    isActive
+                                        ? widget.activeIcon
+                                        : widget.outlineIcon,
+                                    color: iconColor,
+                                    size: (23 * s).clamp(22.0, 24.0),
+                                  ),
+                                  if (expanded > 0.001)
+                                    Expanded(
+                                      child: ClipRect(
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          widthFactor: expanded,
+                                          child: Opacity(
+                                            opacity: expanded,
+                                            child: Padding(
+                                              padding: EdgeInsets.only(
+                                                left: (12 * s).clamp(
+                                                  10.0,
+                                                  14.0,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      widget.title,
+                                                      style: TextStyle(
+                                                        color: fgColor,
+                                                        fontSize: (13.2 * s)
+                                                            .clamp(12.0, 14.0),
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        letterSpacing: 0.06,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      softWrap: false,
+                                                    ),
+                                                  ),
+                                                  if (widget
+                                                      .showTrailingChevron)
+                                                    PhosphorIcon(
+                                                      PhosphorIcons.caretRight(
+                                                        PhosphorIconsStyle.bold,
+                                                      ),
+                                                      size: (13.5 * s).clamp(
+                                                        12.0,
+                                                        14.0,
+                                                      ),
+                                                      color: fgColor
+                                                          .withOpacity(0.58),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ),
-                        ],
                       ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
-    );
-
-    if (!visuallyCollapsed) {
-      return item;
-    }
-
-    return Tooltip(
-      message: widget.title,
-      waitDuration: const Duration(milliseconds: 450),
-      child: item,
     );
   }
 }

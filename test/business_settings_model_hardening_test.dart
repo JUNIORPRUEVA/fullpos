@@ -17,16 +17,30 @@ void main() {
     expect(settings.updatedAt, isA<DateTime>());
   });
 
-  test('BusinessSettings.fromMap acepta timestamp ms en created_at/updated_at', () {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+  test(
+    'BusinessSettings.fromMap acepta timestamp ms en created_at/updated_at',
+    () {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final settings = BusinessSettings.fromMap({
+        'id': 1,
+        'business_name': 'FULLPOS',
+        'created_at': nowMs,
+        'updated_at': nowMs,
+      });
+
+      expect(settings.createdAt.millisecondsSinceEpoch, nowMs);
+      expect(settings.updatedAt.millisecondsSinceEpoch, nowMs);
+    },
+  );
+
+  test('BusinessSettings persiste electronicInvoicingEnabled desde map', () {
     final settings = BusinessSettings.fromMap({
       'id': 1,
       'business_name': 'FULLPOS',
-      'created_at': nowMs,
-      'updated_at': nowMs,
+      'electronic_invoicing_enabled': 1,
     });
 
-    expect(settings.createdAt.millisecondsSinceEpoch, nowMs);
-    expect(settings.updatedAt.millisecondsSinceEpoch, nowMs);
+    expect(settings.electronicInvoicingEnabled, isTrue);
+    expect(settings.toMap()['electronic_invoicing_enabled'], 1);
   });
 }

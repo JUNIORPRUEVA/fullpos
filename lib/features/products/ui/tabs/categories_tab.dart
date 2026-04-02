@@ -189,7 +189,7 @@ class _CategoriesTabState extends State<CategoriesTab> {
                         OutlinedButton.icon(
                           onPressed: widget.onBackToCatalog,
                           icon: const Icon(Icons.arrow_back_rounded, size: 16),
-                          label: const Text('Catálogo'),
+                          label: const Text('Volver al catálogo'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.primaryBlue,
                             shape: RoundedRectangleBorder(

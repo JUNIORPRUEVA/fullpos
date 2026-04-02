@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/theme/color_utils.dart';
@@ -103,6 +104,13 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   List<RefundItemByCategory> _refundItemsByCategory = [];
   List<TransferItemByCategory> _transferItemsByCategory = [];
   bool _loadingCategorySummary = true;
+
+  void _openCashHistory() {
+    Navigator.of(context).pop(false);
+    final rootContext = ErrorHandler.navigatorKey.currentContext;
+    if (rootContext == null) return;
+    GoRouter.of(rootContext).go('/cash/history');
+  }
 
   @override
   void initState() {
@@ -322,7 +330,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
     try {
       final closeNote = _noteController.text.trim();
-      await OperationFlowService.closeActiveSession(
+      final closedSummary = await OperationFlowService.closeActiveSession(
         sessionId: widget.sessionId,
         closingAmount: _closingAmount,
         note: closeNote,
@@ -332,11 +340,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       // Imprimir ticket automáticamente al hacer el corte.
       // Importante: un fallo de impresión NO debe impedir que el corte se complete.
       try {
-        final summaryForPrint =
-            _summary ??
-            await CashRepository.buildSummary(sessionId: widget.sessionId);
+        final summaryForPrint = _summary ?? closedSummary;
 
-        await _printClosingTicket(
+        await _printClosingArtifacts(
           summary: summaryForPrint,
           closingAmount: _closingAmount,
           note: closeNote,
@@ -386,7 +392,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
   }
 
-  Future<void> _printClosingTicket({
+  Future<void> _printClosingArtifacts({
     required CashSummaryModel summary,
     required double closingAmount,
     required String note,
@@ -394,6 +400,20 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final session = await CashRepository.getSessionById(widget.sessionId);
     if (session == null) return;
 
+    await _printClosingTicket(
+      session: session,
+      summary: summary,
+      closingAmount: closingAmount,
+      note: note,
+    );
+  }
+
+  Future<void> _printClosingTicket({
+    required CashSessionModel session,
+    required CashSummaryModel summary,
+    required double closingAmount,
+    required String note,
+  }) async {
     final sales = await SalesRepository.listSalesBySession(widget.sessionId);
     final saleItemsBySaleId = <int, List<SaleItemModel>>{};
     for (final sale in sales) {
@@ -453,13 +473,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       layoutOverride: layout,
     );
 
-    if (!result.success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo imprimir el ticket: ${result.message}'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+    if (!result.success) {
+      throw Exception(result.message);
     }
   }
 
@@ -1228,6 +1243,36 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                             const Spacer(),
                             Row(
                               children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isLoading
+                                        ? null
+                                        : _openCashHistory,
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: scheme.primary,
+                                      side: BorderSide(
+                                        color: scheme.primary.withOpacity(0.28),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.history_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text(
+                                      'Ver cortes',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: OutlinedButton(
                                     onPressed: _isLoading

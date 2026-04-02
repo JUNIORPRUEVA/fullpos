@@ -16,9 +16,7 @@ class _ProductsPageState extends State<ProductsPage>
   late TabController _tabController;
 
   void _goToCatalog() => _tabController.animateTo(0);
-
   void _goToInventory() => _tabController.animateTo(1);
-
   void _goToCategories() => _tabController.animateTo(2);
 
   @override
@@ -55,8 +53,8 @@ class _ProductsPageState extends State<ProductsPage>
               physics: const NeverScrollableScrollPhysics(),
               children: [
                 CatalogTab(
-                  onGoToInventory: _goToInventory,
-                  onGoToCategories: _goToCategories,
+                  onOpenInventory: _goToInventory,
+                  onOpenCategories: _goToCategories,
                 ),
                 InventoryTab(onBackToCatalog: _goToCatalog),
                 CategoriesTab(onBackToCatalog: _goToCatalog),

@@ -182,7 +182,7 @@ class ReturnsRepository {
     }
 
     final result = await db.rawQuery(
-      '''SELECT r.*, s.local_code, s.customer_name_snapshot, s.total, s.created_at_ms
+      '''SELECT r.*, s.local_code, s.customer_name_snapshot, s.total, s.created_at_ms, s.session_id
          FROM ${DbTables.returns} r
          JOIN ${DbTables.sales} s ON r.return_sale_id = s.id
          WHERE $where

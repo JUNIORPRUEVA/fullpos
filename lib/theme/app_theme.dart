@@ -33,17 +33,20 @@ class AppTheme {
       canvasColor: AppColors.background,
       hoverColor: AppColors.primaryBlue.withOpacity(0.045),
       splashColor: AppColors.primaryBlue.withOpacity(0.08),
+      disabledColor: AppColors.inactive,
+      unselectedWidgetColor: AppColors.inactive,
       highlightColor: Colors.transparent,
+      iconTheme: const IconThemeData(color: AppColors.textPrimary),
       cardTheme: CardThemeData(
         color: AppColors.cardBackground,
-        elevation: 0,
+        elevation: 1,
         margin: EdgeInsets.zero,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: AppSpacing.radius16,
           side: const BorderSide(color: AppColors.borderSoft),
         ),
-        shadowColor: Colors.black.withOpacity(0.05),
+        shadowColor: Colors.black.withOpacity(0.06),
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.chromeBackground,
@@ -52,7 +55,7 @@ class AppTheme {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         iconTheme: IconThemeData(color: AppColors.chromeText),
-        actionsIconTheme: IconThemeData(color: AppColors.chromeText),
+        actionsIconTheme: IconThemeData(color: AppColors.textSecondary),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
@@ -101,6 +104,8 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.cardBackground,
+        prefixIconColor: AppColors.inactive,
+        suffixIconColor: AppColors.inactive,
         border: const OutlineInputBorder(
           borderRadius: AppSpacing.radius12,
           borderSide: BorderSide(color: AppColors.borderSoft),
@@ -131,11 +136,12 @@ class AppTheme {
       popupMenuTheme: PopupMenuThemeData(
         color: AppColors.cardBackground,
         surfaceTintColor: Colors.transparent,
-        elevation: 0,
+        elevation: 2,
         shape: const RoundedRectangleBorder(
           borderRadius: AppSpacing.radius12,
           side: BorderSide(color: AppColors.borderSoft),
         ),
+        shadowColor: Colors.black12,
         textStyle: const TextStyle(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w500,
@@ -149,7 +155,7 @@ class AppTheme {
         AppGradientTheme(
           start: Color(0xFFFFFFFF),
           mid: Color(0xFFF8FAFC),
-          end: Color(0xFFEAF2FF),
+          end: Color(0xFFE5E7EB),
         ),
       ],
     );

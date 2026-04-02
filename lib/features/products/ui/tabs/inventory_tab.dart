@@ -16,10 +16,13 @@ import '../dialogs/product_details_dialog.dart';
 import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/kpi_card.dart';
 import '../widgets/compact_product_card.dart';
+import '../widgets/products_surface.dart';
 
 /// Tab de Inventario con KPIs y alertas
 class InventoryTab extends StatefulWidget {
-  const InventoryTab({super.key});
+  const InventoryTab({super.key, required this.onBackToCatalog});
+
+  final VoidCallback onBackToCatalog;
 
   @override
   State<InventoryTab> createState() => _InventoryTabState();
@@ -611,6 +614,58 @@ class _InventoryTabState extends State<InventoryTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      ProductsSurface(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: widget.onBackToCatalog,
+                              icon: const Icon(
+                                Icons.arrow_back_rounded,
+                                size: 16,
+                              ),
+                              label: const Text('Volver al catálogo'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primaryBlue,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Inventario',
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      fontFamily: 'Inter',
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Controla existencias, alertas y movimientos desde un panel operativo continuo.',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: AppColors.textSecondary,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            TextButton.icon(
+                              onPressed: _openHistory,
+                              icon: const Icon(Icons.history_rounded, size: 18),
+                              label: const Text('Historial'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       // KPIs Principales
                       Row(
                         children: [

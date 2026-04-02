@@ -5,11 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
-import '../../../core/theme/app_gradient_theme.dart';
-import '../../../core/theme/color_utils.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../data/operation_flow_service.dart';
 import '../providers/cash_providers.dart';
+
+const _cashOpenDialogPanel = Color(0xFF7A7C7D);
+const _cashOpenDialogPrimary = Color(0xFF2563EB);
+const _cashOpenDialogText = Color(0xFFFFFFFF);
+const _cashOpenDialogMutedText = Color(0xCCFFFFFF);
+const _cashOpenDialogInputBackground = Color(0xFFFFFFFF);
+const _cashOpenDialogInputText = Color(0xFF000000);
+const _cashOpenDialogInputHint = Color(0xFF6B7280);
 
 /// Diálogo para abrir caja y crear la sesión activa.
 class CashOpenDialog extends ConsumerStatefulWidget {
@@ -30,13 +36,11 @@ class CashOpenDialog extends ConsumerStatefulWidget {
 class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController(text: '0.00');
-  final _noteController = TextEditingController();
   bool _isLoading = false;
 
   @override
   void dispose() {
     _amountController.dispose();
-    _noteController.dispose();
     super.dispose();
   }
 
@@ -61,7 +65,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
       final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
       await OperationFlowService.startActiveSession(
         openingAmount: amount,
-        note: _noteController.text.trim(),
+        note: '',
       );
       await ref.read(activeSessionControllerProvider.notifier).refresh();
 
@@ -97,7 +101,6 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final screenSize = MediaQuery.of(context).size;
     final viewInsets = MediaQuery.of(context).viewInsets;
 
@@ -111,23 +114,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
     final dialogWidth = targetWidth.clamp(320.0, safeWidth);
     final dialogHeight = targetHeight.clamp(320.0, safeHeight);
 
-    final gradientTheme = theme.extension<AppGradientTheme>();
-    final headerGradient =
-        gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.primary, scheme.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-    final headerMid = gradientTheme?.mid ?? scheme.primaryContainer;
-    final headerText = ColorUtils.ensureReadableColor(
-      scheme.onPrimary,
-      headerMid,
-    );
-
-    final fieldFill = scheme.surfaceVariant.withOpacity(0.35);
-    final fieldBorder = scheme.outlineVariant.withOpacity(0.55);
-    Color readableOn(Color bg) => ColorUtils.readableTextColor(bg);
+    final fieldFill = _cashOpenDialogInputBackground;
+    final panelBorder = Colors.white.withOpacity(0.18);
+    final sectionBorder = Colors.white.withOpacity(0.14);
 
     return DialogKeyboardShortcuts(
       enableSubmitShortcuts: !_isLoading,
@@ -148,16 +137,14 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: scheme.surface,
+              color: _cashOpenDialogPanel,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: scheme.outlineVariant.withOpacity(0.55),
-              ),
-              boxShadow: [
+              border: Border.all(color: panelBorder),
+              boxShadow: const [
                 BoxShadow(
-                  color: theme.shadowColor.withOpacity(0.22),
-                  blurRadius: 24,
-                  offset: const Offset(0, 14),
+                  color: Color(0x14000000),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
                 ),
               ],
             ),
@@ -168,22 +155,20 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                 // Header
                 Container(
                   padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
-                  decoration: BoxDecoration(gradient: headerGradient),
+                  color: _cashOpenDialogPanel,
                   child: Row(
                     children: [
                       Container(
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: headerText.withOpacity(0.14),
+                          color: Colors.white.withOpacity(0.10),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: headerText.withOpacity(0.18),
-                          ),
+                          border: Border.all(color: panelBorder),
                         ),
                         child: Icon(
                           Icons.lock_open_outlined,
-                          color: headerText,
+                          color: _cashOpenDialogText,
                           size: 22,
                         ),
                       ),
@@ -195,7 +180,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                             Text(
                               'Abrir caja',
                               style: theme.textTheme.titleMedium?.copyWith(
-                                color: headerText,
+                                color: _cashOpenDialogText,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -203,7 +188,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                             Text(
                               'Iniciar la caja y entrar directo al POS',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: headerText.withOpacity(0.82),
+                                color: _cashOpenDialogMutedText,
                                 height: 1.15,
                               ),
                               maxLines: 2,
@@ -216,7 +201,12 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         onPressed: _isLoading
                             ? null
                             : () => Navigator.pop(context),
-                        icon: Icon(Icons.close, color: headerText),
+                        style: IconButton.styleFrom(
+                          foregroundColor: _cashOpenDialogText,
+                          backgroundColor: Colors.white.withOpacity(0.08),
+                          hoverColor: Colors.white.withOpacity(0.14),
+                        ),
+                        icon: const Icon(Icons.close),
                         tooltip: 'Cerrar',
                       ),
                     ],
@@ -233,9 +223,9 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Monto inicial de la sesión',
+                            'Monto inicial',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
+                              color: _cashOpenDialogText,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.2,
                             ),
@@ -254,35 +244,52 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                             ],
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w900,
-                              color: scheme.onSurface,
+                              color: _cashOpenDialogInputText,
                               height: 1.0,
                             ),
+                            cursorColor: _cashOpenDialogPrimary,
                             decoration: InputDecoration(
                               prefixText: '\$ ',
                               prefixStyle: theme.textTheme.titleLarge?.copyWith(
-                                color: scheme.primary,
+                                color: _cashOpenDialogPrimary,
                                 fontWeight: FontWeight.w900,
                                 height: 1.0,
+                              ),
+                              labelText: 'Monto inicial',
+                              labelStyle: const TextStyle(
+                                color: _cashOpenDialogInputHint,
+                              ),
+                              floatingLabelStyle: const TextStyle(
+                                color: _cashOpenDialogPrimary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              hintText: '0.00',
+                              hintStyle: const TextStyle(
+                                color: _cashOpenDialogInputHint,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.attach_money_rounded,
+                                color: _cashOpenDialogPrimary,
                               ),
                               filled: true,
                               fillColor: fieldFill,
                               helperText: 'Ejemplo: 1000.00',
                               helperStyle: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
+                                color: _cashOpenDialogMutedText,
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: fieldBorder),
+                                borderSide: BorderSide.none,
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: fieldBorder),
+                                borderSide: BorderSide.none,
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: scheme.primary,
-                                  width: 1.4,
+                                borderSide: const BorderSide(
+                                  color: _cashOpenDialogPrimary,
+                                  width: 1.6,
                                 ),
                               ),
                             ),
@@ -297,41 +304,27 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                               }
                               return null;
                             },
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => _openCash(),
                           ),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Nota (opcional)',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.2,
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Flexible(
-                            child: TextFormField(
-                              controller: _noteController,
-                              maxLines: 3,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurface,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: 'Ej: Apertura de caja de la mañana',
-                                hintStyle: TextStyle(
-                                  color: scheme.onSurfaceVariant.withOpacity(
-                                    0.8,
-                                  ),
-                                ),
-                                filled: true,
-                                fillColor: fieldFill,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: fieldBorder),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: fieldBorder),
-                                ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: sectionBorder),
+                            ),
+                            child: Text(
+                              'Solo necesitas indicar el monto inicial para abrir la caja.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: _cashOpenDialogMutedText,
+                                height: 1.35,
                               ),
                             ),
                           ),
@@ -345,12 +338,8 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
                   decoration: BoxDecoration(
-                    color: scheme.surfaceVariant.withOpacity(0.25),
-                    border: Border(
-                      top: BorderSide(
-                        color: scheme.outlineVariant.withOpacity(0.55),
-                      ),
-                    ),
+                    color: Colors.white.withOpacity(0.08),
+                    border: Border(top: BorderSide(color: sectionBorder)),
                   ),
                   child: Row(
                     children: [
@@ -362,11 +351,14 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                           icon: const Icon(Icons.close, size: 18),
                           label: const Text('Cancelar'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: scheme.onSurface,
-                            side: BorderSide(color: scheme.outlineVariant),
+                            foregroundColor: _cashOpenDialogText,
+                            backgroundColor: Colors.white.withOpacity(0.08),
+                            side: BorderSide(
+                              color: Colors.white.withOpacity(0.24),
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                           ),
                         ),
@@ -377,11 +369,13 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                         child: ElevatedButton.icon(
                           onPressed: _isLoading ? null : _openCash,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: scheme.primary,
-                            foregroundColor: readableOn(scheme.primary),
+                            backgroundColor: _cashOpenDialogPrimary,
+                            foregroundColor: Colors.white,
+                            elevation: 2,
+                            shadowColor: const Color(0x33000000),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                           ),
                           icon: _isLoading
@@ -390,9 +384,10 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      readableOn(scheme.primary),
-                                    ),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
                                   ),
                                 )
                               : const Icon(Icons.lock_open, size: 18),

@@ -119,8 +119,6 @@ class _QuotesPageState extends State<QuotesPage> {
 
       final currentId = _selectedQuoteId;
       if (currentId == null) {
-        _selectedQuote = _filteredQuotes.first;
-        _selectedQuoteId = _selectedQuote!.quote.id;
         return;
       }
 
@@ -161,10 +159,6 @@ class _QuotesPageState extends State<QuotesPage> {
           final horizontalPadding =
               (constraints.maxWidth * 0.018).clamp(12.0, 28.0) * scale;
           final verticalPadding = 10.0 * scale;
-          final itemSpacing = 8.0 * scale;
-          final isWide = constraints.maxWidth >= 1200;
-          final detailWidth =
-              (constraints.maxWidth * 0.25).clamp(320.0, 460.0) * scale;
           final listPadding = EdgeInsets.fromLTRB(
             horizontalPadding,
             verticalPadding,
@@ -180,31 +174,10 @@ class _QuotesPageState extends State<QuotesPage> {
                 summary: totalsWidget,
               ),
               Expanded(
-                child: isWide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _buildQuotesList(
-                              listPadding: listPadding,
-                              itemSpacing: itemSpacing,
-                              isWide: true,
-                            ),
-                          ),
-                          SizedBox(width: 24 * scale),
-                          SizedBox(
-                            width: detailWidth,
-                            child: SizedBox.expand(
-                              child: _buildQuoteDetailsPanel(_selectedQuote),
-                            ),
-                          ),
-                        ],
-                      )
-                    : _buildQuotesList(
-                        listPadding: listPadding,
-                        itemSpacing: itemSpacing,
-                        isWide: false,
-                      ),
+                child: _buildQuotesList(
+                  listPadding: listPadding,
+                  isWide: constraints.maxWidth >= 1200,
+                ),
               ),
             ],
           );
@@ -307,7 +280,6 @@ class _QuotesPageState extends State<QuotesPage> {
 
   Widget _buildQuotesList({
     required EdgeInsets listPadding,
-    required double itemSpacing,
     required bool isWide,
   }) {
     final scheme = _scheme;
@@ -349,25 +321,27 @@ class _QuotesPageState extends State<QuotesPage> {
       );
     }
 
-    return ListView.builder(
+    return ListView.separated(
       padding: listPadding,
       itemCount: _filteredQuotes.length,
+      separatorBuilder: (context, index) => Divider(
+        height: 1,
+        thickness: 1,
+        color: ui_colors.AppColors.borderSoft.withOpacity(0.65),
+      ),
       itemBuilder: (context, index) {
         final quoteDetail = _filteredQuotes[index];
         final isSelected = quoteDetail.quote.id == _selectedQuoteId;
-        return Padding(
-          padding: EdgeInsets.only(bottom: itemSpacing),
-          child: CompactQuoteRow(
-            quoteDetail: quoteDetail,
-            isSelected: isSelected,
-            onTap: () => _selectQuote(quoteDetail, showDetails: !isWide),
-            onWhatsApp: () => _shareWhatsApp(quoteDetail),
-            onPdf: () => _viewPDF(quoteDetail),
-            onDownload: () => _downloadPDF(quoteDetail),
-            onDuplicate: () => _duplicateQuote(quoteDetail),
-            onDelete: () => _deleteQuote(quoteDetail),
-            onConvertToTicket: () => _convertToTicket(quoteDetail),
-          ),
+        return CompactQuoteRow(
+          quoteDetail: quoteDetail,
+          isSelected: isSelected,
+          onTap: () => _selectQuote(quoteDetail, showDetails: true),
+          onWhatsApp: () => _shareWhatsApp(quoteDetail),
+          onPdf: () => _viewPDF(quoteDetail),
+          onDownload: () => _downloadPDF(quoteDetail),
+          onDuplicate: () => _duplicateQuote(quoteDetail),
+          onDelete: () => _deleteQuote(quoteDetail),
+          onConvertToTicket: () => _convertToTicket(quoteDetail),
         );
       },
     );

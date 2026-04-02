@@ -10,7 +10,7 @@ import 'package:fullpos/core/security/authz/permission.dart';
 import 'package:fullpos/core/security/authz/permission_gate.dart';
 import 'package:fullpos/core/session/session_manager.dart';
 import 'package:fullpos/features/sales/ui/credits_page.dart';
-import 'package:fullpos/features/sales/ui/returns_list_page.dart';
+import 'package:fullpos/features/sales/ui/factura_page.dart';
 import 'package:fullpos/features/tools/ui/electronic_invoicing_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
@@ -47,12 +47,12 @@ GoRouter _buildSmokeRouter() {
         ),
       ),
       GoRoute(
-        path: '/returns',
+        path: '/factura',
         builder: (context, state) => PermissionGate(
-          permission: Permissions.returnsView,
+          permission: Permissions.salesHistoryView,
           autoPromptOnce: false,
-          reason: 'Acceso a devoluciones',
-          child: const ReturnsListPage(),
+          reason: 'Acceso a factura',
+          child: const FacturaPage(),
         ),
       ),
       GoRoute(
@@ -137,7 +137,7 @@ void main() {
   });
 
   testWidgets(
-    'Cashier: navigate Credits/Returns/Electronic Documents quickly (no setState-after-dispose, no infinite loaders)',
+    'Cashier: navigate Credits/Factura/Electronic Documents quickly (no setState-after-dispose, no infinite loaders)',
     (tester) async {
       // Simulate a logged-in cashier session.
       await SessionManager.login(
@@ -162,7 +162,7 @@ void main() {
         router.go('/credits');
         await tester.pump(const Duration(milliseconds: 20));
 
-        router.go('/returns');
+        router.go('/factura');
         await tester.pump(const Duration(milliseconds: 20));
 
         router.go('/electronic-documents');

@@ -23,10 +23,11 @@ class TempCartRepository {
 
     return await db.transaction((txn) async {
       int cartId;
+      var cartExists = false;
 
       if (id != null) {
         // Actualizar carrito existente
-        await txn.update(
+        final updatedRows = await txn.update(
           DbTables.tempCarts,
           {
             'name': name,
@@ -43,14 +44,25 @@ class TempCartRepository {
           where: 'id = ?',
           whereArgs: [id],
         );
-        cartId = id;
-
-        // Eliminar items antiguos
-        await txn.delete(
-          DbTables.tempCartItems,
-          where: 'cart_id = ?',
-          whereArgs: [cartId],
-        );
+        if (updatedRows > 0) {
+          cartId = id;
+          cartExists = true;
+        } else {
+          // El ID existía en memoria pero no en BD (stale). Recrear.
+          cartId = await txn.insert(DbTables.tempCarts, {
+            'name': name,
+            'user_id': userId,
+            'client_id': clientId,
+            'discount': discount,
+            'itbis_enabled': itbisEnabled ? 1 : 0,
+            'itbis_rate': itbisRate,
+            'electronic_invoice_enabled': electronicInvoiceEnabled ? 1 : 0,
+            'discount_total_type': discountTotalType,
+            'discount_total_value': discountTotalValue,
+            'created_at_ms': now,
+            'updated_at_ms': now,
+          });
+        }
       } else {
         // Crear nuevo carrito
         cartId = await txn.insert(DbTables.tempCarts, {
@@ -68,9 +80,20 @@ class TempCartRepository {
         });
       }
 
+      // Evita N awaits (una por item): batch dentro de la transacción.
+      final batch = txn.batch();
+      if (cartExists) {
+        // Eliminar items antiguos
+        batch.delete(
+          DbTables.tempCartItems,
+          where: 'cart_id = ?',
+          whereArgs: [cartId],
+        );
+      }
+
       // Insertar items
       for (final item in items) {
-        await txn.insert(DbTables.tempCartItems, {
+        batch.insert(DbTables.tempCartItems, {
           'cart_id': cartId,
           'product_id': item.productId,
           'product_code_snapshot': item.productCodeSnapshot,
@@ -83,6 +106,8 @@ class TempCartRepository {
           'created_at_ms': now,
         });
       }
+
+      await batch.commit(noResult: true);
 
       return cartId;
     });

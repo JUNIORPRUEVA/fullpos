@@ -30,6 +30,7 @@ class BusinessSettings {
   final String receiptFooter; // Pie del recibo
   final bool showLogoOnReceipt; // Mostrar logo en recibos
   final bool printReceiptAutomatically; // Imprimir recibo automáticamente
+  final bool electronicInvoicingEnabled;
   final String defaultChargeOutputMode; // ticket | pdf | none
 
   // Cotizaciones
@@ -84,6 +85,7 @@ class BusinessSettings {
     this.receiptFooter = '¡Gracias por su compra!',
     this.showLogoOnReceipt = true,
     this.printReceiptAutomatically = false,
+    this.electronicInvoicingEnabled = false,
     this.defaultChargeOutputMode = 'ticket',
     this.enableFullQuotesFlow = false,
     this.enableAutoBackup = true,
@@ -154,6 +156,8 @@ class BusinessSettings {
       showLogoOnReceipt: (map['show_logo_on_receipt'] as int? ?? 1) == 1,
       printReceiptAutomatically:
           (map['print_receipt_automatically'] as int? ?? 0) == 1,
+      electronicInvoicingEnabled:
+          (map['electronic_invoicing_enabled'] as int? ?? 0) == 1,
       defaultChargeOutputMode:
           (map['default_charge_output_mode'] as String? ?? 'ticket'),
       enableFullQuotesFlow: (map['enable_full_quotes_flow'] as int? ?? 0) == 1,
@@ -217,6 +221,7 @@ class BusinessSettings {
       'receipt_footer': receiptFooter,
       'show_logo_on_receipt': showLogoOnReceipt ? 1 : 0,
       'print_receipt_automatically': printReceiptAutomatically ? 1 : 0,
+      'electronic_invoicing_enabled': electronicInvoicingEnabled ? 1 : 0,
       'default_charge_output_mode': defaultChargeOutputMode,
       'enable_full_quotes_flow': enableFullQuotesFlow ? 1 : 0,
       'enable_auto_backup': enableAutoBackup ? 1 : 0,
@@ -272,6 +277,7 @@ class BusinessSettings {
     String? receiptFooter,
     bool? showLogoOnReceipt,
     bool? printReceiptAutomatically,
+    bool? electronicInvoicingEnabled,
     String? defaultChargeOutputMode,
     bool? enableFullQuotesFlow,
     bool? enableAutoBackup,
@@ -319,6 +325,8 @@ class BusinessSettings {
       showLogoOnReceipt: showLogoOnReceipt ?? this.showLogoOnReceipt,
       printReceiptAutomatically:
           printReceiptAutomatically ?? this.printReceiptAutomatically,
+      electronicInvoicingEnabled:
+          electronicInvoicingEnabled ?? this.electronicInvoicingEnabled,
       defaultChargeOutputMode:
           defaultChargeOutputMode ?? this.defaultChargeOutputMode,
       enableFullQuotesFlow: enableFullQuotesFlow ?? this.enableFullQuotesFlow,
@@ -379,6 +387,7 @@ class BusinessSettings {
         other.receiptFooter == receiptFooter &&
         other.showLogoOnReceipt == showLogoOnReceipt &&
         other.printReceiptAutomatically == printReceiptAutomatically &&
+        other.electronicInvoicingEnabled == electronicInvoicingEnabled &&
         other.defaultChargeOutputMode == defaultChargeOutputMode &&
         other.enableAutoBackup == enableAutoBackup &&
         other.enableNotifications == enableNotifications &&
@@ -424,6 +433,7 @@ class BusinessSettings {
       receiptFooter,
       showLogoOnReceipt,
       printReceiptAutomatically,
+      electronicInvoicingEnabled,
       defaultChargeOutputMode,
       enableAutoBackup,
       enableNotifications,

@@ -24,7 +24,6 @@ import '../features/products/ui/products_page.dart';
 import '../features/products/ui/stock_history_page.dart';
 import '../features/purchases/ui/purchase_auto_page.dart';
 import '../features/purchases/ui/purchase_manual_page.dart';
-import '../features/purchases/ui/purchase_mode_selector_page.dart';
 import '../features/purchases/ui/purchase_orders_page.dart';
 import '../features/purchases/ui/purchase_order_create_auto_page.dart';
 import '../features/purchases/ui/purchase_order_create_manual_page.dart';
@@ -34,8 +33,7 @@ import '../features/reports/ui/reports_page.dart';
 import '../core/security/authz/blank_permission_gate.dart';
 import '../features/sales/ui/credits_page.dart';
 import '../features/sales/ui/quotes_page.dart';
-import '../features/sales/ui/returns_list_page.dart';
-import '../features/sales/ui/sales_list_page.dart';
+import '../features/sales/ui/factura_page.dart';
 import '../features/sales/ui/sales_page.dart';
 import '../features/settings/ui/printer_settings_page.dart';
 import '../features/settings/ui/logs_page.dart';
@@ -315,8 +313,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
           // Rutas de ventas
           GoRoute(
-            path: '/sales-list',
-            builder: (context, state) => const SalesListPage(),
+            path: '/factura',
+            builder: (context, state) => PermissionGate(
+              permission: Permissions.salesHistoryView,
+              autoPromptOnce: false,
+              reason: 'Acceso a factura',
+              child: const FacturaPage(),
+            ),
           ),
           GoRoute(
             path: '/quotes',
@@ -334,24 +337,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               autoPromptOnce: false,
               reason: 'Acceso a cotizaciones',
               child: const QuotesPage(),
-            ),
-          ),
-          GoRoute(
-            path: '/returns',
-            builder: (context, state) => PermissionGate(
-              permission: Permissions.returnsView,
-              autoPromptOnce: false,
-              reason: 'Acceso a devoluciones',
-              child: const ReturnsListPage(),
-            ),
-          ),
-          GoRoute(
-            path: '/returns-list',
-            builder: (context, state) => PermissionGate(
-              permission: Permissions.returnsView,
-              autoPromptOnce: false,
-              reason: 'Acceso a devoluciones',
-              child: const ReturnsListPage(),
             ),
           ),
           GoRoute(
@@ -388,7 +373,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Compras / Órdenes de compra
           GoRoute(
             path: '/purchases',
-            builder: (context, state) => const PurchaseModeSelectorPage(),
+            builder: (context, state) => const PurchaseManualPage(),
           ),
           GoRoute(
             path: '/purchases/manual',

@@ -10,8 +10,6 @@ import 'core/debug/render_diagnostics.dart';
 import 'core/db/db_init.dart';
 import 'core/errors/error_handler.dart';
 import 'core/logging/app_logger.dart';
-import 'core/services/cloud_sync_service.dart';
-import 'core/sync/product_sync_service.dart';
 import 'core/theme/theme_audit.dart';
 import 'core/window/window_startup_controller.dart';
 import 'package:window_manager/window_manager.dart';
@@ -29,7 +27,7 @@ Future<void> main() async {
       // Esto reduce al mínimo el “flash” de la ventanita al arrancar.
       try {
         await windowManager.ensureInitialized();
-        await WindowStartupController.instance.applyHiddenStartup();
+        await WindowStartupController.instance.applyStartupOptions();
       } catch (_) {
         // Ignorar: la app debe poder arrancar igual.
       }
@@ -89,56 +87,6 @@ Future<void> main() async {
         ThemeAudit.run();
         await runDbAudit();
       }
-
-      // FULLPOS DB HARDENING: sincronizar configuracion en la nube sin bloquear UI.
-      // Importante: estas tareas pueden ser pesadas (leer DB, armar payloads grandes, subir imágenes).
-      // Para evitar “cámara lenta”/jank, se difieren y se escalonan después del primer frame.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future<void>(() async {
-          try {
-            CloudSyncService.instance.startRealtimeSyncEngine();
-            ProductSyncService.instance.start();
-            CloudSyncService.instance.scheduleUsersSyncSoon(
-              delay: const Duration(milliseconds: 100),
-              reason: 'startup_users',
-            );
-            CloudSyncService.instance.scheduleCompanyConfigSyncSoon(
-              delay: const Duration(milliseconds: 150),
-              reason: 'startup_company_config',
-            );
-            CloudSyncService.instance.scheduleClientsSyncSoon(
-              delay: const Duration(milliseconds: 200),
-              reason: 'startup_clients',
-            );
-            CloudSyncService.instance.scheduleCategoriesSyncSoon(
-              delay: const Duration(milliseconds: 220),
-              reason: 'startup_categories',
-            );
-            CloudSyncService.instance.scheduleSuppliersSyncSoon(
-              delay: const Duration(milliseconds: 240),
-              reason: 'startup_suppliers',
-            );
-            CloudSyncService.instance.scheduleProductsSyncSoon(
-              delay: const Duration(milliseconds: 250),
-              reason: 'startup_products',
-            );
-            CloudSyncService.instance.scheduleCashSyncSoon(
-              delay: const Duration(milliseconds: 350),
-              reason: 'startup_cash',
-            );
-            CloudSyncService.instance.scheduleSalesSyncSoon(
-              delay: const Duration(milliseconds: 450),
-              reason: 'startup_sales',
-            );
-            CloudSyncService.instance.scheduleQuotesSyncSoon(
-              delay: const Duration(milliseconds: 550),
-              reason: 'startup_quotes',
-            );
-          } catch (_) {
-            // Nunca bloquear UI por sync.
-          }
-        });
-      });
 
       final businessRepo = BusinessSettingsRepository();
       final initialSettings = BusinessSettings.defaultSettings;

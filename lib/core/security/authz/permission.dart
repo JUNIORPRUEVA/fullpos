@@ -80,6 +80,13 @@ class Permissions {
     legacyKey: 'can_manage_users',
   );
 
+  static final salesHistoryView = Permission.screen(
+    code: 'ventas.factura.ver',
+    title: 'Factura',
+    description: 'Acceso a la pantalla unificada de facturas y devoluciones.',
+    legacyKey: 'can_view_sales_history',
+  );
+
   static final returnsView = Permission.screen(
     code: 'ventas.devolucion.ver',
     title: 'Devoluciones',

@@ -5,7 +5,7 @@ import '../../data/quote_model.dart';
 import '../../../../core/theme/app_status_theme.dart';
 import '../../../../theme/app_colors.dart';
 
-/// Tarjeta compacta y elevada para listar cotizaciones
+/// Fila compacta para listar cotizaciones
 class CompactQuoteRow extends StatelessWidget {
   final QuoteDetailDto quoteDetail;
   final bool isSelected;
@@ -53,8 +53,8 @@ class CompactQuoteRow extends StatelessWidget {
     final statusColor = _statusColor(quote.status, scheme, statusTheme);
 
     final bgColor = isSelected
-        ? scheme.primaryContainer.withOpacity(0.35)
-        : scheme.surface;
+      ? scheme.primary.withOpacity(0.055)
+      : Colors.transparent;
     final textColor = scheme.onSurface;
 
     final canConvert =
@@ -90,18 +90,7 @@ class CompactQuoteRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.borderSoft),
-            boxShadow: [
-              BoxShadow(
-                color: scheme.shadow.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
               Expanded(

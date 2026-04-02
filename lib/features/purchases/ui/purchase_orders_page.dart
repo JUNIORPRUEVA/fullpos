@@ -518,25 +518,6 @@ class _PurchaseOrdersPageState extends ConsumerState<PurchaseOrdersPage> {
         padding: kPurchasePagePadding,
         child: Column(
           children: [
-            const PurchaseHeroCard(
-              eyebrow: 'Órdenes de compra',
-              title: 'Supervisa el ciclo completo desde emisión hasta recepción parcial o total.',
-              subtitle:
-                  'La vista principal concentra filtros, listado compacto y un panel lateral fijo para acciones, duplicado, impresión y recepción.',
-              stats: [
-                PurchaseMetricTile(
-                  label: 'Vista',
-                  value: 'Lista + detalle',
-                  icon: Icons.splitscreen_rounded,
-                ),
-                PurchaseMetricTile(
-                  label: 'Operaciones',
-                  value: 'Seguimiento continuo',
-                  icon: Icons.inventory_2_rounded,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
             header(),
             const SizedBox(height: 12),
             Expanded(

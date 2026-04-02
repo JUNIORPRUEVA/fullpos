@@ -177,6 +177,14 @@ class BusinessSettingsNotifier extends StateNotifier<BusinessSettings> {
     await _repository.saveSettings(newSettings);
   }
 
+  /// Actualizar disponibilidad de facturación electrónica en ventas
+  Future<void> updateElectronicInvoicingEnabled(bool enabled) async {
+    final newSettings = state.copyWith(electronicInvoicingEnabled: enabled);
+    state = newSettings;
+    await _repository.saveSettings(newSettings);
+    appConfigService.updateSettings(newSettings);
+  }
+
   /// Actualizar backup automático
   Future<void> updateEnableAutoBackup(bool enable) async {
     final newSettings = state.copyWith(enableAutoBackup: enable);

@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import '../../../core/debug/app_logger.dart' as debug_log;
 import '../../../core/errors/error_handler.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/services/empresa_service.dart';
@@ -143,6 +144,61 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   final FocusNode _clientFocusNode = FocusNode();
   final ScrollController _ticketItemsScrollController = ScrollController();
   Timer? _cartPersistenceTimer;
+  bool _cartPersistenceInFlight = false;
+  bool _cartPersistenceDirty = false;
+  String? _lastPersistedCartToken;
+  String? _scheduledCartToken;
+
+  // Optimización: índice de cantidades por producto para evitar O(n*m)
+  // (cada tarjeta de producto recorriendo todos los items del carrito).
+  Map<int, double> _qtyByProductId = const <int, double>{};
+
+  void _rebuildQtyIndexForCurrentCart() {
+    if (_carts.isEmpty) {
+      _qtyByProductId = const <int, double>{};
+      return;
+    }
+    final map = <int, double>{};
+    for (final item in _currentCart.items) {
+      final id = item.productId;
+      if (id == null) continue;
+      map[id] = (map[id] ?? 0) + item.qty;
+    }
+    _qtyByProductId = map;
+  }
+
+  double _qtyInCart(int? productId) {
+    if (productId == null) return 0.0;
+    return _qtyByProductId[productId] ?? 0.0;
+  }
+
+  void _setHoverStateDeferred<T>(Set<T> target, T value, bool isHovered) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final alreadyHovered = target.contains(value);
+      if (alreadyHovered == isHovered) return;
+      setState(() {
+        if (isHovered) {
+          target.add(value);
+        } else {
+          target.remove(value);
+        }
+      });
+    });
+  }
+
+  void _dbgLog(String message, {Map<String, Object?>? data}) {
+    assert(() {
+      unawaited(
+        debug_log.DebugAppLogger.instance.info(
+          message,
+          module: 'sales/freeze',
+          data: data,
+        ),
+      );
+      return true;
+    }());
+  }
 
   int? _filteredProductsCacheKey;
   List<ProductModel> _filteredProductsCache = const <ProductModel>[];
@@ -160,6 +216,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   bool _loggedFirstBuild = false;
   bool _sessionBootstrapScheduled = false;
   final Set<int> _hoveredProductIndexes = <int>{};
+  final Set<String> _hoveredTicketHeaderActions = <String>{};
   final Set<String> _processedPaymentRequestIds = <String>{};
   bool _isProcessingSaleExecution = false;
 
@@ -176,13 +233,33 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   _Cart get _currentCart => _carts[_currentCartIndex];
 
+  bool get _isElectronicInvoicingFeatureEnabled =>
+      ref.read(businessSettingsProvider).electronicInvoicingEnabled;
+
+  void _disableElectronicInvoicingForAllCarts() {
+    var changed = false;
+    for (final cart in _carts) {
+      if (!cart.electronicInvoiceEnabled) continue;
+      cart.electronicInvoiceEnabled = false;
+      changed = true;
+    }
+
+    if (!changed || !mounted) return;
+
+    setState(() {});
+    unawaited(_saveAllCartsToDatabase());
+    _scheduleCartPersistence();
+  }
+
   void _applySalesDefaultsToCart(_Cart cart) {
     final settings = _appSettings;
     if (settings == null) return;
 
     cart.itbisRate = settings.itbisRate;
     cart.itbisEnabled = settings.itbisEnabledDefault;
-    cart.electronicInvoiceEnabled = settings.electronicInvoiceEnabledDefault;
+    cart.electronicInvoiceEnabled =
+        _isElectronicInvoicingFeatureEnabled &&
+        settings.electronicInvoiceEnabledDefault;
     if (cart.electronicInvoiceEnabled) {
       // La emisión electrónica implica ITBIS activo.
       cart.itbisEnabled = true;
@@ -193,17 +270,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     // En layout horizontal, hacemos el panel proporcional para no aplastar
     // el grid cuando el ancho baja.
     if (width < 1350) {
-      final max = (width * 0.34).clamp(300.0, 400.0);
-      final min = (max - 70).clamp(280.0, max);
+      // +10–15% para que el panel se sienta como un POS real.
+      final max = (width * 0.38).clamp(320.0, 450.0);
+      final min = (max - 80).clamp(300.0, max);
       return BoxConstraints(minWidth: min, maxWidth: max);
     }
     if (width < 1600) {
-      final max = (width * 0.32).clamp(380.0, 460.0);
-      final min = (max - 80).clamp(340.0, max);
+      final max = (width * 0.35).clamp(400.0, 520.0);
+      final min = (max - 90).clamp(360.0, max);
       return BoxConstraints(minWidth: min, maxWidth: max);
     }
-    final max = (width * 0.30).clamp(420.0, 520.0);
-    final min = (max - 90).clamp(360.0, max);
+    final max = (width * 0.33).clamp(460.0, 600.0);
+    final min = (max - 100).clamp(380.0, max);
     return BoxConstraints(minWidth: min, maxWidth: max);
   }
 
@@ -392,6 +470,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final tempCarts = results[4] as List<Map<String, dynamic>>;
       final appSettings = results[5] as AppSettingsModel;
       final electronicCompany = results[6] as ElectronicCompanyModel;
+      final electronicInvoicingFeatureEnabled =
+          _isElectronicInvoicingFeatureEnabled;
 
       final loadedCarts = <_Cart>[];
 
@@ -409,7 +489,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ..ticketId = id
           ..itbisEnabled = ticketModel.itbisEnabled
           ..itbisRate = ticketModel.itbisRate
-          ..discount = ticketModel.discountTotal;
+          ..discount = ticketModel.discountTotal
+          ..electronicInvoiceEnabled = false;
 
         final clientId = ticketModel.clientId;
         if (clientId != null) {
@@ -463,6 +544,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ..itbisEnabled = (cartMap['itbis_enabled'] as int) == 1
           ..itbisRate = (cartMap['itbis_rate'] as num).toDouble()
           ..electronicInvoiceEnabled =
+              electronicInvoicingFeatureEnabled &&
               (cartMap['electronic_invoice_enabled'] as int) == 1
           ..discountTotalType = cartMap['discount_total_type'] as String?
           ..discountTotalValue = (cartMap['discount_total_value'] as num?)
@@ -626,6 +708,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           );
         } catch (e) {
           debugPrint('Error guardando carrito temporal: $e');
+          unawaited(
+            ErrorHandler.instance.handle(e, module: 'sales/temp_cart_save_all'),
+          );
         }
       }
     }
@@ -737,13 +822,25 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   void _updateCurrentCart(VoidCallback update) {
-    setState(update);
+    setState(() {
+      update();
+      _rebuildQtyIndexForCurrentCart();
+    });
     _scheduleCartPersistence();
   }
 
   void _scheduleCartPersistence() {
+    _cartPersistenceDirty = true;
+    final token = _buildCartPersistenceToken(_currentCart);
+    _scheduledCartToken = token;
+
+    // Si ya persistimos exactamente este estado (y no hay persistencia en curso), no hacer nada.
+    if (!_cartPersistenceInFlight && _lastPersistedCartToken == token) {
+      return;
+    }
+
     _cartPersistenceTimer?.cancel();
-    _cartPersistenceTimer = Timer(const Duration(milliseconds: 400), () {
+    _cartPersistenceTimer = Timer(const Duration(milliseconds: 550), () {
       unawaited(_persistCurrentCartToDatabase());
     });
   }
@@ -751,37 +848,132 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Future<void> _persistCurrentCartToDatabase() async {
     _cartPersistenceTimer = null;
     if (!mounted) return;
-    if (_currentCart.items.isEmpty) {
-      await _deleteCurrentCartFromDatabase();
-      return;
-    }
 
-    if (_currentCart.ticketId != null) {
-      final staleTempCartId = _currentCart.tempCartId;
-      _currentCart.tempCartId = null;
-      await _deleteTempCartFromDatabase(staleTempCartId);
-      return;
-    }
-
-    final repo = TempCartRepository();
-    final userId = await SessionManager.userId();
-    try {
-      final savedId = await repo.saveCart(
-        id: _currentCart.tempCartId,
-        name: _currentCart.name,
-        userId: userId,
-        clientId: _currentCart.selectedClient?.id,
-        discount: _currentCart.discount,
-        itbisEnabled: _currentCart.itbisEnabled,
-        itbisRate: _currentCart.itbisRate,
-        electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
-        discountTotalType: _currentCart.discountTotalType,
-        discountTotalValue: _currentCart.discountTotalValue,
-        items: _currentCart.items,
+    Stopwatch? persistSw;
+    assert(() {
+      persistSw = Stopwatch()..start();
+      _dbgLog(
+        'persist_start',
+        data: {
+          'cartItems': _currentCart.items.length,
+          'tempCartId': _currentCart.tempCartId,
+          'ticketId': _currentCart.ticketId,
+        },
       );
-      _currentCart.tempCartId = savedId;
-    } catch (e, st) {
-      debugPrint('Error guardando carrito temporal: $e $st');
+      return true;
+    }());
+
+    // Evita ejecuciones simultáneas (puede causar jank/locks en sqlite).
+    if (_cartPersistenceInFlight) {
+      _cartPersistenceDirty = true;
+      return;
+    }
+
+    _cartPersistenceInFlight = true;
+    try {
+      while (mounted) {
+        _cartPersistenceDirty = false;
+        final token =
+            _scheduledCartToken ?? _buildCartPersistenceToken(_currentCart);
+        _scheduledCartToken = token;
+
+        if (_lastPersistedCartToken == token) {
+          return;
+        }
+
+        if (_currentCart.items.isEmpty) {
+          await _deleteCurrentCartFromDatabase();
+          _lastPersistedCartToken = token;
+        } else if (_currentCart.ticketId != null) {
+          final staleTempCartId = _currentCart.tempCartId;
+          _currentCart.tempCartId = null;
+          await _deleteTempCartFromDatabase(staleTempCartId);
+          _lastPersistedCartToken = token;
+        } else {
+          final repo = TempCartRepository();
+          final userId = await SessionManager.userId();
+          assert(() {
+            _dbgLog(
+              'persist_saveCart_call',
+              data: {
+                'cartItems': _currentCart.items.length,
+                'tempCartId': _currentCart.tempCartId,
+              },
+            );
+            return true;
+          }());
+          try {
+            final savedId = await repo.saveCart(
+              id: _currentCart.tempCartId,
+              name: _currentCart.name,
+              userId: userId,
+              clientId: _currentCart.selectedClient?.id,
+              discount: _currentCart.discount,
+              itbisEnabled: _currentCart.itbisEnabled,
+              itbisRate: _currentCart.itbisRate,
+              electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
+              discountTotalType: _currentCart.discountTotalType,
+              discountTotalValue: _currentCart.discountTotalValue,
+              items: _currentCart.items,
+            );
+            _currentCart.tempCartId = savedId;
+            _lastPersistedCartToken = token;
+            assert(() {
+              _dbgLog(
+                'persist_saveCart_ok',
+                data: {
+                  'savedId': savedId,
+                  'cartItems': _currentCart.items.length,
+                  'ms': persistSw?.elapsedMilliseconds,
+                },
+              );
+              return true;
+            }());
+          } catch (e, st) {
+            debugPrint('Error guardando carrito temporal: $e $st');
+            // Mostrar el error (copiable) para diagnóstico en sitio.
+            unawaited(
+              ErrorHandler.instance.handle(
+                e,
+                stackTrace: st,
+                module: 'sales/temp_cart_persist',
+              ),
+            );
+            assert(() {
+              _dbgLog(
+                'persist_saveCart_error',
+                data: {
+                  'cartItems': _currentCart.items.length,
+                  'tempCartId': _currentCart.tempCartId,
+                  'ms': persistSw?.elapsedMilliseconds,
+                  'error': '$e',
+                },
+              );
+              return true;
+            }());
+            // No marcar como persistido para permitir retry.
+          }
+        }
+
+        if (!_cartPersistenceDirty) {
+          return;
+        }
+
+        // Ceder el event loop antes de reintentar si el carrito cambió durante el guardado.
+        await Future<void>.delayed(Duration.zero);
+      }
+    } finally {
+      _cartPersistenceInFlight = false;
+      assert(() {
+        _dbgLog(
+          'persist_end',
+          data: {
+            'cartItems': _currentCart.items.length,
+            'ms': persistSw?.elapsedMilliseconds,
+          },
+        );
+        return true;
+      }());
     }
   }
 
@@ -835,6 +1027,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           )
           .toList();
     });
+
+    _rebuildQtyIndexForCurrentCart();
   }
 
   List<ProductModel> _filteredProducts() {
@@ -1021,6 +1215,86 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     _updateCurrentCart(() => _currentCart.items.add(result));
   }
 
+  _SalesDocumentType _deriveSalesDocumentType() {
+    if (_currentCart.electronicInvoiceEnabled) {
+      return _SalesDocumentType.creditoFiscal;
+    }
+    if (!_currentCart.itbisEnabled) {
+      return _SalesDocumentType.cotizacion;
+    }
+    return _SalesDocumentType.consumidorFinal;
+  }
+
+  payment.PaymentDocumentType _paymentDocumentTypeFromCart() {
+    switch (_deriveSalesDocumentType()) {
+      case _SalesDocumentType.consumidorFinal:
+        return payment.PaymentDocumentType.consumidorFinal;
+      case _SalesDocumentType.creditoFiscal:
+        return payment.PaymentDocumentType.creditoFiscal;
+      case _SalesDocumentType.cotizacion:
+        return payment.PaymentDocumentType.cotizacion;
+    }
+  }
+
+  Future<void> _setSalesDocumentType(_SalesDocumentType type) async {
+    if (type == _SalesDocumentType.consumidorFinal) {
+      _updateCurrentCart(() {
+        _currentCart.electronicInvoiceEnabled = false;
+        _currentCart.itbisEnabled = true;
+      });
+      return;
+    }
+
+    if (type == _SalesDocumentType.cotizacion) {
+      _updateCurrentCart(() {
+        _currentCart.electronicInvoiceEnabled = false;
+        _currentCart.itbisEnabled = false;
+      });
+      return;
+    }
+
+    if (!_isElectronicInvoicingFeatureEnabled) return;
+
+    if (!await _canEnableElectronicInvoiceOrNotify()) {
+      return;
+    }
+
+    _updateCurrentCart(() {
+      _currentCart.electronicInvoiceEnabled = true;
+      _currentCart.itbisEnabled = true;
+    });
+    await _refreshElectronicCompany();
+  }
+
+  Future<payment.PaymentDocumentType> _setPaymentDocumentType(
+    payment.PaymentDocumentType type,
+  ) async {
+    switch (type) {
+      case payment.PaymentDocumentType.consumidorFinal:
+        await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
+      case payment.PaymentDocumentType.creditoFiscal:
+        await _setSalesDocumentType(_SalesDocumentType.creditoFiscal);
+      case payment.PaymentDocumentType.cotizacion:
+        await _setSalesDocumentType(_SalesDocumentType.cotizacion);
+    }
+    return _paymentDocumentTypeFromCart();
+  }
+
+  Future<void> _showFinalizeSaleDialog() async {
+    await _processPayment(SaleKind.invoice);
+  }
+
+  void _openFacturaPage() {
+    AuthzService.guardedAction(
+      context,
+      authz_perm.Permissions.salesHistoryView,
+      () => context.go('/factura'),
+      reason: 'Abrir factura',
+      resourceType: 'route',
+      resourceId: '/factura',
+    )();
+  }
+
   Future<void> _showTotalDiscountDialog() async {
     if (_currentCart.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1112,7 +1386,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Future<void> _addProductToCart(ProductModel product) async {
-    final qtyInCart = _currentCart.getQuantityForProduct(product.id ?? -1);
+    assert(() {
+      _dbgLog(
+        'add_product_start',
+        data: {
+          'productId': product.id,
+          'cartItems': _currentCart.items.length,
+          'tempCartId': _currentCart.tempCartId,
+          'ticketId': _currentCart.ticketId,
+        },
+      );
+      return true;
+    }());
+
+    if (product.id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Producto inválido (sin ID)'),
+          backgroundColor: scheme.error,
+        ),
+      );
+      return;
+    }
+
+    final qtyInCart = _qtyInCart(product.id);
     final effectiveStock = product.stock - qtyInCart;
     if (effectiveStock <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1124,7 +1421,37 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       return;
     }
 
-    _updateCurrentCart(() => _currentCart.addProduct(product));
+    try {
+      _updateCurrentCart(() => _currentCart.addProduct(product));
+      assert(() {
+        _dbgLog(
+          'add_product_setstate_done',
+          data: {
+            'productId': product.id,
+            'cartItems': _currentCart.items.length,
+          },
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _dbgLog(
+            'add_product_frame_painted',
+            data: {
+              'productId': product.id,
+              'cartItems': _currentCart.items.length,
+            },
+          );
+        });
+        return true;
+      }());
+    } catch (e, st) {
+      debugPrint('Error agregando producto al carrito: $e\n$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo agregar el producto'),
+          backgroundColor: scheme.error,
+        ),
+      );
+    }
   }
 
   void _incrementCartItemQty(SaleItemModel item, int index) async {
@@ -1144,8 +1471,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
     if (!mounted) return;
     if (product == null) return;
-    final available =
-        product.stock - _currentCart.getQuantityForProduct(item.productId!);
+    final available = product.stock - _qtyInCart(item.productId);
     if (available <= 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1452,6 +1778,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Future<bool> _canEnableElectronicInvoiceOrNotify() async {
+    if (!_isElectronicInvoicingFeatureEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'La facturación electrónica está desactivada en configuración.',
+          ),
+          backgroundColor: scheme.error,
+        ),
+      );
+      return false;
+    }
+
     final missing = await _missingElectronicInvoiceRequirements(
       includeItbis: false,
     );
@@ -1520,6 +1858,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       );
       if (!canCharge) return;
 
+      await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
+      if (!mounted) return;
+
       // Importante: usar las funciones del carrito como fuente única.
       // Evita doble descuento (bug: totales guardados/impresos en 0).
       final totalDiscount = _currentCart.calculateTotalDiscountsCombined();
@@ -1535,10 +1876,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         builder: (context) => payment.PaymentDialog(
           total: total,
           initialPrintTicket: initialPrintTicket,
-          allowInvoicePdfDownload: kind == SaleKind.invoice,
+          allowInvoicePdfDownload: true,
           initialChargeOutputMode: configuredChargeOutputMode,
           cartFingerprint: cartFingerprint,
           selectedClient: _currentCart.selectedClient,
+          initialDocumentType: payment.PaymentDocumentType.consumidorFinal,
+          allowElectronicInvoiceOption: _isElectronicInvoicingFeatureEnabled,
+          onDocumentTypeChanged: _setPaymentDocumentType,
           onSelectClient: _showClientPicker,
         ),
       );
@@ -1584,6 +1928,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       if (!mounted) return;
 
       final method = paymentResult['method'] as payment.PaymentMethod;
+      final selectedDocumentType =
+          paymentResult['documentType'] as payment.PaymentDocumentType? ??
+          payment.PaymentDocumentType.consumidorFinal;
+      if (selectedDocumentType == payment.PaymentDocumentType.cotizacion) {
+        await _saveAsQuote();
+        return;
+      }
+      final resolvedKind = kind;
       final receivedAmountRaw =
           (paymentResult['received'] as num?)?.toDouble() ?? total;
       final changeAmountRaw =
@@ -1593,7 +1945,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final changeAmount = isCreditPayment ? 0.0 : changeAmountRaw;
       final shouldPrint = paymentResult['printTicket'] == true;
       final shouldDownloadInvoicePdf =
-          paymentResult['downloadInvoicePdf'] == true;
+          paymentResult['downloadInvoicePdf'] == true &&
+          resolvedKind == SaleKind.invoice;
       final shouldAutoOpenDrawerOnCharge =
           await _shouldAutoOpenDrawerWithoutTicket();
 
@@ -1627,8 +1980,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
       final localCode =
           (paymentRequestId != null && paymentRequestId.isNotEmpty)
-          ? _buildIdempotentLocalCode(kind, paymentRequestId)
-          : await SalesRepository.generateNextLocalCode(kind);
+          ? _buildIdempotentLocalCode(resolvedKind, paymentRequestId)
+          : await SalesRepository.generateNextLocalCode(resolvedKind);
       String? electronicInvoiceCode;
       String? electronicDocumentType;
       if (_currentCart.electronicInvoiceEnabled) {
@@ -1710,7 +2063,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         if (isLayaway) {
           saleId = await LayawayRepository.createLayawaySale(
             localCode: localCode,
-            kind: kind,
+            kind: resolvedKind,
             items: itemsPayload,
             itbisEnabled: _currentCart.itbisEnabled,
             itbisRate: _currentCart.itbisRate,
@@ -1733,7 +2086,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         } else {
           saleId = await SalesRepository.createSale(
             localCode: localCode,
-            kind: kind,
+            kind: resolvedKind,
             items: itemsPayload,
             itbisEnabled: _currentCart.itbisEnabled,
             itbisRate: _currentCart.itbisRate,
@@ -1791,7 +2144,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         final retry = await ErrorHandler.instance.runSafe<int>(
           () => SalesRepository.createSale(
             localCode: localCode,
-            kind: kind,
+            kind: resolvedKind,
             items: itemsPayload,
             allowNegativeStock: true,
             itbisEnabled: _currentCart.itbisEnabled,
@@ -1852,6 +2205,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           _currentCartIndex = 0;
         }
         _selectedCartItemIndex = null;
+        _rebuildQtyIndexForCurrentCart();
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1920,6 +2274,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       (cart.discountTotalValue ?? 0).toStringAsFixed(2),
       ...sortedItemTokens,
     ].join('||');
+  }
+
+  String _buildCartPersistenceToken(_Cart cart) {
+    // Importante: NO incluir tempCartId en modo save, porque cambia tras el primer guardado
+    // y eso produciría escrituras redundantes.
+    if (cart.ticketId != null) {
+      final hasTemp = cart.tempCartId != null;
+      return 'mode:ticket|ticket:${cart.ticketId}|hasTemp:${hasTemp ? 1 : 0}';
+    }
+    if (cart.items.isEmpty) {
+      return 'mode:empty|temp:${cart.tempCartId ?? 0}';
+    }
+    return 'mode:save|${_buildCartPersistenceSignature(cart)}';
   }
 
   String _buildIdempotentLocalCode(String kind, String paymentRequestId) {
@@ -2064,6 +2431,21 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         '[SALES] sales-first-build t=${DateTime.now().toIso8601String()}',
       );
     }
+    ref.watch(
+      businessSettingsProvider.select(
+        (settings) => settings.electronicInvoicingEnabled,
+      ),
+    );
+    ref.listen<bool>(
+      businessSettingsProvider.select(
+        (settings) => settings.electronicInvoicingEnabled,
+      ),
+      (previous, next) {
+        if (previous == true && !next) {
+          _disableElectronicInvoicingForAllCarts();
+        }
+      },
+    );
     final cashSessionState = ref.watch(activeSessionControllerProvider);
     final currentSessionId = cashSessionState.valueOrNull?.shiftId;
     final isCashSessionResolved = cashSessionState is AsyncData;
@@ -2251,7 +2633,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   final ticketPanelConstraints = _ticketPanelConstraints(
                     constraints.maxWidth,
                   );
-                  final panelMargin = constraints.maxWidth < 1150 ? 10.0 : 12.0;
+                  final panelMargin = constraints.maxWidth < 1150 ? 12.0 : 16.0;
+                    final panelGap = constraints.maxWidth < 1180 ? 32.0 : 42.0;
                   final theme = Theme.of(context);
                   final tokens =
                       theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
@@ -2280,7 +2663,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               child: Padding(
                                 padding: const EdgeInsets.fromLTRB(
                                   12,
-                                  12,
+                                  0,
                                   0,
                                   12,
                                 ),
@@ -2532,17 +2915,22 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                               ),
                             ),
-                            Container(
-                              width: 1,
-                              margin: const EdgeInsets.symmetric(vertical: 12),
-                              color: tokens.outline,
-                            ),
+                            SizedBox(width: panelGap),
                             ConstrainedBox(
                               constraints: ticketPanelConstraints,
                               child: Container(
-                                margin: EdgeInsets.all(panelMargin),
+                                margin: EdgeInsets.fromLTRB(
+                                  0,
+                                  0,
+                                  panelMargin,
+                                  panelMargin,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: theme.cardColor,
+                                  // Ligeramente más claro/suave que el fondo principal.
+                                  color: Color.alphaBlend(
+                                    scheme.onSurface.withOpacity(0.02),
+                                    theme.scaffoldBackgroundColor,
+                                  ),
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(color: tokens.outline),
                                   boxShadow: [
@@ -2671,7 +3059,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     required int index,
     required double cardSize,
   }) {
-    final qtyInCart = _currentCart.getQuantityForProduct(product.id ?? -1);
+    final qtyInCart = _qtyInCart(product.id);
     final effectiveStock = product.stock - qtyInCart;
     final isLowStock = effectiveStock > 0 && effectiveStock <= 10;
     final isOutOfStock = effectiveStock <= 0;
@@ -2708,8 +3096,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         : salesProducts!.priceColor;
 
     return MouseRegion(
-      onEnter: (_) => setState(() => _hoveredProductIndexes.add(index)),
-      onExit: (_) => setState(() => _hoveredProductIndexes.remove(index)),
+      onEnter: (_) =>
+          _setHoverStateDeferred(_hoveredProductIndexes, index, true),
+      onExit: (_) =>
+          _setHoverStateDeferred(_hoveredProductIndexes, index, false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,
@@ -2896,12 +3286,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       scheme.primary,
     );
     return Padding(
-      padding: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.only(right: 2),
       child: PopupMenuButton<String>(
         tooltip: 'Elegir categoría',
-        offset: const Offset(0, 46),
+        offset: const Offset(0, 52),
         color: menuBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         initialValue: _selectedCategory ?? allOption,
         onSelected: (value) =>
             _onCategorySelected(value == allOption ? null : value),
@@ -2956,22 +3346,22 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             )
             .toList(),
         child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: dropdownBg,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: dropdownBorder, width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.filter_list, size: 18, color: dropdownText),
+              Icon(Icons.category_outlined, size: 18, color: dropdownText),
               const SizedBox(width: 6),
               Text(
                 _selectedCategory ?? 'Categoría',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                   color: dropdownText,
                 ),
@@ -3040,40 +3430,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
         final searchBarWidth = isCompact ? double.infinity : (width * 0.96);
 
-        final outerPadding = EdgeInsets.all((width * 0.006).clamp(4.0, 6.0));
-        final barHeight = 48.0;
-        final radius = 12.0;
+        final outerPadding = EdgeInsets.all((width * 0.007).clamp(6.0, 8.0));
+        final barHeight = isCompact ? 54.0 : 56.0;
+        final radius = 16.0;
         final iconSize = isCompact ? 18.0 : 20.0;
-        final textSize = 13.0;
-        final fieldVPad = 13.0;
-
-        IconButton compactIconButton({
-          required IconData icon,
-          required VoidCallback onPressed,
-          required String tooltip,
-          Color? color,
-        }) {
-          return IconButton(
-            onPressed: onPressed,
-            tooltip: tooltip,
-            padding: EdgeInsets.zero,
-            constraints: BoxConstraints.tightFor(
-              width: barHeight,
-              height: barHeight,
-            ),
-            icon: Icon(
-              icon,
-              size: iconSize,
-              color: color ?? controlText.withOpacity(0.8),
-            ),
-          );
-        }
+        final textSize = 13.5;
+        final fieldVPad = 15.0;
 
         return Container(
           padding: outerPadding,
           decoration: BoxDecoration(
             color: tokens.panelBackground,
             borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: controlBorder.withOpacity(0.32)),
           ),
           child: Row(
             children: [
@@ -3085,23 +3454,42 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     child: Container(
                       height: barHeight,
                       decoration: BoxDecoration(
-                        color: controlContentBg,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: controlBorder, width: 1),
+                        color: Color.alphaBlend(
+                          scheme.primary.withOpacity(0.015),
+                          controlContentBg,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: controlBorder.withOpacity(0.5),
+                          width: 1,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Theme.of(
                               context,
-                            ).shadowColor.withOpacity(0.03),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            ).shadowColor.withOpacity(0.07),
+                            blurRadius: 24,
+                            offset: const Offset(0, 10),
                           ),
                         ],
                       ),
                       child: Row(
                         children: [
-                          const SizedBox(width: 12),
-                          Icon(Icons.search, color: iconColor, size: iconSize),
+                          const SizedBox(width: 18),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: scheme.primary.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              Icons.search_rounded,
+                              color: scheme.primary,
+                              size: iconSize,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: TextField(
                               controller: _searchController,
@@ -3114,6 +3502,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 hintStyle: TextStyle(
                                   color: hintColor,
                                   fontSize: textSize,
+                                  fontWeight: FontWeight.w500,
                                 ),
                                 border: InputBorder.none,
                                 isCollapsed: true,
@@ -3136,21 +3525,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               },
                               style: TextStyle(
                                 color: fieldTextColor,
-                                fontSize: textSize,
-                                fontWeight: FontWeight.w500,
+                                fontSize: textSize + 0.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          _buildCategoryDropdown(),
-                          compactIconButton(
-                            icon: Icons.filter_list,
-                            color: _productFilter.hasActiveFilters
-                                ? status.warning
-                                : controlText,
-                            onPressed: _openFilterDialog,
-                            tooltip: 'Filtros avanzados',
+                          Container(
+                            width: 1,
+                            height: 26,
+                            color: controlBorder.withOpacity(0.32),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 8),
+                          _buildCategoryDropdown(),
+                          const SizedBox(width: 12),
                         ],
                       ),
                     ),
@@ -3230,10 +3617,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final buttons = <Widget>[
+            final cashActions = <Widget>[
               _buildCompactOperationButton(
                 icon: Icons.add_circle_outline,
-                label: 'Entrada',
+                label: 'Ingreso',
                 color: unifiedColor,
                 foregroundColor: unifiedTextColor,
                 borderColor: unifiedBorderColor,
@@ -3242,13 +3629,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               const SizedBox(width: 8),
               _buildCompactOperationButton(
                 icon: Icons.remove_circle_outline,
-                label: 'Retiro',
+                label: 'Gastos',
                 color: unifiedColor,
                 foregroundColor: unifiedTextColor,
                 borderColor: unifiedBorderColor,
                 onPressed: () => _openCashMovement(CashMovementType.outcome),
               ),
-              const SizedBox(width: 8),
+            ];
+
+            final secondaryActions = <Widget>[
               _buildCompactOperationButton(
                 icon: Icons.account_balance,
                 label: 'Créditos',
@@ -3284,42 +3673,25 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   )();
                 },
               ),
-              const SizedBox(width: 8),
-              _buildCompactOperationButton(
-                icon: Icons.assignment_return_outlined,
-                label: 'Devoluciones',
-                color: unifiedColor,
-                foregroundColor: unifiedTextColor,
-                borderColor: unifiedBorderColor,
-                onPressed: () {
-                  AuthzService.guardedAction(
-                    context,
-                    authz_perm.Permissions.returnsView,
-                    () => context.go('/returns-list'),
-                    reason: 'Abrir devoluciones',
-                    resourceType: 'route',
-                    resourceId: '/returns-list',
-                  )();
-                },
-              ),
-              const SizedBox(width: 8),
-              _buildCompactOperationButton(
-                icon: Icons.point_of_sale_outlined,
-                label: 'Corte',
-                color: unifiedColor,
-                foregroundColor: unifiedTextColor,
-                borderColor: unifiedBorderColor,
-                onPressed: () => context.go('/cash/history'),
-              ),
             ];
 
-            return Align(
-              alignment: Alignment.center,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: buttons,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    ...cashActions,
+                    const SizedBox(width: 14),
+                    Container(
+                      width: 1,
+                      height: 28,
+                      color: scheme.outlineVariant.withOpacity(0.75),
+                    ),
+                    const SizedBox(width: 14),
+                    ...secondaryActions,
+                  ],
                 ),
               ),
             );
@@ -3331,290 +3703,330 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   /// Panel de ticket refactorizado con 3 cards profesionales
   Widget _buildTicketPanel() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isShort =
-            constraints.maxHeight.isFinite && constraints.maxHeight < 560;
+    final theme = Theme.of(context);
+    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final dividerColor = tokens.outline.withOpacity(0.85);
 
-        final content = !isShort
-            ? Column(
-                children: [
-                  _buildTicketHeaderCard(),
-                  const SizedBox(height: 6),
-                  Expanded(child: _buildItemsListCard()),
-                  const SizedBox(height: 6),
-                  _buildTotalAndActionsCard(),
-                ],
-              )
-            : SingleChildScrollView(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    _buildTicketHeaderCard(),
-                    const SizedBox(height: 6),
-                    _buildItemsListCard(embedded: true),
-                    const SizedBox(height: 6),
-                    _buildTotalAndActionsCard(),
-                  ],
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTicketHeaderCard(embedded: true),
+          const SizedBox(height: 8),
+          Divider(height: 1, color: dividerColor),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 10, 2, 8),
+            child: Row(
+              children: [
+                Text(
+                  'Detalle',
+                  style: TextStyle(
+                    color: scheme.onSurface.withOpacity(0.92),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              );
-
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Container(color: Theme.of(context).cardColor, child: content),
-        );
-      },
+                const Spacer(),
+                Text(
+                  '${_currentCart.items.length} líneas',
+                  style: TextStyle(
+                    color: scheme.onSurface.withOpacity(0.55),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _buildItemsListCard()),
+          const SizedBox(height: 8),
+          Divider(height: 1, color: dividerColor),
+          _buildTotalAndActionsCard(embedded: true),
+        ],
+      ),
     );
   }
 
   /// CARD A: Ticket / Cliente
-  Widget _buildTicketHeaderCard() {
+  Widget _buildTicketHeaderCard({bool embedded = false}) {
     final totalTickets = _carts.length;
-    final itemCount = _currentCart.items.length;
-    final selectedClientName = _currentCart.selectedClient?.nombre.trim();
-    final selectedClientLabel =
-        selectedClientName == null || selectedClientName.isEmpty
-        ? 'Cliente general'
-        : selectedClientName;
 
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          Widget iconBox(IconData icon, VoidCallback onTap, String tooltip) {
-            return Tooltip(
-              message: tooltip,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Ink(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: scheme.primary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, size: 18, color: scheme.primary),
-                  ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Color actionBackground(bool isHovered) {
+      if (isDark) {
+        final base = scheme.surfaceContainerHighest.withOpacity(0.18);
+        final hover = scheme.surfaceContainerHighest.withOpacity(0.26);
+        return isHovered ? hover : base;
+      }
+
+      final base = Color.alphaBlend(
+        scheme.onSurface.withOpacity(0.02),
+        scheme.surfaceContainerHighest,
+      );
+      final hover = Color.alphaBlend(
+        scheme.primary.withOpacity(0.06),
+        scheme.surfaceContainerHighest,
+      );
+      return isHovered ? hover : base;
+    }
+
+    Widget actionCard({
+      required String id,
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+      bool emphasize = false,
+    }) {
+      final isHovered = _hoveredTicketHeaderActions.contains(id);
+
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) =>
+            _setHoverStateDeferred(_hoveredTicketHeaderActions, id, true),
+        onExit: (_) =>
+            _setHoverStateDeferred(_hoveredTicketHeaderActions, id, false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          transform: Matrix4.identity()..scale(isHovered ? 1.03 : 1.0),
+          transformAlignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: actionBackground(isHovered),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isHovered
+                  ? scheme.primary.withOpacity(0.22)
+                  : scheme.outlineVariant,
+            ),
+            boxShadow: [
+              if (isHovered)
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
-              ),
-            );
-          }
-
-          Widget infoChip({
-            required IconData icon,
-            required String label,
-            required VoidCallback onTap,
-            int flex = 1,
-          }) {
-            return Expanded(
-              flex: flex,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Ink(
-                    height: 34,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: scheme.primary.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(icon, size: 16, color: scheme.primary),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: scheme.onSurface,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }
-
-          Widget itemCountPill() {
-            return Tooltip(
-              message: 'Artículos en ticket',
-              child: Container(
-                height: 34,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: scheme.outlineVariant),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: scheme.primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.inventory_2_outlined,
-                        size: 16,
-                        color: scheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$itemCount',
-                      style: TextStyle(
-                        color: scheme.onSurface,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        height: 1,
+                    Icon(icon, size: 20, color: scheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: emphasize ? 13 : 12,
+                          fontWeight: emphasize
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          height: 1.1,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-            );
-          }
+            ),
+          ),
+        ),
+      );
+    }
 
-          return Row(
+    Widget iconActionButton({
+      required String id,
+      required IconData icon,
+      required VoidCallback onTap,
+      String? tooltip,
+    }) {
+      final isHovered = _hoveredTicketHeaderActions.contains(id);
+
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) =>
+            _setHoverStateDeferred(_hoveredTicketHeaderActions, id, true),
+        onExit: (_) =>
+            _setHoverStateDeferred(_hoveredTicketHeaderActions, id, false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          transform: Matrix4.identity()..scale(isHovered ? 1.03 : 1.0),
+          transformAlignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: actionBackground(isHovered),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isHovered
+                  ? scheme.primary.withOpacity(0.22)
+                  : scheme.outlineVariant,
+            ),
+            boxShadow: [
+              if (isHovered)
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Tooltip(
+                message: tooltip ?? '',
+                child: SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Center(
+                    child: Icon(icon, size: 20, color: scheme.primary),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final content = LayoutBuilder(
+      builder: (context, constraints) {
+        final ticketSelector = actionCard(
+          id: 'ticket-selector',
+          icon: Icons.receipt_long_outlined,
+          label: totalTickets == 1
+              ? _currentCart.displayName
+              : '${_currentCart.displayName} ($totalTickets)',
+          onTap: _showTicketSelector,
+          emphasize: true,
+        );
+
+        final actionButtons = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            iconActionButton(
+              id: 'client-selector',
+              icon: Icons.person_outline,
+              onTap: _showClientPicker,
+              tooltip: 'Cliente',
+            ),
+            const SizedBox(width: 6),
+            iconActionButton(
+              id: 'manual-sale',
+              icon: Icons.edit_note,
+              onTap: _showQuickItemDialog,
+              tooltip: 'Venta manual',
+            ),
+          ],
+        );
+
+        final shouldStack = constraints.maxWidth > 0 && constraints.maxWidth < 290;
+
+        if (shouldStack) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              infoChip(
-                icon: Icons.receipt_long_outlined,
-                label: totalTickets == 1
-                    ? _currentCart.displayName
-                    : '${_currentCart.displayName} ($totalTickets)',
-                onTap: _showTicketSelector,
-                flex: 4,
-              ),
-              const SizedBox(width: 8),
-              infoChip(
-                icon: Icons.person_outline,
-                label: selectedClientLabel,
-                onTap: _showClientPicker,
-                flex: 5,
-              ),
-              const SizedBox(width: 8),
-              itemCountPill(),
-              const SizedBox(width: 8),
-              iconBox(Icons.group_outlined, _showClientPicker, 'Clientes'),
-              const SizedBox(width: 6),
-              iconBox(Icons.edit_note, _showQuickItemDialog, 'Venta manual'),
+              ticketSelector,
+              const SizedBox(height: 6),
+              Align(alignment: Alignment.centerRight, child: actionButtons),
             ],
           );
-        },
+        }
+
+        return Row(
+          children: [
+            Expanded(child: ticketSelector),
+            const SizedBox(width: 6),
+            actionButtons,
+          ],
+        );
+      },
+    );
+
+    if (embedded) return content;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
       ),
+      child: content,
     );
   }
 
   /// CARD B: Detalle de la venta (lista scrollable)
   Widget _buildItemsListCard({bool embedded = false}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: salesDetailPanelColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: salesDetailBorderColor),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (!embedded &&
-              constraints.maxHeight > 0 &&
-              constraints.maxHeight < 40) {
-            return const SizedBox.shrink();
-          }
+    const emptyKey = ValueKey<String>('ticket_items_empty');
+    const listKey = ValueKey<String>('ticket_items_list');
 
-          final listContent = _currentCart.items.isEmpty
-              ? _buildEmptyCartView()
-              : embedded
-              ? ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                  itemCount: _currentCart.items.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 0),
-                  itemBuilder: (context, index) {
-                    final item = _currentCart.items[index];
-                    return _buildCartItemRow(item, index);
-                  },
-                )
-              : Scrollbar(
-                  controller: _ticketItemsScrollController,
-                  thumbVisibility: true,
-                  child: ListView.separated(
-                    controller: _ticketItemsScrollController,
-                    primary: false,
-                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                    itemCount: _currentCart.items.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 0),
-                    itemBuilder: (context, index) {
-                      final item = _currentCart.items[index];
-                      return _buildCartItemRow(item, index);
-                    },
-                  ),
-                );
-
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-                child: Row(
-                  children: [
-                    Text(
-                      'Detalle',
-                      style: TextStyle(
-                        color: salesDetailTextColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${_currentCart.items.length} líneas',
-                      style: TextStyle(
-                        color: salesDetailMutedTextColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
+    final listContent = _currentCart.items.isEmpty
+        ? KeyedSubtree(key: emptyKey, child: _buildEmptyCartView())
+        : embedded
+        ? KeyedSubtree(
+            key: listKey,
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
+              itemCount: _currentCart.items.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 0),
+              itemBuilder: (context, index) {
+                final item = _currentCart.items[index];
+                return _buildCartItemRow(item, index);
+              },
+            ),
+          )
+        : KeyedSubtree(
+            key: listKey,
+            child: Scrollbar(
+              controller: _ticketItemsScrollController,
+              thumbVisibility: true,
+              child: ListView.separated(
+                controller: _ticketItemsScrollController,
+                primary: false,
+                padding: const EdgeInsets.fromLTRB(2, 0, 2, 6),
+                itemCount: _currentCart.items.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 0),
+                itemBuilder: (context, index) {
+                  final item = _currentCart.items[index];
+                  return _buildCartItemRow(item, index);
+                },
               ),
-              Divider(height: 1, color: salesDetailBorderColor),
-              Expanded(child: listContent),
-            ],
+            ),
           );
-        },
-      ),
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return FadeTransition(
+          opacity: fade,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.985, end: 1.0).animate(fade),
+            child: child,
+          ),
+        );
+      },
+      child: listContent,
     );
   }
 
@@ -3623,15 +4035,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       builder: (context, constraints) {
         final compact =
             constraints.maxHeight > 0 && constraints.maxHeight < 120;
-        final iconSize = compact ? 34.0 : 48.0;
-        final titleSize = compact ? 13.0 : 15.0;
+        final iconSize = compact ? 40.0 : 48.0;
+        final titleSize = compact ? 14.0 : 16.0;
         final subtitleSize = compact ? 11.0 : 12.0;
-        final gap1 = compact ? 8.0 : 12.0;
+        final gap1 = compact ? 10.0 : 12.0;
         final gap2 = compact ? 4.0 : 6.0;
 
         return Center(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -3644,9 +4056,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 Text(
                   'Ticket vacío',
                   style: TextStyle(
-                    color: salesDetailTextColor.withOpacity(0.8),
+                    color: salesDetailTextColor.withOpacity(0.9),
                     fontSize: titleSize,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
                   ),
                 ),
                 SizedBox(height: gap2),
@@ -3656,6 +4069,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   style: TextStyle(
                     color: salesDetailTextColor.withOpacity(0.55),
                     fontSize: subtitleSize,
+                    height: 1.2,
                   ),
                 ),
               ],
@@ -3675,37 +4089,38 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       onTap: () => setState(() => _selectedCartItemIndex = index),
       onDoubleTap: () => _showEditItemDialog(item, index),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? scheme.primary.withOpacity(0.05)
+              ? scheme.primary.withOpacity(0.055)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           border: isSelected
-              ? Border.all(color: scheme.primary.withOpacity(0.22), width: 1.2)
+              ? Border.all(color: scheme.primary.withOpacity(0.18), width: 1.2)
               : Border(bottom: BorderSide(color: rowDividerColor, width: 1)),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(8),
+                color: scheme.surfaceContainerHighest.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Center(
                 child: Text(
                   '${item.qty.toInt()}',
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     color: salesDetailTextColor,
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
 
             Expanded(
               child: Column(
@@ -3714,25 +4129,29 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   Text(
                     item.productNameSnapshot,
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
                       color: salesDetailTextColor,
+                      height: 1.15,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
-                    '${item.productCodeSnapshot}  •  RD\$${item.unitPrice.toStringAsFixed(2)}',
+                    '${item.productCodeSnapshot}  •  Unitario RD\$${item.unitPrice.toStringAsFixed(2)}',
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 10.5,
                       color: salesDetailMutedTextColor,
+                      fontWeight: FontWeight.w500,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 12),
 
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -3751,7 +4170,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
               ],
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
 
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -3765,12 +4184,22 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                Text(
-                  'RD\$${subtotal.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: salesDetailTextColor,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'RD\$${subtotal.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.primary,
+                    ),
                   ),
                 ),
               ],
@@ -3810,7 +4239,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withOpacity(0.45),
+          color: scheme.surfaceContainerHighest.withOpacity(0.55),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
@@ -3822,7 +4251,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
-  Widget _buildTotalAndActionsCard() {
+  Widget _buildTotalAndActionsCard({bool embedded = false}) {
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -3830,144 +4259,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: Column(
             children: [
-              Row(
-                children: [
-                  Text(
-                    'Resumen',
-                    style: TextStyle(
-                      color: salesDetailTextColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Resumen de venta',
+                  style: TextStyle(
+                    color: salesDetailTextColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
                   ),
-                  Spacer(),
-                  Text(
-                    'e-CF y total',
-                    style: TextStyle(
-                      color: salesDetailMutedTextColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: scheme.surfaceContainerHighest.withOpacity(0.4),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'ITBIS ${(_currentCart.itbisRate * 100).toInt()}%',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: salesDetailTextColor,
-                              ),
-                            ),
-                          ),
-                          Switch(
-                            value: _currentCart.itbisEnabled,
-                            onChanged: _currentCart.electronicInvoiceEnabled
-                                ? null
-                                : (value) => _updateCurrentCart(
-                                    () => _currentCart.itbisEnabled = value,
-                                  ),
-                            activeColor: scheme.primary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: scheme.surfaceContainerHighest.withOpacity(0.4),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'e-CF',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: salesDetailTextColor,
-                              ),
-                            ),
-                          ),
-                          Switch(
-                            value: _currentCart.electronicInvoiceEnabled,
-                            onChanged: (value) async {
-                              if (!value) {
-                                _updateCurrentCart(() {
-                                  _currentCart.electronicInvoiceEnabled = false;
-                                });
-                                return;
-                              }
-
-                              if (!await _canEnableElectronicInvoiceOrNotify()) {
-                                return;
-                              }
-
-                              _updateCurrentCart(() {
-                                _currentCart.electronicInvoiceEnabled = true;
-                                _currentCart.itbisEnabled = true;
-                              });
-                              await _refreshElectronicCompany();
-                            },
-                            activeColor: scheme.secondary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              if (_currentCart.electronicInvoiceEnabled) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _electronicCompany == null
-                            ? 'e-CF: cargando configuracion electronica...'
-                            : 'e-CF ${_electronicCompany!.environment.toUpperCase()} listo para DGII',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: salesDetailMutedTextColor,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => context.push('/electronic-documents'),
-                      child: const Text(
-                        'Configurar',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
                 ),
-              ],
+              ),
+              const SizedBox(height: 4),
             ],
           ),
         ),
@@ -3984,30 +4288,28 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   ? _currentCart.calculateItbis()
                   : 0.0;
               final totalAmount = _currentCart.calculateTotal();
+              final subtotalAmount = (grossSubtotal - discountsCombined).clamp(
+                0.0,
+                double.infinity,
+              );
 
               return Column(
                 children: [
-                  _buildSummaryRow('Subtotal:', grossSubtotal, false),
+                  _buildSummaryRow('Subtotal', subtotalAmount, false),
                   if (discountsCombined > 0) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     _buildSummaryRow(
-                      'Descuentos:',
+                      'Descuentos',
                       discountsCombined,
                       false,
                       color: scheme.error,
                     ),
                   ],
-                  if (_currentCart.itbisEnabled) ...[
-                    const SizedBox(height: 4),
-                    _buildSummaryRow(
-                      'ITBIS ${(_currentCart.itbisRate * 100).toInt()}%:',
-                      itbisAmount,
-                      false,
-                    ),
-                  ],
-                  if (_currentCart.itbisEnabled || discountsCombined > 0) ...[
+                  const SizedBox(height: 6),
+                  _buildSummaryRow('ITBIS (18%)', itbisAmount, false),
+                  if (discountsCombined > 0 || _currentCart.itbisEnabled) ...[
                     Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
+                      padding: EdgeInsets.symmetric(vertical: 10),
                       child: Divider(
                         thickness: 1,
                         color: salesDetailBorderColor,
@@ -4020,7 +4322,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     child: Tooltip(
                       message: 'Doble click para descuento',
                       child: Container(
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                         decoration: BoxDecoration(
                           color: scheme.primary.withOpacity(
                             _currentCart.items.isEmpty ? 0.05 : 0.08,
@@ -4031,32 +4336,45 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ),
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.attach_money,
-                                  size: 20,
-                                  color: scheme.primary,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'TOTAL:',
+                            Flexible(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.attach_money,
+                                    size: 20,
+                                    color: scheme.primary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      'TOTAL',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                        color: scheme.primary,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FittedBox(
+                                alignment: Alignment.centerRight,
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'RD\$${totalAmount.toStringAsFixed(2)}',
                                   style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w900,
                                     color: scheme.primary,
                                   ),
                                 ),
-                              ],
-                            ),
-                            Text(
-                              'RD\$${totalAmount.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w800,
-                                color: salesDetailTextColor,
                               ),
                             ),
                           ],
@@ -4077,21 +4395,41 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               Expanded(
                 child: SizedBox(
                   height: 52,
-                  child: ElevatedButton.icon(
-                    onPressed: _currentCart.items.isEmpty
-                        ? null
-                        : () => _processPayment(SaleKind.invoice),
-                    icon: const Icon(Icons.payment, size: 22),
+                  child: OutlinedButton.icon(
+                    onPressed: _openFacturaPage,
+                    icon: const Icon(Icons.receipt_long_outlined, size: 20),
                     label: const Text(
-                      'COBRAR (F8)',
+                      'FACTURA',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
                       ),
                     ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.primary,
+                      side: BorderSide(color: scheme.primary.withOpacity(0.35)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _currentCart.items.isEmpty
+                        ? null
+                        : () => _processPayment(
+                            SaleKind.invoice,
+                            initialPrintTicket: false,
+                          ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _currentCart.items.isEmpty
                           ? scheme.surfaceContainerHighest
@@ -4106,70 +4444,25 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       elevation: 0,
                       shadowColor: Colors.transparent,
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 52,
-                width: 132,
-                child: OutlinedButton.icon(
-                  onPressed: _currentCart.items.isEmpty ? null : _saveAsQuote,
-                  icon: Icon(
-                    Icons.description_outlined,
-                    size: 18,
-                    color: _currentCart.items.isEmpty
-                        ? scheme.onSurface.withOpacity(0.38)
-                        : scheme.primary,
-                  ),
-                  label: Text(
-                    'Cotizar',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
-                      color: _currentCart.items.isEmpty
-                          ? scheme.onSurface.withOpacity(0.38)
-                          : scheme.primary,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.payment, size: 22),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'COBRAR (F8)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  style: ButtonStyle(
-                    padding: const WidgetStatePropertyAll(
-                      EdgeInsets.symmetric(horizontal: 10),
-                    ),
-                    backgroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (_currentCart.items.isEmpty) {
-                        return scheme.surface;
-                      }
-                      if (states.contains(WidgetState.hovered)) {
-                        return scheme.primary.withOpacity(0.08);
-                      }
-                      return scheme.surface;
-                    }),
-                    foregroundColor: WidgetStateProperty.resolveWith((states) {
-                      if (_currentCart.items.isEmpty) {
-                        return scheme.onSurface.withOpacity(0.38);
-                      }
-                      return scheme.primary;
-                    }),
-                    shape: WidgetStatePropertyAll(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    side: WidgetStatePropertyAll(
-                      BorderSide(
-                        color: _currentCart.items.isEmpty
-                            ? scheme.outlineVariant
-                            : scheme.primary.withOpacity(0.22),
-                      ),
-                    ),
-                    overlayColor: WidgetStatePropertyAll(
-                      scheme.primary.withOpacity(0.08),
-                    ),
-                    elevation: const WidgetStatePropertyAll(0),
                   ),
                 ),
               ),
@@ -4179,17 +4472,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ],
     );
 
+    if (embedded) return content;
+
     return Container(
       decoration: BoxDecoration(
         color: salesDetailPanelColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: salesDetailBorderColor),
       ),
       margin: EdgeInsets.zero,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 320, maxWidth: 460),
-        child: content,
-      ),
+      child: content,
     );
   }
 
@@ -4204,20 +4496,25 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final valueColor = color ?? baseColor;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: labelColor,
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: isTotal ? 13 : 12,
+              fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
+              color: labelColor,
+              height: 1.15,
+            ),
           ),
         ),
+        const SizedBox(width: 12),
         Text(
           'RD\$${amount.toStringAsFixed(2)}',
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
+            fontSize: isTotal ? 15 : 13,
+            fontWeight: isTotal ? FontWeight.w800 : FontWeight.bold,
             color: valueColor,
           ),
         ),
@@ -4372,115 +4669,118 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: scheme.outlineVariant.withOpacity(0.6),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'e-CF',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  if (_currentCart.electronicInvoiceEnabled)
-                                    const Text(
-                                      'Envío DGII activo',
-                                      style: TextStyle(fontSize: 11),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: _currentCart.electronicInvoiceEnabled,
-                              onChanged: (value) async {
-                                if (!value) {
-                                  _updateCurrentCart(() {
-                                    _currentCart.electronicInvoiceEnabled =
-                                        false;
-                                  });
-                                  return;
-                                }
-
-                                if (!await _canEnableElectronicInvoiceOrNotify()) {
-                                  return;
-                                }
-
-                                // Activar emisión electrónica implica ITBIS activo
-                                _updateCurrentCart(() {
-                                  _currentCart.electronicInvoiceEnabled = true;
-                                  _currentCart.itbisEnabled = true;
-                                });
-                                await _refreshElectronicCompany();
-                              },
-                              activeColor: scheme.secondary,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_currentCart.electronicInvoiceEnabled) ...[
+                      if (_isElectronicInvoicingFeatureEnabled) ...[
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: scheme.secondaryContainer.withOpacity(0.2),
-                            border: Border.all(color: scheme.secondary),
-                            borderRadius: BorderRadius.circular(8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: scheme.outlineVariant.withOpacity(0.6),
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                'Factura electrónica DGII',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: scheme.onSecondaryContainer,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      _electronicCompany == null
-                                          ? 'Cargando configuracion electronica...'
-                                          : 'Ambiente ${_electronicCompany!.environment.toUpperCase()} listo para emitir y enviar a DGII.',
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'e-CF',
                                       style: TextStyle(
-                                        fontSize: 11,
-                                        color: scheme.onSurfaceVariant,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () =>
-                                        context.push('/electronic-documents'),
-                                    icon: const Icon(
-                                      Icons.settings_outlined,
-                                      size: 16,
-                                    ),
-                                    label: const Text('Abrir'),
-                                  ),
-                                ],
+                                    if (_currentCart.electronicInvoiceEnabled)
+                                      const Text(
+                                        'Envío DGII activo',
+                                        style: TextStyle(fontSize: 11),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Switch(
+                                value: _currentCart.electronicInvoiceEnabled,
+                                onChanged: (value) async {
+                                  if (!value) {
+                                    _updateCurrentCart(() {
+                                      _currentCart.electronicInvoiceEnabled =
+                                          false;
+                                    });
+                                    return;
+                                  }
+
+                                  if (!await _canEnableElectronicInvoiceOrNotify()) {
+                                    return;
+                                  }
+
+                                  // Activar emisión electrónica implica ITBIS activo
+                                  _updateCurrentCart(() {
+                                    _currentCart.electronicInvoiceEnabled =
+                                        true;
+                                    _currentCart.itbisEnabled = true;
+                                  });
+                                  await _refreshElectronicCompany();
+                                },
+                                activeColor: scheme.secondary,
                               ),
                             ],
                           ),
                         ),
+                        if (_currentCart.electronicInvoiceEnabled) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: scheme.secondaryContainer.withOpacity(0.2),
+                              border: Border.all(color: scheme.secondary),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Factura electrónica DGII',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: scheme.onSecondaryContainer,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _electronicCompany == null
+                                            ? 'Cargando configuracion electronica...'
+                                            : 'Ambiente ${_electronicCompany!.environment.toUpperCase()} listo para emitir y enviar a DGII.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          context.push('/electronic-documents'),
+                                      icon: const Icon(
+                                        Icons.settings_outlined,
+                                        size: 16,
+                                      ),
+                                      label: const Text('Abrir'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -4557,14 +4857,39 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Column(
+                  child: Row(
                     children: [
-                      SizedBox(
-                        width: double.infinity,
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _openFacturaPage,
+                          icon: const Icon(Icons.receipt_long_outlined, size: 20),
+                          label: const Text(
+                            'FACTURA',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: scheme.primary,
+                            side: BorderSide(color: scheme.primary.withOpacity(0.35)),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
                         child: ElevatedButton.icon(
                           onPressed: _currentCart.items.isEmpty
                               ? null
-                              : () => _processPayment(SaleKind.invoice),
+                              : () => _processPayment(
+                                  SaleKind.invoice,
+                                  initialPrintTicket: false,
+                                ),
                           icon: const Icon(Icons.payment, size: 24),
                           label: const Text(
                             'COBRAR',
@@ -4579,26 +4904,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _currentCart.items.isEmpty
-                              ? null
-                              : _saveAsQuote,
-                          icon: const Icon(Icons.description),
-                          label: const Text('COTIZAR'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: scheme.secondary,
-                            foregroundColor: scheme.onSecondary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 1,
                           ),
                         ),
                       ),
@@ -4991,6 +5296,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _applySalesDefaultsToCart(cart);
         _carts.add(cart);
         _currentCartIndex = _carts.length - 1;
+        _rebuildQtyIndexForCurrentCart();
       });
 
       if (Navigator.of(dialogContext).canPop()) {
@@ -5015,6 +5321,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         if (_currentCartIndex >= _carts.length) {
           _currentCartIndex = _carts.isEmpty ? 0 : _carts.length - 1;
         }
+        _rebuildQtyIndexForCurrentCart();
       });
 
       try {
@@ -5180,7 +5487,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       );
 
       if (!mounted || selected == null) return;
-      setState(() => _currentCartIndex = selected);
+      setState(() {
+        _currentCartIndex = selected;
+        _rebuildQtyIndexForCurrentCart();
+      });
     } finally {
       // Defer disposal to the next frame so the dialog tree has fully
       // unmounted before disposing controllers used by TextFields.
@@ -5354,6 +5664,9 @@ class _DialogHotkeys extends StatelessWidget {
     );
   }
 }
+
+
+enum _SalesDocumentType { consumidorFinal, creditoFiscal, cotizacion }
 
 class _Cart {
   String name;

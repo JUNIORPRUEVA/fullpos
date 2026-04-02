@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../constants/app_sizes.dart';
 import '../errors/app_exception.dart';
@@ -30,6 +31,26 @@ class AppErrorDialog extends StatefulWidget {
 class _AppErrorDialogState extends State<AppErrorDialog> {
   bool _showDetails = false;
 
+  String _buildDebugText(AppException ex) {
+    return [
+      ex.messageDev,
+      if (ex.stackTrace != null) '\n\n${ex.stackTrace}',
+    ].join();
+  }
+
+  Future<void> _copyDetails(AppException ex) async {
+    final text = _buildDebugText(ex).trim();
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(
+        content: Text('Detalles copiados al portapapeles'),
+        duration: Duration(milliseconds: 900),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ex = widget.exception;
@@ -39,6 +60,7 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
     final status = theme.extension<AppStatusTheme>();
     final errorColor = status?.error ?? scheme.error;
     final linkColor = scheme.primary;
+    final hasDevDetails = ex.messageDev.trim().isNotEmpty || ex.stackTrace != null;
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
@@ -69,7 +91,7 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
                 ex.messageUser,
                 style: theme.textTheme.bodyMedium?.copyWith(height: 1.25),
               ),
-              if (kDebugMode) ...[
+              if (kDebugMode || hasDevDetails) ...[
                 const SizedBox(height: AppSizes.spaceM),
                 InkWell(
                   onTap: () => setState(() => _showDetails = !_showDetails),
@@ -93,6 +115,15 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
                 ),
                 if (_showDetails) ...[
                   const SizedBox(height: AppSizes.spaceS),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: hasDevDetails ? () => _copyDetails(ex) : null,
+                      icon: const Icon(Icons.copy, size: 18),
+                      label: const Text('Copiar detalles'),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(AppSizes.paddingM),
@@ -102,10 +133,7 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
                       border: Border.all(color: scheme.outlineVariant),
                     ),
                     child: SelectableText(
-                      [
-                        ex.messageDev,
-                        if (ex.stackTrace != null) '\n\n${ex.stackTrace}',
-                      ].join(),
+                      _buildDebugText(ex),
                       style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
                     ),
                   ),

@@ -7,6 +7,7 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:sqflite/sqflite.dart';
 
 import '../../features/products/models/product_model.dart';
+import '../db/database_manager.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../db/app_db.dart';
 import '../db/tables.dart';
@@ -44,6 +45,29 @@ class ProductSyncService {
   bool _started = false;
   io.Socket? _socket;
   final Set<String> _seenEventIds = <String>{};
+
+  Future<T> _withRecoveredDb<T>(Future<T> Function(Database db) action) async {
+    Future<T> run() async {
+      final db = await AppDb.database;
+      return action(db);
+    }
+
+    try {
+      return await run();
+    } catch (error) {
+      if (!_isClosedDatabaseError(error)) rethrow;
+      await DatabaseManager.instance.reopen(reason: 'product_sync_service');
+      return run();
+    }
+  }
+
+  bool _isClosedDatabaseError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('database has already been closed') ||
+        message.contains('database_closed') ||
+        message.contains('database is closed') ||
+        message.contains('bad state: this database has already been closed');
+  }
 
   void start() {
     if (_started) return;
@@ -100,8 +124,9 @@ class ProductSyncService {
           );
 
           try {
-            final payload = jsonDecode(item['payload_json'] as String)
-                as Map<String, dynamic>;
+            final payload =
+                jsonDecode(item['payload_json'] as String)
+                    as Map<String, dynamic>;
             final response = await _pushOperation(payload);
             await _applyServerProduct(
               response.product,
@@ -167,7 +192,9 @@ class ProductSyncService {
       throw StateError('Cloud company not configured');
     }
 
-    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(settings);
+    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
+      settings,
+    );
     final headers = <String, String>{'Content-Type': 'application/json'};
     final cloudKey = settings.cloudApiKey?.trim();
     if (cloudKey != null && cloudKey.isNotEmpty) {
@@ -254,7 +281,9 @@ class ProductSyncService {
   ProductModel _serverProductFromJson(Map<String, dynamic> json) {
     final updatedAt = DateTime.parse(json['updatedAt'] as String);
     final deletedAtRaw = json['deletedAt'] as String?;
-    final deletedAt = deletedAtRaw == null ? null : DateTime.parse(deletedAtRaw);
+    final deletedAt = deletedAtRaw == null
+        ? null
+        : DateTime.parse(deletedAtRaw);
     return ProductModel(
       id: 0,
       businessId: json['businessId']?.toString(),
@@ -286,90 +315,94 @@ class ProductSyncService {
     required bool clearSyncError,
     required bool markNeedsSync,
   }) async {
-    final db = await AppDb.database;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    await _withRecoveredDb((db) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
 
-    await db.transaction((txn) async {
-      final localRows = await txn.query(
-        DbTables.products,
-        where: 'server_id = ? OR code = ?',
-        whereArgs: [serverProduct.serverId, serverProduct.code],
-        limit: 1,
-      );
-
-      final localId = localRows.isEmpty
-          ? null
-          : (localRows.first['id'] as int?);
-      final local = localRows.isEmpty ? null : ProductModel.fromMap(localRows.first);
-
-      if (local != null &&
-          local.needsSync &&
-          serverProduct.version > local.version &&
-          markNeedsSync == false) {
-        throw _ProductSyncConflict(
-          localProductId: local.id ?? 0,
-          serverProduct: serverProduct,
-          message: 'server_version_newer_than_local_pending_change',
-        );
-      }
-
-      final values = <String, Object?>{
-        'business_id': serverProduct.businessId,
-        'server_id': serverProduct.serverId,
-        'code': serverProduct.code,
-        'name': serverProduct.name,
-        'image_url': serverProduct.imageUrl,
-        'purchase_price': serverProduct.purchasePrice,
-        'sale_price': serverProduct.salePrice,
-        'stock': serverProduct.stock,
-        'is_active': serverProduct.isActive ? 1 : 0,
-        'sync_status': markNeedsSync ? 'pending' : 'synced',
-        'local_updated_at_ms': local?.localUpdatedAtMs ?? serverProduct.localUpdatedAtMs,
-        'server_updated_at_ms': serverProduct.serverUpdatedAtMs,
-        'version': serverProduct.version,
-        'last_modified_by': serverProduct.lastModifiedBy,
-        'last_sync_error': clearSyncError ? null : serverProduct.lastSyncError,
-        'needs_sync': markNeedsSync ? 1 : 0,
-        'last_synced_at_ms': now,
-        'deleted_at_ms': serverProduct.deletedAtMs,
-        'updated_at_ms': serverProduct.serverUpdatedAtMs ?? serverProduct.updatedAtMs,
-      };
-
-      if (localId == null) {
-        await txn.insert(
+      await db.transaction((txn) async {
+        final localRows = await txn.query(
           DbTables.products,
-          {
+          where: 'server_id = ? OR code = ?',
+          whereArgs: [serverProduct.serverId, serverProduct.code],
+          limit: 1,
+        );
+
+        final localId = localRows.isEmpty
+            ? null
+            : (localRows.first['id'] as int?);
+        final local = localRows.isEmpty
+            ? null
+            : ProductModel.fromMap(localRows.first);
+
+        if (local != null &&
+            local.needsSync &&
+            serverProduct.version > local.version &&
+            markNeedsSync == false) {
+          throw _ProductSyncConflict(
+            localProductId: local.id ?? 0,
+            serverProduct: serverProduct,
+            message: 'server_version_newer_than_local_pending_change',
+          );
+        }
+
+        final values = <String, Object?>{
+          'business_id': serverProduct.businessId,
+          'server_id': serverProduct.serverId,
+          'code': serverProduct.code,
+          'name': serverProduct.name,
+          'image_url': serverProduct.imageUrl,
+          'purchase_price': serverProduct.purchasePrice,
+          'sale_price': serverProduct.salePrice,
+          'stock': serverProduct.stock,
+          'is_active': serverProduct.isActive ? 1 : 0,
+          'sync_status': markNeedsSync ? 'pending' : 'synced',
+          'local_updated_at_ms':
+              local?.localUpdatedAtMs ?? serverProduct.localUpdatedAtMs,
+          'server_updated_at_ms': serverProduct.serverUpdatedAtMs,
+          'version': serverProduct.version,
+          'last_modified_by': serverProduct.lastModifiedBy,
+          'last_sync_error': clearSyncError
+              ? null
+              : serverProduct.lastSyncError,
+          'needs_sync': markNeedsSync ? 1 : 0,
+          'last_synced_at_ms': now,
+          'deleted_at_ms': serverProduct.deletedAtMs,
+          'updated_at_ms':
+              serverProduct.serverUpdatedAtMs ?? serverProduct.updatedAtMs,
+        };
+
+        if (localId == null) {
+          await txn.insert(DbTables.products, {
             ...serverProduct.toMap(),
             ...values,
             'created_at_ms': serverProduct.createdAtMs,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      } else {
-        await txn.update(
-          DbTables.products,
-          values,
-          where: 'id = ?',
-          whereArgs: [localId],
-        );
-      }
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        } else {
+          await txn.update(
+            DbTables.products,
+            values,
+            where: 'id = ?',
+            whereArgs: [localId],
+          );
+        }
 
-      final resolvedId = localId ??
-          Sqflite.firstIntValue(
-            await txn.rawQuery(
-              'SELECT id FROM ${DbTables.products} WHERE server_id = ? OR code = ? ORDER BY id DESC LIMIT 1',
-              [serverProduct.serverId, serverProduct.code],
+        final resolvedId =
+            localId ??
+            Sqflite.firstIntValue(
+              await txn.rawQuery(
+                'SELECT id FROM ${DbTables.products} WHERE server_id = ? OR code = ? ORDER BY id DESC LIMIT 1',
+                [serverProduct.serverId, serverProduct.code],
+              ),
+            );
+        if (resolvedId != null) {
+          ProductSyncEventBus.instance.emit(
+            ProductSyncChange(
+              localProductId: resolvedId,
+              serverProductId: serverProduct.serverId,
+              reason: 'server_snapshot_applied',
             ),
           );
-      if (resolvedId != null) {
-        ProductSyncEventBus.instance.emit(
-          ProductSyncChange(
-            localProductId: resolvedId,
-            serverProductId: serverProduct.serverId,
-            reason: 'server_snapshot_applied',
-          ),
-        );
-      }
+        }
+      });
     });
   }
 
@@ -377,31 +410,30 @@ class ProductSyncService {
     required int localProductId,
     required String message,
   }) async {
-    final db = await AppDb.database;
-    await db.update(
-      DbTables.products,
-      {
-        'sync_status': 'failed',
-        'last_sync_error': message,
-        'needs_sync': 1,
-        'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
-      },
-      where: 'id = ?',
-      whereArgs: [localProductId],
-    );
+    await _withRecoveredDb((db) async {
+      await db.update(
+        DbTables.products,
+        {
+          'sync_status': 'failed',
+          'last_sync_error': message,
+          'needs_sync': 1,
+          'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: [localProductId],
+      );
+    });
   }
 
   Future<void> _markConflict(ProductModel serverProduct, String message) async {
-    final db = await AppDb.database;
-    await db.update(
-      DbTables.products,
-      {
-        'sync_status': 'conflict',
-        'last_sync_error': message,
-      },
-      where: 'server_id = ? OR code = ?',
-      whereArgs: [serverProduct.serverId, serverProduct.code],
-    );
+    await _withRecoveredDb((db) async {
+      await db.update(
+        DbTables.products,
+        {'sync_status': 'conflict', 'last_sync_error': message},
+        where: 'server_id = ? OR code = ?',
+        whereArgs: [serverProduct.serverId, serverProduct.code],
+      );
+    });
   }
 
   Future<void> _ensureRealtimeConnection() async {
@@ -424,7 +456,9 @@ class ProductSyncService {
       return;
     }
 
-    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(settings);
+    final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
+      settings,
+    );
     final options = io.OptionBuilder()
         .setTransports(['websocket'])
         .disableAutoConnect()

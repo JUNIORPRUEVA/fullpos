@@ -54,23 +54,14 @@ class ProductCard extends StatelessWidget {
 
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: scheme.surface.withOpacity(0.98),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: borderColor,
-              width: isSelected ? 1.2 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: scheme.shadow.withOpacity(isSelected ? 0.08 : 0.04),
-                blurRadius: isSelected ? 18 : 14,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            color: isSelected
+                ? scheme.primary.withOpacity(0.055)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             hoverColor: theme.hoverColor,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -376,7 +367,7 @@ class ProductCard extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       visualDensity: VisualDensity.compact,
       style: IconButton.styleFrom(
-        backgroundColor: color.withOpacity(0.08),
+          backgroundColor: Colors.transparent,
         foregroundColor: color,
       ),
     );

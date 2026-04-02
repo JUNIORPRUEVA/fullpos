@@ -88,6 +88,7 @@ dependencies:
 
   # ZIP (backup/restauración)
   archive: ^3.6.1
+  phosphor_flutter: ^2.1.0
 
 dev_dependencies:
   flutter_test:
@@ -143,6 +144,7 @@ flutter:
 
   # Assets de la aplicación
   assets:
+    - assets/backgrounds/
     - assets/imagen/
 
   # An image asset can refer to one or more resolution-specific "variants", see

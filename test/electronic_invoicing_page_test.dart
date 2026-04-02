@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/db_init.dart';
@@ -53,7 +54,7 @@ void main() {
 
   Future<void> pumpPage(WidgetTester tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: ElectronicInvoicingPage()),
+      const ProviderScope(child: MaterialApp(home: ElectronicInvoicingPage())),
     );
     await tester.pumpAndSettle();
   }
@@ -113,41 +114,71 @@ void main() {
     expect(find.text('Ir a configuración'), findsOneWidget);
   });
 
-  test('repository clears duplicated company identity fields on save', () async {
-    await AppDb.resetForTests();
+  test(
+    'repository clears duplicated company identity fields on save',
+    () async {
+      await AppDb.resetForTests();
 
-    final saved = await ElectronicCompanyRepository.save(
-      ElectronicCompanyModel.defaults().copyWith(
-        businessName: 'Empresa duplicada',
-        tradeName: 'Trade duplicado',
-        rnc: '999999999',
-        emissionAddress: 'Direccion duplicada',
-        phone: '8090000000',
-        email: 'duplicado@correo.com',
-        environment: 'produccion',
-        apiToken: 'token-seguro',
-        certificateName: 'certificado',
-        automaticEmission: 0,
+      final saved = await ElectronicCompanyRepository.save(
+        ElectronicCompanyModel.defaults().copyWith(
+          businessName: 'Empresa duplicada',
+          tradeName: 'Trade duplicado',
+          rnc: '999999999',
+          emissionAddress: 'Direccion duplicada',
+          phone: '8090000000',
+          email: 'duplicado@correo.com',
+          environment: 'produccion',
+          apiToken: 'token-seguro',
+          certificateName: 'certificado',
+          automaticEmission: 0,
+        ),
+      );
+
+      expect(saved.businessName, isEmpty);
+      expect(saved.rnc, isEmpty);
+
+      final db = await AppDb.database;
+      final rows = await db.query('electronic_company', limit: 1);
+      expect(rows, isNotEmpty);
+
+      final row = rows.first;
+      expect(row['business_name'], '');
+      expect(row['trade_name'], '');
+      expect(row['rnc'], '');
+      expect(row['emission_address'], '');
+      expect(row['phone'], '');
+      expect(row['email'], '');
+      expect(row['environment'], 'produccion');
+      expect(row['api_token'], 'token-seguro');
+      expect(row['certificate_name'], 'certificado');
+      expect(row['automatic_emission'], 0);
+    },
+  );
+
+  testWidgets('persists sales activation toggle in business settings', (
+    tester,
+  ) async {
+    await BusinessSettingsRepository().saveSettings(
+      BusinessSettings(
+        businessName: 'FULLTECH SRL',
+        electronicInvoicingEnabled: false,
       ),
     );
 
-    expect(saved.businessName, isEmpty);
-    expect(saved.rnc, isEmpty);
+    final company = await ElectronicCompanyRepository.getOrCreate();
+    await ElectronicCompanyRepository.save(
+      company.copyWith(environment: 'pruebas', automaticEmission: 1),
+    );
 
-    final db = await AppDb.database;
-    final rows = await db.query('electronic_company', limit: 1);
-    expect(rows, isNotEmpty);
+    await pumpPage(tester);
 
-    final row = rows.first;
-    expect(row['business_name'], '');
-    expect(row['trade_name'], '');
-    expect(row['rnc'], '');
-    expect(row['emission_address'], '');
-    expect(row['phone'], '');
-    expect(row['email'], '');
-    expect(row['environment'], 'produccion');
-    expect(row['api_token'], 'token-seguro');
-    expect(row['certificate_name'], 'certificado');
-    expect(row['automatic_emission'], 0);
+    expect(find.text('Disponibilidad en ventas'), findsOneWidget);
+    expect(find.text('Activar facturación electrónica'), findsOneWidget);
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+
+    final settings = await BusinessSettingsRepository().loadSettings();
+    expect(settings.electronicInvoicingEnabled, isTrue);
   });
 }

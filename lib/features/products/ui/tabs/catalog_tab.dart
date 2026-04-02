@@ -33,7 +33,14 @@ import '../../../../theme/app_colors.dart' as ui_colors;
 
 /// Tab de Catálogo de Productos
 class CatalogTab extends StatefulWidget {
-  const CatalogTab({super.key});
+  const CatalogTab({
+    super.key,
+    required this.onOpenInventory,
+    required this.onOpenCategories,
+  });
+
+  final VoidCallback onOpenInventory;
+  final VoidCallback onOpenCategories;
 
   @override
   State<CatalogTab> createState() => _CatalogTabState();
@@ -345,7 +352,9 @@ class _CatalogTabState extends State<CatalogTab> {
       if (mounted) {
         setState(() {
           _products = products;
-          if (_selectedProduct != null) {
+          if (products.isEmpty) {
+            _selectedProduct = null;
+          } else if (_selectedProduct != null) {
             _selectedProduct = products.firstWhere(
               (p) => p.id == _selectedProduct!.id,
               orElse: () => _selectedProduct!,
@@ -1226,8 +1235,35 @@ class _CatalogTabState extends State<CatalogTab> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 1200;
+        final isWide = constraints.maxWidth >= 1024;
+        final compactToolbar = constraints.maxWidth < 1180;
         final padding = _contentPadding(constraints);
+
+        Widget buildNavButton({
+          required String label,
+          required IconData icon,
+          required VoidCallback onPressed,
+        }) {
+          return OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon, size: 16),
+            label: Text(label),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: ui_colors.AppColors.textPrimary,
+              backgroundColor: ui_colors.AppColors.cardBackground,
+              side: const BorderSide(color: ui_colors.AppColors.borderSoft),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              textStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Inter',
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
 
         final listContent = Column(
           children: [
@@ -1235,87 +1271,209 @@ class _CatalogTabState extends State<CatalogTab> {
             Material(
               elevation: 0,
               color: scheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          hintText: 'Buscar por código o nombre...',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    _loadProducts();
-                                  },
-                                )
-                              : null,
-                          border: InputBorder.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(
-                        Icons.filter_list,
-                        color: _currentFilters?.hasFilters == true
-                            ? scheme.primary
-                            : null,
-                      ),
-                      onPressed: _showFilters,
-                      tooltip: 'Filtros',
-                    ),
-                    const SizedBox(width: 6),
-                    ElevatedButton.icon(
-                      onPressed: () => _showProductForm(),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Agregar producto'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.more_vert),
-                      onPressed: _showCatalogActions,
-                      tooltip: 'Acciones',
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.table_view),
-                      onPressed: _exportProductsToExcel,
-                      tooltip: 'Exportar a Excel',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.upload_file),
-                      onPressed: _importProductsFromExcel,
-                      tooltip: 'Importar Excel',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.picture_as_pdf),
-                      onPressed: _exportProductsCatalogPdf,
-                      tooltip: 'Catálogo PDF',
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: ui_colors.AppColors.borderSoft),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
                     ),
                   ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: compactToolbar
+                      ? Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _searchController,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: 'Buscar por código o nombre...',
+                                      prefixIcon: const Icon(Icons.search),
+                                      suffixIcon: _searchController.text.isNotEmpty
+                                          ? IconButton(
+                                              icon: const Icon(Icons.clear),
+                                              onPressed: () {
+                                                _searchController.clear();
+                                                _loadProducts();
+                                              },
+                                            )
+                                          : null,
+                                      border: InputBorder.none,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.filter_list,
+                                    color: _currentFilters?.hasFilters == true
+                                        ? scheme.primary
+                                        : null,
+                                  ),
+                                  onPressed: _showFilters,
+                                  tooltip: 'Filtros',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              alignment: WrapAlignment.start,
+                              children: [
+                                buildNavButton(
+                                  label: 'Categorías',
+                                  icon: Icons.category_outlined,
+                                  onPressed: widget.onOpenCategories,
+                                ),
+                                buildNavButton(
+                                  label: 'Inventario',
+                                  icon: Icons.inventory_2_outlined,
+                                  onPressed: widget.onOpenInventory,
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () => _showProductForm(),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Agregar producto'),
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.more_vert),
+                                  onPressed: _showCatalogActions,
+                                  tooltip: 'Acciones',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.table_view),
+                                  onPressed: _exportProductsToExcel,
+                                  tooltip: 'Exportar a Excel',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.upload_file),
+                                  onPressed: _importProductsFromExcel,
+                                  tooltip: 'Importar Excel',
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.picture_as_pdf),
+                                  onPressed: _exportProductsCatalogPdf,
+                                  tooltip: 'Catálogo PDF',
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: 'Buscar por código o nombre...',
+                                  prefixIcon: const Icon(Icons.search),
+                                  suffixIcon: _searchController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            _loadProducts();
+                                          },
+                                        )
+                                      : null,
+                                  border: InputBorder.none,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: Icon(
+                                Icons.filter_list,
+                                color: _currentFilters?.hasFilters == true
+                                    ? scheme.primary
+                                    : null,
+                              ),
+                              onPressed: _showFilters,
+                              tooltip: 'Filtros',
+                            ),
+                            const SizedBox(width: 6),
+                            ElevatedButton.icon(
+                              onPressed: () => _showProductForm(),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Agregar producto'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                              icon: const Icon(Icons.more_vert),
+                              onPressed: _showCatalogActions,
+                              tooltip: 'Acciones',
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                              icon: const Icon(Icons.table_view),
+                              onPressed: _exportProductsToExcel,
+                              tooltip: 'Exportar a Excel',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.upload_file),
+                              onPressed: _importProductsFromExcel,
+                              tooltip: 'Importar Excel',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.picture_as_pdf),
+                              onPressed: _exportProductsCatalogPdf,
+                              tooltip: 'Catálogo PDF',
+                            ),
+                            const Spacer(),
+                            buildNavButton(
+                              label: 'Categorías',
+                              icon: Icons.category_outlined,
+                              onPressed: widget.onOpenCategories,
+                            ),
+                            const SizedBox(width: 6),
+                            buildNavButton(
+                              label: 'Inventario',
+                              icon: Icons.inventory_2_outlined,
+                              onPressed: widget.onOpenInventory,
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -1358,8 +1516,16 @@ class _CatalogTabState extends State<CatalogTab> {
                     )
                   : RefreshIndicator(
                       onRefresh: _loadProducts,
-                      child: ListView.builder(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
                         itemCount: _products.length,
+                        separatorBuilder: (context, index) => Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: ui_colors.AppColors.borderSoft.withOpacity(
+                            0.65,
+                          ),
+                        ),
                         itemBuilder: (context, index) {
                           final product = _products[index];
                           return ProductCard(
@@ -1393,7 +1559,7 @@ class _CatalogTabState extends State<CatalogTab> {
           return Padding(padding: padding, child: listContent);
         }
 
-        final sideWidth = (constraints.maxWidth * 0.28).clamp(280.0, 360.0);
+        final sideWidth = (constraints.maxWidth * 0.32).clamp(320.0, 420.0);
 
         return Padding(
           padding: padding,
@@ -1401,11 +1567,13 @@ class _CatalogTabState extends State<CatalogTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: listContent),
-              const SizedBox(width: 16),
-              SizedBox(
-                width: sideWidth,
-                child: _buildDetailsPanel(_selectedProduct),
-              ),
+              if (_selectedProduct != null) ...[
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: sideWidth,
+                  child: _buildDetailsPanel(_selectedProduct),
+                ),
+              ],
             ],
           ),
         );

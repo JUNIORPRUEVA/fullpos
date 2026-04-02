@@ -101,9 +101,5 @@ add_custom_command(
   VERBATIM
 )
 add_custom_target(flutter_assemble DEPENDS
-  "${FLUTTER_LIBRARY}"
-  ${FLUTTER_LIBRARY_HEADERS}
-  ${CPP_WRAPPER_SOURCES_CORE}
-  ${CPP_WRAPPER_SOURCES_PLUGIN}
-  ${CPP_WRAPPER_SOURCES_APP}
+  "${PHONY_OUTPUT}"
 )

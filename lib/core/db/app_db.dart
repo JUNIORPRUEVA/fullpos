@@ -1208,6 +1208,9 @@ class AppDb {
           itbis_amount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL DEFAULT 0,
           payment_method TEXT,
+          payment_cash_amount REAL NOT NULL DEFAULT 0,
+          payment_card_amount REAL NOT NULL DEFAULT 0,
+          payment_transfer_amount REAL NOT NULL DEFAULT 0,
           paid_amount REAL NOT NULL DEFAULT 0,
           change_amount REAL NOT NULL DEFAULT 0,
           credit_interest_rate REAL NOT NULL DEFAULT 0,
@@ -1215,6 +1218,9 @@ class AppDb {
           credit_due_date_ms INTEGER,
           credit_installments INTEGER,
           credit_note TEXT,
+          electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
+          electronic_invoice_code TEXT,
+          electronic_document_type TEXT,
           fiscal_enabled INTEGER NOT NULL DEFAULT 0,
           ncf_full TEXT UNIQUE,
           ncf_type TEXT,
@@ -2953,18 +2959,24 @@ class AppDb {
         discount_total REAL NOT NULL DEFAULT 0,
         subtotal REAL NOT NULL DEFAULT 0,
         itbis_amount REAL NOT NULL DEFAULT 0,
-          total REAL NOT NULL DEFAULT 0,
-          payment_method TEXT,
-          paid_amount REAL NOT NULL DEFAULT 0,
-          change_amount REAL NOT NULL DEFAULT 0,
-          credit_interest_rate REAL NOT NULL DEFAULT 0,
-          credit_term_days INTEGER,
-          credit_due_date_ms INTEGER,
-          credit_installments INTEGER,
-          credit_note TEXT,
-          fiscal_enabled INTEGER NOT NULL DEFAULT 0,
-          ncf_full TEXT UNIQUE,
-          ncf_type TEXT,
+        total REAL NOT NULL DEFAULT 0,
+        payment_method TEXT,
+        payment_cash_amount REAL NOT NULL DEFAULT 0,
+        payment_card_amount REAL NOT NULL DEFAULT 0,
+        payment_transfer_amount REAL NOT NULL DEFAULT 0,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        change_amount REAL NOT NULL DEFAULT 0,
+        credit_interest_rate REAL NOT NULL DEFAULT 0,
+        credit_term_days INTEGER,
+        credit_due_date_ms INTEGER,
+        credit_installments INTEGER,
+        credit_note TEXT,
+        electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
+        electronic_invoice_code TEXT,
+        electronic_document_type TEXT,
+        fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+        ncf_full TEXT UNIQUE,
+        ncf_type TEXT,
         session_id INTEGER,
         cash_session_id INTEGER REFERENCES ${DbTables.cashSessions}(id),
         created_at_ms INTEGER NOT NULL,
@@ -3308,6 +3320,7 @@ class AppDb {
 
     await _ensureSecurityTables(db);
     await _ensureBackupTables(db);
+    await _ensureElectronicInvoicingTables(db);
     await _ensureProductSyncOutboxTable(db);
   }
 
@@ -3543,6 +3556,233 @@ class AppDb {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_product_sync_outbox_status_next
       ON ${DbTables.productSyncOutbox}(status, priority DESC, next_attempt_at_ms)
+    ''');
+  }
+
+  static Future<void> _ensureElectronicInvoicingTables(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${DbTables.electronicCompany} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_name TEXT NOT NULL DEFAULT '',
+        trade_name TEXT NOT NULL DEFAULT '',
+        rnc TEXT NOT NULL DEFAULT '',
+        emission_address TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
+        environment TEXT NOT NULL DEFAULT 'pruebas',
+        api_token TEXT NOT NULL DEFAULT '',
+        certificate_name TEXT NOT NULL DEFAULT '',
+        automatic_emission INTEGER NOT NULL DEFAULT 1,
+        updated_at_ms INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'business_name',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'trade_name',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'rnc',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'emission_address',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'phone',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'email',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'environment',
+      "TEXT NOT NULL DEFAULT 'pruebas'",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'api_token',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'certificate_name',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'automatic_emission',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'updated_at_ms',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${DbTables.facturaElectronica} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER NOT NULL,
+        local_code TEXT NOT NULL,
+        ecf TEXT,
+        tipo_documento TEXT NOT NULL DEFAULT 'venta',
+        xml_payload TEXT,
+        xml_firmado TEXT,
+        dgii_track_id TEXT,
+        estado_dgii TEXT NOT NULL DEFAULT 'local',
+        codigo_dgii TEXT,
+        mensaje_dgii TEXT,
+        ambiente TEXT,
+        monto_total REAL NOT NULL DEFAULT 0,
+        cliente_nombre TEXT,
+        cliente_rnc TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        sent_at_ms INTEGER,
+        acknowledged_at_ms INTEGER,
+        FOREIGN KEY (sale_id) REFERENCES ${DbTables.sales}(id) ON DELETE CASCADE
+      )
+    ''');
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'sale_id',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'local_code',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(db, DbTables.facturaElectronica, 'ecf', 'TEXT');
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'tipo_documento',
+      "TEXT NOT NULL DEFAULT 'venta'",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'xml_payload',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'xml_firmado',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'dgii_track_id',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'estado_dgii',
+      "TEXT NOT NULL DEFAULT 'local'",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'codigo_dgii',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'mensaje_dgii',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'ambiente',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'monto_total',
+      'REAL NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'cliente_nombre',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'cliente_rnc',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'created_at_ms',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'updated_at_ms',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'sent_at_ms',
+      'INTEGER',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'acknowledged_at_ms',
+      'INTEGER',
+    );
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_factura_electronica_sale
+      ON ${DbTables.facturaElectronica}(sale_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_factura_electronica_status
+      ON ${DbTables.facturaElectronica}(estado_dgii)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_factura_electronica_created
+      ON ${DbTables.facturaElectronica}(created_at_ms DESC)
     ''');
   }
 
@@ -3907,6 +4147,7 @@ class AppDb {
   static Future<void> _ensureSchemaIntegrity(DatabaseExecutor db) async {
     await _ensureSecurityTables(db);
     await _ensureBackupTables(db);
+    await _ensureElectronicInvoicingTables(db);
     await _ensureProductCodeIndex(db);
     // Crear tablas críticas si faltan
     await db.execute('''
@@ -3996,18 +4237,24 @@ class AppDb {
         discount_total REAL NOT NULL DEFAULT 0,
         subtotal REAL NOT NULL DEFAULT 0,
         itbis_amount REAL NOT NULL DEFAULT 0,
-          total REAL NOT NULL DEFAULT 0,
-          payment_method TEXT,
-          paid_amount REAL NOT NULL DEFAULT 0,
-          change_amount REAL NOT NULL DEFAULT 0,
-          credit_interest_rate REAL NOT NULL DEFAULT 0,
-          credit_term_days INTEGER,
-          credit_due_date_ms INTEGER,
-          credit_installments INTEGER,
-          credit_note TEXT,
-          fiscal_enabled INTEGER NOT NULL DEFAULT 0,
-          ncf_full TEXT UNIQUE,
-          ncf_type TEXT,
+        total REAL NOT NULL DEFAULT 0,
+        payment_method TEXT,
+        payment_cash_amount REAL NOT NULL DEFAULT 0,
+        payment_card_amount REAL NOT NULL DEFAULT 0,
+        payment_transfer_amount REAL NOT NULL DEFAULT 0,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        change_amount REAL NOT NULL DEFAULT 0,
+        credit_interest_rate REAL NOT NULL DEFAULT 0,
+        credit_term_days INTEGER,
+        credit_due_date_ms INTEGER,
+        credit_installments INTEGER,
+        credit_note TEXT,
+        electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
+        electronic_invoice_code TEXT,
+        electronic_document_type TEXT,
+        fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+        ncf_full TEXT UNIQUE,
+        ncf_type TEXT,
         session_id INTEGER,
         cash_session_id INTEGER REFERENCES ${DbTables.cashSessions}(id),
         created_at_ms INTEGER NOT NULL,
@@ -4334,6 +4581,42 @@ class AppDb {
 
     // sales
     if (await _tableExists(db, DbTables.sales)) {
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'payment_cash_amount',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'payment_card_amount',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'payment_transfer_amount',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'electronic_invoice_enabled',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'electronic_invoice_code',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.sales,
+        'electronic_document_type',
+        'TEXT',
+      );
       final addedCashSessionId = await _addColumnIfMissing(
         db,
         DbTables.sales,

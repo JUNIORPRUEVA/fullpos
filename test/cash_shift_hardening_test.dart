@@ -426,6 +426,53 @@ void main() {
     );
 
     test(
+      'closeSession can persist the daily cashbox closure metadata',
+      () async {
+        final db = await AppDb.database;
+        final cashboxId = await _insertCashboxTodayWithAmount(db, 1500.0);
+
+        await SessionManager.login(
+          userId: 1,
+          username: 'admin',
+          displayName: 'Admin',
+          role: 'admin',
+        );
+
+        final shiftId = await _insertOpenShift(
+          db,
+          userId: 1,
+          userName: 'Admin',
+          cashboxId: cashboxId,
+        );
+
+        await CashRepository.closeSession(
+          sessionId: shiftId,
+          closingAmount: 1500.0,
+          note: 'cierre automatico caja',
+          summary: CashSummaryModel.empty(openingAmount: 1500.0),
+          expectedUserId: 1,
+          expectedCashboxDailyId: cashboxId,
+          closeCashboxDaily: true,
+          cashboxCloseNote: 'cierre automatico caja',
+          cashboxClosedByUserId: 1,
+        );
+
+        final cashboxRows = await db.query(
+          DbTables.cashboxDaily,
+          where: 'id = ?',
+          whereArgs: [cashboxId],
+          limit: 1,
+        );
+
+        expect(cashboxRows, isNotEmpty);
+        expect(cashboxRows.first['status'], 'CLOSED');
+        expect(cashboxRows.first['closed_at_ms'], isNotNull);
+        expect(cashboxRows.first['closed_by_user_id'], 1);
+        expect(cashboxRows.first['note'], 'cierre automatico caja');
+      },
+    );
+
+    test(
       'openDailyCashboxToday updates initial amount if cashbox already OPEN and no shifts yet',
       () async {
         final db = await AppDb.database;

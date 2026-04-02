@@ -71,8 +71,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
 
     final currentId = _selectedMovementId;
     if (currentId == null) {
-      _selectedMovement = filtered.first;
-      _selectedMovementId = filtered.first.id ?? filtered.first.createdAtMs;
       return;
     }
 
@@ -520,8 +518,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final padding = _contentPadding(constraints);
-          final isWide = constraints.maxWidth >= 1200;
-          final detailWidth = (constraints.maxWidth * 0.25).clamp(320.0, 460.0);
 
           return Padding(
             padding: padding,
@@ -546,39 +542,12 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
                             style: theme.textTheme.bodyMedium,
                           ),
                         )
-                      : isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: _buildMovementsList(
-                                theme: theme,
-                                scheme: scheme,
-                                currencyFormat: currencyFormat,
-                                movements: filteredMovements,
-                                isWide: true,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            SizedBox(
-                              width: detailWidth,
-                              child: SizedBox.expand(
-                                child: _buildMovementDetailsPanel(
-                                  theme: theme,
-                                  scheme: scheme,
-                                  currencyFormat: currencyFormat,
-                                  movement: _selectedMovement,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
                       : _buildMovementsList(
                           theme: theme,
                           scheme: scheme,
                           currencyFormat: currencyFormat,
                           movements: filteredMovements,
-                          isWide: false,
+                          isWide: constraints.maxWidth >= 1200,
                         ),
                 ),
               ],
@@ -609,7 +578,13 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
       padding: EdgeInsets.zero,
       itemCount: movements.length + 1,
       separatorBuilder: (_, index) =>
-          index == 0 ? const SizedBox.shrink() : const SizedBox(height: 12),
+          index == 0
+              ? const SizedBox.shrink()
+              : Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: AppColors.surfaceLightBorder.withOpacity(0.65),
+                ),
       itemBuilder: (context, index) {
         if (index == 0) {
           return _MovementsHeaderRow(theme: theme, scheme: scheme);
@@ -623,7 +598,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
           movement: movement,
           currencyFormat: currencyFormat,
           isSelected: isSelected,
-          onTap: () => _selectMovement(movement, showDetails: !isWide),
+          onTap: () => _selectMovement(movement, showDetails: true),
         );
       },
     );
@@ -813,12 +788,7 @@ class _MovementsHeaderRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSizes.spaceXS),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLightVariant,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.surfaceLightBorder),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
             Expanded(
@@ -899,22 +869,10 @@ class _CompactMovementRowState extends State<_CompactMovementRow> {
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOut,
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: widget.isSelected
-              ? AppColors.brandBlue.withOpacity(0.35)
-              : AppColors.surfaceLightBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.brandBlueDark.withOpacity(
-              widget.isSelected ? 0.10 : (_hovered ? 0.09 : 0.06),
-            ),
-            blurRadius: widget.isSelected ? 18 : (_hovered ? 16 : 12),
-            offset: Offset(0, _hovered ? 6 : 4),
-          ),
-        ],
+        color: widget.isSelected
+            ? AppColors.brandBlue.withOpacity(0.055)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(
         onTap: widget.onTap,
@@ -922,10 +880,10 @@ class _CompactMovementRowState extends State<_CompactMovementRow> {
           if (_hovered == value) return;
           setState(() => _hovered = value);
         },
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         hoverColor: AppColors.brandBlue.withOpacity(0.03),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
               Expanded(
