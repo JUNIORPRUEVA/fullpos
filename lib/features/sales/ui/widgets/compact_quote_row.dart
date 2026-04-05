@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-
 import '../../data/quote_model.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../../../core/theme/app_status_theme.dart';
 import '../../../../theme/app_colors.dart';
 
@@ -53,8 +53,8 @@ class CompactQuoteRow extends StatelessWidget {
     final statusColor = _statusColor(quote.status, scheme, statusTheme);
 
     final bgColor = isSelected
-      ? scheme.primary.withOpacity(0.055)
-      : Colors.transparent;
+        ? scheme.primary.withOpacity(0.055)
+        : Colors.transparent;
     final textColor = scheme.onSurface;
 
     final canConvert =
@@ -141,11 +141,7 @@ class CompactQuoteRow extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: Text(
-                  NumberFormat.currency(
-                    locale: 'es_DO',
-                    symbol: 'RD\$',
-                    decimalDigits: 2,
-                  ).format(quote.total),
+                  CurrencyDisplay.format(quote.total),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,

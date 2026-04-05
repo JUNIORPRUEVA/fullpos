@@ -249,4 +249,81 @@ void main() {
       customSettings.salesFooterButtonsBorderColor.value,
     );
   });
+
+  test('AppThemeConfig exposes centralized layout colors', () {
+    final settings = ThemeSettings.defaultSettings.copyWith(
+      primaryColor: const Color(0xFF224466),
+      topbarColor: const Color(0xFF102030),
+      sidebarColor: const Color(0xFF203040),
+      footerColor: const Color(0xFF304050),
+      cardColor: const Color(0xFFF6F2EA),
+      salesGridBackgroundColor: const Color(0xFFEDE2CF),
+      salesDetailGradientMid: const Color(0xFF24394A),
+      textColor: const Color(0xFF1E140D),
+      applyChromeToEntireLayout: false,
+    );
+
+    final config = settings.toAppThemeConfig();
+
+    expect(config.primaryColor.value, settings.primaryColor.value);
+    expect(config.appbarColor.value, settings.topbarColor.value);
+    expect(config.sidebarColor.value, settings.sidebarColor.value);
+    expect(config.footerColor.value, settings.footerColor.value);
+    expect(config.cardColor.value, settings.cardColor.value);
+    expect(
+      config.gridBackgroundColor.value,
+      settings.salesGridBackgroundColor.value,
+    );
+    expect(config.salesDetailColor.value, settings.salesDetailGradientMid.value);
+    expect(config.textPrimary.value, settings.textColor.value);
+    expect(config.applyChromeToEntireLayout, isFalse);
+  });
+
+  test('Chrome background update can synchronize page appbars', () async {
+    final initialSettings = ThemeSettings.defaultSettings.copyWith(
+      appBarColor: const Color(0xFFAA3300),
+      applyChromeToEntireLayout: true,
+    );
+    final repository = _MemoryThemeSettingsRepository(initialSettings);
+    final container = ProviderContainer(
+      overrides: [themeRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(themeProvider.notifier).saveSettings(initialSettings);
+
+    await container
+        .read(themeProvider.notifier)
+        .updateChromeBackgroundColor(const Color(0xFF114477));
+
+    final updated = container.read(themeProvider);
+    expect(updated.topbarColor.value, const Color(0xFF114477).value);
+    expect(updated.sidebarColor.value, const Color(0xFF114477).value);
+    expect(updated.footerColor.value, const Color(0xFF114477).value);
+    expect(updated.appBarColor.value, const Color(0xFF114477).value);
+  });
+
+  test('Chrome background update can preserve page appbars when disabled', () async {
+    final initialSettings = ThemeSettings.defaultSettings.copyWith(
+      appBarColor: const Color(0xFFAA3300),
+      applyChromeToEntireLayout: false,
+    );
+    final repository = _MemoryThemeSettingsRepository(initialSettings);
+    final container = ProviderContainer(
+      overrides: [themeRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(themeProvider.notifier).saveSettings(initialSettings);
+
+    await container
+        .read(themeProvider.notifier)
+        .updateChromeBackgroundColor(const Color(0xFF114477));
+
+    final updated = container.read(themeProvider);
+    expect(updated.topbarColor.value, const Color(0xFF114477).value);
+    expect(updated.sidebarColor.value, const Color(0xFF114477).value);
+    expect(updated.footerColor.value, const Color(0xFF114477).value);
+    expect(updated.appBarColor.value, const Color(0xFFAA3300).value);
+  });
 }

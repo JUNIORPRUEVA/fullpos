@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../products/data/products_repository.dart';
 import '../../products/data/suppliers_repository.dart';
 import '../../products/models/product_model.dart';
@@ -532,7 +533,7 @@ class _PurchaseOrderCreateManualPageState
                                                       ),
                                                     ),
                                                     Text(
-                                                      'Compra: ${p.purchasePrice.toStringAsFixed(2)}',
+                                                      'Compra: ${CurrencyDisplay.format(p.purchasePrice)}',
                                                       style: TextStyle(
                                                         fontSize: 10,
                                                         fontWeight:
@@ -716,7 +717,7 @@ class _PurchaseOrderCreateManualPageState
 
   @override
   Widget build(BuildContext context) {
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -837,8 +838,9 @@ class _PurchaseOrderCreateManualPageState
                               ),
                               const SizedBox(width: 10),
                               OutlinedButton.icon(
-                                onPressed:
-                                    _saving ? null : _addCustomProductDialog,
+                                onPressed: _saving
+                                    ? null
+                                    : _addCustomProductDialog,
                                 icon: const Icon(Icons.playlist_add),
                                 label: const Text('Producto no inventario'),
                               ),
@@ -854,9 +856,8 @@ class _PurchaseOrderCreateManualPageState
                                   value: _itbisEnabled,
                                   onChanged: _saving
                                       ? null
-                                      : (v) => setState(
-                                          () => _itbisEnabled = v,
-                                        ),
+                                      : (v) =>
+                                            setState(() => _itbisEnabled = v),
                                 ),
                                 Text(
                                   _itbisEnabled
@@ -934,14 +935,15 @@ class _PurchaseOrderCreateManualPageState
                                               width: 70,
                                               height: 70,
                                               decoration: BoxDecoration(
-                                                color:
-                                                    AppColors.surfaceLightBorder,
+                                                color: AppColors
+                                                    .surfaceLightBorder,
                                                 borderRadius:
                                                     BorderRadius.circular(6),
                                               ),
                                               child: Icon(
                                                 Icons.inventory_2_outlined,
-                                                color: AppColors.textDarkSecondary,
+                                                color:
+                                                    AppColors.textDarkSecondary,
                                               ),
                                             ),
                                           const SizedBox(width: 12),

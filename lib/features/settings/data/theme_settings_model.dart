@@ -32,6 +32,33 @@ class PremiumThemeColors {
   static const Color darkTextSecondary = Color(0xFF94A3B8);
 }
 
+@immutable
+class AppThemeConfig {
+  final Color primaryColor;
+  final Color sidebarColor;
+  final Color appbarColor;
+  final Color footerColor;
+  final Color cardColor;
+  final Color gridBackgroundColor;
+  final Color salesDetailColor;
+  final Color textPrimary;
+  final Color textSecondary;
+  final bool applyChromeToEntireLayout;
+
+  const AppThemeConfig({
+    required this.primaryColor,
+    required this.sidebarColor,
+    required this.appbarColor,
+    required this.footerColor,
+    required this.cardColor,
+    required this.gridBackgroundColor,
+    required this.salesDetailColor,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.applyChromeToEntireLayout,
+  });
+}
+
 /// Modelo para la configuraciÃ³n del tema personalizado
 class ThemeSettings {
   final Color primaryColor;
@@ -95,6 +122,7 @@ class ThemeSettings {
   final Color salesFooterButtonsBorderColor;
   final double fontSize;
   final String fontFamily;
+  final bool applyChromeToEntireLayout;
   final bool isDarkMode;
 
   const ThemeSettings({
@@ -149,6 +177,7 @@ class ThemeSettings {
     required this.salesFooterButtonsBorderColor,
     required this.fontSize,
     required this.fontFamily,
+    required this.applyChromeToEntireLayout,
     required this.isDarkMode,
   });
 
@@ -206,8 +235,24 @@ class ThemeSettings {
     salesFooterButtonsBorderColor: PremiumThemeColors.appBarBorder,
     fontSize: 14.0,
     fontFamily: 'Poppins',
+    applyChromeToEntireLayout: true,
     isDarkMode: false,
   );
+
+  AppThemeConfig toAppThemeConfig() {
+    return AppThemeConfig(
+      primaryColor: primaryColor,
+      sidebarColor: sidebarColor,
+      appbarColor: topbarColor,
+      footerColor: footerColor,
+      cardColor: cardColor,
+      gridBackgroundColor: salesGridBackgroundColor,
+      salesDetailColor: salesDetailGradientMid,
+      textPrimary: textColor,
+      textSecondary: PremiumThemeColors.textSecondary,
+      applyChromeToEntireLayout: applyChromeToEntireLayout,
+    );
+  }
 
   static Color _colorFromStoredValue(dynamic value, Color fallback) {
     if (value is int) return Color(value);
@@ -424,6 +469,10 @@ class ThemeSettings {
       ),
       fontSize: (map['fontSize'] as num?)?.toDouble() ?? defaults.fontSize,
       fontFamily: map['fontFamily'] as String? ?? defaults.fontFamily,
+      applyChromeToEntireLayout:
+          (map['applyChromeToEntireLayout'] as int? ??
+              (defaults.applyChromeToEntireLayout ? 1 : 0)) ==
+          1,
       isDarkMode:
           (map['isDarkMode'] as int? ?? (defaults.isDarkMode ? 1 : 0)) == 1,
     );
@@ -495,6 +544,7 @@ class ThemeSettings {
       'salesFooterButtonsBorderColor': salesFooterButtonsBorderColor.toARGB32(),
       'fontSize': fontSize,
       'fontFamily': fontFamily,
+      'applyChromeToEntireLayout': applyChromeToEntireLayout ? 1 : 0,
       'isDarkMode': isDarkMode ? 1 : 0,
     };
   }
@@ -552,6 +602,7 @@ class ThemeSettings {
     Color? salesFooterButtonsBorderColor,
     double? fontSize,
     String? fontFamily,
+    bool? applyChromeToEntireLayout,
     bool? isDarkMode,
   }) {
     return ThemeSettings(
@@ -644,6 +695,8 @@ class ThemeSettings {
           salesFooterButtonsBorderColor ?? this.salesFooterButtonsBorderColor,
       fontSize: fontSize ?? this.fontSize,
       fontFamily: fontFamily ?? this.fontFamily,
+      applyChromeToEntireLayout:
+          applyChromeToEntireLayout ?? this.applyChromeToEntireLayout,
       isDarkMode: isDarkMode ?? this.isDarkMode,
     );
   }
@@ -715,6 +768,7 @@ class ThemeSettings {
         other.salesFooterButtonsBorderColor == salesFooterButtonsBorderColor &&
         other.fontSize == fontSize &&
         other.fontFamily == fontFamily &&
+          other.applyChromeToEntireLayout == applyChromeToEntireLayout &&
         other.isDarkMode == isDarkMode;
   }
 
@@ -771,6 +825,7 @@ class ThemeSettings {
     salesFooterButtonsBorderColor,
     fontSize,
     fontFamily,
+    applyChromeToEntireLayout,
     isDarkMode,
   ]);
 }

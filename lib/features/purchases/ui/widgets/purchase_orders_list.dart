@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/theme/app_status_theme.dart';
 import '../../../../core/theme/color_utils.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../providers/purchase_orders_providers.dart';
 import 'purchase_ui.dart';
 
@@ -27,7 +28,7 @@ class PurchaseOrdersList extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final statusTheme = theme.extension<AppStatusTheme>();
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
     final ordersAsync = ref.watch(purchaseOrdersListProvider);

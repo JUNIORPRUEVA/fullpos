@@ -6,6 +6,7 @@ import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../core/utils/accounting_amount_formatter.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_repository.dart';
 import '../providers/cash_providers.dart';
@@ -70,7 +71,7 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
     setState(() => _isLoading = true);
 
     try {
-      final amount = double.tryParse(_amountController.text) ?? 0.0;
+      final amount = AccountingAmountFormatter.parse(_amountController.text);
       final reason = _reasonController.text.trim();
       final userId = await SessionManager.userId() ?? 1;
 
@@ -89,8 +90,8 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
             builder: (ctx) => AlertDialog(
               title: const Text('Caja sin efectivo suficiente'),
               content: Text(
-                'Disponible en caja: RD\$ ${available.toStringAsFixed(2)}\n'
-                'Intentas retirar: RD\$ ${amount.toStringAsFixed(2)}\n\n'
+                'Disponible en caja: ${AccountingAmountFormatter.formatWithSymbol(available, symbol: 'RD\$')}\n'
+                'Intentas retirar: ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: 'RD\$')}\n\n'
                 'Ingresa efectivo antes de registrar este retiro.',
               ),
               actions: [
@@ -137,8 +138,8 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
           SnackBar(
             content: Text(
               isIncome
-                  ? 'Entrada de \$${amount.toStringAsFixed(2)} registrada'
-                  : 'Retiro de \$${amount.toStringAsFixed(2)} registrado',
+                  ? 'Entrada de ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: r'$')} registrada'
+                  : 'Retiro de ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: r'$')} registrado',
             ),
             backgroundColor: Theme.of(context).colorScheme.primary,
           ),
@@ -244,13 +245,9 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _amountController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                    keyboardType: TextInputType.number,
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d*\.?\d{0,2}'),
-                      ),
+                      AccountingAmountFormatter(allowEmpty: false),
                     ],
                     autofocus: true,
                     style: TextStyle(
@@ -259,12 +256,13 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                       fontWeight: FontWeight.bold,
                     ),
                     decoration: InputDecoration(
-                      prefixText: '\$ ',
+                      prefixText: r'$ ',
                       prefixStyle: TextStyle(
                         color: primaryColor,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
+                      hintText: '25,250',
                       filled: true,
                       fillColor: scheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
@@ -280,8 +278,8 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                       if (value == null || value.isEmpty) {
                         return 'Ingrese el monto';
                       }
-                      final amount = double.tryParse(value);
-                      if (amount == null || amount <= 0) {
+                      final amount = AccountingAmountFormatter.parse(value);
+                      if (amount <= 0) {
                         return 'Monto debe ser mayor a 0';
                       }
                       return null;

@@ -7,17 +7,15 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+
 import '../../../core/printing/reports_printer.dart';
 import '../../../core/utils/app_event_bus.dart';
+import '../../../theme/app_colors.dart' as ui_colors;
 import '../data/reports_repository.dart';
 import 'client_sales_report_page.dart';
 import 'widgets/date_range_selector.dart';
-import 'widgets/advanced_kpi_cards.dart';
-import 'widgets/sales_bar_chart.dart';
 import 'widgets/payment_method_pie_chart.dart';
-import 'widgets/comparative_stats_card.dart';
-import 'widgets/top_products_table.dart';
-import 'widgets/top_clients_table.dart';
+import 'widgets/sales_bar_chart.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -26,28 +24,20 @@ class ReportsPage extends StatefulWidget {
   State<ReportsPage> createState() => _ReportsPageState();
 }
 
-class _ReportsPageState extends State<ReportsPage>
-    with SingleTickerProviderStateMixin {
-  DateRangePeriod _selectedPeriod = DateRangePeriod.month;
+class _ReportsPageState extends State<ReportsPage> {
+  DateRangePeriod _selectedPeriod = DateRangePeriod.today;
   DateTime? _customStart;
   DateTime? _customEnd;
-
-  late TabController _tabController;
   bool _isLoading = true;
-  StreamSubscription<AppEvent>? _eventsSub;
-
-  // Data
   KpisData? _kpis;
   List<SeriesDataPoint> _salesSeries = [];
   List<SeriesDataPoint> _profitSeries = [];
-  List<PaymentMethodData> _paymentMethods = [];
   List<TopProduct> _topProducts = [];
   List<TopClient> _topClients = [];
   List<SaleRecord> _salesList = [];
-  Map<String, dynamic> _comparativeStats = {};
-  List<CategoryPerformanceData> _categoryPerformance = [];
-
-  final Map<String, bool> _pdfSections = {
+  List<PaymentMethodData> _paymentMethods = [];
+  Map<String, dynamic> _comparativeStats = <String, dynamic>{};
+  final Map<String, bool> _pdfSections = <String, bool>{
     'kpis': true,
     'salesSeries': true,
     'paymentMethods': true,
@@ -57,43 +47,29 @@ class _ReportsPageState extends State<ReportsPage>
     'topClients': true,
     'salesList': true,
   };
+  StreamSubscription<dynamic>? _eventsSubscription;
+  Timer? _reloadDebounce;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _eventsSub = AppEventBus.stream.listen((event) {
-      if (event is! SaleCompletedEvent) return;
-
-      final range = DateRangeHelper.getRangeForPeriod(
-        _selectedPeriod,
-        customStart: _customStart,
-        customEnd: _customEnd,
-      );
-
-      final startMs = range.start.millisecondsSinceEpoch;
-      final endMs = range.end.millisecondsSinceEpoch;
-
-      final createdAtMs = event.createdAtMs;
-      final isInRange = createdAtMs >= startMs && createdAtMs <= endMs;
-
-      if (!mounted) return;
-      if (isInRange) {
-        _loadData();
-      }
+    _eventsSubscription = AppEventBus.stream.listen((_) {
+      _reloadDebounce?.cancel();
+      _reloadDebounce = Timer(const Duration(milliseconds: 250), _loadData);
     });
-    _loadData();
+    Future.microtask(_loadData);
   }
 
   @override
   void dispose() {
-    _eventsSub?.cancel();
-    _tabController.dispose();
+    _reloadDebounce?.cancel();
+    _eventsSubscription?.cancel();
     super.dispose();
   }
 
   Future<void> _loadData() async {
     if (!mounted) return;
+
     setState(() => _isLoading = true);
 
     final range = DateRangeHelper.getRangeForPeriod(
@@ -101,7 +77,6 @@ class _ReportsPageState extends State<ReportsPage>
       customStart: _customStart,
       customEnd: _customEnd,
     );
-
     final startMs = range.start.millisecondsSinceEpoch;
     final endMs = range.end.millisecondsSinceEpoch;
 
@@ -125,17 +100,14 @@ class _ReportsPageState extends State<ReportsPage>
         avgTicket: 0,
       ),
     );
-
     final salesSeries = await safe(
       () => ReportsRepository.getSalesSeries(startMs: startMs, endMs: endMs),
       <SeriesDataPoint>[],
     );
-
     final profitSeries = await safe(
       () => ReportsRepository.getProfitSeries(startMs: startMs, endMs: endMs),
       <SeriesDataPoint>[],
     );
-
     final topProducts = await safe(
       () => ReportsRepository.getTopProducts(
         startMs: startMs,
@@ -144,7 +116,6 @@ class _ReportsPageState extends State<ReportsPage>
       ),
       <TopProduct>[],
     );
-
     final topClients = await safe(
       () => ReportsRepository.getTopClients(
         startMs: startMs,
@@ -153,12 +124,10 @@ class _ReportsPageState extends State<ReportsPage>
       ),
       <TopClient>[],
     );
-
     final salesList = await safe(
       () => ReportsRepository.getSalesList(startMs: startMs, endMs: endMs),
       <SaleRecord>[],
     );
-
     final paymentMethods = await safe(
       () => ReportsRepository.getPaymentMethodDistribution(
         startMs: startMs,
@@ -166,18 +135,9 @@ class _ReportsPageState extends State<ReportsPage>
       ),
       <PaymentMethodData>[],
     );
-
     final comparativeStats = await safe(
       () => ReportsRepository.getComparativeStats(),
       <String, dynamic>{},
-    );
-
-    final categoryPerformance = await safe(
-      () => ReportsRepository.getCategoryPerformance(
-        startMs: startMs,
-        endMs: endMs,
-      ),
-      <CategoryPerformanceData>[],
     );
 
     if (!mounted) return;
@@ -191,7 +151,6 @@ class _ReportsPageState extends State<ReportsPage>
       _salesList = salesList;
       _paymentMethods = paymentMethods;
       _comparativeStats = comparativeStats;
-      _categoryPerformance = categoryPerformance;
       _isLoading = false;
     });
   }
@@ -201,10 +160,22 @@ class _ReportsPageState extends State<ReportsPage>
     _loadData();
   }
 
-  void _onCustomRangeChanged(DateTime start, DateTime end) {
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: now,
+      initialDateRange: _customStart != null && _customEnd != null
+          ? DateTimeRange(start: _customStart!, end: _customEnd!)
+          : DateTimeRange(start: DateTime(now.year, now.month, now.day), end: now),
+    );
+
+    if (range == null) return;
     setState(() {
-      _customStart = start;
-      _customEnd = end;
+      _customStart = range.start;
+      _customEnd = range.end;
+      _selectedPeriod = DateRangePeriod.custom;
     });
     _loadData();
   }
@@ -217,48 +188,43 @@ class _ReportsPageState extends State<ReportsPage>
       customEnd: _customEnd,
     );
 
-    final startMs = range.start.millisecondsSinceEpoch;
-    final endMs = range.end.millisecondsSinceEpoch;
-
     try {
       final csv = await ReportsRepository.exportToCSV(
-        startMs: startMs,
-        endMs: endMs,
+        startMs: range.start.millisecondsSinceEpoch,
+        endMs: range.end.millisecondsSinceEpoch,
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('CSV generado: ${csv.split('\n').length - 1} ventas'),
-            backgroundColor: scheme.tertiary,
-            action: SnackBarAction(
-              label: 'Ver',
-              textColor: scheme.onTertiary,
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('CSV Generado'),
-                    content: SingleChildScrollView(child: SelectableText(csv)),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cerrar'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV generado: ${csv.split('\n').length - 1} ventas'),
+          backgroundColor: scheme.tertiary,
+          action: SnackBarAction(
+            label: 'Ver',
+            textColor: scheme.onTertiary,
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('CSV Generado'),
+                  content: SingleChildScrollView(child: SelectableText(csv)),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-        );
-      }
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al exportar: $e')),
+      );
     }
   }
 
@@ -272,6 +238,7 @@ class _ReportsPageState extends State<ReportsPage>
         final dialogTheme = Theme.of(context);
         final dialogScheme = dialogTheme.colorScheme;
         final temp = Map<String, bool>.from(_pdfSections);
+
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             Widget item(String key, String label) {
@@ -281,10 +248,7 @@ class _ReportsPageState extends State<ReportsPage>
                 onTap: () => setStateDialog(() => temp[key] = !enabled),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: enabled
                         ? dialogScheme.primary.withOpacity(0.08)
@@ -300,8 +264,7 @@ class _ReportsPageState extends State<ReportsPage>
                     children: [
                       Checkbox(
                         value: enabled,
-                        onChanged: (v) =>
-                            setStateDialog(() => temp[key] = v ?? false),
+                        onChanged: (v) => setStateDialog(() => temp[key] = v ?? false),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -429,11 +392,7 @@ class _ReportsPageState extends State<ReportsPage>
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final file = File('${downloadsDir.path}/Reporte_$ts.pdf');
       await file.writeAsBytes(pdfBytes, flush: true);
-
-      // Opción 2: abrir compartir del sistema (Drive aparece si está disponible)
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], text: 'Reporte de Estadísticas');
+      await Share.shareXFiles([XFile(file.path)], text: 'Reporte de Estadísticas');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -457,7 +416,7 @@ class _ReportsPageState extends State<ReportsPage>
     const maxContentWidth = 1280.0;
     final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
     final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
-    return EdgeInsets.fromLTRB(side, 16, side, 16);
+    return EdgeInsets.fromLTRB(side, 16, side, 20);
   }
 
   String _periodLabel() {
@@ -477,262 +436,25 @@ class _ReportsPageState extends State<ReportsPage>
     }
   }
 
-  Widget _buildHeaderBadge({
-    required String text,
-    required Color color,
-    IconData? icon,
-  }) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.20)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 15, color: color),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            text,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
+  String _formatNumber(num value) {
+    final normalized = value.toDouble();
+    if (normalized.isNaN || normalized.isInfinite) {
+      return '0';
+    }
+
+    final sign = normalized < 0 ? '-' : '';
+    final formatter = NumberFormat('#,##0', 'en_US');
+    return '$sign${formatter.format(normalized.abs().round())}';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: _isLoading
-                ? _buildLoadingState()
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      final padding = _contentPadding(constraints);
-                      final isNarrow = constraints.maxWidth < 1100;
-                      return _buildContent(
-                        padding: padding,
-                        isNarrow: isNarrow,
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+  String _formatCurrency(num value) {
+    final normalized = value.toDouble();
+    if (normalized.isNaN || normalized.isInfinite) {
+      return 'RD\$ 0';
+    }
 
-  Widget _buildHeader() {
-    final theme = Theme.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    final range = DateRangeHelper.getRangeForPeriod(
-      _selectedPeriod,
-      customStart: _customStart,
-      customEnd: _customEnd,
-    );
-    final date = DateFormat('dd/MM/yyyy');
-    final periodCaption = _selectedPeriod == DateRangePeriod.custom
-        ? '${date.format(range.start)} - ${date.format(range.end)}'
-        : _periodLabel();
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
-          boxShadow: [
-            BoxShadow(
-              color: scheme.shadow.withOpacity(0.05),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final stacked = constraints.maxWidth < 1180;
-            final stats = Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildHeaderBadge(
-                  text: periodCaption,
-                  color: scheme.primary,
-                  icon: Icons.calendar_today_outlined,
-                ),
-                _buildHeaderBadge(
-                  text: '${_salesList.length} ventas',
-                  color: scheme.tertiary,
-                  icon: Icons.receipt_long_outlined,
-                ),
-                _buildHeaderBadge(
-                  text: '${_topClients.length} clientes top',
-                  color: scheme.secondary,
-                  icon: Icons.people_outline,
-                ),
-              ],
-            );
-
-            final identity = Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () {
-                    if (context.canPop()) {
-                      context.pop();
-                      return;
-                    }
-                    context.go('/sales');
-                  },
-                  tooltip: 'Volver',
-                  style: IconButton.styleFrom(
-                    backgroundColor: scheme.surfaceContainerHighest,
-                    foregroundColor: scheme.onSurface,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: scheme.primary.withOpacity(0.18)),
-                  ),
-                  child: Icon(
-                    Icons.analytics_outlined,
-                    color: scheme.primary,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Centro de reportes',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                ),
-              ],
-            );
-
-            final actions = Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                _buildActionButton(
-                  icon: Icons.people_alt_outlined,
-                  label: 'Ventas por cliente',
-                  color: scheme.tertiary,
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ClientSalesReportPage(),
-                      ),
-                    );
-                  },
-                ),
-                _buildActionButton(
-                  icon: Icons.picture_as_pdf_outlined,
-                  label: 'PDF',
-                  color: scheme.error,
-                  onPressed: _exportPdf,
-                ),
-                _buildActionButton(
-                  icon: Icons.download_outlined,
-                  label: 'CSV',
-                  color: scheme.primary,
-                  onPressed: _exportCSV,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  onPressed: _loadData,
-                  tooltip: 'Recargar datos',
-                  style: IconButton.styleFrom(
-                    backgroundColor: scheme.primary.withOpacity(0.10),
-                    foregroundColor: scheme.primary,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              ],
-            );
-
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (stacked) ...[
-                  Row(children: [Expanded(child: identity)]),
-                  const SizedBox(height: 8),
-                  Align(alignment: Alignment.centerRight, child: actions),
-                ] else
-                  Row(
-                    children: [
-                      Expanded(child: identity),
-                      const SizedBox(width: 12),
-                      actions,
-                    ],
-                  ),
-                const SizedBox(height: 8),
-                if (stacked) ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: DateRangeSelector(
-                      selectedPeriod: _selectedPeriod,
-                      customStart: _customStart,
-                      customEnd: _customEnd,
-                      onPeriodChanged: _onPeriodChanged,
-                      onCustomRangeChanged: _onCustomRangeChanged,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(alignment: Alignment.centerLeft, child: stats),
-                ] else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: DateRangeSelector(
-                            selectedPeriod: _selectedPeriod,
-                            customStart: _customStart,
-                            customEnd: _customEnd,
-                            onPeriodChanged: _onPeriodChanged,
-                            onCustomRangeChanged: _onCustomRangeChanged,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      stats,
-                    ],
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
+    final sign = normalized < 0 ? '-' : '';
+    return '${sign}RD\$ ${_formatNumber(normalized.abs())}';
   }
 
   Widget _buildActionButton({
@@ -755,6 +477,205 @@ class _ReportsPageState extends State<ReportsPage>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      body: Column(
+        children: [
+          _buildHeader(),
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final padding = _contentPadding(constraints);
+                      final isNarrow = constraints.maxWidth < 1100;
+                      return _buildContent(padding: padding, isNarrow: isNarrow);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final stacked = MediaQuery.sizeOf(context).width < 1180;
+
+    final leading = IconButton(
+      icon: const Icon(Icons.arrow_back_rounded),
+      onPressed: () {
+        if (context.canPop()) {
+          context.pop();
+          return;
+        }
+        context.go('/sales');
+      },
+      tooltip: 'Volver',
+      style: IconButton.styleFrom(
+        backgroundColor: scheme.surfaceContainerHighest,
+        foregroundColor: scheme.onSurface,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+
+    final identity = Row(
+      children: [
+        leading,
+      ],
+    );
+
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _buildActionButton(
+          icon: Icons.people_alt_outlined,
+          label: 'Clientes',
+          color: scheme.tertiary,
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ClientSalesReportPage()),
+            );
+          },
+        ),
+        _buildActionButton(
+          icon: Icons.picture_as_pdf_outlined,
+          label: 'PDF',
+          color: scheme.error,
+          onPressed: _exportPdf,
+        ),
+        _buildActionButton(
+          icon: Icons.download_outlined,
+          label: 'CSV',
+          color: scheme.primary,
+          onPressed: _exportCSV,
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _loadData,
+          tooltip: 'Recargar datos',
+          style: IconButton.styleFrom(
+            backgroundColor: scheme.primary.withOpacity(0.10),
+            foregroundColor: scheme.primary,
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: scheme.outlineVariant),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.shadow.withOpacity(0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  leading,
+                  const SizedBox(height: 10),
+                  actions,
+                ],
+              )
+            : Row(
+                children: [
+                  leading,
+                  const Spacer(),
+                  const SizedBox(width: 12),
+                  actions,
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(bool isNarrow) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final filters = [
+      ('Hoy', DateRangePeriod.today),
+      ('Semana', DateRangePeriod.week),
+      ('15 dias', DateRangePeriod.biweekly),
+      ('Mes', DateRangePeriod.month),
+      ('Personalizado', DateRangePeriod.custom),
+    ];
+
+    Widget segment(String label, DateRangePeriod period) {
+      final isSelected = _selectedPeriod == period;
+      return InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          if (period == DateRangePeriod.custom) {
+            await _pickCustomRange();
+            return;
+          }
+          _onPeriodChanged(period);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? scheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: isSelected ? scheme.onPrimary : scheme.onSurface,
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: isNarrow
+          ? Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final item in filters) segment(item.$1, item.$2)],
+            )
+          : Row(
+              children: [
+                for (final item in filters) ...[
+                  segment(item.$1, item.$2),
+                  if (item != filters.last) const SizedBox(width: 8),
+                ],
+              ],
+            ),
     );
   }
 
@@ -794,7 +715,7 @@ class _ReportsPageState extends State<ReportsPage>
             ),
             const SizedBox(height: 6),
             Text(
-              'Procesando ventas, utilidad, caja y comparativas del rango seleccionado.',
+              'Procesando ventas y métricas del rango seleccionado.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -809,37 +730,134 @@ class _ReportsPageState extends State<ReportsPage>
 
   Widget _buildContent({required EdgeInsets padding, required bool isNarrow}) {
     final scheme = Theme.of(context).colorScheme;
+    final kpis = _kpis;
+    final topClient = _topClients.isNotEmpty ? _topClients.first : null;
+    final topPayment = _paymentMethods.isNotEmpty
+        ? (_paymentMethods.toList()..sort((a, b) => b.amount.compareTo(a.amount))).first
+        : null;
+
     return SingleChildScrollView(
       padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_kpis != null) AdvancedKpiCards(kpis: _kpis!),
-          const SizedBox(height: 20),
+          _buildFilterBar(isNarrow),
+          const SizedBox(height: 18),
+          if (kpis != null) ...[
+            _buildReferenceHeroPanel(
+              isNarrow: isNarrow,
+              kpis: kpis,
+              topClient: topClient,
+              topPayment: topPayment,
+            ),
+            const SizedBox(height: 18),
+            isNarrow
+                ? Column(
+                    children: [
+                      _buildExecutiveMetricCard(
+                        label: 'Total vendido',
+                        value: kpis.totalSales,
+                        tone: scheme.primary,
+                        icon: Icons.point_of_sale_outlined,
+                        footnote:
+                            '${_formatNumber(kpis.salesCount)} ordenes procesadas',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildExecutiveMetricCard(
+                        label: 'Utilidad neta',
+                        value: kpis.netProfit,
+                        tone: scheme.tertiary,
+                        icon: Icons.trending_up_outlined,
+                        footnote:
+                            'Ganancia bruta: ${_formatCurrency(kpis.totalProfit)}',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildExecutiveMetricCard(
+                        label: 'Gastos',
+                        value: kpis.cashExpense,
+                        tone: scheme.error,
+                        icon: Icons.money_off_csred_outlined,
+                        footnote: 'Salidas de caja del rango activo',
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: _buildExecutiveMetricCard(
+                          label: 'Total vendido',
+                          value: kpis.totalSales,
+                          tone: scheme.primary,
+                          icon: Icons.point_of_sale_outlined,
+                          footnote:
+                              '${_formatNumber(kpis.salesCount)} ordenes procesadas',
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: _buildExecutiveMetricCard(
+                          label: 'Utilidad neta',
+                          value: kpis.netProfit,
+                          tone: scheme.tertiary,
+                          icon: Icons.trending_up_outlined,
+                          footnote:
+                              'Ganancia bruta: ${_formatCurrency(kpis.totalProfit)}',
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: _buildExecutiveMetricCard(
+                          label: 'Gastos',
+                          value: kpis.cashExpense,
+                          tone: scheme.error,
+                          icon: Icons.money_off_csred_outlined,
+                          footnote: 'Salidas de caja del rango activo',
+                        ),
+                      ),
+                    ],
+                  ),
+            const SizedBox(height: 18),
+          ],
+          const SizedBox(height: 18),
           if (isNarrow)
             Column(
               children: [
-                _buildChartCard(
-                  title: 'Ventas por Periodo',
-                  subtitle: 'Comportamiento bruto del periodo seleccionado.',
-                  icon: Icons.bar_chart,
-                  child: SizedBox(
-                    height: 280,
-                    child: SalesBarChart(
-                      data: _salesSeries,
-                      barColor: scheme.primary,
-                    ),
-                  ),
+                _buildTopProductsExecutiveCard(),
+                const SizedBox(height: 14),
+                _buildSecondaryStatCard(
+                  title: 'Total de ordenes',
+                  value: _formatNumber(kpis?.salesCount ?? 0),
+                  icon: Icons.receipt_long_outlined,
+                  tone: scheme.primary,
+                  caption: 'Ordenes generadas durante el periodo.',
                 ),
-                const SizedBox(height: 16),
-                _buildChartCard(
-                  title: 'Metodos de Pago',
-                  subtitle: 'Distribucion real segun pagos registrados.',
-                  icon: Icons.pie_chart,
-                  child: SizedBox(
-                    height: 280,
-                    child: PaymentMethodPieChart(data: _paymentMethods),
-                  ),
+                const SizedBox(height: 12),
+                _buildSecondaryStatCard(
+                  title: 'Ticket promedio',
+                  value: _formatCurrency(kpis?.avgTicket ?? 0),
+                  icon: Icons.local_atm_outlined,
+                  tone: scheme.secondary,
+                  caption: 'Valor promedio por venta.',
+                ),
+                const SizedBox(height: 12),
+                _buildSecondaryStatCard(
+                  title: 'Cliente principal',
+                  value: topClient?.clientName ?? 'Sin datos',
+                  icon: Icons.person_outline,
+                  tone: scheme.tertiary,
+                  caption: topClient == null
+                      ? 'Sin cliente destacado en el rango.'
+                      : _formatCurrency(topClient.totalSpent),
+                ),
+                const SizedBox(height: 12),
+                _buildSecondaryStatCard(
+                  title: 'Metodo de pago lider',
+                  value: topPayment?.method ?? 'Sin datos',
+                  icon: Icons.account_balance_wallet_outlined,
+                  tone: scheme.primary,
+                  caption: topPayment == null
+                      ? 'Sin pagos registrados.'
+                      : _formatCurrency(topPayment.amount),
                 ),
               ],
             )
@@ -847,293 +865,625 @@ class _ReportsPageState extends State<ReportsPage>
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  flex: 3,
-                  child: _buildChartCard(
-                    title: 'Ventas por Periodo',
-                    subtitle: 'Comportamiento bruto del periodo seleccionado.',
-                    icon: Icons.bar_chart,
-                    child: SizedBox(
-                      height: 280,
-                      child: SalesBarChart(
-                        data: _salesSeries,
-                        barColor: scheme.primary,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 20),
+                Expanded(flex: 3, child: _buildTopProductsExecutiveCard()),
+                const SizedBox(width: 14),
                 Expanded(
                   flex: 2,
-                  child: _buildChartCard(
-                    title: 'Metodos de Pago',
-                    subtitle: 'Distribucion real segun pagos registrados.',
-                    icon: Icons.pie_chart,
-                    child: SizedBox(
-                      height: 280,
-                      child: PaymentMethodPieChart(data: _paymentMethods),
-                    ),
+                  child: Column(
+                    children: [
+                      _buildSecondaryStatCard(
+                        title: 'Total de ordenes',
+                        value: _formatNumber(kpis?.salesCount ?? 0),
+                        icon: Icons.receipt_long_outlined,
+                        tone: scheme.primary,
+                        caption: 'Ordenes generadas durante el periodo.',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildSecondaryStatCard(
+                        title: 'Ticket promedio',
+                        value: _formatCurrency(kpis?.avgTicket ?? 0),
+                        icon: Icons.local_atm_outlined,
+                        tone: scheme.secondary,
+                        caption: 'Valor promedio por venta.',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildSecondaryStatCard(
+                        title: 'Cliente principal',
+                        value: topClient?.clientName ?? 'Sin datos',
+                        icon: Icons.person_outline,
+                        tone: scheme.tertiary,
+                        caption: topClient == null
+                            ? 'Sin cliente destacado en el rango.'
+                            : _formatCurrency(topClient.totalSpent),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildSecondaryStatCard(
+                        title: 'Metodo de pago lider',
+                        value: topPayment?.method ?? 'Sin datos',
+                        icon: Icons.account_balance_wallet_outlined,
+                        tone: scheme.primary,
+                        caption: topPayment == null
+                            ? 'Sin pagos registrados.'
+                            : _formatCurrency(topPayment.amount),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          const SizedBox(height: 20),
-          if (isNarrow)
-            Column(
-              children: [
-                _buildChartCard(
-                  title: 'Ganancia Neta por Periodo',
-                  subtitle:
-                      'Utilidad diaria despues de devoluciones y egresos.',
-                  icon: Icons.trending_up,
-                  child: SizedBox(
-                    height: 250,
-                    child: SalesBarChart(
-                      data: _profitSeries,
-                      barColor: scheme.tertiary,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildChartCard(
-                  title: 'Comparativa de Ventas',
-                  subtitle: 'Lectura rapida frente a cortes anteriores.',
-                  icon: Icons.compare_arrows,
-                  child: SizedBox(
-                    height: 250,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: ComparativeStatsCard(stats: _comparativeStats),
-                    ),
-                  ),
-                ),
-              ],
-            )
-          else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: _buildChartCard(
-                    title: 'Ganancia Neta por Periodo',
-                    subtitle:
-                        'Utilidad diaria despues de devoluciones y egresos.',
-                    icon: Icons.trending_up,
-                    child: SizedBox(
-                      height: 250,
-                      child: SalesBarChart(
-                        data: _profitSeries,
-                        barColor: scheme.tertiary,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  flex: 2,
-                  child: _buildChartCard(
-                    title: 'Comparativa de Ventas',
-                    subtitle: 'Lectura rapida frente a cortes anteriores.',
-                    icon: Icons.compare_arrows,
-                    child: SizedBox(
-                      height: 250,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: ComparativeStatsCard(stats: _comparativeStats),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: 20),
-          _buildCategoryPerformanceCard(),
-          const SizedBox(height: 20),
-          _buildTabbedSection(),
         ],
       ),
     );
   }
 
-  Widget _buildCategoryPerformanceCard() {
-    final scheme = Theme.of(context).colorScheme;
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
+  Widget _buildReferenceHeroPanel({
+    required bool isNarrow,
+    required KpisData kpis,
+    required TopClient? topClient,
+    required PaymentMethodData? topPayment,
+  }) {
+    final brandScheme = ColorScheme.fromSeed(
+      seedColor: ui_colors.AppColors.primaryBlue,
+      brightness: Brightness.light,
+    ).copyWith(
+      primary: ui_colors.AppColors.primaryBlue,
+      secondary: const Color(0xFF22C55E),
+      tertiary: const Color(0xFF0EA5E9),
+      surface: Colors.white,
+      surfaceContainerHighest: const Color(0xFFEAF2FF),
+      onSurface: ui_colors.AppColors.textPrimary,
+      onSurfaceVariant: ui_colors.AppColors.textSecondary,
+      outlineVariant: ui_colors.AppColors.borderSoft,
+      error: ui_colors.AppColors.error,
     );
 
-    return _buildChartCard(
-      title: 'Ventas y Margen Bruto por Categoria',
-      subtitle: 'Desempeno neto por categoria dentro del rango activo.',
-      icon: Icons.category,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: _categoryPerformance.isEmpty
-            ? Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(
-                  'No hay datos por categoria en este periodo.',
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 13,
-                  ),
-                ),
-              )
-            : Column(
+    final brandTheme = Theme.of(context).copyWith(
+      colorScheme: brandScheme,
+      scaffoldBackgroundColor: brandScheme.surface,
+      cardColor: Colors.white,
+      dividerColor: brandScheme.outlineVariant,
+      textTheme: Theme.of(context).textTheme.apply(
+        bodyColor: brandScheme.onSurface,
+        displayColor: brandScheme.onSurface,
+      ),
+    );
+
+    Widget summaryTile({
+      required String label,
+      required String value,
+      required Color accent,
+    }) {
+      return Container(
+        constraints: BoxConstraints(
+          minWidth: isNarrow ? 120 : 150,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.82),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: accent.withOpacity(0.14)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: brandScheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: accent,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget periodBadge() {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: brandScheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today_outlined, size: 16, color: brandScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              _periodLabel(),
+              style: TextStyle(
+                color: brandScheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.keyboard_arrow_down, size: 18, color: brandScheme.onSurfaceVariant),
+          ],
+        ),
+      );
+    }
+
+    final salesCount = _formatNumber(kpis.salesCount);
+    final margin = kpis.totalSales > 0
+        ? ((kpis.netProfit / kpis.totalSales) * 100).clamp(-999, 999)
+        : 0.0;
+
+    return Theme(
+      data: brandTheme,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFF8FBFF), Color(0xFFEDF4FF), Color(0xFFF6FBFF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: ui_colors.AppColors.borderSoft),
+          boxShadow: [
+            BoxShadow(
+              color: brandScheme.shadow.withOpacity(0.08),
+              blurRadius: 24,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: isNarrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Text(
+                    'Ventas del periodo',
+                    style: TextStyle(
+                      color: brandScheme.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatCurrency(kpis.totalSales),
+                    style: TextStyle(
+                      color: brandScheme.onSurface,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  periodBadge(),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    height: 240,
+                    child: SalesBarChart(
+                      data: _salesSeries,
+                      barColor: brandScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          'Categoria',
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      summaryTile(
+                        label: 'Margen',
+                        value: '${margin.toStringAsFixed(1)}%',
+                        accent: brandScheme.tertiary,
                       ),
-                      Expanded(
-                        child: Text(
-                          'Ventas',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      summaryTile(
+                        label: 'Ordenes',
+                        value: salesCount,
+                        accent: brandScheme.primary,
                       ),
-                      Expanded(
-                        child: Text(
-                          'Devol.',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Neto',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Margen Bruto',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      summaryTile(
+                        label: 'Utilidad neta',
+                        value: _formatCurrency(kpis.netProfit),
+                        accent: brandScheme.secondary,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'El margen bruto por categoria refleja ventas menos costo y devoluciones. Los gastos generales del rango solo se descuentan en la ganancia neta del reporte.',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurfaceVariant,
-                      ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: 280,
+                    child: PaymentMethodPieChart(data: _paymentMethods),
+                  ),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 6,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ventas del periodo',
+                          style: TextStyle(
+                            color: brandScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatCurrency(kpis.totalSales),
+                          style: TextStyle(
+                            color: brandScheme.onSurface,
+                            fontSize: 42,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            periodBadge(),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          height: 290,
+                          child: SalesBarChart(
+                            data: _salesSeries,
+                            barColor: brandScheme.primary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _categoryPerformance.length,
-                    separatorBuilder: (_, _) => Divider(
-                      height: 16,
-                      color: scheme.outlineVariant.withOpacity(0.6),
+                  const SizedBox(width: 26),
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            summaryTile(
+                              label: 'Margen',
+                              value: '${margin.toStringAsFixed(1)}%',
+                              accent: brandScheme.tertiary,
+                            ),
+                            summaryTile(
+                              label: 'Ordenes',
+                              value: salesCount,
+                              accent: brandScheme.primary,
+                            ),
+                            summaryTile(
+                              label: 'Utilidad neta',
+                              value: _formatCurrency(kpis.netProfit),
+                              accent: brandScheme.secondary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          height: 250,
+                          child: PaymentMethodPieChart(data: _paymentMethods),
+                        ),
+                        const SizedBox(height: 16),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            _buildHeroMiniInfo(
+                              label: 'Ticket promedio',
+                              value: _formatCurrency(kpis.avgTicket),
+                              scheme: brandScheme,
+                            ),
+                            _buildHeroMiniInfo(
+                              label: 'Cliente principal',
+                              value: topClient?.clientName ?? 'Sin datos',
+                              scheme: brandScheme,
+                            ),
+                            _buildHeroMiniInfo(
+                              label: 'Metodo lider',
+                              value: topPayment?.method ?? 'Sin datos',
+                              scheme: brandScheme,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    itemBuilder: (context, index) {
-                      final item = _categoryPerformance[index];
-                      return Row(
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.category,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${item.itemsSold.toInt()} vendidos · ${item.itemsRefunded.toInt()} devueltos',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              currencyFormat.format(item.sales),
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              currencyFormat.format(item.refunds),
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                color: scheme.error,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              currencyFormat.format(item.netSales),
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              currencyFormat.format(item.profit),
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                color: item.profit >= 0
-                                    ? scheme.tertiary
-                                    : scheme.error,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
                   ),
                 ],
               ),
       ),
+    );
+  }
+
+  Widget _buildHeroMiniInfo({
+    required String label,
+    required String value,
+    required ColorScheme scheme,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExecutiveMetricCard({
+    required String label,
+    required double value,
+    required Color tone,
+    required IconData icon,
+    String? footnote,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: tone.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: tone, size: 20),
+              ),
+              const Spacer(),
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatCurrency(value),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: scheme.onSurface,
+              fontFamily: 'Inter',
+            ),
+          ),
+          if (footnote != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              footnote,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecondaryStatCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color tone,
+    String? caption,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: tone.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: tone, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (caption != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    caption,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopProductsExecutiveCard() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return _buildChartCard(
+      title: 'Productos mas vendidos',
+      subtitle: 'Productos con mayor impacto comercial en el periodo.',
+      icon: Icons.workspace_premium_outlined,
+      child: _topProducts.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 28),
+              child: Center(
+                child: Text(
+                  'No hay productos destacados en este rango.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+          : Column(
+              children: _topProducts.take(5).toList().asMap().entries.map((entry) {
+                final index = entry.key;
+                final product = entry.value;
+                return Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    border: index == 4
+                        ? null
+                        : Border(
+                            bottom: BorderSide(
+                              color: scheme.outlineVariant.withOpacity(0.35),
+                            ),
+                          ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: scheme.primary.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${index + 1}',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product.productName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${product.totalQty.toStringAsFixed(0)} uds',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _formatCurrency(product.totalSales),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
     );
   }
 
@@ -1146,9 +1496,9 @@ class _ReportsPageState extends State<ReportsPage>
     final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
         boxShadow: [
           BoxShadow(
             color: scheme.shadow.withOpacity(0.05),
@@ -1204,419 +1554,6 @@ class _ReportsPageState extends State<ReportsPage>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: child,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabbedSection() {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
-              ),
-              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Vista tabular',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: scheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Productos, clientes y ventas recientes en una sola superficie.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: scheme.onSurface.withOpacity(0.62),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TabBar(
-                    controller: _tabController,
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    labelColor: scheme.primary,
-                    unselectedLabelColor: scheme.onSurface.withOpacity(0.68),
-                    indicator: BoxDecoration(
-                      color: scheme.primary.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: scheme.primary.withOpacity(0.16),
-                      ),
-                    ),
-                    dividerColor: Colors.transparent,
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    labelStyle: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                    tabs: [
-                      _buildTab(Icons.inventory_2_outlined, 'Top Productos'),
-                      _buildTab(Icons.people_outline, 'Top Clientes'),
-                      _buildTab(Icons.receipt_long_outlined, 'Ventas'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 450,
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                TopProductsTable(products: _topProducts),
-                TopClientsTable(clients: _topClients),
-                _buildSalesTable(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTab(IconData icon, String label) {
-    return Tab(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [Icon(icon, size: 17), const SizedBox(width: 6), Text(label)],
-      ),
-    );
-  }
-
-  Widget _buildSalesTable() {
-    final scheme = Theme.of(context).colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$ ',
-      decimalDigits: 2,
-    );
-
-    if (_salesList.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.receipt_long,
-                size: 48,
-                color: scheme.onSurface.withOpacity(0.3),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No hay ventas para mostrar',
-              style: TextStyle(
-                color: scheme.onSurface.withOpacity(0.7),
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Las ventas del periodo apareceran aqui',
-              style: TextStyle(
-                color: scheme.onSurface.withOpacity(0.5),
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: scheme.primary.withOpacity(0.08),
-            border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'Codigo',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'Fecha',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  'Cliente',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'Total',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: scheme.onSurface,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  'Metodo',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: scheme.onSurface,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: _salesList.length > 50 ? 50 : _salesList.length,
-            itemBuilder: (context, index) {
-              final sale = _salesList[index];
-              final date = DateTime.fromMillisecondsSinceEpoch(
-                sale.createdAtMs,
-              );
-              final dateStr =
-                  '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: scheme.outlineVariant),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: scheme.primary.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          sale.localCode,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        dateStr,
-                        style: TextStyle(fontSize: 12, color: scheme.onSurface),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 3,
-                      child: Text(
-                        sale.customerName ?? 'Cliente General',
-                        style: TextStyle(fontSize: 12, color: scheme.onSurface),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        money.format(sale.total),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: scheme.primary,
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Center(
-                        child: _buildPaymentMethodBadge(sale.paymentMethod),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        if (_salesList.length > 50)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              border: Border(top: BorderSide(color: scheme.outlineVariant)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: scheme.onSurface.withOpacity(0.6),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Mostrando 50 de ${_salesList.length} ventas',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildPaymentMethodBadge(String? method) {
-    final scheme = Theme.of(context).colorScheme;
-    String label;
-    Color color;
-    IconData icon;
-
-    switch (method?.toLowerCase()) {
-      case 'cash':
-      case 'efectivo':
-      case null:
-        label = 'Efectivo';
-        color = scheme.tertiary;
-        icon = Icons.payments;
-        break;
-      case 'card':
-      case 'tarjeta':
-        label = 'Tarjeta';
-        color = scheme.primary;
-        icon = Icons.credit_card;
-        break;
-      case 'transfer':
-      case 'transferencia':
-        label = 'Transfer';
-        color = scheme.secondary;
-        icon = Icons.swap_horiz;
-        break;
-      case 'credit':
-      case 'credito':
-      case 'crédito':
-        label = 'Credito';
-        color = scheme.error;
-        icon = Icons.schedule;
-        break;
-      case 'layaway':
-      case 'apartado':
-        label = 'Apartado';
-        color = scheme.secondary;
-        icon = Icons.bookmark;
-        break;
-      default:
-        label = method ?? 'N/A';
-        color = scheme.outline;
-        icon = Icons.help_outline;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
           ),
         ],
       ),

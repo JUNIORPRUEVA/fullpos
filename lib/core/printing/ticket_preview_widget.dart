@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/app_configuration_service.dart';
+import '../utils/currency_display.dart';
 import '../../features/settings/data/printer_settings_model.dart';
 
 /// Widget que muestra una vista previa del ticket como se imprimiría
@@ -430,7 +431,7 @@ class TicketPreviewWidget extends StatelessWidget {
     final business = appConfigService.getBusinessName().trim();
     final shouldFallback =
         header.isEmpty ||
-      headerUpper == 'FULLTECH, SRL' ||
+        headerUpper == 'FULLTECH, SRL' ||
         headerUpper == 'FULLPOS';
     if (shouldFallback && business.isNotEmpty) {
       return business;
@@ -490,7 +491,7 @@ class TicketPreviewWidget extends StatelessWidget {
   }
 
   String _formatCurrency(double value) {
-    return 'RD\$ ${value.toStringAsFixed(2)}';
+    return CurrencyDisplay.format(value, symbol: 'RD\$');
   }
 
   String _paymentLabel(String method) {

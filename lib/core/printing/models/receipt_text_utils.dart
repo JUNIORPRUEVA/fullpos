@@ -1,4 +1,4 @@
-import 'package:intl/intl.dart';
+import '../../utils/currency_display.dart';
 
 /// Utilidades para tickets monoespaciados (fixed-width).
 ///
@@ -75,9 +75,7 @@ class ReceiptText {
   /// Formato tipo POS: 1,250.00 (coma miles, punto decimal)
   static String money(num value) {
     final v = value.toDouble();
-    if (v.isNaN || v.isInfinite) return '0.00';
-    // Requerimiento de ticket: 2 decimales, sin símbolos y sin separador de miles.
-    // Esto mantiene alineación estable en columnas fijas (ej: 59.32).
-    return NumberFormat('0.00', 'en_US').format(v);
+    if (v.isNaN || v.isInfinite) return '0';
+    return CurrencyDisplay.formatPlain(v);
   }
 }

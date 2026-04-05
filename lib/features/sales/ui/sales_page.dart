@@ -14,6 +14,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/services/empresa_service.dart';
 import '../../../core/ui/responsive_grid.dart';
 import '../../../core/printing/invoice_letter_pdf.dart';
+import '../../../core/printing/quote_printer.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/security/scanner_input_controller.dart';
 import '../../../core/security/security_config.dart';
@@ -27,9 +28,9 @@ import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
-import '../../../theme/app_colors.dart';
 import '../../../core/widgets/branded_loading_view.dart';
 import '../../cash/providers/cash_providers.dart';
 import '../../cash/data/cash_movement_model.dart';
@@ -52,6 +53,8 @@ import '../data/app_settings_model.dart';
 import '../data/sale_item_model.dart';
 import '../data/sale_model.dart';
 import '../data/layaway_repository.dart';
+import '../data/quote_model.dart';
+import '../data/quotes_repository.dart';
 import '../data/sales_model.dart' as legacy_sales;
 import '../data/sales_repository.dart';
 import '../data/settings_repository.dart';
@@ -64,6 +67,8 @@ import 'dialogs/product_filter_dialog.dart';
 import 'dialogs/quick_item_dialog.dart';
 import 'dialogs/quote_dialog.dart';
 import 'dialogs/total_discount_dialog.dart';
+
+enum _InlineItemFocus { qty, discount }
 
 /// Pantalla principal de POS con múltiples carritos
 class SalesPage extends ConsumerStatefulWidget {
@@ -204,6 +209,20 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   List<ProductModel> _filteredProductsCache = const <ProductModel>[];
 
   int? _selectedCartItemIndex;
+
+    int? _inlineEditCartItemIndex;
+    DiscountType _inlineLineDiscountType = DiscountType.amount;
+    final TextEditingController _inlineQtyController = TextEditingController();
+    final TextEditingController _inlineLineDiscountController =
+      TextEditingController();
+    final FocusNode _inlineQtyFocusNode = FocusNode();
+    final FocusNode _inlineLineDiscountFocusNode = FocusNode();
+
+    bool _isInlineTotalDiscountOpen = false;
+    DiscountType _inlineTotalDiscountType = DiscountType.percent;
+    final TextEditingController _inlineTotalDiscountController =
+      TextEditingController();
+    final FocusNode _inlineTotalDiscountFocusNode = FocusNode();
 
   bool _keyboardShortcutsEnabled = true;
   ScannerInputController? _scanner;
@@ -1165,20 +1184,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
-  Future<void> _openFilterDialog() async {
-    final result = await _presentDialog<ProductFilterModel>(
-      builder: (context) => ProductFilterDialog(
-        initialFilter: _productFilter,
-        categories: _categories
-            .map((c) => {'id': c.id, 'name': c.name})
-            .toList(),
-      ),
-    );
-
-    if (!mounted || result == null) return;
-    setState(() => _productFilter = result);
-  }
-
   Future<ClientModel?> _showClientPicker() async {
     final result = await _presentDialog<ClientModel>(
       builder: (context) => ClientPickerDialog(clients: _clients),
@@ -1280,10 +1285,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     return _paymentDocumentTypeFromCart();
   }
 
-  Future<void> _showFinalizeSaleDialog() async {
-    await _processPayment(SaleKind.invoice);
-  }
-
   void _openFacturaPage() {
     AuthzService.guardedAction(
       context,
@@ -1306,75 +1307,138 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       return;
     }
 
-    final currentDiscount =
-        _currentCart.discountTotalValue != null &&
-            _currentCart.discountTotalValue! > 0
-        ? DiscountResult(
-            type: _currentCart.discountTotalType == 'percent'
-                ? DiscountType.percent
-                : DiscountType.amount,
-            value: _currentCart.discountTotalValue!,
-          )
-        : null;
+    setState(() {
+      _inlineEditCartItemIndex = null;
+      _isInlineTotalDiscountOpen = !_isInlineTotalDiscountOpen;
 
-    final result = await _presentDialog<dynamic>(
-      builder: (context) => TotalDiscountDialog(
-        subtotal: _currentCart.calculateSubtotal(),
-        itbisRate: _currentCart.itbisRate,
-        currentDiscount: currentDiscount,
+      final currentType = _currentCart.discountTotalType == 'amount'
+          ? DiscountType.amount
+          : DiscountType.percent;
+      _inlineTotalDiscountType = currentType;
+
+      final value = _currentCart.discountTotalValue ?? 0.0;
+      _inlineTotalDiscountController.text =
+          value > 0 ? value.toStringAsFixed(2) : '';
+    });
+
+    if (!_isInlineTotalDiscountOpen) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _inlineTotalDiscountFocusNode.requestFocus();
+      _inlineTotalDiscountController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _inlineTotalDiscountController.text.length,
+      );
+    });
+  }
+
+  bool _isValidTotalDiscount(
+    double subtotal,
+    DiscountType type,
+    double value,
+  ) {
+    if (value <= 0) return false;
+    if (type == DiscountType.percent) {
+      return value > 0 && value <= 100;
+    }
+    return value > 0 && value < subtotal;
+  }
+
+  double _computeTotalDiscountAmount(
+    double subtotal,
+    DiscountType type,
+    double value,
+  ) {
+    if (type == DiscountType.percent) {
+      return subtotal * (value / 100);
+    }
+    return value;
+  }
+
+  double _computeInlineTotalDiscountPreviewTotal() {
+    final subtotal = _currentCart.calculateSubtotal();
+    final raw = double.tryParse(_inlineTotalDiscountController.text) ?? 0.0;
+    final discountAmount = _computeTotalDiscountAmount(
+      subtotal,
+      _inlineTotalDiscountType,
+      raw,
+    );
+    final after = (subtotal - discountAmount).clamp(0.0, double.infinity);
+    final itbis = _currentCart.itbisEnabled ? after * _currentCart.itbisRate : 0.0;
+    return after + itbis;
+  }
+
+  void _removeInlineTotalDiscount() {
+    _updateCurrentCart(() {
+      _currentCart.discountTotalType = null;
+      _currentCart.discountTotalValue = null;
+    });
+    setState(() => _isInlineTotalDiscountOpen = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Descuento eliminado'),
+        backgroundColor: status.success,
       ),
     );
+  }
 
-    if (!mounted) return;
+  Future<void> _applyInlineTotalDiscount() async {
+    final subtotal = _currentCart.calculateSubtotal();
+    final value = double.tryParse(_inlineTotalDiscountController.text) ?? 0.0;
+    final type = _inlineTotalDiscountType;
 
-    if (result == 'remove') {
-      _updateCurrentCart(() {
-        _currentCart.discountTotalType = null;
-        _currentCart.discountTotalValue = null;
-      });
+    if (!_isValidTotalDiscount(subtotal, type, value)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Descuento eliminado'),
-          backgroundColor: status.success,
+          content: Text(
+            type == DiscountType.percent
+                ? 'El porcentaje debe ser entre 0% y 100%'
+                : 'El monto debe ser menor al subtotal',
+          ),
+          backgroundColor: scheme.error,
         ),
       );
       return;
     }
 
-    if (result is DiscountResult) {
-      final ticketId = _currentCart.ticketId?.toString();
-      final canDiscount = await _authorizeAction(
-        AppActions.applyDiscount,
+    await _applyTotalDiscountResult(DiscountResult(type: type, value: value));
+    if (!mounted) return;
+    setState(() => _isInlineTotalDiscountOpen = false);
+  }
+
+  Future<void> _applyTotalDiscountResult(DiscountResult result) async {
+    final ticketId = _currentCart.ticketId?.toString();
+    final canDiscount = await _authorizeAction(
+      AppActions.applyDiscount,
+      resourceType: 'sale',
+      resourceId: ticketId,
+      reason: 'Aplicar descuento',
+    );
+    if (!canDiscount) return;
+
+    if (result.type == DiscountType.percent && result.value > 15.0) {
+      final canOverLimit = await _authorizeAction(
+        AppActions.applyDiscountOverLimit,
         resourceType: 'sale',
         resourceId: ticketId,
-        reason: 'Aplicar descuento',
+        reason: 'Descuento > 15%',
       );
-      if (!canDiscount) return;
-
-      if (result.type == DiscountType.percent && result.value > 15.0) {
-        final canOverLimit = await _authorizeAction(
-          AppActions.applyDiscountOverLimit,
-          resourceType: 'sale',
-          resourceId: ticketId,
-          reason: 'Descuento > 15%',
-        );
-        if (!canOverLimit) return;
-      }
-
-      if (!mounted) return;
-      _updateCurrentCart(() {
-        _currentCart.discountTotalType = result.type == DiscountType.percent
-            ? 'percent'
-            : 'amount';
-        _currentCart.discountTotalValue = result.value;
-      });
-      final discountLabel = result.type == DiscountType.percent
-          ? 'Descuento aplicado: ${result.value.toStringAsFixed(1)}%'
-          : 'Descuento aplicado: RD\$ ${result.value.toStringAsFixed(2)}';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(discountLabel), backgroundColor: status.success),
-      );
+      if (!canOverLimit) return;
     }
+
+    if (!mounted) return;
+    _updateCurrentCart(() {
+      _currentCart.discountTotalType =
+          result.type == DiscountType.percent ? 'percent' : 'amount';
+      _currentCart.discountTotalValue = result.value;
+    });
+    final discountLabel = result.type == DiscountType.percent
+        ? 'Descuento aplicado: ${result.value.toStringAsFixed(1)}%'
+        : 'Descuento aplicado: ${CurrencyDisplay.format(result.value)}';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(discountLabel), backgroundColor: status.success),
+    );
   }
 
   void _removeClient() {
@@ -1488,261 +1552,103 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   void _showEditItemDialog(SaleItemModel item, int index) {
-    final qtyController = TextEditingController(
-      text: item.qty.toStringAsFixed(0),
-    );
-    final discountController = TextEditingController(
-      text: item.discountLine.toStringAsFixed(2),
-    );
-    String discountMode = 'amount';
+    _openInlineItemEditor(item, index, focus: _InlineItemFocus.qty);
+  }
 
-    double computeBaseSubtotal() {
-      final qty = double.tryParse(qtyController.text) ?? item.qty;
-      return qty * item.unitPrice;
-    }
-
-    double computeDiscountAmount() {
-      final base = computeBaseSubtotal();
-      final raw = double.tryParse(discountController.text) ?? 0.0;
-      if (discountMode == 'percent') {
-        final pct = raw.clamp(0.0, 100.0);
-        return base * (pct / 100);
+  void _openInlineItemEditor(
+    SaleItemModel item,
+    int index, {
+    required _InlineItemFocus focus,
+  }) {
+    setState(() {
+      if (_inlineEditCartItemIndex == index) {
+        _inlineEditCartItemIndex = null;
+        return;
       }
-      return raw.clamp(0.0, base);
+      _inlineEditCartItemIndex = index;
+      _inlineLineDiscountType = DiscountType.amount;
+      _inlineQtyController.text = _formatQtyForInlineEditor(item.qty);
+      _inlineLineDiscountController.text = item.discountLine > 0
+          ? item.discountLine.toStringAsFixed(2)
+          : '';
+      _isInlineTotalDiscountOpen = false;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final (focusNode, controller) = switch (focus) {
+        _InlineItemFocus.discount => (
+            _inlineLineDiscountFocusNode,
+            _inlineLineDiscountController,
+          ),
+        _InlineItemFocus.qty => (
+            _inlineQtyFocusNode,
+            _inlineQtyController,
+          ),
+      };
+      focusNode.requestFocus();
+      controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: controller.text.length,
+      );
+    });
+  }
+
+  String _formatQtyForInlineEditor(double qty) {
+    if (qty == qty.roundToDouble()) return qty.toStringAsFixed(0);
+    return qty.toString();
+  }
+
+  double _computeLineDiscountAmount({
+    required double qty,
+    required double unitPrice,
+    required DiscountType type,
+    required String rawText,
+  }) {
+    final base = qty * unitPrice;
+    final raw = double.tryParse(rawText) ?? 0.0;
+    if (type == DiscountType.percent) {
+      final pct = raw.clamp(0.0, 100.0);
+      return base * (pct / 100.0);
     }
+    return raw.clamp(0.0, base);
+  }
 
-    _presentDialog<void>(
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          final subtotal = computeBaseSubtotal();
-          final discountAmount = computeDiscountAmount();
-          final total = (subtotal - discountAmount).clamp(0.0, double.infinity);
+  void _applyInlineQtyChanged(int index, String text) {
+    if (index < 0 || index >= _currentCart.items.length) return;
+    final parsed = double.tryParse(text);
+    if (parsed == null) return;
+    if (parsed <= 0) return;
 
-          void saveItemChanges() {
-            final newQty = double.tryParse(qtyController.text) ?? item.qty;
-            final discountToApply = computeDiscountAmount();
+    _updateCurrentCart(() {
+      if (index < 0 || index >= _currentCart.items.length) return;
+      final current = _currentCart.items[index];
+      final discountAmount = _computeLineDiscountAmount(
+        qty: parsed,
+        unitPrice: current.unitPrice,
+        type: _inlineLineDiscountType,
+        rawText: _inlineLineDiscountController.text,
+      );
+      _currentCart.items[index] = current.copyWith(
+        qty: parsed,
+        discountLine: discountAmount,
+      );
+    });
+  }
 
-            if (newQty <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('La cantidad debe ser mayor a 0'),
-                  backgroundColor: scheme.error,
-                ),
-              );
-              return;
-            }
-
-            _updateCurrentCart(() {
-              _currentCart.items[index] = item.copyWith(
-                qty: newQty,
-                discountLine: discountToApply,
-              );
-            });
-            Navigator.pop(context);
-          }
-
-          return _DialogHotkeys(
-            onEnter: saveItemChanges,
-            child: AlertDialog(
-              backgroundColor: scheme.surface,
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: 32,
-                vertical: 32,
-              ),
-              contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              titleTextStyle: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-              contentTextStyle: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 14,
-              ),
-              title: Row(
-                children: [
-                  Icon(Icons.percent, color: scheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      item.productNameSnapshot,
-                      style: TextStyle(color: scheme.onSurface),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: Icon(Icons.close, color: scheme.onSurface),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: 520,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'C?digo: ${item.productCodeSnapshot}',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Precio unitario: ${item.unitPrice.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: qtyController,
-                        decoration: const InputDecoration(
-                          labelText: 'Cantidad',
-                          prefixIcon: Icon(Icons.numbers),
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        onChanged: (_) => setStateDialog(() {}),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('Monto'),
-                            selected: discountMode == 'amount',
-                            onSelected: (_) =>
-                                setStateDialog(() => discountMode = 'amount'),
-                          ),
-                          ChoiceChip(
-                            label: const Text('Porcentaje'),
-                            selected: discountMode == 'percent',
-                            onSelected: (_) =>
-                                setStateDialog(() => discountMode = 'percent'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: discountController,
-                        decoration: InputDecoration(
-                          labelText: discountMode == 'percent'
-                              ? 'Descuento (%)'
-                              : 'Descuento (RD\$)',
-                          prefixIcon: const Icon(Icons.local_offer),
-                          border: const OutlineInputBorder(),
-                          helperText: discountMode == 'percent'
-                              ? 'Aplica % sobre el subtotal de este producto'
-                              : 'Monto fijo a descontar',
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        onChanged: (_) => setStateDialog(() {}),
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: scheme.surface,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: scheme.outlineVariant),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Subtotal:',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                                Text(
-                                  subtotal.toStringAsFixed(2),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  discountMode == 'percent'
-                                      ? 'Descuento (${(double.tryParse(discountController.text) ?? 0).clamp(0.0, 100.0).toStringAsFixed(1)}%)'
-                                      : 'Descuento:',
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                Text(
-                                  '-${discountAmount.toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: scheme.error,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 4),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Total:',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  total.toStringAsFixed(2),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: scheme.onSurface,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: saveItemChanges,
-                  icon: const Icon(Icons.check),
-                  label: const Text('Aplicar'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+  void _applyInlineLineDiscountChanged(int index, String text) {
+    if (index < 0 || index >= _currentCart.items.length) return;
+    _updateCurrentCart(() {
+      if (index < 0 || index >= _currentCart.items.length) return;
+      final current = _currentCart.items[index];
+      final discountAmount = _computeLineDiscountAmount(
+        qty: current.qty,
+        unitPrice: current.unitPrice,
+        type: _inlineLineDiscountType,
+        rawText: text,
+      );
+      _currentCart.items[index] = current.copyWith(discountLine: discountAmount);
+    });
   }
 
   Future<List<String>> _missingElectronicInvoiceRequirements({
@@ -1927,14 +1833,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       }
       if (!mounted) return;
 
-      final method = paymentResult['method'] as payment.PaymentMethod;
       final selectedDocumentType =
           paymentResult['documentType'] as payment.PaymentDocumentType? ??
           payment.PaymentDocumentType.consumidorFinal;
       if (selectedDocumentType == payment.PaymentDocumentType.cotizacion) {
-        await _saveAsQuote();
+        await _saveAsQuote(paymentResult: paymentResult);
         return;
       }
+      final method = paymentResult['method'] as payment.PaymentMethod;
       final resolvedKind = kind;
       final receivedAmountRaw =
           (paymentResult['received'] as num?)?.toDouble() ?? total;
@@ -2372,13 +2278,137 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     return collapsedSpaces;
   }
 
-  Future<void> _saveAsQuote() async {
+  Future<void> _saveAsQuote({Map<String, dynamic>? paymentResult}) async {
     final canQuote = await _authorizeAction(
       AppActions.createQuote,
       resourceType: 'quote',
       resourceId: _currentCart.ticketId?.toString(),
     );
     if (!canQuote) return;
+
+    if (paymentResult != null) {
+      final selectedClient =
+          paymentResult['selectedClient'] as ClientModel? ??
+          _currentCart.selectedClient;
+      if (selectedClient == null || selectedClient.id == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Debe seleccionar un cliente para la cotización',
+            ),
+            backgroundColor: status.error,
+          ),
+        );
+        return;
+      }
+
+      final quoteItems = _currentCart.items
+          .map(
+            (item) => QuoteItemModel(
+              quoteId: 0,
+              productId: item.productId,
+              productCode: item.productCodeSnapshot,
+              productName: item.productNameSnapshot,
+              description: item.productNameSnapshot,
+              qty: item.qty,
+              price: item.unitPrice,
+              unitPrice: item.unitPrice,
+              cost: item.purchasePriceSnapshot,
+              discountLine: item.discountLine,
+              totalLine: (item.qty * item.unitPrice) - item.discountLine,
+            ),
+          )
+          .toList();
+
+      final quoteOutputMode =
+          paymentResult['quoteOutputMode'] as payment.QuoteOutputMode? ??
+          payment.QuoteOutputMode.save;
+      final validDays =
+          (paymentResult['quoteValidDays'] as num?)?.toInt() ?? 15;
+      final quoteNotes = (paymentResult['quoteNotes'] as String?)?.trim();
+
+      try {
+        final quoteId = await QuotesRepository().saveQuote(
+          clientId: selectedClient.id!,
+          userId: null,
+          ticketName: _currentCart.name,
+          subtotal: _currentCart.calculateSubtotalAfterDiscount(),
+          itbisEnabled: _currentCart.itbisEnabled,
+          itbisRate: _currentCart.itbisRate,
+          itbisAmount: _currentCart.calculateItbis(),
+          discountTotal:
+              _currentCart.discount + _currentCart.calculateTotalDiscount(),
+          total: _currentCart.calculateTotal(),
+          notes: quoteNotes?.isEmpty == true ? null : quoteNotes,
+          items: quoteItems,
+        );
+
+        final shouldPrint = quoteOutputMode == payment.QuoteOutputMode.print;
+        final shouldPreview =
+            quoteOutputMode == payment.QuoteOutputMode.preview;
+        if (shouldPrint || shouldPreview) {
+          final quoteDetail = await QuotesRepository().getQuoteById(quoteId);
+          if (quoteDetail != null) {
+            final business = await SettingsRepository.getBusinessInfo();
+            final settings = await PrinterSettingsRepository.getOrCreate();
+            if (shouldPreview) {
+              if (!mounted) return;
+              await QuotePrinter.showPreview(
+                context: context,
+                quote: quoteDetail.quote,
+                items: quoteDetail.items,
+                clientName: quoteDetail.clientName,
+                clientPhone: quoteDetail.clientPhone,
+                clientRnc: quoteDetail.clientRnc,
+                business: business,
+                validDays: validDays,
+              );
+            } else {
+              await QuotePrinter.printQuote(
+                quote: quoteDetail.quote,
+                items: quoteDetail.items,
+                clientName: quoteDetail.clientName,
+                clientPhone: quoteDetail.clientPhone,
+                clientRnc: quoteDetail.clientRnc,
+                business: business,
+                settings: settings,
+                validDays: validDays,
+              );
+            }
+          }
+        }
+
+        await _deleteCurrentCartFromDatabase();
+
+        if (!mounted) return;
+        setState(() {
+          _currentCart.clear();
+          _selectedCartItemIndex = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              shouldPrint
+                  ? 'Cotización guardada e impresa'
+                  : (shouldPreview
+                        ? 'Cotización guardada y lista para vista previa'
+                        : 'Cotización guardada'),
+            ),
+            backgroundColor: status.success,
+          ),
+        );
+      } catch (e, st) {
+        if (!mounted) return;
+        await ErrorHandler.instance.handle(
+          e,
+          stackTrace: st,
+          context: context,
+          onRetry: () => _saveAsQuote(paymentResult: paymentResult),
+          module: 'sales/quote/save',
+        );
+      }
+      return;
+    }
 
     final result = await _presentDialog<QuoteDialogResult>(
       builder: (context) => QuoteDialog(
@@ -2418,6 +2448,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     _searchFocusNode.dispose();
     _clientFocusNode.dispose();
     _ticketItemsScrollController.dispose();
+    _inlineQtyController.dispose();
+    _inlineLineDiscountController.dispose();
+    _inlineQtyFocusNode.dispose();
+    _inlineLineDiscountFocusNode.dispose();
+    _inlineTotalDiscountController.dispose();
+    _inlineTotalDiscountFocusNode.dispose();
     _scanner?.dispose();
     _cartPersistenceTimer?.cancel();
     super.dispose();
@@ -2546,9 +2582,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             onInvoke: (_) {
               if (_selectedCartItemIndex != null &&
                   _selectedCartItemIndex! < _currentCart.items.length) {
-                _showEditItemDialog(
-                  _currentCart.items[_selectedCartItemIndex!],
-                  _selectedCartItemIndex!,
+                final index = _selectedCartItemIndex!;
+                _openInlineItemEditor(
+                  _currentCart.items[index],
+                  index,
+                  focus: _InlineItemFocus.discount,
                 );
               }
               return null;
@@ -2634,7 +2672,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     constraints.maxWidth,
                   );
                   final panelMargin = constraints.maxWidth < 1150 ? 12.0 : 16.0;
-                    final panelGap = constraints.maxWidth < 1180 ? 32.0 : 42.0;
+                  final panelGap = constraints.maxWidth < 1180 ? 32.0 : 42.0;
                   final theme = Theme.of(context);
                   final tokens =
                       theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
@@ -2651,6 +2689,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       (salesProducts?.cardBorderColor.opacity ?? 0) == 0
                       ? tokens.outline
                       : salesProducts!.cardBorderColor;
+                  final gridTextColor =
+                      (salesProducts?.cardTextColor.opacity ?? 0) == 0
+                      ? theme.colorScheme.onSurface
+                      : salesProducts!.cardTextColor;
+                  final gridMutedTextColor = ColorUtils.ensureReadableColor(
+                    gridTextColor.withOpacity(0.7),
+                    gridCardColor,
+                    minRatio: 3.0,
+                  );
 
                   return Stack(
                     children: [
@@ -2712,8 +2759,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                         Text(
                                                           'Catalogo de productos',
                                                           style: TextStyle(
-                                                            color: AppColors
-                                                                .textPrimary,
+                                                            color:
+                                                                gridTextColor,
                                                             fontSize: 16,
                                                             fontWeight:
                                                                 FontWeight.w700,
@@ -2725,8 +2772,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                         Text(
                                                           '${_filteredProducts().length} productos visibles',
                                                           style: TextStyle(
-                                                            color: AppColors
-                                                                .textSecondary,
+                                                            color:
+                                                                gridMutedTextColor,
                                                             fontSize: 12,
                                                             fontWeight:
                                                                 FontWeight.w500,
@@ -2753,8 +2800,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                     child: Text(
                                                       'Vista compacta',
                                                       style: TextStyle(
-                                                        color: AppColors
-                                                            .textSecondary,
+                                                        color:
+                                                            gridMutedTextColor,
                                                         fontSize: 11,
                                                         fontWeight:
                                                             FontWeight.w700,
@@ -2789,10 +2836,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                                       Icons
                                                                           .inventory_2_outlined,
                                                                       size: 64,
-                                                                      color: AppColors
-                                                                          .textSecondary
+                                                                      color: gridMutedTextColor
                                                                           .withOpacity(
-                                                                            0.35,
+                                                                            0.5,
                                                                           ),
                                                                     ),
                                                                     const SizedBox(
@@ -2802,8 +2848,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                                     Text(
                                                                       'No hay productos disponibles',
                                                                       style: TextStyle(
-                                                                        color: AppColors
-                                                                            .textPrimary,
+                                                                        color:
+                                                                            gridTextColor,
                                                                         fontSize:
                                                                             18,
                                                                         fontWeight:
@@ -2816,8 +2862,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                                     Text(
                                                                       'Intenta buscar con otro termino o cambia el filtro',
                                                                       style: TextStyle(
-                                                                        color: AppColors
-                                                                            .textSecondary,
+                                                                        color:
+                                                                            gridMutedTextColor,
                                                                         fontSize:
                                                                             13,
                                                                       ),
@@ -3084,11 +3130,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ? scheme.surface.withOpacity(0.7)
         : salesProducts!.cardBackgroundColor;
     final cardBorderColor = isHovered
-        ? scheme.primary.withOpacity(0.22)
+        ? (salesProducts?.cardAltBorderColor.opacity ?? 0) == 0
+              ? scheme.primary.withOpacity(0.22)
+              : salesProducts!.cardAltBorderColor
         : (salesProducts?.cardBorderColor.opacity ?? 0) == 0
         ? scheme.outlineVariant
         : salesProducts!.cardBorderColor;
-    final cardTextColor = (salesProducts?.cardTextColor.opacity ?? 0) == 0
+    final cardTextColor = isHovered
+        ? (salesProducts?.cardAltTextColor.opacity ?? 0) == 0
+              ? scheme.onSurface
+              : salesProducts!.cardAltTextColor
+        : (salesProducts?.cardTextColor.opacity ?? 0) == 0
         ? scheme.onSurface
         : salesProducts!.cardTextColor;
     final priceColor = (salesProducts?.priceColor.opacity ?? 0) == 0
@@ -3389,9 +3441,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     final tokens =
         Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
-    final controlText = resolve(
-      salesTheme?.controlBarTextColor,
-      scheme.onSurface,
+    final controlBarBackground = resolve(
+      salesTheme?.controlBarBackgroundColor,
+      tokens.panelBackground,
     );
     final controlBorder = resolve(
       salesTheme?.controlBarBorderColor,
@@ -3401,17 +3453,21 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       salesTheme?.controlBarContentBackgroundColor,
       scheme.surface,
     );
+    final controlTextColor = resolve(
+      salesTheme?.controlBarTextColor,
+      scheme.onSurface,
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final isCompact = width < 980;
 
         final fieldTextColor = ColorUtils.ensureReadableColor(
-          scheme.onSurface,
+          controlTextColor,
           controlContentBg,
         );
 
-        final hintCandidate = scheme.onSurfaceVariant.withOpacity(0.92);
+        final hintCandidate = controlTextColor.withOpacity(0.72);
         var hintColor = ColorUtils.ensureReadableColor(
           hintCandidate,
           controlContentBg,
@@ -3421,12 +3477,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         if (luminance < 0.02 || luminance > 0.98) {
           hintColor = hintColor.withOpacity(0.65);
         }
-
-        final iconColor = ColorUtils.ensureReadableColor(
-          tokens.searchFieldIcon,
-          controlContentBg,
-          minRatio: 3.0,
-        ).withOpacity(0.9);
 
         final searchBarWidth = isCompact ? double.infinity : (width * 0.96);
 
@@ -3440,7 +3490,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         return Container(
           padding: outerPadding,
           decoration: BoxDecoration(
-            color: tokens.panelBackground,
+            color: controlBarBackground,
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(color: controlBorder.withOpacity(0.32)),
           ),
@@ -3480,12 +3530,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             width: 32,
                             height: 32,
                             decoration: BoxDecoration(
-                              color: scheme.primary.withOpacity(0.08),
+                              color: Color.alphaBlend(
+                                scheme.primary.withOpacity(0.08),
+                                controlContentBg,
+                              ),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Icon(
                               Icons.search_rounded,
-                              color: scheme.primary,
+                              color: controlTextColor,
                               size: iconSize,
                             ),
                           ),
@@ -3578,9 +3631,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.hovered)) {
-              return scheme.primary.withOpacity(0.08);
+              return Color.alphaBlend(scheme.primary.withOpacity(0.08), color);
             }
-            return scheme.surface;
+            return color;
           }),
           foregroundColor: WidgetStatePropertyAll(contrastColor),
           side: WidgetStatePropertyAll(
@@ -3595,7 +3648,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           elevation: const WidgetStatePropertyAll(0),
           shadowColor: const WidgetStatePropertyAll(Colors.transparent),
           overlayColor: WidgetStatePropertyAll(
-            scheme.primary.withOpacity(0.08),
+            Color.alphaBlend(scheme.primary.withOpacity(0.08), color),
           ),
           minimumSize: const WidgetStatePropertyAll(Size(0, 42)),
         ),
@@ -3604,14 +3657,30 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Widget _buildTicketsFooter() {
-    final unifiedColor = scheme.surface;
-    final unifiedTextColor = scheme.onSurface;
-    final unifiedBorderColor = scheme.outlineVariant;
+    final salesTheme = Theme.of(context).extension<SalesPageTheme>();
+    Color resolve(Color? c, Color fallback) {
+      if (c == null || c.opacity == 0) return fallback;
+      return c;
+    }
+
+    final unifiedColor = resolve(
+      salesTheme?.footerButtonsBackgroundColor,
+      scheme.surface,
+    );
+    final unifiedTextColor = ColorUtils.ensureReadableColor(
+      resolve(salesTheme?.footerButtonsTextColor, scheme.onSurface),
+      unifiedColor,
+      minRatio: 4.5,
+    );
+    final unifiedBorderColor = resolve(
+      salesTheme?.footerButtonsBorderColor,
+      scheme.outlineVariant,
+    );
     return Container(
       height: _ticketsFooterHeight,
       decoration: BoxDecoration(
-        color: scheme.surface.withOpacity(0.96),
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        color: Color.alphaBlend(unifiedColor.withOpacity(0.18), scheme.surface),
+        border: Border(top: BorderSide(color: unifiedBorderColor)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3675,6 +3744,38 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               ),
             ];
 
+            final divider = Container(
+              width: 1,
+              height: 28,
+              color: unifiedBorderColor.withOpacity(0.75),
+            );
+
+            if (constraints.maxWidth >= 760) {
+              return SizedBox(
+                width: constraints.maxWidth,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: cashActions,
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        divider,
+                        const SizedBox(width: 14),
+                        ...secondaryActions,
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: ConstrainedBox(
@@ -3684,11 +3785,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   children: [
                     ...cashActions,
                     const SizedBox(width: 14),
-                    Container(
-                      width: 1,
-                      height: 28,
-                      color: scheme.outlineVariant.withOpacity(0.75),
-                    ),
+                    divider,
                     const SizedBox(width: 14),
                     ...secondaryActions,
                   ],
@@ -3935,7 +4032,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           ],
         );
 
-        final shouldStack = constraints.maxWidth > 0 && constraints.maxWidth < 290;
+        final shouldStack =
+            constraints.maxWidth > 0 && constraints.maxWidth < 290;
 
         if (shouldStack) {
           return Column(
@@ -4082,8 +4180,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   Widget _buildCartItemRow(SaleItemModel item, int index) {
     final isSelected = _selectedCartItemIndex == index;
+    final isEditing = _inlineEditCartItemIndex == index;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
     final rowDividerColor = salesDetailBorderColor;
+
+    if (isEditing) {
+      _maybeSyncInlineItemControllers(item);
+    }
 
     return InkWell(
       onTap: () => setState(() => _selectedCartItemIndex = index),
@@ -4102,24 +4205,27 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: Text(
-                  '${item.qty.toInt()}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: salesDetailTextColor,
+            if (isEditing)
+              _buildInlineQtyStepperEditor(index, compact: false)
+            else
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    '${item.qty.toInt()}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: salesDetailTextColor,
+                    ),
                   ),
                 ),
               ),
-            ),
             const SizedBox(width: 12),
 
             Expanded(
@@ -4139,7 +4245,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${item.productCodeSnapshot}  •  Unitario RD\$${item.unitPrice.toStringAsFixed(2)}',
+                    '${item.productCodeSnapshot}  •  Unitario ${CurrencyDisplay.format(item.unitPrice)}',
                     style: TextStyle(
                       fontSize: 10.5,
                       color: salesDetailMutedTextColor,
@@ -4148,29 +4254,36 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (isEditing) ...[
+                    const SizedBox(height: 8),
+                    _buildInlineLineDiscountEditor(index, compact: true),
+                  ],
                 ],
               ),
             ),
             const SizedBox(width: 12),
 
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildCompactStepperButton(Icons.remove, () {
-                  if (item.qty > 1) {
-                    _updateCurrentCart(
-                      () => _currentCart.updateQuantity(index, item.qty - 1),
-                    );
-                  }
-                }),
-                const SizedBox(width: 4),
-                _buildCompactStepperButton(
-                  Icons.add,
-                  () => _incrementCartItemQty(item, index),
-                ),
-              ],
-            ),
-            const SizedBox(width: 12),
+            if (!isEditing) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildCompactStepperButton(Icons.remove, () {
+                    if (item.qty > 1) {
+                      _updateCurrentCart(
+                        () =>
+                            _currentCart.updateQuantity(index, item.qty - 1),
+                      );
+                    }
+                  }),
+                  const SizedBox(width: 4),
+                  _buildCompactStepperButton(
+                    Icons.add,
+                    () => _incrementCartItemQty(item, index),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+            ],
 
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -4194,7 +4307,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    'RD\$${subtotal.toStringAsFixed(2)}',
+                    CurrencyDisplay.format(subtotal),
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
@@ -4209,8 +4322,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () =>
-                    _updateCurrentCart(() => _currentCart.removeItem(index)),
+                onTap: () => _updateCurrentCart(() {
+                  if (_inlineEditCartItemIndex == index) {
+                    _inlineEditCartItemIndex = null;
+                  }
+                  if (_selectedCartItemIndex == index) {
+                    _selectedCartItemIndex = null;
+                  }
+                  _currentCart.removeItem(index);
+                }),
                 borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
                   width: 36,
@@ -4247,6 +4367,367 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           size: 14,
           color: salesDetailTextColor.withOpacity(0.86),
         ),
+      ),
+    );
+  }
+
+  void _maybeSyncInlineItemControllers(SaleItemModel item) {
+    if (_inlineEditCartItemIndex == null) return;
+
+    if (!_inlineQtyFocusNode.hasFocus) {
+      final desired = _formatQtyForInlineEditor(item.qty);
+      if (_inlineQtyController.text != desired) {
+        _inlineQtyController.text = desired;
+      }
+    }
+
+    if (!_inlineLineDiscountFocusNode.hasFocus) {
+      final desired = item.discountLine > 0
+          ? item.discountLine.toStringAsFixed(2)
+          : '';
+      if (_inlineLineDiscountController.text != desired) {
+        _inlineLineDiscountController.text = desired;
+      }
+    }
+  }
+
+  Widget _buildInlineQtyStepperEditor(int index, {required bool compact}) {
+    final height = compact ? 28.0 : 30.0;
+    final fieldWidth = compact ? 46.0 : 54.0;
+    final radius = compact ? 8.0 : 10.0;
+    final iconSize = compact ? 16.0 : 18.0;
+    final buttonColor = scheme.surfaceContainerHighest.withOpacity(0.55);
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(radius),
+      borderSide: BorderSide(color: scheme.outlineVariant),
+    );
+
+    void setQty(double qty) {
+      final text = _formatQtyForInlineEditor(qty);
+      _inlineQtyController.text = text;
+      _inlineQtyController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: text.length,
+      );
+      _applyInlineQtyChanged(index, text);
+    }
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              if (index < 0 || index >= _currentCart.items.length) return;
+              final item = _currentCart.items[index];
+              final next = (item.qty - 1).clamp(1.0, double.infinity);
+              setQty(next);
+            },
+            borderRadius: BorderRadius.circular(radius),
+            child: Container(
+              width: height,
+              height: height,
+              decoration: BoxDecoration(
+                color: buttonColor,
+                borderRadius: BorderRadius.circular(radius),
+              ),
+              child: Icon(
+                Icons.remove,
+                size: iconSize,
+                color: salesDetailTextColor.withOpacity(0.86),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: fieldWidth,
+            height: height,
+            child: TextField(
+              controller: _inlineQtyController,
+              focusNode: _inlineQtyFocusNode,
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(
+                  RegExp(r'^\d*\.?\d{0,3}'),
+                ),
+              ],
+              style: TextStyle(
+                fontSize: compact ? 12 : 13,
+                fontWeight: FontWeight.w800,
+                color: salesDetailTextColor,
+                height: 1.0,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: compact ? 8 : 9,
+                ),
+                border: border,
+                enabledBorder: border,
+                focusedBorder: border.copyWith(
+                  borderSide: BorderSide(color: scheme.primary.withOpacity(0.45)),
+                ),
+              ),
+              onChanged: (value) => _applyInlineQtyChanged(index, value),
+              onSubmitted: (value) => _applyInlineQtyChanged(index, value),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () {
+              if (index < 0 || index >= _currentCart.items.length) return;
+              final item = _currentCart.items[index];
+              setQty(item.qty + 1);
+            },
+            borderRadius: BorderRadius.circular(radius),
+            child: Container(
+              width: height,
+              height: height,
+              decoration: BoxDecoration(
+                color: buttonColor,
+                borderRadius: BorderRadius.circular(radius),
+              ),
+              child: Icon(
+                Icons.add,
+                size: iconSize,
+                color: salesDetailTextColor.withOpacity(0.86),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineLineDiscountEditor(int index, {required bool compact}) {
+    final height = compact ? 28.0 : 30.0;
+    final fieldWidth = compact ? 82.0 : 96.0;
+    final radius = compact ? 8.0 : 10.0;
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(radius),
+      borderSide: BorderSide(color: scheme.outlineVariant),
+    );
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ToggleButtons(
+            isSelected: [
+              _inlineLineDiscountType == DiscountType.percent,
+              _inlineLineDiscountType == DiscountType.amount,
+            ],
+            onPressed: (i) {
+              setState(() {
+                _inlineLineDiscountType =
+                    i == 0 ? DiscountType.percent : DiscountType.amount;
+              });
+              _applyInlineLineDiscountChanged(
+                index,
+                _inlineLineDiscountController.text,
+              );
+            },
+            borderRadius: BorderRadius.circular(radius),
+            constraints: BoxConstraints(minHeight: height, minWidth: 44),
+            borderColor: scheme.outlineVariant,
+            selectedBorderColor: scheme.primary.withOpacity(0.35),
+            color: salesDetailMutedTextColor,
+            selectedColor: scheme.primary,
+            fillColor: scheme.primary.withOpacity(0.10),
+            children: const [
+              Text('%', style: TextStyle(fontWeight: FontWeight.w800)),
+              Text('RD\$', style: TextStyle(fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: fieldWidth,
+            height: height,
+            child: TextField(
+              controller: _inlineLineDiscountController,
+              focusNode: _inlineLineDiscountFocusNode,
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              ],
+              style: TextStyle(
+                fontSize: compact ? 11.5 : 12.5,
+                fontWeight: FontWeight.w800,
+                color: salesDetailTextColor,
+                height: 1.0,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: compact ? 8 : 9,
+                ),
+                border: border,
+                enabledBorder: border,
+                focusedBorder: border.copyWith(
+                  borderSide: BorderSide(color: scheme.primary.withOpacity(0.45)),
+                ),
+              ),
+              onChanged: (value) => _applyInlineLineDiscountChanged(index, value),
+              onSubmitted: (value) =>
+                  _applyInlineLineDiscountChanged(index, value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineTotalDiscountPanel() {
+    final hasCurrentDiscount =
+        (_currentCart.discountTotalValue ?? 0.0) > 0.0;
+    final previewTotal = _computeInlineTotalDiscountPreviewTotal();
+    final radius = 12.0;
+    final height = 30.0;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              ToggleButtons(
+                isSelected: [
+                  _inlineTotalDiscountType == DiscountType.percent,
+                  _inlineTotalDiscountType == DiscountType.amount,
+                ],
+                onPressed: (i) {
+                  setState(() {
+                    _inlineTotalDiscountType =
+                        i == 0 ? DiscountType.percent : DiscountType.amount;
+                  });
+                },
+                borderRadius: BorderRadius.circular(10),
+                constraints: BoxConstraints(minHeight: height, minWidth: 48),
+                borderColor: scheme.outlineVariant,
+                selectedBorderColor: scheme.primary.withOpacity(0.35),
+                color: salesDetailMutedTextColor,
+                selectedColor: scheme.primary,
+                fillColor: scheme.primary.withOpacity(0.10),
+                children: const [
+                  Text('%', style: TextStyle(fontWeight: FontWeight.w800)),
+                  Text('RD\$', style: TextStyle(fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                CurrencyDisplay.format(previewTotal),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: scheme.primary,
+                ),
+              ),
+              if (hasCurrentDiscount) ...[
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: _removeInlineTotalDiscount,
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: scheme.error.withOpacity(0.85),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: height,
+                  child: TextField(
+                    controller: _inlineTotalDiscountController,
+                    focusNode: _inlineTotalDiscountFocusNode,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,2}'),
+                      ),
+                    ],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: salesDetailTextColor,
+                      height: 1.0,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 9,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: scheme.outlineVariant),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: scheme.outlineVariant),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: scheme.primary.withOpacity(0.45),
+                        ),
+                      ),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) => unawaited(_applyInlineTotalDiscount()),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              InkWell(
+                onTap: () => unawaited(_applyInlineTotalDiscount()),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: height,
+                  height: height,
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: scheme.primary.withOpacity(0.22)),
+                  ),
+                  child: Icon(
+                    Icons.check,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -4318,69 +4799,91 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   ],
 
                   GestureDetector(
+                    onTap: _showTotalDiscountDialog,
                     onDoubleTap: _showTotalDiscountDialog,
-                    child: Tooltip(
-                      message: 'Doble click para descuento',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withOpacity(
+                          _currentCart.items.isEmpty ? 0.05 : 0.08,
                         ),
-                        decoration: BoxDecoration(
-                          color: scheme.primary.withOpacity(
-                            _currentCart.items.isEmpty ? 0.05 : 0.08,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: scheme.primary.withOpacity(0.14),
-                          ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: scheme.primary.withOpacity(0.14),
                         ),
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.attach_money,
-                                    size: 20,
-                                    color: scheme.primary,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      'TOTAL',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w800,
-                                        color: scheme.primary,
-                                        letterSpacing: 0.3,
-                                      ),
+                      ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.attach_money,
+                                  size: 20,
+                                  color: scheme.primary,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    'TOTAL',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                      color: scheme.primary,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: FittedBox(
-                                alignment: Alignment.centerRight,
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'RD\$${totalAmount.toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                    fontSize: 30,
-                                    fontWeight: FontWeight.w900,
-                                    color: scheme.primary,
-                                  ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FittedBox(
+                              alignment: Alignment.centerRight,
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                CurrencyDisplay.format(totalAmount),
+                                style: TextStyle(
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w900,
+                                  color: scheme.primary,
                                 ),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 120),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) {
+                      final fade = CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOut,
+                      );
+                      return FadeTransition(
+                        opacity: fade,
+                        child: ScaleTransition(
+                          scale: Tween(begin: 0.985, end: 1.0).animate(fade),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: !_isInlineTotalDiscountOpen
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _buildInlineTotalDiscountPanel(),
+                          ),
                   ),
                 ],
               );
@@ -4511,7 +5014,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         ),
         const SizedBox(width: 12),
         Text(
-          'RD\$${amount.toStringAsFixed(2)}',
+          CurrencyDisplay.format(amount),
           style: TextStyle(
             fontSize: isTotal ? 15 : 13,
             fontWeight: isTotal ? FontWeight.w800 : FontWeight.bold,
@@ -4840,15 +5343,40 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             ),
                           ],
                           GestureDetector(
+                            onTap: _showTotalDiscountDialog,
                             onDoubleTap: _showTotalDiscountDialog,
-                            child: Tooltip(
-                              message: 'Doble click para aplicar descuento',
-                              child: _buildTotalRow(
-                                'TOTAL:',
-                                totalAmount,
-                                true,
-                              ),
+                            child: _buildTotalRow(
+                              'TOTAL:',
+                              totalAmount,
+                              true,
                             ),
+                          ),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 120),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            transitionBuilder: (child, animation) {
+                              final fade = CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeOut,
+                              );
+                              return FadeTransition(
+                                opacity: fade,
+                                child: ScaleTransition(
+                                  scale:
+                                      Tween(begin: 0.985, end: 1.0).animate(
+                                    fade,
+                                  ),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: !_isInlineTotalDiscountOpen
+                                ? const SizedBox.shrink()
+                                : Padding(
+                                    padding: const EdgeInsets.only(top: 10),
+                                    child: _buildInlineTotalDiscountPanel(),
+                                  ),
                           ),
                         ],
                       );
@@ -4862,7 +5390,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: _openFacturaPage,
-                          icon: const Icon(Icons.receipt_long_outlined, size: 20),
+                          icon: const Icon(
+                            Icons.receipt_long_outlined,
+                            size: 20,
+                          ),
                           label: const Text(
                             'FACTURA',
                             style: TextStyle(
@@ -4872,7 +5403,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: scheme.primary,
-                            side: BorderSide(color: scheme.primary.withOpacity(0.35)),
+                            side: BorderSide(
+                              color: scheme.primary.withOpacity(0.35),
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -4920,7 +5453,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   Widget _buildCartItemCard(SaleItemModel item, int index) {
     final isSelected = _selectedCartItemIndex == index;
+    final isEditing = _inlineEditCartItemIndex == index;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
+
+    if (isEditing) {
+      _maybeSyncInlineItemControllers(item);
+    }
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -4954,24 +5492,27 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${item.qty.toInt()}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: scheme.primary.withOpacity(0.98),
+                if (isEditing)
+                  _buildInlineQtyStepperEditor(index, compact: true)
+                else
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${item.qty.toInt()}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: scheme.primary.withOpacity(0.98),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 3,
@@ -4997,26 +5538,33 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           height: 1.1,
                         ),
                       ),
+                      if (isEditing) ...[
+                        const SizedBox(height: 6),
+                        _buildInlineLineDiscountEditor(index, compact: true),
+                      ],
                     ],
                   ),
                 ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildMiniButton(Icons.remove, () {
-                      if (item.qty > 1) {
-                        setState(
-                          () =>
-                              _currentCart.updateQuantity(index, item.qty - 1),
-                        );
-                      }
-                    }),
-                    _buildMiniButton(
-                      Icons.add,
-                      () => _incrementCartItemQty(item, index),
-                    ),
-                  ],
-                ),
+                if (!isEditing)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMiniButton(Icons.remove, () {
+                        if (item.qty > 1) {
+                          setState(
+                            () => _currentCart.updateQuantity(
+                              index,
+                              item.qty - 1,
+                            ),
+                          );
+                        }
+                      }),
+                      _buildMiniButton(
+                        Icons.add,
+                        () => _incrementCartItemQty(item, index),
+                      ),
+                    ],
+                  ),
                 const SizedBox(width: 6),
                 SizedBox(
                   width: 70,
@@ -5046,8 +5594,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 const SizedBox(width: 4),
                 InkWell(
-                  onTap: () =>
-                      _updateCurrentCart(() => _currentCart.removeItem(index)),
+                  onTap: () => _updateCurrentCart(() {
+                    if (_inlineEditCartItemIndex == index) {
+                      _inlineEditCartItemIndex = null;
+                    }
+                    if (_selectedCartItemIndex == index) {
+                      _selectedCartItemIndex = null;
+                    }
+                    _currentCart.removeItem(index);
+                  }),
                   borderRadius: BorderRadius.circular(4),
                   child: Container(
                     padding: const EdgeInsets.all(4),
@@ -5137,7 +5692,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             ],
           ),
           Text(
-            '\$${amount.toStringAsFixed(2)}',
+            CurrencyDisplay.format(amount, symbol: r'$'),
             style: TextStyle(
               fontSize: isTotal ? 24 : 14,
               fontWeight: FontWeight.bold,
@@ -5614,7 +6169,7 @@ class _TicketRow extends StatelessWidget {
               Text(
                 cart.items.isEmpty
                     ? 'Sin items'
-                    : '${cart.items.length} item${cart.items.length > 1 ? 's' : ''} - RD\$${cart.calculateTotal().toStringAsFixed(2)}',
+                    : '${cart.items.length} item${cart.items.length > 1 ? 's' : ''} - ${CurrencyDisplay.format(cart.calculateTotal())}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurface.withOpacity(0.7),
                 ),
@@ -5664,7 +6219,6 @@ class _DialogHotkeys extends StatelessWidget {
     );
   }
 }
-
 
 enum _SalesDocumentType { consumidorFinal, creditoFiscal, cotizacion }
 

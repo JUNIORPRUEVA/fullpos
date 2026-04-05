@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../features/settings/data/business_settings_model.dart';
+import '../utils/currency_display.dart';
 
 /// Servicio global de configuración de la aplicación
 /// Este servicio centraliza todas las configuraciones del negocio
@@ -101,7 +102,10 @@ class AppConfigurationService {
 
   /// Formatear cantidad con símbolo de moneda
   String formatCurrency(double amount) {
-    return '${_currentSettings.currencySymbol} ${amount.toStringAsFixed(2)}';
+    final symbol = _currentSettings.currencySymbol.trim().isEmpty
+        ? 'RD\$'
+        : _currentSettings.currencySymbol.trim();
+    return CurrencyDisplay.format(amount, symbol: symbol);
   }
 
   // ========== CONFIGURACIONES DE RECIBOS ==========

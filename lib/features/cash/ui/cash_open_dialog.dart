@@ -6,16 +6,17 @@ import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../core/utils/accounting_amount_formatter.dart';
 import '../data/operation_flow_service.dart';
 import '../providers/cash_providers.dart';
 
-const _cashOpenDialogPanel = Color(0xFF7A7C7D);
 const _cashOpenDialogPrimary = Color(0xFF2563EB);
-const _cashOpenDialogText = Color(0xFFFFFFFF);
-const _cashOpenDialogMutedText = Color(0xCCFFFFFF);
-const _cashOpenDialogInputBackground = Color(0xFFFFFFFF);
-const _cashOpenDialogInputText = Color(0xFF000000);
+const _cashOpenDialogCard = Color(0xFFFFFFFF);
+const _cashOpenDialogTitle = Color(0xFF111827);
+const _cashOpenDialogInputBackground = Color(0xFFF3F4F6);
+const _cashOpenDialogInputText = Color(0xFF111827);
 const _cashOpenDialogInputHint = Color(0xFF6B7280);
+const _cashOpenDialogBorder = Color(0xFFE5E7EB);
 
 /// Diálogo para abrir caja y crear la sesión activa.
 class CashOpenDialog extends ConsumerStatefulWidget {
@@ -35,7 +36,7 @@ class CashOpenDialog extends ConsumerStatefulWidget {
 
 class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController(text: '0.00');
+  final _amountController = TextEditingController();
   bool _isLoading = false;
 
   @override
@@ -62,7 +63,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
       );
       if (!authorized || !mounted) return;
 
-      final amount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+      final amount = AccountingAmountFormatter.parse(_amountController.text);
       await OperationFlowService.startActiveSession(
         openingAmount: amount,
         note: '',
@@ -76,7 +77,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
           ScaffoldMessenger.of(rootContext).showSnackBar(
             SnackBar(
               content: Text(
-                'Sesión iniciada con \$${amount.toStringAsFixed(2)}',
+                'Sesión iniciada con ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: r'$')}',
               ),
               backgroundColor: Theme.of(rootContext).colorScheme.primary,
             ),
@@ -102,21 +103,8 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final screenSize = MediaQuery.of(context).size;
-    final viewInsets = MediaQuery.of(context).viewInsets;
-
-    const targetWidth = 500.0;
-    const targetHeight = 460.0;
-    final safeWidth = (screenSize.width - 48).clamp(320.0, 1200.0);
-    final safeHeight = (screenSize.height - viewInsets.vertical - 48).clamp(
-      320.0,
-      1200.0,
-    );
-    final dialogWidth = targetWidth.clamp(320.0, safeWidth);
-    final dialogHeight = targetHeight.clamp(320.0, safeHeight);
-
-    final fieldFill = _cashOpenDialogInputBackground;
-    final panelBorder = Colors.white.withOpacity(0.18);
-    final sectionBorder = Colors.white.withOpacity(0.14);
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
+    final safeWidth = (screenSize.width - 48).clamp(320.0, 396.0);
 
     return DialogKeyboardShortcuts(
       enableSubmitShortcuts: !_isLoading,
@@ -128,279 +116,155 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
           horizontal: (screenSize.width * 0.06).clamp(16.0, 48.0),
           vertical: (screenSize.height * 0.06).clamp(16.0, 48.0),
         ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: dialogWidth,
-            maxHeight: dialogHeight,
-            minWidth: 320,
-            minHeight: 320,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: _cashOpenDialogPanel,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: panelBorder),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 20,
-                  offset: Offset(0, 8),
-                ),
-              ],
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: viewInsets),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: safeWidth,
+              minWidth: 320,
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 12, 16),
-                  color: _cashOpenDialogPanel,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: panelBorder),
-                        ),
-                        child: Icon(
-                          Icons.lock_open_outlined,
-                          color: _cashOpenDialogText,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Abrir caja',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: _cashOpenDialogText,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Iniciar la caja y entrar directo al POS',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: _cashOpenDialogMutedText,
-                                height: 1.15,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _isLoading
-                            ? null
-                            : () => Navigator.pop(context),
-                        style: IconButton.styleFrom(
-                          foregroundColor: _cashOpenDialogText,
-                          backgroundColor: Colors.white.withOpacity(0.08),
-                          hoverColor: Colors.white.withOpacity(0.14),
-                        ),
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Cerrar',
-                      ),
-                    ],
-                  ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: _cashOpenDialogCard,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: _cashOpenDialogBorder.withOpacity(0.75),
                 ),
-
-                // Content
-                Flexible(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Monto inicial',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: _cashOpenDialogText,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _amountController,
-                            autofocus: true,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'^\d*\.?\d{0,2}'),
-                              ),
-                            ],
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: _cashOpenDialogInputText,
-                              height: 1.0,
-                            ),
-                            cursorColor: _cashOpenDialogPrimary,
-                            decoration: InputDecoration(
-                              prefixText: '\$ ',
-                              prefixStyle: theme.textTheme.titleLarge?.copyWith(
-                                color: _cashOpenDialogPrimary,
-                                fontWeight: FontWeight.w900,
-                                height: 1.0,
-                              ),
-                              labelText: 'Monto inicial',
-                              labelStyle: const TextStyle(
-                                color: _cashOpenDialogInputHint,
-                              ),
-                              floatingLabelStyle: const TextStyle(
-                                color: _cashOpenDialogPrimary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              hintText: '0.00',
-                              hintStyle: const TextStyle(
-                                color: _cashOpenDialogInputHint,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.attach_money_rounded,
-                                color: _cashOpenDialogPrimary,
-                              ),
-                              filled: true,
-                              fillColor: fieldFill,
-                              helperText: 'Ejemplo: 1000.00',
-                              helperStyle: theme.textTheme.bodySmall?.copyWith(
-                                color: _cashOpenDialogMutedText,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                  color: _cashOpenDialogPrimary,
-                                  width: 1.6,
-                                ),
-                              ),
-                            ),
-                            validator: (value) {
-                              final raw = value?.trim() ?? '';
-                              // Permite abrir caja con monto vacío (se interpreta como 0).
-                              if (raw.isEmpty) return null;
-
-                              final amount = double.tryParse(raw);
-                              if (amount == null || amount < 0) {
-                                return 'Monto invalido';
-                              }
-                              return null;
-                            },
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: (_) => _openCash(),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: sectionBorder),
-                            ),
-                            child: Text(
-                              'Solo necesitas indicar el monto inicial para abrir la caja.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: _cashOpenDialogMutedText,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x120F172A),
+                    blurRadius: 42,
+                    offset: Offset(0, 24),
                   ),
-                ),
-
-                // Footer
-                Container(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    border: Border(top: BorderSide(color: sectionBorder)),
+                  BoxShadow(
+                    color: Color(0x080F172A),
+                    blurRadius: 16,
+                    offset: Offset(0, 8),
                   ),
-                  child: Row(
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(30, 30, 30, 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isLoading
-                              ? null
-                              : () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, size: 18),
-                          label: const Text('Cancelar'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _cashOpenDialogText,
-                            backgroundColor: Colors.white.withOpacity(0.08),
-                            side: BorderSide(
-                              color: Colors.white.withOpacity(0.24),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                      Text(
+                        'Monto inicial',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: _cashOpenDialogTitle,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.2,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
+                      const SizedBox(height: 20),
+                      TextFormField(
+                        controller: _amountController,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [AccountingAmountFormatter()],
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: _cashOpenDialogInputText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        cursorColor: _cashOpenDialogPrimary,
+                        decoration: InputDecoration(
+                          prefixText: 'RD\$ ',
+                          prefixStyle: theme.textTheme.titleMedium?.copyWith(
+                            color: _cashOpenDialogPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          hintText: '0.00',
+                          hintStyle: const TextStyle(
+                            color: _cashOpenDialogInputHint,
+                          ),
+                          filled: true,
+                          fillColor: _cashOpenDialogInputBackground,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 15,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: _cashOpenDialogPrimary,
+                              width: 1.6,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: _cashOpenDialogPrimary,
+                              width: 1.6,
+                            ),
+                          ),
+                          errorStyle: const TextStyle(
+                            color: Color(0xFFB91C1C),
+                            fontSize: 12,
+                            height: 1.2,
+                          ),
+                        ),
+                        validator: (value) {
+                          final raw = value?.trim() ?? '';
+                          if (raw.isEmpty) return null;
+
+                          final amount = AccountingAmountFormatter.parse(raw);
+                          if (amount < 0) {
+                            return 'Monto invalido';
+                          }
+                          return null;
+                        },
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _openCash(),
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 48,
+                        child: FilledButton(
                           onPressed: _isLoading ? null : _openCash,
-                          style: ElevatedButton.styleFrom(
+                          style: FilledButton.styleFrom(
                             backgroundColor: _cashOpenDialogPrimary,
                             foregroundColor: Colors.white,
-                            elevation: 2,
-                            shadowColor: const Color(0x33000000),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          icon: _isLoading
-                              ? SizedBox(
-                                  width: 18,
-                                  height: 18,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                          Colors.white,
-                                        ),
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.lock_open, size: 18),
-                          label: const Text(
-                            'Abrir caja',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
+                              : const Text('Abrir caja'),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),

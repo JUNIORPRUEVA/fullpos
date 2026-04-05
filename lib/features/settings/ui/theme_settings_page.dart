@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../data/theme_settings_model.dart';
 import '../providers/theme_provider.dart';
 import 'settings_layout.dart';
 
@@ -11,6 +13,51 @@ class ThemeSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(themeProvider);
     final notifier = ref.read(themeProvider.notifier);
+    ThemeSettings previewChromeBackground(Color color) {
+      return settings.copyWith(
+        appBarColor: settings.applyChromeToEntireLayout
+            ? color
+            : settings.appBarColor,
+        topbarColor: color,
+        sidebarColor: color,
+        footerColor: color,
+      );
+    }
+
+    ThemeSettings previewChromeText(Color color) {
+      return settings.copyWith(
+        appBarTextColor: settings.applyChromeToEntireLayout
+            ? color
+            : settings.appBarTextColor,
+        topbarTextColor: color,
+        sidebarTextColor: color,
+        footerTextColor: color,
+      );
+    }
+
+    ThemeSettings previewAppBarBackground(Color color) {
+      return settings.copyWith(appBarColor: color);
+    }
+
+    ThemeSettings previewAppBarText(Color color) {
+      return settings.copyWith(appBarTextColor: color);
+    }
+
+    ThemeSettings previewTopbarBackground(Color color) {
+      return settings.copyWith(topbarColor: color);
+    }
+
+    ThemeSettings previewTopbarText(Color color) {
+      return settings.copyWith(topbarTextColor: color);
+    }
+
+    ThemeSettings previewFooterBackground(Color color) {
+      return settings.copyWith(footerColor: color);
+    }
+
+    ThemeSettings previewFooterText(Color color) {
+      return settings.copyWith(footerTextColor: color);
+    }
 
     return Theme(
       data: SettingsLayout.brandedTheme(context),
@@ -36,28 +83,34 @@ class ThemeSettingsPage extends ConsumerWidget {
                       title: 'Chrome principal',
                       child: Column(
                         children: [
-                          _ColorRow(
-                            label:
-                                'Color de AppBar principal, sidebar y footer',
-                            color: settings.topbarColor,
-                            onPreview: (color) => notifier.previewSettings(
-                              settings.copyWith(
-                                topbarColor: color,
-                                sidebarColor: color,
-                                footerColor: color,
-                              ),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            value: settings.applyChromeToEntireLayout,
+                            onChanged:
+                                notifier.updateApplyChromeToEntireLayout,
+                            title: const Text('Aplicar al layout completo'),
+                            subtitle: const Text(
+                              'Sincroniza AppBar de pantallas, topbar, sidebar y footer con el mismo color base.',
                             ),
+                          ),
+                          _ColorRow(
+                            label: settings.applyChromeToEntireLayout
+                                ? 'Color del layout completo'
+                                : 'Color de topbar, sidebar y footer',
+                            color: settings.topbarColor,
+                            onPreview: (color) =>
+                                notifier.previewSettings(
+                                  previewChromeBackground(color),
+                                ),
                             onPick: notifier.updateChromeBackgroundColor,
                           ),
                           _ColorRow(
-                            label: 'Texto e iconos del chrome principal',
+                            label: settings.applyChromeToEntireLayout
+                                ? 'Texto e iconos del layout completo'
+                                : 'Texto e iconos de topbar, sidebar y footer',
                             color: settings.topbarTextColor,
                             onPreview: (color) => notifier.previewSettings(
-                              settings.copyWith(
-                                topbarTextColor: color,
-                                sidebarTextColor: color,
-                                footerTextColor: color,
-                              ),
+                              previewChromeText(color),
                             ),
                             onPick: notifier.updateChromeTextColor,
                           ),
@@ -100,6 +153,78 @@ class ThemeSettingsPage extends ConsumerWidget {
                               settings.copyWith(hoverColor: color),
                             ),
                             onPick: notifier.updateHoverColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'AppBar de pantallas',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo del AppBar de pantallas',
+                            color: settings.appBarColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              previewAppBarBackground(color),
+                            ),
+                            onPick: notifier.updateAppBarColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto e iconos del AppBar de pantallas',
+                            color: settings.appBarTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              previewAppBarText(color),
+                            ),
+                            onPick: notifier.updateAppBarTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Topbar principal',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo del topbar',
+                            color: settings.topbarColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              previewTopbarBackground(color),
+                            ),
+                            onPick: notifier.updateTopbarColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto e iconos del topbar',
+                            color: settings.topbarTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              previewTopbarText(color),
+                            ),
+                            onPick: notifier.updateTopbarTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Footer principal',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo del footer',
+                            color: settings.footerColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              previewFooterBackground(color),
+                            ),
+                            onPick: notifier.updateFooterColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto del footer',
+                            color: settings.footerTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              previewFooterText(color),
+                            ),
+                            onPick: notifier.updateFooterTextColor,
                           ),
                         ],
                       ),
@@ -237,6 +362,39 @@ class ThemeSettingsPage extends ConsumerWidget {
                             onPick: notifier.updateSalesProductCardTextColor,
                           ),
                           _ColorRow(
+                            label: 'Fondo alterno de la tarjeta de producto',
+                            color: settings.salesProductCardAltBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesProductCardAltBackgroundColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesProductCardAltBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Borde alterno de la tarjeta de producto',
+                            color: settings.salesProductCardAltBorderColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesProductCardAltBorderColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesProductCardAltBorderColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto alterno de la tarjeta de producto',
+                            color: settings.salesProductCardAltTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesProductCardAltTextColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesProductCardAltTextColor,
+                          ),
+                          _ColorRow(
                             label: 'Precio de producto',
                             color: settings.salesProductPriceColor,
                             onPreview: (color) => notifier.previewSettings(
@@ -285,6 +443,179 @@ class ThemeSettingsPage extends ConsumerWidget {
                               settings.copyWith(salesDetailTextColor: color),
                             ),
                             onPick: notifier.updateSalesDetailTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Ventas: barra superior y dropdowns',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo externo de la barra de ventas',
+                            color: settings.salesControlBarBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarBackgroundColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesControlBarBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Fondo interno de la barra de ventas',
+                            color:
+                                settings.salesControlBarContentBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarContentBackgroundColor: color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarContentBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Borde de la barra de ventas',
+                            color: settings.salesControlBarBorderColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarBorderColor: color,
+                              ),
+                            ),
+                            onPick: notifier.updateSalesControlBarBorderColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto e iconos de la barra de ventas',
+                            color: settings.salesControlBarTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarTextColor: color,
+                              ),
+                            ),
+                            onPick: notifier.updateSalesControlBarTextColor,
+                          ),
+                          _ColorRow(
+                            label: 'Fondo del dropdown de categoría',
+                            color:
+                                settings.salesControlBarDropdownBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarDropdownBackgroundColor: color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarDropdownBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Borde del dropdown de categoría',
+                            color: settings.salesControlBarDropdownBorderColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarDropdownBorderColor: color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarDropdownBorderColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto del dropdown de categoría',
+                            color: settings.salesControlBarDropdownTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarDropdownTextColor: color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarDropdownTextColor,
+                          ),
+                          _ColorRow(
+                            label: 'Fondo del menú emergente',
+                            color: settings.salesControlBarPopupBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarPopupBackgroundColor: color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarPopupBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto del menú emergente',
+                            color: settings.salesControlBarPopupTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarPopupTextColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesControlBarPopupTextColor,
+                          ),
+                          _ColorRow(
+                            label: 'Fondo del elemento seleccionado',
+                            color: settings
+                                .salesControlBarPopupSelectedBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarPopupSelectedBackgroundColor:
+                                    color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarPopupSelectedBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto del elemento seleccionado',
+                            color:
+                                settings.salesControlBarPopupSelectedTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesControlBarPopupSelectedTextColor: color,
+                              ),
+                            ),
+                            onPick: notifier
+                                .updateSalesControlBarPopupSelectedTextColor,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    _SectionCard(
+                      title: 'Ventas: botones del footer',
+                      child: Column(
+                        children: [
+                          _ColorRow(
+                            label: 'Fondo de botones del footer de ventas',
+                            color: settings.salesFooterButtonsBackgroundColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesFooterButtonsBackgroundColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesFooterButtonsBackgroundColor,
+                          ),
+                          _ColorRow(
+                            label: 'Texto de botones del footer de ventas',
+                            color: settings.salesFooterButtonsTextColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesFooterButtonsTextColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesFooterButtonsTextColor,
+                          ),
+                          _ColorRow(
+                            label: 'Borde de botones del footer de ventas',
+                            color: settings.salesFooterButtonsBorderColor,
+                            onPreview: (color) => notifier.previewSettings(
+                              settings.copyWith(
+                                salesFooterButtonsBorderColor: color,
+                              ),
+                            ),
+                            onPick:
+                                notifier.updateSalesFooterButtonsBorderColor,
                           ),
                         ],
                       ),

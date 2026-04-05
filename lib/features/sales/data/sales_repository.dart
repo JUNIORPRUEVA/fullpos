@@ -1036,7 +1036,7 @@ class SalesRepository {
     final db = await AppDb.database;
 
     String where =
-        "status IN ('completed', 'PARTIAL_REFUND') AND kind = 'invoice' AND deleted_at_ms IS NULL";
+        "status IN ('completed', 'PARTIAL_REFUND', 'REFUNDED') AND kind = 'invoice' AND deleted_at_ms IS NULL";
     List<dynamic> args = [];
 
     if (query != null && query.isNotEmpty) {

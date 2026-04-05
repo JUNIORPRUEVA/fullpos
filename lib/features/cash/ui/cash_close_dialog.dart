@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element
+//  moignore_for_file: unused_element
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -17,6 +17,8 @@ import '../../../core/security/app_actions.dart';
 import '../../../core/security/authz/authz_service.dart';
 import '../../../core/security/authz/permission.dart' as authz_perm;
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../core/utils/accounting_amount_formatter.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../auth/services/logout_flow_service.dart';
 import '../../sales/data/sales_repository.dart';
 import '../../sales/data/sales_model.dart' show SaleModel, SaleItemModel;
@@ -36,6 +38,7 @@ enum _SelectionKind { refund, movement }
 class CashCloseDialog extends ConsumerStatefulWidget {
   final int sessionId;
   final bool logoutAfterClose;
+  final bool autoCloseImmediately;
   final CashSummaryModel? initialSummary;
   final CashSessionModel? initialSession;
   final List<CashMovementModel>? initialMovements;
@@ -44,6 +47,7 @@ class CashCloseDialog extends ConsumerStatefulWidget {
     super.key,
     required this.sessionId,
     this.logoutAfterClose = true,
+    this.autoCloseImmediately = false,
     this.initialSummary,
     this.initialSession,
     this.initialMovements,
@@ -53,6 +57,7 @@ class CashCloseDialog extends ConsumerStatefulWidget {
     BuildContext context, {
     required int sessionId,
     bool logoutAfterClose = true,
+    bool autoCloseImmediately = false,
     CashSummaryModel? initialSummary,
     CashSessionModel? initialSession,
     List<CashMovementModel>? initialMovements,
@@ -63,6 +68,7 @@ class CashCloseDialog extends ConsumerStatefulWidget {
       builder: (context) => CashCloseDialog(
         sessionId: sessionId,
         logoutAfterClose: logoutAfterClose,
+        autoCloseImmediately: autoCloseImmediately,
         initialSummary: initialSummary,
         initialSession: initialSession,
         initialMovements: initialMovements,
@@ -104,6 +110,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   List<RefundItemByCategory> _refundItemsByCategory = [];
   List<TransferItemByCategory> _transferItemsByCategory = [];
   bool _loadingCategorySummary = true;
+  bool _autoCloseTriggered = false;
 
   void _openCashHistory() {
     Navigator.of(context).pop(false);
@@ -134,6 +141,24 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       _loadMovements();
     }
     _loadCategorySummary();
+
+    if (widget.autoCloseImmediately) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _triggerAutoCloseIfReady();
+      });
+    }
+  }
+
+  void _triggerAutoCloseIfReady() {
+    if (!mounted || _autoCloseTriggered || _isLoading || _loadingSummary) {
+      return;
+    }
+    if (_summary == null) {
+      return;
+    }
+
+    _autoCloseTriggered = true;
+    unawaited(_closeCash());
   }
 
   Future<void> _loadSession() async {
@@ -175,6 +200,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           _closingAmountController.text = '';
         }
       });
+      _triggerAutoCloseIfReady();
     } catch (e, st) {
       if (!mounted) return;
       setState(() => _loadingSummary = false);
@@ -301,7 +327,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
 
   double get _closingAmount {
     final raw = _closingAmountController.text.trim();
-    final parsed = raw.isEmpty ? null : double.tryParse(raw);
+    final parsed = raw.isEmpty ? null : AccountingAmountFormatter.parse(raw);
     if (parsed != null) return parsed;
     // Si el usuario deja vacío (opcional), usar el efectivo esperado.
     return _summary?.expectedCash ?? 0.0;
@@ -313,7 +339,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   }
 
   Future<void> _closeCash() async {
-    if (!_formKey.currentState!.validate()) return;
+    final formState = _formKey.currentState;
+    if (formState != null && !formState.validate()) return;
 
     final ok = await AuthzService.runGuardedCurrent<bool>(
       context,
@@ -554,7 +581,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       }
     }
 
-    String money(double value) => 'RD\$ ${ReceiptText.money(value)}';
+    String money(double value) => CurrencyDisplay.format(value);
 
     String qtyText(double qty) {
       final isWhole = (qty - qty.roundToDouble()).abs() < 0.001;
@@ -724,8 +751,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             (refund['customer_phone'] as String?)?.trim() ?? '';
         final customerRnc = (refund['customer_rnc'] as String?)?.trim() ?? '';
         final originalElectronicCode =
-          (refund['original_electronic_invoice_code'] as String?)?.trim() ??
-          '';
+            (refund['original_electronic_invoice_code'] as String?)?.trim() ??
+            '';
 
         final productLabel = productsPreview.isNotEmpty
             ? productsPreview
@@ -1017,6 +1044,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    if (widget.autoCloseImmediately) {
+      return const Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: EdgeInsets.zero,
+        child: SizedBox.shrink(),
+      );
+    }
+
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final settings = ref.watch(themeProvider);
@@ -1034,7 +1070,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       settings.sidebarTextColor,
       sidebarColor,
     );
-    final money = NumberFormat.currency(locale: 'en_US', symbol: '\$');
+    final money = CurrencyDisplay.currency();
     final summary = _summary;
     final session = _session;
     final expectedCash = money.format(summary?.expectedCash ?? 0.0);
@@ -1136,7 +1172,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Confirmar corte',
+                                        'Cierre de turno',
                                         style: theme.textTheme.titleSmall
                                             ?.copyWith(
                                               color: scheme.onSurface,
@@ -1196,7 +1232,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Efectivo esperado para el corte',
+                                    'Efectivo esperado para el cierre',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: scheme.onSurface.withOpacity(0.66),
                                       fontSize: 10.4,
@@ -1329,7 +1365,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                             size: 16,
                                           ),
                                     label: const Text(
-                                      'Hacer corte',
+                                      'Confirmar cierre',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -1378,7 +1414,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             ),
             const SizedBox(width: 12),
             Text(
-              'RD\$ ${value.toStringAsFixed(2)}',
+              CurrencyDisplay.format(value),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: color ?? fg,
                 fontWeight: FontWeight.w800,
@@ -1434,7 +1470,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
               ),
               const SizedBox(width: 8),
               _buildStatChip(
-                'RD\$ ${summary.totalSales.toStringAsFixed(2)}',
+                CurrencyDisplay.format(summary.totalSales),
                 'Ventas turno',
                 scheme.secondary,
                 fg: fg,
@@ -1592,7 +1628,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   Widget _buildCategorySummarySection({String? fontFamily}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+    final currency = CurrencyDisplay.currency();
     final bg = scheme.surfaceContainerHighest;
     final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
     final accent = ColorUtils.ensureReadableColor(scheme.primary, bg);
@@ -1816,7 +1852,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           ),
           const SizedBox(height: 4),
           Text(
-            '\$${amount.toStringAsFixed(2)}',
+            CurrencyDisplay.format(amount, symbol: r'$'),
             style: TextStyle(
               color: color,
               fontSize: 13,
@@ -1881,7 +1917,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'CORTE',
+          'CIERRE',
           style: theme.textTheme.labelLarge?.copyWith(
             letterSpacing: 1,
             fontWeight: FontWeight.bold,
@@ -1902,17 +1938,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         const SizedBox(height: 6),
         TextFormField(
           controller: _closingAmountController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-          ],
+          keyboardType: TextInputType.number,
+          inputFormatters: [AccountingAmountFormatter()],
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w800,
             color: scheme.onSurface,
           ),
           onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
-            prefixText: '\$ ',
+            prefixText: r'$ ',
             prefixStyle: theme.textTheme.titleMedium?.copyWith(
               color: scheme.primary,
               fontWeight: FontWeight.w800,
@@ -1932,8 +1966,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) return null;
-            final amount = double.tryParse(value.trim());
-            if (amount == null || amount < 0) return 'Monto inválido';
+            final amount = AccountingAmountFormatter.parse(value.trim());
+            if (amount < 0) return 'Monto inválido';
             return null;
           },
         ),
@@ -1958,7 +1992,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                 ),
               ),
               Text(
-                '${_difference >= 0 ? '+' : ''}\$${_difference.toStringAsFixed(2)}',
+                '${_difference >= 0 ? '+' : ''}${AccountingAmountFormatter.formatWithSymbol(_difference.abs(), symbol: r'$')}',
                 style: TextStyle(
                   color: diffColor,
                   fontSize: 16,
@@ -2137,7 +2171,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+    final currency = CurrencyDisplay.currency();
     final dateFormat = _dateTimeShortFormat;
 
     return ListView.separated(
@@ -2291,7 +2325,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+    final currency = CurrencyDisplay.currency();
     final timeFormat = _dateTimeShortFormat;
 
     return ListView.separated(
@@ -2466,7 +2500,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
 
     if (selectedMovement != null) {
-      final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+      final currency = CurrencyDisplay.currency();
       final dateFormat = _dateTimeFormat;
       final m = selectedMovement;
 
@@ -2593,7 +2627,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       );
     }
 
-    final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+    final currency = CurrencyDisplay.currency();
     final dateFormat = _dateTimeFormat;
     final amount = (selectedRefund['total'] as num?)?.toDouble().abs() ?? 0.0;
     final note = (selectedRefund['note'] as String?)?.trim() ?? '';
@@ -2604,8 +2638,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final originalCode =
         (selectedRefund['original_code'] as String?)?.trim() ?? '';
     final originalElectronicCode =
-      (selectedRefund['original_electronic_invoice_code'] as String?)
-          ?.trim() ??
+        (selectedRefund['original_electronic_invoice_code'] as String?)
+            ?.trim() ??
         '';
     final itemCount = (selectedRefund['item_count'] as int?) ?? 0;
     final productsPreview =

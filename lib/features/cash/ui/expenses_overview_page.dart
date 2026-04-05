@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/db/database_manager.dart';
+import '../../../core/utils/currency_display.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_repository.dart';
 
@@ -28,7 +29,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   String? _error;
   List<CashMovementModel> _movements = [];
 
-  CashMovementModel? _selectedMovement;
   int? _selectedMovementId;
 
   @override
@@ -64,7 +64,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     final filtered = currentFiltered ?? _filteredMovements;
 
     if (filtered.isEmpty) {
-      _selectedMovement = null;
       _selectedMovementId = null;
       return;
     }
@@ -81,7 +80,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
         ) ??
         filtered.first;
 
-    _selectedMovement = match;
     _selectedMovementId = match.id ?? match.createdAtMs;
   }
 
@@ -162,7 +160,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   Future<void> _showMovementDetails(CashMovementModel movement) async {
     final scheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final currency = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final currency = CurrencyDisplay.currency();
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
     final isIncome = movement.isIn;
     final badgeColor = isIncome ? scheme.primary : scheme.error;
@@ -263,7 +261,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   }) {
     if (!mounted) return;
     setState(() {
-      _selectedMovement = movement;
       _selectedMovementId = movement.id ?? movement.createdAtMs;
     });
     if (showDetails) {
@@ -505,10 +502,7 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$ ',
-    );
+    final currencyFormat = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy');
 
     final filteredMovements = _filteredMovements;
@@ -577,14 +571,13 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     return ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: movements.length + 1,
-      separatorBuilder: (_, index) =>
-          index == 0
-              ? const SizedBox.shrink()
-              : Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: AppColors.surfaceLightBorder.withOpacity(0.65),
-                ),
+      separatorBuilder: (_, index) => index == 0
+          ? const SizedBox.shrink()
+          : Divider(
+              height: 1,
+              thickness: 1,
+              color: AppColors.surfaceLightBorder.withOpacity(0.65),
+            ),
       itemBuilder: (context, index) {
         if (index == 0) {
           return _MovementsHeaderRow(theme: theme, scheme: scheme);
@@ -601,172 +594,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
           onTap: () => _selectMovement(movement, showDetails: true),
         );
       },
-    );
-  }
-
-  Widget _buildMovementDetailsPanel({
-    required ThemeData theme,
-    required ColorScheme scheme,
-    required NumberFormat currencyFormat,
-    required CashMovementModel? movement,
-  }) {
-    if (movement == null) {
-      return Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.surfaceLightBorder),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brandBlueDark.withOpacity(0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Detalle de movimiento',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Selecciona un movimiento para ver sus detalles.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final isIncome = movement.isIn;
-    final badgeColor = isIncome ? scheme.primary : scheme.error;
-    final dateFmt = DateFormat('dd/MM/yy HH:mm');
-    final idLabel = movement.id == null
-        ? 'MOV-—'
-        : 'MOV-${movement.id!.toString().padLeft(5, '0')}';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.surfaceLightBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.brandBlueDark.withOpacity(0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(20),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceLightVariant,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.surfaceLightBorder),
-                  ),
-                  child: Text(
-                    idLabel,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textDarkSecondary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        (isIncome
-                                ? AppColors.successLight
-                                : AppColors.errorLight)
-                            .withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    isIncome ? 'ENTRADA' : 'SALIDA',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: isIncome ? AppColors.success : AppColors.error,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              movement.reason,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              dateFmt.format(movement.createdAt),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 14),
-            _DetailMetric(
-              label: 'Monto',
-              value:
-                  '${isIncome ? '+' : '-'}${currencyFormat.format(movement.amount)}',
-              color: badgeColor,
-              emphasize: true,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _DetailMetric(
-                    label: 'Sesión',
-                    value: '#${movement.sessionId}',
-                    color: AppColors.textDark,
-                    backgroundColor: AppColors.surfaceLightVariant,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _DetailMetric(
-                    label: 'Usuario',
-                    value: movement.userId > 0
-                        ? '#${movement.userId}'
-                        : 'General',
-                    color: AppColors.textDark,
-                    backgroundColor: AppColors.surfaceLightVariant,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -859,7 +686,6 @@ class _CompactMovementRowState extends State<_CompactMovementRow> {
     final movement = widget.movement;
     final isIncome = movement.isIn;
 
-    final bgColor = Colors.white;
     final textColor = AppColors.textDark;
     final mutedText = AppColors.textDarkMuted;
 
@@ -987,66 +813,6 @@ class _CompactMovementRowState extends State<_CompactMovementRow> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _DetailMetric extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final bool emphasize;
-  final Color? backgroundColor;
-
-  const _DetailMetric({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.emphasize = false,
-    this.backgroundColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color:
-            backgroundColor ??
-            (emphasize
-                ? AppColors.surfaceLightVariant
-                : AppColors.surfaceLight),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.surfaceLightBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurface.withOpacity(0.7),
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: color,
-              fontSize: emphasize ? 20 : 16,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
       ),
     );
   }

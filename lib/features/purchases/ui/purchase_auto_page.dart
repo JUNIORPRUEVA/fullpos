@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../providers/purchase_draft_provider.dart';
 import '../services/purchase_order_auto_service.dart';
@@ -36,6 +36,22 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
   double _minQty = 1;
 
   List<PurchaseOrderAutoSuggestion> _suggestions = const [];
+
+  BoxConstraints _ticketPanelConstraints(double width) {
+    if (width < 1350) {
+      final max = (width * 0.38).clamp(320.0, 450.0);
+      final min = (max - 80).clamp(300.0, max);
+      return BoxConstraints(minWidth: min, maxWidth: max);
+    }
+    if (width < 1600) {
+      final max = (width * 0.35).clamp(400.0, 520.0);
+      final min = (max - 90).clamp(360.0, max);
+      return BoxConstraints(minWidth: min, maxWidth: max);
+    }
+    final max = (width * 0.33).clamp(460.0, 600.0);
+    final min = (max - 100).clamp(380.0, max);
+    return BoxConstraints(minWidth: min, maxWidth: max);
+  }
 
   @override
   void initState() {
@@ -152,7 +168,7 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
 
     Widget strategySelector() {
       return DropdownButtonFormField<PurchaseAutoStrategy>(
@@ -403,33 +419,75 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
     );
 
     final ticket = PurchaseTicketPanel(
-      onOrderCreated: (
-        orderId,
-      ) => context.go('/purchases/orders?orderId=$orderId'),
+      onOrderCreated: (orderId) =>
+          context.go('/purchases/orders?orderId=$orderId'),
       isAuto: true,
     );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text(
-          'Compra Automática',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        automaticallyImplyLeading: false,
+        titleSpacing: 10,
+        title: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => context.go('/purchases'),
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: 'Volver',
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'Compra Automática',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: () => context.go('/purchases'),
+                icon: const Icon(Icons.edit_note_rounded, size: 16),
+                label: const Text('Manual'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  textStyle: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () => context.go('/purchases/orders'),
+                icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                label: const Text('Órdenes'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  textStyle: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         toolbarHeight: 48,
-        actions: [
-          TextButton(
-            onPressed: () => context.go('/purchases'),
-            child: const Text('Volver'),
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       body: Padding(
         padding: kPurchasePagePadding,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isNarrow = constraints.maxWidth < 1100;
+            final ticketConstraints = _ticketPanelConstraints(
+              constraints.maxWidth,
+            );
+
+            final wideTicket = ConstrainedBox(
+              constraints: ticketConstraints,
+              child: ticket,
+            );
 
             final content = isNarrow
                 ? Column(
@@ -441,17 +499,16 @@ class _PurchaseAutoPageState extends ConsumerState<PurchaseAutoPage> {
                   )
                 : Row(
                     children: [
-                      Expanded(flex: 6, child: leftPanel),
+                      Expanded(child: leftPanel),
                       const SizedBox(width: 12),
-                      Expanded(flex: 4, child: ticket),
+                      SizedBox(
+                        width: ticketConstraints.maxWidth,
+                        child: wideTicket,
+                      ),
                     ],
                   );
 
-            return Column(
-              children: [
-                Expanded(child: content),
-              ],
-            );
+            return Column(children: [Expanded(child: content)]);
           },
         ),
       ),

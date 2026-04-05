@@ -105,7 +105,7 @@ class OperationFlowService {
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    final results = await Future.wait([
+    final results =  await Future.wait([
       getDailyCashbox(today),
       CashRepository.getOpenSession(userId: userId),
     ]);

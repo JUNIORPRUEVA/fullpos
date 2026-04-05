@@ -7,6 +7,7 @@ import '../../../core/errors/error_handler.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/utils/currency_display.dart';
 import '../data/purchase_order_models.dart';
 import '../data/purchases_repository.dart';
 
@@ -103,7 +104,7 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
   @override
   Widget build(BuildContext context) {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();

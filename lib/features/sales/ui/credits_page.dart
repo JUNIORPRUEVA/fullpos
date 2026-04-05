@@ -7,6 +7,7 @@ import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import '../../cash/data/cash_repository.dart' as cash_repo;
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
@@ -45,8 +46,7 @@ class _CreditsPageState extends State<CreditsPage>
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
-  NumberFormat get _currency =>
-      NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$');
+  NumberFormat get _currency => CurrencyDisplay.currency();
 
   @override
   void initState() {
@@ -445,7 +445,9 @@ class _CreditsPageState extends State<CreditsPage>
             .toList();
       case CreditStatusFilter.paid:
         return items
-            .where((c) => ((c['total_pending'] as num?)?.toDouble() ?? 0.0) <= 0)
+            .where(
+              (c) => ((c['total_pending'] as num?)?.toDouble() ?? 0.0) <= 0,
+            )
             .toList();
     }
   }
@@ -592,12 +594,118 @@ class _CreditsPageState extends State<CreditsPage>
     );
   }
 
+  Widget _buildPanelSurface({
+    required Widget child,
+    EdgeInsetsGeometry padding = EdgeInsets.zero,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.borderSoft.withOpacity(0.9)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(padding: padding, child: child),
+    );
+  }
+
+  Widget _buildCompactListSurface({
+    required Widget header,
+    required Widget list,
+  }) {
+    return _buildPanelSurface(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: header,
+          ),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColors.borderSoft.withOpacity(0.85),
+          ),
+          Expanded(child: list),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(
+    String label, {
+    int flex = 1,
+    TextAlign textAlign = TextAlign.left,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: textAlign,
+        style: _theme.textTheme.labelSmall?.copyWith(
+          color: AppColors.textSecondary,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Inter',
+          fontSize: 11,
+          letterSpacing: 0.18,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildByClientListHeader() {
+    return Row(
+      children: [
+        _buildHeaderCell('Cliente', flex: 5),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Docs', flex: 2, textAlign: TextAlign.right),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Total', flex: 3, textAlign: TextAlign.right),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Pendiente', flex: 3, textAlign: TextAlign.right),
+        const SizedBox(width: 70),
+      ],
+    );
+  }
+
+  Widget _buildCreditListHeader() {
+    return Row(
+      children: [
+        _buildHeaderCell('Factura', flex: 2),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Cliente', flex: 5),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Vence', flex: 3),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Total', flex: 3, textAlign: TextAlign.right),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Pendiente', flex: 3, textAlign: TextAlign.right),
+        const SizedBox(width: 70),
+      ],
+    );
+  }
+
+  Widget _buildLayawayListHeader() {
+    return Row(
+      children: [
+        _buildHeaderCell('Apartado', flex: 2),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Cliente', flex: 5),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Total', flex: 3, textAlign: TextAlign.right),
+        const SizedBox(width: 10),
+        _buildHeaderCell('Pendiente', flex: 3, textAlign: TextAlign.right),
+        const SizedBox(width: 70),
+      ],
+    );
+  }
+
   Widget _buildByClientTab() {
     if (_creditsByClient.isEmpty) {
       return const Center(child: Text('No hay créditos'));
     }
 
-    final scheme = _scheme;
     final filtered = _filterByQuery(
       _creditsByClient,
       _byClientSearchController.text,
@@ -622,203 +730,51 @@ class _CreditsPageState extends State<CreditsPage>
                 460.0,
               );
 
-              final list = ListView.separated(
-                padding: padding,
-                itemCount: statusFiltered.length,
-                separatorBuilder: (_, index) => const SizedBox(height: 6),
-                itemBuilder: (context, index) {
-                  final item = statusFiltered[index];
-                  final clientName = (item['nombre'] ?? 'S/N').toString();
-                  final totalPending =
-                      (item['total_pending'] as num?)?.toDouble() ?? 0.0;
-                  final totalAmount =
-                      (item['total_amount'] as num?)?.toDouble() ?? 0.0;
-                  final totalCredits = item['total_credits'] as int? ?? 0;
-                    final chipColor = totalPending > 0
-                      ? const Color(0xFFFEF3C7)
-                      : const Color(0xFFDCFCE7);
-                  final isSelected =
-                      _selectedClientName != null &&
-                      clientName == _selectedClientName;
-
-                  final rowColor = isSelected
-                      ? scheme.primary.withOpacity(0.06)
-                      : scheme.surface;
-
-                  return Material(
-                    color: rowColor,
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
-                      onTap: () {
-                        _safeSetState(() {
-                          _selectedClientName = clientName;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.borderSoft),
-                          boxShadow: [
-                            BoxShadow(
-                              color: scheme.shadow.withOpacity(0.05),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 5,
-                              child: Text(
-                                clientName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: _theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w500,
-                                  color: scheme.onSurface,
-                                  fontFamily: 'Inter',
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                totalCredits.toString(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.right,
-                                style: _theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: scheme.onSurface.withOpacity(0.8),
-                                  fontFamily: 'Inter',
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                _formatCurrency(totalAmount),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.right,
-                                style: _theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: scheme.onSurface,
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                _formatCurrency(totalPending),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.right,
-                                style: _theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryBlue,
-                                  fontFamily: 'Inter',
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: chipColor,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                totalPending > 0 ? 'PENDING' : 'PAID',
-                                style: _theme.textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: totalPending > 0
-                                      ? const Color(0xFF92400E)
-                                      : const Color(0xFF166534),
-                                  fontFamily: 'Inter',
-                                  fontSize: 11,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            PopupMenuButton<String>(
-                              tooltip: 'Acciones',
-                              icon: Icon(
-                                Icons.more_vert,
-                                size: 18,
-                                color: scheme.onSurface.withOpacity(0.7),
-                              ),
-                              onSelected: (v) {
-                                if (v == 'view') {
-                                  _safeSetState(() {
-                                    _selectedClientName = clientName;
-                                  });
-                                }
-                              },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem(
-                                  value: 'view',
-                                  child: Text('Ver resumen'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
+              final list = _buildCompactListSurface(
+                header: _buildByClientListHeader(),
+                list: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: statusFiltered.length,
+                  separatorBuilder: (_, index) => Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.borderSoft.withOpacity(0.72),
+                  ),
+                  itemBuilder: (context, index) {
+                    final item = statusFiltered[index];
+                    return _buildClientRow(item);
+                  },
+                ),
               );
 
               final detail = _buildClientSummaryDetailPanel(selected);
 
               if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: list),
-                    const SizedBox(width: 24),
-                    SizedBox(
-                      width: detailWidth,
-                      child: SizedBox.expand(child: detail),
-                    ),
-                  ],
+                return Padding(
+                  padding: padding,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: list),
+                      const SizedBox(width: 24),
+                      SizedBox(
+                        width: detailWidth,
+                        child: SizedBox.expand(child: detail),
+                      ),
+                    ],
+                  ),
                 );
               }
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      padding.left,
-                      padding.top,
-                      padding.right,
-                      0,
-                    ),
-                    child: detail,
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(child: list),
-                ],
+              return Padding(
+                padding: padding,
+                child: Column(
+                  children: [
+                    detail,
+                    const SizedBox(height: 12),
+                    Expanded(child: list),
+                  ],
+                ),
               );
             },
           ),
@@ -827,31 +783,139 @@ class _CreditsPageState extends State<CreditsPage>
     );
   }
 
-  Widget _buildClientSummaryDetailPanel(Map<String, dynamic>? summary) {
-    final scheme = _scheme;
-    if (summary == null) {
-      return Card(
-        margin: EdgeInsets.zero,
-        color: scheme.surface,
-        elevation: 1,
+  Widget _buildClientRow(Map<String, dynamic> item) {
+    final clientName = (item['nombre'] ?? 'S/N').toString();
+    final totalPending = (item['total_pending'] as num?)?.toDouble() ?? 0.0;
+    final totalAmount = (item['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final totalCredits = item['total_credits'] as int? ?? 0;
+    final isSelected =
+        _selectedClientName != null && clientName == _selectedClientName;
+
+    return Material(
+      color: isSelected
+          ? _scheme.primary.withOpacity(0.055)
+          : Colors.transparent,
+      child: InkWell(
+        hoverColor: AppColors.lightBlueHover.withOpacity(0.45),
+        onTap: () {
+          _safeSetState(() {
+            _selectedClientName = clientName;
+          });
+        },
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
             children: [
-              Icon(
-                Icons.person_outline,
-                size: 40,
-                color: scheme.onSurface.withOpacity(0.4),
+              Expanded(
+                flex: 5,
+                child: Text(
+                  clientName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _scheme.onSurface,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
+                ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                'Selecciona un cliente para ver el resumen',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  totalCredits.toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _scheme.onSurface.withOpacity(0.78),
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  _formatCurrency(totalAmount),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _scheme.onSurface,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  _formatCurrency(totalPending),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: _theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryBlue,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _statusBadge(totalPending > 0 ? 'PENDING' : 'PAID'),
+              const SizedBox(width: 6),
+              PopupMenuButton<String>(
+                tooltip: 'Acciones',
+                icon: Icon(
+                  Icons.more_vert,
+                  size: 18,
+                  color: _scheme.onSurface.withOpacity(0.7),
+                ),
+                onSelected: (v) {
+                  if (v == 'view') {
+                    _safeSetState(() {
+                      _selectedClientName = clientName;
+                    });
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'view', child: Text('Ver resumen')),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClientSummaryDetailPanel(Map<String, dynamic>? summary) {
+    final scheme = _scheme;
+    if (summary == null) {
+      return _buildPanelSurface(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: 40,
+              color: scheme.onSurface.withOpacity(0.4),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Selecciona un cliente para ver el resumen',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onSurface.withOpacity(0.6)),
+            ),
+          ],
         ),
       );
     }
@@ -860,70 +924,54 @@ class _CreditsPageState extends State<CreditsPage>
     final totalPending = (summary['total_pending'] as num?)?.toDouble() ?? 0.0;
     final totalAmount = (summary['total_amount'] as num?)?.toDouble() ?? 0.0;
     final totalCredits = summary['total_credits'] as int? ?? 0;
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 1,
-      color: scheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: AppColors.borderSoft),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Resumen del cliente',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurface,
-                  fontFamily: 'Inter',
-                ),
+    return _buildPanelSurface(
+      padding: const EdgeInsets.all(18),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Resumen del cliente',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+                fontFamily: 'Inter',
               ),
-              const SizedBox(height: 10),
-              Text(
-                clientName,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurface,
-                  fontFamily: 'Inter',
-                ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              clientName,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+                fontFamily: 'Inter',
               ),
-              const SizedBox(height: 12),
-              _detailRow('Créditos', totalCredits.toString()),
-              _detailRow('Total', _formatCurrency(totalAmount)),
-              _detailRow('Pendiente', _formatCurrency(totalPending)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: totalPending > 0
-                      ? const Color(0xFFFEF3C7)
-                      : const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  totalPending > 0 ? 'PENDING' : 'PAID',
-                  style: _theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: totalPending > 0
-                        ? const Color(0xFF92400E)
-                        : const Color(0xFF166534),
-                    fontFamily: 'Inter',
-                    fontSize: 11,
-                    letterSpacing: 0.2,
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withOpacity(0.42),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  _detailRow('Créditos', totalCredits.toString()),
+                  _detailRow('Total', _formatCurrency(totalAmount)),
+                  _detailRow(
+                    'Pendiente',
+                    _formatCurrency(totalPending),
+                    isHighlight: true,
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 10),
+            _statusBadge(totalPending > 0 ? 'PENDING' : 'PAID'),
+          ],
         ),
       ),
     );
@@ -949,50 +997,57 @@ class _CreditsPageState extends State<CreditsPage>
             builder: (context, constraints) {
               final padding = _pagePadding(constraints);
               final isWide = constraints.maxWidth >= 1200;
-              final detailWidth =
-                  (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
+              final detailWidth = (constraints.maxWidth * 0.25).clamp(
+                300.0,
+                460.0,
+              );
 
-              final list = ListView.separated(
-                padding: padding,
-                itemCount: statusFiltered.length,
-                separatorBuilder: (_, index) => const SizedBox(height: 6),
-                itemBuilder: (context, index) {
-                  final sale = statusFiltered[index];
-                  final isSelected = sale['id'] == _selectedCreditId;
-                  return _buildCreditRow(sale, isSelected);
-                },
+              final list = _buildCompactListSurface(
+                header: _buildCreditListHeader(),
+                list: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: statusFiltered.length,
+                  separatorBuilder: (_, index) => Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.borderSoft.withOpacity(0.72),
+                  ),
+                  itemBuilder: (context, index) {
+                    final sale = statusFiltered[index];
+                    final isSelected = sale['id'] == _selectedCreditId;
+                    return _buildCreditRow(sale, isSelected);
+                  },
+                ),
               );
 
               final detail = _buildCreditDetailPanel(selected);
 
               if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: list),
-                    const SizedBox(width: 24),
-                    SizedBox(
-                      width: detailWidth,
-                      child: SizedBox.expand(child: detail),
-                    ),
-                  ],
+                return Padding(
+                  padding: padding,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: list),
+                      const SizedBox(width: 24),
+                      SizedBox(
+                        width: detailWidth,
+                        child: SizedBox.expand(child: detail),
+                      ),
+                    ],
+                  ),
                 );
               }
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      padding.left,
-                      padding.top,
-                      padding.right,
-                      0,
-                    ),
-                    child: detail,
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(child: list),
-                ],
+              return Padding(
+                padding: padding,
+                child: Column(
+                  children: [
+                    detail,
+                    const SizedBox(height: 12),
+                    Expanded(child: list),
+                  ],
+                ),
               );
             },
           ),
@@ -1021,50 +1076,57 @@ class _CreditsPageState extends State<CreditsPage>
             builder: (context, constraints) {
               final padding = _pagePadding(constraints);
               final isWide = constraints.maxWidth >= 1200;
-              final detailWidth =
-                  (constraints.maxWidth * 0.25).clamp(300.0, 460.0);
+              final detailWidth = (constraints.maxWidth * 0.25).clamp(
+                300.0,
+                460.0,
+              );
 
-              final list = ListView.separated(
-                padding: padding,
-                itemCount: statusFiltered.length,
-                separatorBuilder: (_, index) => const SizedBox(height: 6),
-                itemBuilder: (context, index) {
-                  final sale = statusFiltered[index];
-                  final isSelected = sale['id'] == _selectedLayawayId;
-                  return _buildLayawayRow(sale, isSelected);
-                },
+              final list = _buildCompactListSurface(
+                header: _buildLayawayListHeader(),
+                list: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: statusFiltered.length,
+                  separatorBuilder: (_, index) => Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.borderSoft.withOpacity(0.72),
+                  ),
+                  itemBuilder: (context, index) {
+                    final sale = statusFiltered[index];
+                    final isSelected = sale['id'] == _selectedLayawayId;
+                    return _buildLayawayRow(sale, isSelected);
+                  },
+                ),
               );
 
               final detail = _buildLayawayDetailPanel(selected);
 
               if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: list),
-                    const SizedBox(width: 24),
-                    SizedBox(
-                      width: detailWidth,
-                      child: SizedBox.expand(child: detail),
-                    ),
-                  ],
+                return Padding(
+                  padding: padding,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: list),
+                      const SizedBox(width: 24),
+                      SizedBox(
+                        width: detailWidth,
+                        child: SizedBox.expand(child: detail),
+                      ),
+                    ],
+                  ),
                 );
               }
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      padding.left,
-                      padding.top,
-                      padding.right,
-                      0,
-                    ),
-                    child: detail,
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(child: list),
-                ],
+              return Padding(
+                padding: padding,
+                child: Column(
+                  children: [
+                    detail,
+                    const SizedBox(height: 12),
+                    Expanded(child: list),
+                  ],
+                ),
               );
             },
           ),
@@ -1087,9 +1149,7 @@ class _CreditsPageState extends State<CreditsPage>
 
     return Material(
       color: rowColor,
-      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
         hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
         onTap: () {
           setState(() {
@@ -1098,17 +1158,6 @@ class _CreditsPageState extends State<CreditsPage>
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.borderSoft),
-            boxShadow: [
-              BoxShadow(
-                color: _scheme.shadow.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
           child: Row(
             children: [
               Expanded(
@@ -1223,32 +1272,23 @@ class _CreditsPageState extends State<CreditsPage>
 
   Widget _buildLayawayDetailPanel(Map<String, dynamic>? sale) {
     if (sale == null) {
-      return Card(
-        margin: EdgeInsets.zero,
-        color: _scheme.surface,
-        elevation: 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: AppColors.borderSoft),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.bookmark,
-                size: 40,
-                color: _scheme.onSurface.withOpacity(0.4),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Selecciona un apartado para ver el detalle',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _scheme.onSurface.withOpacity(0.6)),
-              ),
-            ],
-          ),
+      return _buildPanelSurface(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.bookmark,
+              size: 40,
+              color: _scheme.onSurface.withOpacity(0.4),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Selecciona un apartado para ver el detalle',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _scheme.onSurface.withOpacity(0.6)),
+            ),
+          ],
         ),
       );
     }
@@ -1264,116 +1304,103 @@ class _CreditsPageState extends State<CreditsPage>
     final statusLabel = sale['layaway_status'] ?? sale['status'] ?? 'APARTADO';
     final isPaid = statusLabel == 'PAID' || pending <= 0;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 1,
-      color: _scheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: AppColors.borderSoft),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      localCode.toString(),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Inter',
-                      ),
+    return _buildPanelSurface(
+      padding: const EdgeInsets.all(18),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    localCode.toString(),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
                     ),
                   ),
-                  _statusBadge(isPaid ? 'PAID' : 'PENDING'),
-                ],
+                ),
+                _statusBadge(isPaid ? 'PAID' : 'PENDING'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              clientName.toString(),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Inter',
               ),
-              const SizedBox(height: 8),
+            ),
+            if (phone.toString().isNotEmpty) ...[
+              const SizedBox(height: 4),
               Text(
-                clientName.toString(),
+                phone.toString(),
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
                   fontFamily: 'Inter',
                 ),
               ),
-              if (phone.toString().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  phone.toString(),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Divider(color: AppColors.borderSoft, height: 16),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.borderSoft),
-                ),
-                child: Column(
-                  children: [
-                    _detailRow('Total', _formatCurrency(total)),
-                    _detailRow('Pagado', _formatCurrency(paid)),
-                    _detailRow(
-                      'Pendiente',
-                      _formatCurrency(pending),
-                      isHighlight: true,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: saleId == null || isPaid
-                      ? null
-                      : () => _showLayawayPaymentDialog(
-                          saleId,
-                          localCode.toString(),
-                          clientName.toString(),
-                          total,
-                          pending,
-                          sale['customer_id'] as int?,
-                        ),
-                  icon: const Icon(Icons.payments_outlined, size: 18),
-                  label: const Text('Registrar abono'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    foregroundColor: Colors.white,
-                    elevation: 1,
-                    shadowColor: _scheme.shadow.withOpacity(0.12),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
             ],
-          ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _scheme.surfaceContainerHighest.withOpacity(0.42),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  _detailRow('Total', _formatCurrency(total)),
+                  _detailRow('Pagado', _formatCurrency(paid)),
+                  _detailRow(
+                    'Pendiente',
+                    _formatCurrency(pending),
+                    isHighlight: true,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: saleId == null || isPaid
+                    ? null
+                    : () => _showLayawayPaymentDialog(
+                        saleId,
+                        localCode.toString(),
+                        clientName.toString(),
+                        total,
+                        pending,
+                        sale['customer_id'] as int?,
+                      ),
+                icon: const Icon(Icons.payments_outlined, size: 18),
+                label: const Text('Registrar abono'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1396,9 +1423,7 @@ class _CreditsPageState extends State<CreditsPage>
 
     return Material(
       color: rowColor,
-      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
         hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
         onTap: () {
           setState(() {
@@ -1407,17 +1432,6 @@ class _CreditsPageState extends State<CreditsPage>
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.borderSoft),
-            boxShadow: [
-              BoxShadow(
-                color: _scheme.shadow.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
           child: Row(
             children: [
               Expanded(
@@ -1539,32 +1553,23 @@ class _CreditsPageState extends State<CreditsPage>
 
   Widget _buildCreditDetailPanel(Map<String, dynamic>? sale) {
     if (sale == null) {
-      return Card(
-        margin: EdgeInsets.zero,
-        color: _scheme.surface,
-        elevation: 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: AppColors.borderSoft),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.receipt_long,
-                size: 40,
-                color: _scheme.onSurface.withOpacity(0.4),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Selecciona un crédito para ver el detalle',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _scheme.onSurface.withOpacity(0.6)),
-              ),
-            ],
-          ),
+      return _buildPanelSurface(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.receipt_long,
+              size: 40,
+              color: _scheme.onSurface.withOpacity(0.4),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Selecciona un crédito para ver el detalle',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _scheme.onSurface.withOpacity(0.6)),
+            ),
+          ],
         ),
       );
     }
@@ -1584,130 +1589,118 @@ class _CreditsPageState extends State<CreditsPage>
     final installments = sale['credit_installments'] as int?;
     final note = (sale['credit_note'] as String?) ?? '';
     final dueDateMs = sale['credit_due_date_ms'] as int?;
-    final installmentAmount =
-        (installments != null && installments > 0) ? totalDue / installments : null;
+    final installmentAmount = (installments != null && installments > 0)
+        ? totalDue / installments
+        : null;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 1,
-      color: _scheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: AppColors.borderSoft),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      localCode.toString(),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Inter',
-                      ),
+    return _buildPanelSurface(
+      padding: const EdgeInsets.all(18),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    localCode.toString(),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
                     ),
                   ),
-                  _statusBadge(pending <= 0 ? 'PAID' : 'PENDING'),
-                ],
+                ),
+                _statusBadge(pending <= 0 ? 'PAID' : 'PENDING'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              clientName.toString(),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Inter',
               ),
-              const SizedBox(height: 8),
+            ),
+            if (phone.toString().isNotEmpty) ...[
+              const SizedBox(height: 4),
               Text(
-                clientName.toString(),
+                phone.toString(),
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
                   fontFamily: 'Inter',
                 ),
               ),
-              if (phone.toString().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  phone.toString(),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Divider(color: AppColors.borderSoft, height: 16),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _scheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.borderSoft),
-                ),
-                child: Column(
-                  children: [
-                    _detailRow('Total venta', _formatCurrency(baseTotal)),
-                    _detailRow('Interés', '${interestRate.toStringAsFixed(2)}%'),
-                    _detailRow('Total crédito', _formatCurrency(totalDue)),
-                    _detailRow('Pagado', _formatCurrency(paid)),
-                    _detailRow(
-                      'Pendiente',
-                      _formatCurrency(pending),
-                      isHighlight: true,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (termDays != null && termDays > 0)
-                _detailRow('Plazo (días)', termDays.toString()),
-              if (installments != null && installments > 0)
-                _detailRow('Cuotas', installments.toString()),
-              if (installmentAmount != null)
-                _detailRow('Valor cuota', _formatCurrency(installmentAmount)),
-              if (dueDateMs != null) _detailRow('Vence', _formatDate(dueDateMs)),
-              if (note.trim().isNotEmpty) _detailRow('Nota', note),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: saleId == null
-                      ? null
-                      : () => _showPaymentDialog(
-                          saleId,
-                          localCode.toString(),
-                          clientName.toString(),
-                          totalDue,
-                          pending,
-                          sale['customer_id'] as int?,
-                        ),
-                  icon: const Icon(Icons.payments_outlined, size: 18),
-                  label: const Text('Registrar abono'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    foregroundColor: Colors.white,
-                    elevation: 1,
-                    shadowColor: _scheme.shadow.withOpacity(0.12),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
             ],
-          ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _scheme.surfaceContainerHighest.withOpacity(0.42),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  _detailRow('Total venta', _formatCurrency(baseTotal)),
+                  _detailRow('Interés', '${interestRate.toStringAsFixed(2)}%'),
+                  _detailRow('Total crédito', _formatCurrency(totalDue)),
+                  _detailRow('Pagado', _formatCurrency(paid)),
+                  _detailRow(
+                    'Pendiente',
+                    _formatCurrency(pending),
+                    isHighlight: true,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (termDays != null && termDays > 0)
+              _detailRow('Plazo (días)', termDays.toString()),
+            if (installments != null && installments > 0)
+              _detailRow('Cuotas', installments.toString()),
+            if (installmentAmount != null)
+              _detailRow('Valor cuota', _formatCurrency(installmentAmount)),
+            if (dueDateMs != null) _detailRow('Vence', _formatDate(dueDateMs)),
+            if (note.trim().isNotEmpty) _detailRow('Nota', note),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: saleId == null
+                    ? null
+                    : () => _showPaymentDialog(
+                        saleId,
+                        localCode.toString(),
+                        clientName.toString(),
+                        totalDue,
+                        pending,
+                        sale['customer_id'] as int?,
+                      ),
+                icon: const Icon(Icons.payments_outlined, size: 18),
+                label: const Text('Registrar abono'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

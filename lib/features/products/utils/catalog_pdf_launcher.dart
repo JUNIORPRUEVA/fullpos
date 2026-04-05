@@ -29,6 +29,21 @@ class CatalogPdfLauncher {
     return openFromSidebar(context);
   }
 
+  static Future<void> openForProducts(
+    BuildContext context, {
+    required List<ProductModel> products,
+    String? title,
+    String? fileNameSuffix,
+  }) async {
+    if (products.isEmpty) return;
+    await _generateAndPreview(
+      context: context,
+      products: products,
+      title: title,
+      fileNameSuffix: fileNameSuffix,
+    );
+  }
+
   /// Flujo para el acceso directo del Sidebar:
   /// Permite elegir por categoría o por selección manual.
   static Future<void> openFromSidebar(BuildContext context) async {

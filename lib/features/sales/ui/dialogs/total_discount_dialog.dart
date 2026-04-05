@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../../core/utils/currency_display.dart';
 
 /// Tipo de descuento: por porcentaje o monto fijo
 enum DiscountType {
@@ -15,10 +16,7 @@ class DiscountResult {
   final DiscountType type;
   final double value;
 
-  DiscountResult({
-    required this.type,
-    required this.value,
-  });
+  DiscountResult({required this.type, required this.value});
 }
 
 /// Diálogo para aplicar descuento total a la venta
@@ -110,12 +108,9 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
       return;
     }
 
-    Navigator.of(context).pop(
-      DiscountResult(
-        type: _selectedType,
-        value: _discountValue,
-      ),
-    );
+    Navigator.of(
+      context,
+    ).pop(DiscountResult(type: _selectedType, value: _discountValue));
   }
 
   void _removeDiscount() {
@@ -132,18 +127,13 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
         backgroundColor: Colors.white,
         insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
         contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         titleTextStyle: const TextStyle(
           color: Colors.black,
           fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
-        contentTextStyle: const TextStyle(
-          color: Colors.black,
-          fontSize: 14,
-        ),
+        contentTextStyle: const TextStyle(color: Colors.black, fontSize: 14),
         title: Row(
           children: [
             const Icon(Icons.discount, color: Colors.black),
@@ -202,7 +192,9 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
               const SizedBox(height: AppSizes.paddingL),
               TextField(
                 controller: _valueController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
                 ],
@@ -219,8 +211,9 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
                         : Icons.attach_money,
                     color: Colors.black,
                   ),
-                  suffixText:
-                      _selectedType == DiscountType.percent ? '%' : 'RD\$',
+                  suffixText: _selectedType == DiscountType.percent
+                      ? '%'
+                      : 'RD\$',
                 ),
                 onChanged: _updateValue,
                 autofocus: true,
@@ -231,10 +224,7 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(AppSizes.radiusM),
-                  border: Border.all(
-                    color: Colors.grey.shade300,
-                    width: 1,
-                  ),
+                  border: Border.all(color: Colors.grey.shade300, width: 1),
                 ),
                 child: Column(
                   children: [
@@ -333,7 +323,7 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
           ),
         ),
         Text(
-          'RD\$ ${amount.toStringAsFixed(2)}',
+          CurrencyDisplay.format(amount),
           style: TextStyle(
             fontSize: large ? 18 : 14,
             fontWeight: bold ? FontWeight.bold : FontWeight.w600,

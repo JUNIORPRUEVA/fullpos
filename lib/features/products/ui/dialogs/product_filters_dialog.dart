@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 import '../../data/products_repository.dart';
 import '../../models/category_model.dart';
@@ -25,15 +24,10 @@ class ProductFiltersDialog extends StatefulWidget {
 }
 
 class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
-  final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
-
   int? _selectedCategoryId;
   int? _selectedSupplierId;
   bool? _hasLowStock;
   bool? _isOutOfStock;
-  bool? _isActive;
-  DateTime? _createdAfter;
-  DateTime? _createdBefore;
 
   @override
   void initState() {
@@ -43,9 +37,6 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
       _selectedSupplierId = widget.initialFilters!.supplierId;
       _hasLowStock = widget.initialFilters!.hasLowStock;
       _isOutOfStock = widget.initialFilters!.isOutOfStock;
-      _isActive = widget.initialFilters!.isActive;
-      _createdAfter = widget.initialFilters!.createdAfter;
-      _createdBefore = widget.initialFilters!.createdBefore;
     }
   }
 
@@ -55,9 +46,6 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
       _selectedSupplierId = null;
       _hasLowStock = null;
       _isOutOfStock = null;
-      _isActive = null;
-      _createdAfter = null;
-      _createdBefore = null;
     });
   }
 
@@ -67,31 +55,8 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
       supplierId: _selectedSupplierId,
       hasLowStock: _hasLowStock,
       isOutOfStock: _isOutOfStock,
-      isActive: _isActive,
-      createdAfter: _createdAfter,
-      createdBefore: _createdBefore,
     );
     Navigator.pop(context, filters);
-  }
-
-  Future<void> _pickDate(bool isStart) async {
-    final selected = await showDatePicker(
-      context: context,
-      initialDate: isStart
-          ? (_createdAfter ?? DateTime.now())
-          : (_createdBefore ?? DateTime.now()),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-
-    if (selected == null || !mounted) return;
-    setState(() {
-      if (isStart) {
-        _createdAfter = selected;
-      } else {
-        _createdBefore = selected;
-      }
-    });
   }
 
   @override
@@ -174,11 +139,14 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Clasificación',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                Text(
+                                  'Refina el catálogo con los filtros clave del día a día.',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    height: 1.35,
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 14),
                                 DropdownButtonFormField<int?>(
                                   value: _selectedCategoryId,
                                   isExpanded: true,
@@ -232,104 +200,52 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
                                     () => _selectedSupplierId = value,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Stock',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    FilterChip(
-                                      label: const Text('Stock bajo'),
-                                      selected: _hasLowStock == true,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          _hasLowStock = selected ? true : null;
-                                        });
-                                      },
-                                    ),
-                                    FilterChip(
-                                      label: const Text('Agotados'),
-                                      selected: _isOutOfStock == true,
-                                      onSelected: (selected) {
-                                        setState(() {
-                                          _isOutOfStock = selected
-                                              ? true
-                                              : null;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Estado',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    ChoiceChip(
-                                      label: const Text('Todos'),
-                                      selected: _isActive == null,
-                                      onSelected: (_) =>
-                                          setState(() => _isActive = null),
-                                    ),
-                                    ChoiceChip(
-                                      label: const Text('Activos'),
-                                      selected: _isActive == true,
-                                      onSelected: (_) =>
-                                          setState(() => _isActive = true),
-                                    ),
-                                    ChoiceChip(
-                                      label: const Text('Inactivos'),
-                                      selected: _isActive == false,
-                                      onSelected: (_) =>
-                                          setState(() => _isActive = false),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Fechas',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: () => _pickDate(true),
-                                        icon: const Icon(Icons.event_outlined),
-                                        label: Text(
-                                          _createdAfter == null
-                                              ? 'Desde'
-                                              : _dateFormat.format(
-                                                  _createdAfter!,
-                                                ),
+                                const SizedBox(height: 14),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHighest.withOpacity(0.45),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(color: scheme.outlineVariant),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Stock',
+                                        style: theme.textTheme.labelLarge?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          color: scheme.onSurface,
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: () => _pickDate(false),
-                                        icon: const Icon(Icons.event_outlined),
-                                        label: Text(
-                                          _createdBefore == null
-                                              ? 'Hasta'
-                                              : _dateFormat.format(
-                                                  _createdBefore!,
-                                                ),
-                                        ),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          FilterChip(
+                                            label: const Text('Stock bajo'),
+                                            selected: _hasLowStock == true,
+                                            onSelected: (selected) {
+                                              setState(() {
+                                                _hasLowStock = selected ? true : null;
+                                              });
+                                            },
+                                          ),
+                                          FilterChip(
+                                            label: const Text('Agotados'),
+                                            selected: _isOutOfStock == true,
+                                            onSelected: (selected) {
+                                              setState(() {
+                                                _isOutOfStock = selected ? true : null;
+                                              });
+                                            },
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                                 const SizedBox(height: 14),
                                 Row(

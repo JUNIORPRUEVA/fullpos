@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../services/app_configuration_service.dart';
+import '../utils/currency_display.dart';
 import '../../features/settings/data/printer_settings_model.dart';
 import '../../features/settings/data/printer_settings_repository.dart';
 import '../../features/sales/data/sales_model.dart';
@@ -287,7 +288,8 @@ class TicketPrinter {
       );
     }
 
-    if ((settings.showElectronicInvoiceReference == 1 || sale.electronicInvoiceEnabled == 1) &&
+    if ((settings.showElectronicInvoiceReference == 1 ||
+            sale.electronicInvoiceEnabled == 1) &&
         (sale.electronicInvoiceCode ?? '').isNotEmpty) {
       content.add(
         pw.Center(
@@ -590,7 +592,7 @@ class TicketPrinter {
   }
 
   static String _formatCurrency(double value) {
-    return '\$${value.toStringAsFixed(2)}';
+    return CurrencyDisplay.format(value, symbol: 'RD\$');
   }
 
   static String _formatQty(double qty) {
@@ -604,5 +606,4 @@ class TicketPrinter {
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength - 3)}...';
   }
-
 }

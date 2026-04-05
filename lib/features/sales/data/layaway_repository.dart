@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/validation/business_rules.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import 'sales_repository.dart';
@@ -72,7 +73,7 @@ class LayawayRepository {
       throw BusinessRuleException(
         code: 'layaway_min_down_payment',
         messageUser:
-            'El abono inicial debe ser al menos el 30% (${minDown.toStringAsFixed(2)})',
+            'El abono inicial debe ser al menos el 30% (${CurrencyDisplay.format(minDown)})',
         messageDev:
             'Layaway initial payment below 30%: $initialPayment < $minDown',
       );

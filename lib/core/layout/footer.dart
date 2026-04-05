@@ -45,7 +45,7 @@ class _FooterState extends ConsumerState<Footer> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-    final footerBg = tokens.footerBackground.withOpacity(0.92);
+    final footerBg = tokens.footerBackground;
     final footerTextColor = ColorUtils.ensureReadableColor(
       tokens.footerText,
       footerBg,
@@ -63,20 +63,30 @@ class _FooterState extends ConsumerState<Footer> {
     final infoFont = (10.5 * s).clamp(9.0, 12.0);
     final pad = (AppSizes.paddingM * s).clamp(10.0, 18.0);
     final timestamp = DateTimeFormatter.formatFullDateTime(_currentTime);
+    final footerBorderColor = Color.alphaBlend(
+      tokens.outline.withOpacity(theme.brightness == Brightness.dark ? 0.34 : 0.5),
+      footerBg,
+    );
+    final footerShadowColor = Color.alphaBlend(
+      theme.shadowColor.withOpacity(
+        theme.brightness == Brightness.dark ? 0.24 : 0.10,
+      ),
+      footerBg,
+    );
 
     return Container(
       height: h,
       decoration: BoxDecoration(
         color: footerBg,
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black12,
+            color: footerShadowColor,
             blurRadius: 8,
             offset: Offset(0, -2),
           ),
         ],
         border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.08), width: 1),
+          top: BorderSide(color: footerBorderColor, width: 1),
         ),
       ),
       padding: EdgeInsets.symmetric(horizontal: pad),

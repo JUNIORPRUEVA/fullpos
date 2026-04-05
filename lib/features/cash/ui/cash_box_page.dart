@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/utils/currency_display.dart';
 import '../data/cash_repository.dart';
 import '../data/cash_session_model.dart';
 import '../data/cashbox_daily_model.dart';
 import '../data/operation_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../settings/data/user_model.dart' show UserPermissions;
-import 'cash_close_dialog.dart';
 import 'cashbox_open_dialog.dart';
 import 'cash_panel_sheet.dart';
 
@@ -104,32 +104,14 @@ class _CashBoxPageState extends State<CashBoxPage> {
   }
 
   Future<void> _closeCashDialog() async {
-    if (_isMutating) return;
-    final sessionId = _session?.id;
-    if (sessionId == null) return;
-    if (!_canCloseShift) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No tienes permiso para cerrar la sesión.'),
-          ),
-        );
-      }
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _isMutating = true);
     try {
-      final result = await CashCloseDialog.show(
-        context,
-        sessionId: sessionId,
-        logoutAfterClose: true,
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('Finaliza el turno desde el menú de usuario.'),
+        ),
       );
-      if (result == true && mounted) {
-        return;
-      }
-    } finally {
-      if (mounted) setState(() => _isMutating = false);
+    } catch (_) {
+      // No-op
     }
   }
 
@@ -357,7 +339,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Al cerrar la sesión se cierra la caja, se imprime el cierre y el usuario sale del sistema.',
+              'El cierre de turno se gestiona desde el menú de usuario.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.75),
               ),
@@ -387,18 +369,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
                     ),
                   ),
                 ),
-                Tooltip(
-                  message:
-                      'Cerrar la sesión activa, la caja y salir del sistema',
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        (_isMutating || session == null || !_canCloseShift)
-                        ? null
-                        : _closeCashDialog,
-                    icon: const Icon(Icons.lock_outline),
-                    label: const Text('Cerrar sesión'),
-                  ),
-                ),
                 OutlinedButton.icon(
                   onPressed: () => context.push('/cash/history'),
                   icon: const Icon(Icons.history),
@@ -414,6 +384,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
 
   String _formatAmount(double? value) {
     final amount = value ?? 0.0;
-    return amount.toStringAsFixed(2);
+    return CurrencyDisplay.formatPlain(amount);
   }
 }

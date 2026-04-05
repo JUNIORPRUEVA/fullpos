@@ -83,6 +83,19 @@ void main() {
     expect(find.text('Cotización'), findsWidgets);
   });
 
+  testWidgets('adapta el dialogo a modo cotizacion', (tester) async {
+    await pumpDialog(
+      tester,
+      initialDocumentType: PaymentDocumentType.cotizacion,
+    );
+
+    expect(find.text('GENERAR COTIZACIÓN'), findsOneWidget);
+    expect(find.text('TOTAL COTIZADO:'), findsOneWidget);
+    expect(find.text('CLIENTE DE LA COTIZACIÓN'), findsOneWidget);
+    expect(find.text('GUARDAR COTIZACIÓN'), findsOneWidget);
+    expect(find.text('MÉTODO DE PAGO'), findsNothing);
+  });
+
   testWidgets('se adapta en ancho reducido sin errores de render', (
     tester,
   ) async {

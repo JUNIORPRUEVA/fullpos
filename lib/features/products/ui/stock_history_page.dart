@@ -1,15 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../theme/app_colors.dart';
 import '../data/stock_repository.dart';
 import '../models/stock_movement_model.dart';
-import 'widgets/kpi_card.dart';
 import 'widgets/products_surface.dart';
 
 /// Historial completo de inventario (entradas, salidas y ajustes)
 class StockHistoryPage extends StatefulWidget {
-  const StockHistoryPage({super.key});
+  const StockHistoryPage({super.key, this.embedded = false, this.onBack});
+
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<StockHistoryPage> createState() => _StockHistoryPageState();
@@ -88,216 +92,224 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
     _load();
   }
 
-  Color _movementColor(StockMovementModel m) {
-    if (m.isInput) return Colors.green;
-    if (m.isOutput) return Colors.red;
-    return m.quantity >= 0 ? Colors.orange : Colors.deepOrange;
+  Color _movementColor(StockMovementModel movement) {
+    if (movement.isInput) return Colors.green;
+    if (movement.isOutput) return Colors.red;
+    return movement.quantity >= 0 ? Colors.orange : Colors.deepOrange;
   }
 
-  String _qtyLabel(StockMovementModel m) {
-    if (m.isOutput) {
-      return '-${_qtyFormat.format(m.quantity)}';
+  String _qtyLabel(StockMovementModel movement) {
+    if (movement.isOutput) {
+      return '-${_qtyFormat.format(movement.quantity)}';
     }
-    if (m.isInput) {
-      return '+${_qtyFormat.format(m.quantity)}';
+    if (movement.isInput) {
+      return '+${_qtyFormat.format(movement.quantity)}';
     }
-    return m.quantity >= 0
-        ? '+${_qtyFormat.format(m.quantity)}'
-        : _qtyFormat.format(m.quantity);
+    return movement.quantity >= 0
+        ? '+${_qtyFormat.format(movement.quantity)}'
+        : _qtyFormat.format(movement.quantity);
   }
 
-  Widget _buildSummary() {
-    final summary = _summary;
-    if (summary == null) return const SizedBox.shrink();
+  String _typeLabel(StockMovementModel movement) {
+    if (movement.isInput) return 'Entrada';
+    if (movement.isOutput) return 'Salida';
+    return movement.quantity >= 0 ? 'Ajuste +' : 'Ajuste -';
+  }
 
-    final widgets = <Widget>[
-      SizedBox(
-        width: 210,
-        child: KpiCard(
-          title: 'Entradas',
-          value: _qtyFormat.format(summary.totalInputs),
-          icon: Icons.call_made,
-          color: Colors.green,
+  Widget _buildHeaderCell(
+    String label, {
+    required int flex,
+    TextAlign textAlign = TextAlign.left,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        label.toUpperCase(),
+        textAlign: textAlign,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+          color: AppColors.textSecondary,
+          fontFamily: 'Inter',
         ),
       ),
-      SizedBox(
-        width: 210,
-        child: KpiCard(
-          title: 'Salidas',
-          value: _qtyFormat.format(summary.totalOutputs),
-          icon: Icons.call_received,
-          color: Colors.red,
-        ),
-      ),
-      SizedBox(
-        width: 210,
-        child: KpiCard(
-          title: 'Ajustes',
-          value: summary.totalAdjustments >= 0
-              ? '+${_qtyFormat.format(summary.totalAdjustments)}'
-              : _qtyFormat.format(summary.totalAdjustments),
-          icon: Icons.tune,
-          color: summary.totalAdjustments >= 0
-              ? Colors.orange
-              : Colors.deepOrange,
-        ),
-      ),
-      SizedBox(
-        width: 210,
-        child: KpiCard(
-          title: 'Movimientos',
-          value: summary.movementsCount.toString(),
-          icon: Icons.timeline,
-          color: Colors.blueGrey,
-        ),
-      ),
-      SizedBox(
-        width: 210,
-        child: KpiCard(
-          title: 'Balance neto',
-          value: summary.netChange >= 0
-              ? '+${_qtyFormat.format(summary.netChange)}'
-              : _qtyFormat.format(summary.netChange),
-          icon: Icons.equalizer,
-          color: summary.netChange >= 0 ? Colors.teal : Colors.redAccent,
-        ),
-      ),
-    ];
+    );
+  }
 
-    return Wrap(spacing: 12, runSpacing: 12, children: widgets);
+  Widget _buildValueCell(
+    String value, {
+    required int flex,
+    TextAlign textAlign = TextAlign.left,
+    Color? color,
+    FontWeight fontWeight = FontWeight.w600,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        value,
+        textAlign: textAlign,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: fontWeight,
+          color: color ?? AppColors.textPrimary,
+          fontFamily: 'Inter',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Row(
+        children: [
+          _buildHeaderCell('Fecha', flex: 18),
+          const SizedBox(width: 12),
+          _buildHeaderCell('Producto', flex: 24),
+          const SizedBox(width: 12),
+          _buildHeaderCell('Tipo', flex: 14),
+          const SizedBox(width: 12),
+          _buildHeaderCell('Usuario', flex: 15),
+          const SizedBox(width: 12),
+          _buildHeaderCell('Nota', flex: 19),
+          const SizedBox(width: 12),
+          _buildHeaderCell('Stock', flex: 12, textAlign: TextAlign.right),
+          const SizedBox(width: 12),
+          _buildHeaderCell('Cantidad', flex: 12, textAlign: TextAlign.right),
+        ],
+      ),
+    );
   }
 
   Widget _buildMovementTile(StockMovementDetail detail) {
     final movement = detail.movement;
     final color = _movementColor(movement);
     final dateLabel = _dateFormat.format(movement.createdAt.toLocal());
+    final productLabel = detail.productCode == null
+        ? detail.productLabel
+        : '${detail.productLabel} • ${detail.productCode}';
+    final noteLabel = (movement.note?.trim().isNotEmpty ?? false)
+        ? movement.note!.trim()
+        : 'Sin nota';
+    final stockLabel = detail.currentStock == null
+        ? 'N/D'
+        : _qtyFormat.format(detail.currentStock);
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.borderSoft),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              movement.isInput
-                  ? Icons.call_made
-                  : movement.isOutput
-                  ? Icons.call_received
-                  : Icons.tune,
-              color: color,
-            ),
-          ),
+          _buildValueCell(dateLabel, flex: 18, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          _buildValueCell(productLabel, flex: 24, fontWeight: FontWeight.w700),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        detail.productLabel,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _qtyLabel(movement),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: color,
-                        fontFamily: 'Inter',
-                      ),
-                    ),
-                  ],
+            flex: 14,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
                 ),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        movement.type.label,
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ),
-                    if (detail.productCode != null)
-                      Text(
-                        'Cód: ${detail.productCode}',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                  ],
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '$dateLabel • ${detail.userLabel}',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
+                child: Text(
+                  _typeLabel(movement),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: color,
                     fontFamily: 'Inter',
                   ),
                 ),
-                if (movement.note?.isNotEmpty ?? false) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Nota: ${movement.note}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontStyle: FontStyle.italic,
-                      fontSize: 12,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
-                ],
-                if (detail.currentStock != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Stock actual: ${_qtyFormat.format(detail.currentStock)}',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
+          const SizedBox(width: 12),
+          _buildValueCell(
+            detail.userLabel,
+            flex: 15,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          _buildValueCell(noteLabel, flex: 19, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          _buildValueCell(
+            stockLabel,
+            flex: 12,
+            textAlign: TextAlign.right,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          _buildValueCell(
+            _qtyLabel(movement),
+            flex: 12,
+            textAlign: TextAlign.right,
+            color: color,
+            fontWeight: FontWeight.w800,
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryList(double availableWidth) {
+    final tableWidth = math.max(availableWidth, 1220.0);
+
+    if (_history.isEmpty) {
+      return Container(
+        width: tableWidth,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        child: const Text(
+          'Sin movimientos',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Inter',
+            color: AppColors.textPrimary,
+          ),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: tableWidth,
+        color: Colors.white,
+        child: Column(
+          children: [
+            const SizedBox(height: 14),
+            _buildHistoryHeader(),
+            const Divider(height: 1, thickness: 1, color: AppColors.borderSoft),
+            ...List.generate(_history.length, (index) {
+              final item = _history[index];
+              return Column(
+                children: [
+                  _buildMovementTile(item),
+                  if (index != _history.length - 1)
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      indent: 16,
+                      endIndent: 16,
+                      color: AppColors.borderSoft,
+                    ),
+                ],
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
@@ -309,154 +321,175 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
         ? null
         : '${DateFormat('dd/MM/yyyy').format(_range!.start)} - ${DateFormat('dd/MM/yyyy').format(_range!.end)}';
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  ProductsSurface(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  ChoiceChip(
-                                    label: const Text('Todos'),
-                                    selected: _filterType == null,
-                                    onSelected: (_) => _setFilter(null),
-                                  ),
-                                  ChoiceChip(
-                                    label: const Text('Entradas'),
-                                    selected:
-                                        _filterType == StockMovementType.input,
-                                    onSelected: (_) =>
-                                        _setFilter(StockMovementType.input),
-                                  ),
-                                  ChoiceChip(
-                                    label: const Text('Salidas'),
-                                    selected:
-                                        _filterType == StockMovementType.output,
-                                    onSelected: (_) =>
-                                        _setFilter(StockMovementType.output),
-                                  ),
-                                  ChoiceChip(
-                                    label: const Text('Ajustes'),
-                                    selected:
-                                        _filterType == StockMovementType.adjust,
-                                    onSelected: (_) =>
-                                        _setFilter(StockMovementType.adjust),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (!isCompact) ...[
-                              const SizedBox(width: 10),
-                              FilledButton.tonalIcon(
-                                onPressed: _pickRange,
-                                icon: const Icon(Icons.date_range),
-                                label: const Text('Rango'),
-                                style: FilledButton.styleFrom(
-                                  foregroundColor: AppColors.primaryBlue,
-                                  backgroundColor: AppColors.lightBlueHover,
+    final content = RefreshIndicator(
+      onRefresh: _load,
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                widget.embedded ? 8 : 14,
+                16,
+                16,
+              ),
+              children: [
+                if (widget.onBack != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      onPressed: widget.onBack,
+                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                      label: const Text('Volver'),
+                      style: FilledButton.styleFrom(
+                        foregroundColor: AppColors.primaryBlue,
+                        backgroundColor: AppColors.lightBlueHover,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (widget.onBack != null) const SizedBox(height: 10),
+                ProductsSurface(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('Todos'),
+                                  selected: _filterType == null,
+                                  onSelected: (_) => _setFilter(null),
                                 ),
-                              ),
-                              if (_range != null) ...[
-                                const SizedBox(width: 8),
-                                OutlinedButton.icon(
-                                  onPressed: _clearRange,
-                                  icon: const Icon(Icons.clear),
-                                  label: const Text('Limpiar'),
+                                ChoiceChip(
+                                  label: const Text('Entradas'),
+                                  selected:
+                                      _filterType == StockMovementType.input,
+                                  onSelected: (_) =>
+                                      _setFilter(StockMovementType.input),
+                                ),
+                                ChoiceChip(
+                                  label: const Text('Salidas'),
+                                  selected:
+                                      _filterType == StockMovementType.output,
+                                  onSelected: (_) =>
+                                      _setFilter(StockMovementType.output),
+                                ),
+                                ChoiceChip(
+                                  label: const Text('Ajustes'),
+                                  selected:
+                                      _filterType == StockMovementType.adjust,
+                                  onSelected: (_) =>
+                                      _setFilter(StockMovementType.adjust),
                                 ),
                               ],
-                            ],
-                          ],
-                        ),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (isCompact)
-                              FilledButton.tonalIcon(
-                                onPressed: _pickRange,
-                                icon: const Icon(Icons.date_range),
-                                label: const Text('Rango'),
-                                style: FilledButton.styleFrom(
-                                  foregroundColor: AppColors.primaryBlue,
-                                  backgroundColor: AppColors.lightBlueHover,
-                                ),
+                            ),
+                          ),
+                          if (!isCompact) ...[
+                            const SizedBox(width: 10),
+                            FilledButton.tonalIcon(
+                              onPressed: _pickRange,
+                              icon: const Icon(Icons.date_range),
+                              label: const Text('Rango'),
+                              style: FilledButton.styleFrom(
+                                foregroundColor: AppColors.primaryBlue,
+                                backgroundColor: AppColors.lightBlueHover,
                               ),
-                            if (isCompact && _range != null)
+                            ),
+                            if (_range != null) ...[
+                              const SizedBox(width: 8),
                               OutlinedButton.icon(
                                 onPressed: _clearRange,
                                 icon: const Icon(Icons.clear),
                                 label: const Text('Limpiar'),
                               ),
-                            if (rangeLabel != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.cardBackgroundAlt,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: AppColors.borderSoft,
-                                  ),
-                                ),
-                                child: Text(
-                                  rangeLabel,
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    fontFamily: 'Inter',
-                                  ),
-                                ),
-                              ),
+                            ],
                           ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ProductsSurface(child: _buildSummary()),
-                  const SizedBox(height: 12),
-                  ProductsSurface(
-                    child: _history.isEmpty
-                        ? Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 16,
-                            ),
-                            child: const Text(
-                              'Sin movimientos',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'Inter',
-                                color: AppColors.textPrimary,
+                        ],
+                      ),
+                      if (isCompact || rangeLabel != null)
+                        const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (isCompact)
+                            FilledButton.tonalIcon(
+                              onPressed: _pickRange,
+                              icon: const Icon(Icons.date_range),
+                              label: const Text('Rango'),
+                              style: FilledButton.styleFrom(
+                                foregroundColor: AppColors.primaryBlue,
+                                backgroundColor: AppColors.lightBlueHover,
                               ),
                             ),
-                          )
-                        : Column(
-                            children: _history.map(_buildMovementTile).toList(),
-                          ),
+                          if (isCompact && _range != null)
+                            OutlinedButton.icon(
+                              onPressed: _clearRange,
+                              icon: const Icon(Icons.clear),
+                              label: const Text('Limpiar'),
+                            ),
+                          if (rangeLabel != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.cardBackgroundAlt,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.borderSoft),
+                              ),
+                              child: Text(
+                                rangeLabel,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
-      ),
+                ),
+                const SizedBox(height: 12),
+                ProductsSurface(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: _buildHistoryList(constraints.maxWidth),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
+
+    if (widget.embedded) {
+      return content;
+    }
+
+    return Scaffold(backgroundColor: Colors.transparent, body: content);
   }
 }

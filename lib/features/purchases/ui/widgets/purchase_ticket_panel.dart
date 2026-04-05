@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/errors/error_handler.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../../products/models/supplier_model.dart';
 import '../../data/purchase_order_models.dart';
 import '../../data/purchases_repository.dart';
@@ -479,7 +480,7 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy');
 
     final draft = ref.watch(purchaseDraftProvider);
@@ -740,107 +741,112 @@ class _PurchaseTicketPanelState extends ConsumerState<PurchaseTicketPanel> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Proveedor, fecha, impuestos y líneas de compra en una sola columna operativa.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(child: supplierChip),
-                        const SizedBox(width: 8),
-                        suppliersAsync.when(
-                          data: (suppliers) {
-                            return OutlinedButton(
-                              onPressed: () async {
-                                final picked = await _pickSupplierDialog(
-                                  context: context,
-                                  suppliers: suppliers,
-                                  selected: draft.supplier,
-                                );
-                                if (picked == null) return;
-                                ref
-                                    .read(purchaseDraftProvider.notifier)
-                                    .setSupplier(picked);
-                                // Forzar recarga de productos base cuando cambia proveedor.
-                                ref.invalidate(purchaseProductsBaseProvider);
-                              },
-                              child: Text(
-                                draft.supplier == null ? 'Elegir' : 'Cambiar',
-                              ),
-                            );
-                          },
-                          loading: () => const SizedBox(
-                            width: 86,
-                            height: 36,
-                            child: Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          error: (e, _) => Tooltip(
-                            message: '$e',
-                            child: const Icon(
-                              Icons.error_outline,
-                              color: AppColors.error,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 38,
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _saving
-                            ? null
-                            : () => _addCustomProductDialog(context),
-                        icon: const Icon(Icons.playlist_add),
-                        label: const Text('Producto no inventario'),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        PurchaseFactTile(
-                          label: 'Fecha compra',
-                          value: dateFormat.format(draft.purchaseDate),
-                        ),
-                        PurchaseFactTile(
-                          label: 'Líneas',
-                          value: '${draft.lines.length} productos',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Switch.adaptive(
-                            value: draft.itbisEnabled,
-                            onChanged: _saving
-                                ? null
-                                : (v) {
-                                    ref
-                                        .read(purchaseDraftProvider.notifier)
-                                        .setItbisEnabled(v);
-                                  },
+                          supplierChip,
+                          const SizedBox(width: 8),
+                          suppliersAsync.when(
+                            data: (suppliers) {
+                              return OutlinedButton(
+                                onPressed: () async {
+                                  final picked = await _pickSupplierDialog(
+                                    context: context,
+                                    suppliers: suppliers,
+                                    selected: draft.supplier,
+                                  );
+                                  if (picked == null) return;
+                                  ref
+                                      .read(purchaseDraftProvider.notifier)
+                                      .setSupplier(picked);
+                                  ref.invalidate(purchaseProductsBaseProvider);
+                                },
+                                child: Text(
+                                  draft.supplier == null ? 'Elegir' : 'Cambiar',
+                                ),
+                              );
+                            },
+                            loading: () => const SizedBox(
+                              width: 86,
+                              height: 36,
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                            error: (e, _) => Tooltip(
+                              message: '$e',
+                              child: const Icon(
+                                Icons.error_outline,
+                                color: AppColors.error,
+                              ),
+                            ),
                           ),
-                          Text(
-                            draft.itbisEnabled
-                                ? 'Aplicar ITBIS (${draft.taxRatePercent.toStringAsFixed(0)}%)'
-                                : 'Aplicar ITBIS',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: scheme.onSurface.withOpacity(0.75),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 38,
+                            child: OutlinedButton.icon(
+                              onPressed: _saving
+                                  ? null
+                                  : () => _addCustomProductDialog(context),
+                              icon: const Icon(Icons.playlist_add),
+                              label: const Text('Producto no inventario'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          PurchaseFactTile(
+                            label: 'Fecha compra',
+                            value: dateFormat.format(draft.purchaseDate),
+                          ),
+                          const SizedBox(width: 8),
+                          PurchaseFactTile(
+                            label: 'Líneas',
+                            value: '${draft.lines.length} productos',
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest.withOpacity(
+                                0.28,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: scheme.outlineVariant.withOpacity(0.4),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Switch.adaptive(
+                                  value: draft.itbisEnabled,
+                                  onChanged: _saving
+                                      ? null
+                                      : (v) {
+                                          ref
+                                              .read(
+                                                purchaseDraftProvider.notifier,
+                                              )
+                                              .setItbisEnabled(v);
+                                        },
+                                ),
+                                Text(
+                                  draft.itbisEnabled
+                                      ? 'ITBIS ${draft.taxRatePercent.toStringAsFixed(0)}%'
+                                      : 'ITBIS OFF',
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: scheme.onSurface.withOpacity(0.75),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

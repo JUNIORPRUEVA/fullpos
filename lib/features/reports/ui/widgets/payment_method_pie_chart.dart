@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../../data/reports_repository.dart';
 
 class PaymentMethodPieChart extends StatefulWidget {
@@ -13,6 +14,13 @@ class PaymentMethodPieChart extends StatefulWidget {
 
 class _PaymentMethodPieChartState extends State<PaymentMethodPieChart> {
   int touchedIndex = -1;
+
+  String _formatCurrency(double value) {
+    final normalized = value.isFinite ? value : 0;
+    final sign = normalized < 0 ? '-' : '';
+    final formatter = NumberFormat('#,##0', 'en_US');
+    return '${sign}RD\$ ${formatter.format(normalized.abs().round())}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +140,7 @@ class _PaymentMethodPieChartState extends State<PaymentMethodPieChart> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              '${percentage.toStringAsFixed(1)}% • ${item.count} ventas',
+                              '${percentage.toStringAsFixed(1)}% • ${item.count} ventas • ${_formatCurrency(item.amount)}',
                               style: TextStyle(
                                 fontSize: 10,
                                 color: scheme.onSurface.withOpacity(0.6),

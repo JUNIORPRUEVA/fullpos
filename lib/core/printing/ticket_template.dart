@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import '../services/app_configuration_service.dart';
+import '../utils/currency_display.dart';
 import '../../features/settings/data/printer_settings_model.dart';
 import '../../features/sales/data/sales_model.dart';
 
@@ -54,7 +55,8 @@ class TicketTemplate {
     }
 
     // e-CF
-    if ((settings.showElectronicInvoiceReference == 1 || sale.electronicInvoiceEnabled == 1) &&
+    if ((settings.showElectronicInvoiceReference == 1 ||
+            sale.electronicInvoiceEnabled == 1) &&
         (sale.electronicInvoiceCode ?? '').isNotEmpty) {
       lines.add(_center('e-CF: ${sale.electronicInvoiceCode}', width));
     }
@@ -314,6 +316,6 @@ class TicketTemplate {
   }
 
   String _formatCurrency(double value) {
-    return '\$${value.toStringAsFixed(2)}';
+    return CurrencyDisplay.format(value, symbol: 'RD\$');
   }
 }

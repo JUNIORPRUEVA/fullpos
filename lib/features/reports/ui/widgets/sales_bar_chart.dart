@@ -27,12 +27,7 @@ class _SalesBarChartState extends State<SalesBarChart> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final barColor = widget.barColor ?? scheme.primary;
-    final moneyAxis = NumberFormat.decimalPattern('es_DO');
-    final moneyTooltip = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$ ',
-      decimalDigits: 2,
-    );
+    final moneyAxis = NumberFormat('#,##0', 'en_US');
 
     if (widget.data.isEmpty) {
       return Center(
@@ -99,7 +94,7 @@ class _SalesBarChartState extends State<SalesBarChart> {
                   ),
                   children: [
                     TextSpan(
-                      text: moneyTooltip.format(item.value),
+                      text: _formatCurrency(item.value),
                       style: TextStyle(
                         color: scheme.surface,
                         fontWeight: FontWeight.bold,
@@ -259,6 +254,13 @@ class _SalesBarChartState extends State<SalesBarChart> {
     if (count <= 14) return 18;
     if (count <= 21) return 12;
     return 8;
+  }
+
+  String _formatCurrency(double value) {
+    final normalized = value.isFinite ? value : 0;
+    final sign = normalized < 0 ? '-' : '';
+    final formatter = NumberFormat('#,##0', 'en_US');
+    return '${sign}RD\$ ${formatter.format(normalized.abs().round())}';
   }
 
   String _formatDate(String dateStr) {

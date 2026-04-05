@@ -29,19 +29,19 @@ class KpiCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: scheme.surface.withOpacity(0.98),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderSoft),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderSoft.withOpacity(0.9)),
         boxShadow: [
           BoxShadow(
-            color: scheme.shadow.withOpacity(0.045),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: scheme.shadow.withOpacity(0.035),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         hoverColor: AppColors.lightBlueHover.withOpacity(0.6),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -53,13 +53,13 @@ class KpiCard extends StatelessWidget {
             // cuando el Grid asigna alturas "justas".
             final compact = h < 112;
             final horizontalPadding = compact ? 12.0 : 14.0;
-            final verticalPadding = compact ? 7.0 : 11.0;
+            final verticalPadding = compact ? 8.0 : 12.0;
             final iconSize = compact ? 16.0 : 18.0;
             final iconPadding = compact ? 6.0 : 8.0;
-            final valueFont = compact ? 20.0 : 22.0;
+            final valueFont = compact ? 20.0 : 21.0;
             final titleFont = compact ? 10.0 : 11.0;
             final gap1 = compact ? 4.0 : 7.0;
-            final gap2 = compact ? 1.0 : 2.0;
+            final gap2 = compact ? 2.0 : 3.0;
 
             final valueText = Align(
               alignment: Alignment.centerLeft,
@@ -109,7 +109,7 @@ class KpiCard extends StatelessWidget {
                           title,
                           style: TextStyle(
                             fontSize: titleFont,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: AppColors.textSecondary,
                             fontFamily: 'Inter',
                             letterSpacing: 0.2,

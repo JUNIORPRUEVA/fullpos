@@ -44,7 +44,6 @@ class ProductCard extends StatelessWidget {
     final numberFormat = NumberFormat.decimalPattern();
     final statusColor = _resolveStatusColor(scheme);
     final mutedText = scheme.onSurface.withOpacity(0.65);
-    final borderColor = isSelected ? scheme.primary : scheme.outlineVariant;
     final textPrimary = scheme.onSurface;
     final textSecondary = scheme.onSurfaceVariant;
 

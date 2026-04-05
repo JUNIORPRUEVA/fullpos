@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/ui/responsive_grid.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../../../theme/app_colors.dart' as ui_colors;
 import '../../../products/models/product_model.dart';
 import '../../../products/ui/widgets/product_thumbnail.dart';
@@ -14,28 +15,25 @@ import 'purchase_ui.dart';
 class PurchaseProductsGrid extends ConsumerWidget {
   const PurchaseProductsGrid({super.key});
 
-  static const double _productCardSize = 104;
-  static const double _productTileMaxExtent = 116;
-  static const double _minProductCardSize = 72.0;
-  static const double _gridCrossSpacing = 3.0;
-  static const double _gridMainSpacing = 6.0;
-  static const double _productCardAspect = 1.15;
+  static const double _productTileMaxExtent = 280;
+  static const double _minTileHeight = 82.0;
+  static const double _gridCrossSpacing = 8.0;
+  static const double _gridMainSpacing = 8.0;
 
-  double _productCardSizeFor(double availableWidth) {
+  double _tileHeightFor(double availableWidth) {
     if (!availableWidth.isFinite || availableWidth <= 0) {
-      return _minProductCardSize;
+      return _minTileHeight;
     }
-    final relativeWidth = (availableWidth / 1200).clamp(0.6, 1.0);
-    final scale = relativeWidth < 0.85 ? 0.85 : relativeWidth;
-    final size = (_productCardSize * scale).clamp(_minProductCardSize, 130.0);
-    return size.isFinite && size > 0 ? size : _minProductCardSize;
+    final relativeWidth = (availableWidth / 1200).clamp(0.72, 1.0);
+    final size = (92.0 * relativeWidth).clamp(_minTileHeight, 94.0);
+    return size.isFinite && size > 0 ? size : _minTileHeight;
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
 
     final productsAsync = ref.watch(purchaseFilteredProductsProvider);
 
@@ -51,18 +49,19 @@ class PurchaseProductsGrid extends ConsumerWidget {
         if (products.isEmpty) {
           return _EmptyProducts(
             title: 'Sin productos',
-            message: 'Ajusta el filtro, el proveedor o la categoría para recuperar inventario elegible.',
+            message:
+                'Ajusta el filtro, el proveedor o la categoría para recuperar inventario elegible.',
           );
         }
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final cardSize = _productCardSizeFor(constraints.maxWidth);
+            final tileHeight = _tileHeightFor(constraints.maxWidth);
             double maxExtent = stableMaxCrossAxisExtent(
               availableWidth: constraints.maxWidth,
               desiredMaxExtent: _productTileMaxExtent,
               spacing: _gridCrossSpacing,
-              minExtent: _productTileMaxExtent,
+              minExtent: 240,
             );
             if (!maxExtent.isFinite || maxExtent <= 0) {
               maxExtent = _productTileMaxExtent;
@@ -72,27 +71,22 @@ class PurchaseProductsGrid extends ConsumerWidget {
               padding: kPurchasePagePadding,
               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: maxExtent,
-                mainAxisExtent: cardSize * _productCardAspect,
+                mainAxisExtent: tileHeight,
                 crossAxisSpacing: _gridCrossSpacing,
                 mainAxisSpacing: _gridMainSpacing,
               ),
               itemCount: products.length,
               itemBuilder: (context, index) {
                 final product = products[index];
-                return Center(
-                  child: SizedBox(
-                    width: cardSize,
-                    height: cardSize * _productCardAspect,
-                    child: _ProductCard(
-                      product: product,
-                      currency: currency,
-                      onAdd: () {
-                        ref
-                            .read(purchaseDraftProvider.notifier)
-                            .addProduct(product, qty: 1);
-                      },
-                    ),
-                  ),
+                return _ProductCard(
+                  product: product,
+                  currency: currency,
+                  onAdd: () {
+                    ref
+                        .read(purchaseDraftProvider.notifier)
+                        .addProduct(product, qty: 1);
+                  },
+                  tileHeight: tileHeight,
                 );
               },
             );
@@ -107,11 +101,13 @@ class _ProductCard extends StatefulWidget {
   final ProductModel product;
   final NumberFormat currency;
   final VoidCallback onAdd;
+  final double tileHeight;
 
   const _ProductCard({
     required this.product,
     required this.currency,
     required this.onAdd,
+    required this.tileHeight,
   });
 
   @override
@@ -127,10 +123,14 @@ class _ProductCardState extends State<_ProductCard> {
     final scheme = theme.colorScheme;
 
     final border = scheme.outlineVariant.withOpacity(0.55);
-    final overlayBg = theme.shadowColor.withOpacity(0.62);
-    final overlayText = scheme.surface;
     final stock = widget.product.stock;
-    final stockColor = stock <= 0 ? ui_colors.AppColors.error : scheme.primary;
+    final isOutOfStock = stock <= 0;
+    final isLowStock = stock > 0 && stock <= 10;
+    final stockColor = isOutOfStock
+        ? ui_colors.AppColors.error
+        : (isLowStock ? ui_colors.AppColors.warning : scheme.primary);
+    final stockLabel = isOutOfStock ? 'Sin stock' : 'Disp. ${stock.toInt()}';
+    final formattedCost = widget.currency.format(widget.product.purchasePrice);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -164,162 +164,83 @@ class _ProductCardState extends State<_ProductCard> {
               borderRadius: BorderRadius.circular(12),
               hoverColor: ui_colors.AppColors.lightBlueHover.withOpacity(0.25),
               onTap: widget.onAdd,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: PurchaseProductsGrid._productCardSize,
-                  height:
-                      PurchaseProductsGrid._productCardSize *
-                      PurchaseProductsGrid._productCardAspect,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: SizedBox(
+                height: widget.tileHeight,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Row(
                     children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: border),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: ProductThumbnail.fromProduct(
+                          widget.product,
+                          width: 54,
+                          height: 54,
+                          borderRadius: BorderRadius.circular(10),
+                          showBorder: false,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
                       Expanded(
-                        flex: 4,
-                        child: Stack(
-                          fit: StackFit.expand,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            ProductThumbnail.fromProduct(
-                              widget.product,
-                              width: double.infinity,
-                              height: double.infinity,
-                              borderRadius: BorderRadius.circular(12),
-                              showBorder: false,
-                            ),
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [Colors.transparent, overlayBg],
-                                    stops: const [0.0, 1.0],
-                                  ),
-                                ),
-                                child: Align(
-                                  alignment: Alignment.bottomLeft,
-                                  child: Text(
-                                    widget.product.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.1,
-                                      letterSpacing: 0.1,
-                                    ).copyWith(color: overlayText),
-                                  ),
-                                ),
+                            Text(
+                              widget.product.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                height: 1.1,
                               ),
                             ),
-                            Positioned(
-                              top: 6,
-                              right: 6,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 66),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: ui_colors.AppColors.cardBackground
-                                        .withOpacity(0.92),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: ui_colors.AppColors.borderSoft,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    widget.product.code.toUpperCase(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w700,
-                                      fontFamily: 'monospace',
-                                      letterSpacing: 0.3,
-                                    ).copyWith(
-                                      color: ui_colors.AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${widget.product.code.toUpperCase()}  •  $stockLabel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: stockColor,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: _MetaLine(
-                                  label: 'COSTO',
-                                  value:
-                                      '\$${widget.currency.format(widget.product.purchasePrice)}',
-                                  labelSize: 6.5,
-                                  valueSize: 16,
-                                  valueWeight: FontWeight.w900,
-                                  labelColor: scheme.onSurface.withOpacity(0.62),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerRight,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: stockColor,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            stock <= 0
-                                                ? Icons.remove_circle_outline
-                                                : Icons.inventory_2,
-                                            size: 11,
-                                            color: Colors.white,
-                                          ),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            stock <= 0
-                                                ? 'Agot.'
-                                                : stock.toInt().toString(),
-                                            style: const TextStyle(
-                                              fontSize: 9.5,
-                                              fontWeight: FontWeight.w800,
-                                              color: Colors.white,
-                                              height: 1.0,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                      const SizedBox(width: 10),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Costo',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurface.withOpacity(0.62),
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'RD\$ $formattedCost',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: scheme.onSurface,
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -329,61 +250,6 @@ class _ProductCardState extends State<_ProductCard> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _MetaLine extends StatelessWidget {
-  final String label;
-  final String value;
-  final double labelSize;
-  final double valueSize;
-  final FontWeight valueWeight;
-  final Color? labelColor;
-
-  const _MetaLine({
-    required this.label,
-    required this.value,
-    this.labelSize = 11,
-    this.valueSize = 14,
-    this.valueWeight = FontWeight.w800,
-    this.labelColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: labelColor ?? scheme.onSurface.withOpacity(0.6),
-            fontWeight: FontWeight.w600,
-            fontSize: labelSize,
-            letterSpacing: 0.2,
-          ),
-        ),
-        const SizedBox(height: 1),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: valueWeight,
-              fontSize: valueSize,
-              color: scheme.onSurface,
-              height: 1.0,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -402,9 +268,7 @@ class _ProductsGridSkeleton extends StatelessWidget {
         maxCrossAxisExtent: PurchaseProductsGrid._productTileMaxExtent,
         mainAxisSpacing: PurchaseProductsGrid._gridMainSpacing,
         crossAxisSpacing: PurchaseProductsGrid._gridCrossSpacing,
-        mainAxisExtent:
-            PurchaseProductsGrid._productCardSize *
-            PurchaseProductsGrid._productCardAspect,
+        mainAxisExtent: PurchaseProductsGrid._minTileHeight,
       ),
       itemCount: 12,
       itemBuilder: (context, index) {

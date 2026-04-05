@@ -1,3 +1,5 @@
+import '../../../core/utils/currency_display.dart';
+
 class SaleModel {
   final int? id;
   final String localCode;
@@ -130,8 +132,7 @@ class SaleModel {
     creditDueDateMs: map['credit_due_date_ms'] as int?,
     creditInstallments: map['credit_installments'] as int?,
     creditNote: map['credit_note'] as String?,
-    electronicInvoiceEnabled:
-      map['electronic_invoice_enabled'] as int? ?? 0,
+    electronicInvoiceEnabled: map['electronic_invoice_enabled'] as int? ?? 0,
     electronicInvoiceCode: map['electronic_invoice_code'] as String?,
     electronicDocumentType: map['electronic_document_type'] as String?,
     sessionId: map['session_id'] as int?,
@@ -200,11 +201,10 @@ class SaleModel {
     creditInstallments: creditInstallments ?? this.creditInstallments,
     creditNote: creditNote ?? this.creditNote,
     electronicInvoiceEnabled:
-      electronicInvoiceEnabled ?? this.electronicInvoiceEnabled,
-    electronicInvoiceCode:
-      electronicInvoiceCode ?? this.electronicInvoiceCode,
+        electronicInvoiceEnabled ?? this.electronicInvoiceEnabled,
+    electronicInvoiceCode: electronicInvoiceCode ?? this.electronicInvoiceCode,
     electronicDocumentType:
-      electronicDocumentType ?? this.electronicDocumentType,
+        electronicDocumentType ?? this.electronicDocumentType,
     sessionId: sessionId ?? this.sessionId,
     createdAtMs: createdAtMs ?? this.createdAtMs,
     updatedAtMs: updatedAtMs ?? this.updatedAtMs,
@@ -217,14 +217,18 @@ class SaleModel {
   List<String> get paymentBreakdownParts {
     final parts = <String>[];
     if (paymentCashAmount > 0.009) {
-      parts.add('Efectivo RD\$ ${paymentCashAmount.toStringAsFixed(2)}');
+      parts.add(
+        'Efectivo ${CurrencyDisplay.format(paymentCashAmount, symbol: 'RD\$')}',
+      );
     }
     if (paymentCardAmount > 0.009) {
-      parts.add('Tarjeta RD\$ ${paymentCardAmount.toStringAsFixed(2)}');
+      parts.add(
+        'Tarjeta ${CurrencyDisplay.format(paymentCardAmount, symbol: 'RD\$')}',
+      );
     }
     if (paymentTransferAmount > 0.009) {
       parts.add(
-        'Transferencia RD\$ ${paymentTransferAmount.toStringAsFixed(2)}',
+        'Transferencia ${CurrencyDisplay.format(paymentTransferAmount, symbol: 'RD\$')}',
       );
     }
     return parts;

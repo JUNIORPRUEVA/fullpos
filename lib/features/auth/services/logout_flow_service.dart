@@ -6,9 +6,6 @@ import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/session/session_manager.dart';
 import '../../cash/data/operation_flow_service.dart';
-import '../../cash/ui/cash_close_dialog.dart';
-
-enum _LogoutAction { closeSessionAndExit, cancel }
 
 class LogoutFlowService {
   LogoutFlowService._();
@@ -20,25 +17,17 @@ class LogoutFlowService {
     final gate = await OperationFlowService.loadGateState();
     final openShift = gate.activeSession;
 
-    if (openShift == null || !gate.canOperate) {
-      await performLogout();
+    if (openShift != null && gate.canOperate) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('Finaliza el turno desde el menú de usuario.'),
+        ),
+      );
       return;
     }
 
-    if (!context.mounted) return;
-
-    final action = await _showActiveSessionDialog(context);
-    if (action == null || action == _LogoutAction.cancel) return;
-
-    if (action == _LogoutAction.closeSessionAndExit) {
-      final sessionId = openShift.shiftId;
-      if (!context.mounted) return;
-      await CashCloseDialog.show(
-        context,
-        sessionId: sessionId,
-        logoutAfterClose: true,
-      );
-    }
+    await performLogout();
   }
 
   static Future<void> defaultPerformLogout(BuildContext context) async {
@@ -59,37 +48,5 @@ class LogoutFlowService {
     }
     GoRouter.of(rootCtx).refresh();
     GoRouter.of(rootCtx).go('/login');
-  }
-
-  static Future<_LogoutAction?> _showActiveSessionDialog(BuildContext context) {
-    return showDialog<_LogoutAction>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Sesión activa detectada'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Debes cerrar la sesión activa para salir. El sistema cerrará la sesión operativa, emitirá el cierre y luego cerrará tu acceso.',
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, _LogoutAction.cancel),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () =>
-                  Navigator.pop(context, _LogoutAction.closeSessionAndExit),
-              child: const Text('Cerrar sesión y salir'),
-            ),
-          ],
-        );
-      },
-    );
   }
 }

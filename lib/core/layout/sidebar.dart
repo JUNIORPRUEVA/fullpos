@@ -4,21 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
-
-import '../../features/auth/services/logout_flow_service.dart';
-import '../bootstrap/app_bootstrap_controller.dart';
 import '../constants/app_sizes.dart';
-import '../errors/error_handler.dart';
-import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
 import '../theme/app_tokens.dart';
-
-const _sidebarBaseColor = Color(0xFF0F172A);
-const _sidebarHoverColor = Color(0xFF263552);
-const _sidebarActiveTopColor = Color(0xFF2563EB);
-const _sidebarActiveBottomColor = Color(0xFF1D4ED8);
-const _sidebarTooltipColor = Color(0xFF111827);
-const _sidebarTextBaseColor = Color(0xFFE2E8F0);
+import '../theme/color_utils.dart';
 
 class _SidebarIconPair {
   final IconData outline;
@@ -134,9 +123,55 @@ class _SidebarState extends ConsumerState<Sidebar>
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
     final screenSize = MediaQuery.of(context).size;
 
-    final effectiveSidebarTextColor =
-        Color.lerp(tokens.sidebarText, _sidebarTextBaseColor, 0.78) ??
-        _sidebarTextBaseColor;
+    final sidebarBaseColor = tokens.sidebarBackground;
+    final sidebarTextColor = ColorUtils.ensureReadableColor(
+      tokens.sidebarText,
+      sidebarBaseColor,
+      minRatio: 4.5,
+    );
+    Color sidebarHighlight(double opacity) => Color.alphaBlend(
+      sidebarTextColor.withOpacity(opacity),
+      sidebarBaseColor,
+    );
+
+    Color sidebarShadow(double opacity) => Color.alphaBlend(
+      theme.shadowColor.withOpacity(opacity),
+      sidebarBaseColor,
+    );
+    final effectiveSidebarTextColor = sidebarTextColor;
+    final sidebarMutedTextColor = Color.alphaBlend(
+      sidebarTextColor.withOpacity(0.55),
+      sidebarBaseColor,
+    );
+    final sidebarHoverColor = Color.alphaBlend(
+      tokens.tileHover.withOpacity(0.72),
+      sidebarBaseColor,
+    );
+    final sidebarActiveColor = ColorUtils.ensureReadableColor(
+      tokens.sidebarActive,
+      sidebarBaseColor,
+      minRatio: 3.0,
+    );
+    final sidebarActiveTopColor = Color.alphaBlend(
+      sidebarHighlight(0.10),
+      sidebarActiveColor,
+    );
+    final sidebarActiveBottomColor = Color.alphaBlend(
+      sidebarShadow(0.18),
+      sidebarActiveColor,
+    );
+    final sidebarTooltipColor = theme.brightness == Brightness.dark
+        ? sidebarShadow(0.16)
+        : sidebarShadow(0.32);
+    final sidebarTooltipTextColor = ColorUtils.ensureReadableColor(
+      sidebarTextColor,
+      sidebarTooltipColor,
+      minRatio: 4.5,
+    );
+    final sidebarBorderColor = Color.alphaBlend(
+      tokens.outline.withOpacity(theme.brightness == Brightness.dark ? 0.32 : 0.5),
+      sidebarBaseColor,
+    );
     final currentRoute = _safeCurrentPath(context);
 
     final baseScale = widget.scale.clamp(0.65, 1.12);
@@ -166,16 +201,16 @@ class _SidebarState extends ConsumerState<Sidebar>
           width: currentWidth,
           clipBehavior: Clip.none,
           decoration: BoxDecoration(
-            color: _sidebarBaseColor,
+            color: sidebarBaseColor,
             border: Border(
               right: BorderSide(
-                color: Colors.white.withOpacity(0.045),
+                color: sidebarBorderColor,
                 width: 1,
               ),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.34),
+                color: sidebarShadow(0.34),
                 blurRadius: 30,
                 spreadRadius: -16,
                 offset: const Offset(10, 0),
@@ -193,9 +228,9 @@ class _SidebarState extends ConsumerState<Sidebar>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Colors.white.withOpacity(0.035),
+                          sidebarHighlight(0.035),
                           Colors.transparent,
-                          Colors.black.withOpacity(0.22),
+                          sidebarShadow(0.22),
                         ],
                         stops: const [0.0, 0.34, 1.0],
                       ),
@@ -367,7 +402,12 @@ class _SidebarState extends ConsumerState<Sidebar>
                       activeColor: itemActiveColor ?? tokens.sidebarActive,
                       activeRoutes: activeRoutes,
                       currentRoute: currentRoute,
-                      hoverColor: _sidebarHoverColor,
+                      hoverColor: sidebarHoverColor,
+                      surfaceColor: sidebarBaseColor,
+                      tooltipBackgroundColor: sidebarTooltipColor,
+                      tooltipTextColor: sidebarTooltipTextColor,
+                      activeGradientStart: sidebarActiveTopColor,
+                      activeGradientEnd: sidebarActiveBottomColor,
                       scale: navScale,
                       lowEmphasis: lowEmphasis,
                       showTrailingChevron:
@@ -409,16 +449,22 @@ class _SidebarState extends ConsumerState<Sidebar>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.white.withOpacity(0.08),
-                                Colors.white.withOpacity(0.02),
+                                Color.alphaBlend(
+                                  Colors.white.withOpacity(0.08),
+                                  sidebarBaseColor,
+                                ),
+                                Color.alphaBlend(
+                                  Colors.white.withOpacity(0.02),
+                                  sidebarBaseColor,
+                                ),
                               ],
                             ),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.08),
+                              color: sidebarBorderColor,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.18),
+                                color: sidebarShadow(0.18),
                                 blurRadius: 18,
                                 spreadRadius: -10,
                                 offset: const Offset(0, 8),
@@ -438,7 +484,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                       PhosphorIconsStyle.regular,
                                     ),
                                     size: (22.5 * baseScale).clamp(20.0, 24.0),
-                                    color: Colors.white,
+                                    color: sidebarTextColor,
                                   ),
                                   Positioned(
                                     right: -1,
@@ -448,7 +494,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                         PhosphorIconsStyle.fill,
                                       ),
                                       size: (9.8 * baseScale).clamp(8.5, 11.2),
-                                      color: const Color(0xFF93C5FD),
+                                      color: sidebarActiveColor,
                                     ),
                                   ),
                                 ],
@@ -478,6 +524,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                         );
                       }
 
+                      final showAnimatedHeader = expanded > 0.42;
+
                       return SizedBox(
                         height: headerHeight,
                         child: Padding(
@@ -500,7 +548,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                   ),
                                 ),
                               ),
-                              if (expanded > 0.001)
+                              if (showAnimatedHeader)
                                 Expanded(
                                   child: ClipRect(
                                     child: Align(
@@ -525,7 +573,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                                       overflow:
                                                           TextOverflow.ellipsis,
                                                       style: TextStyle(
-                                                        color: Colors.white,
+                                                        color: sidebarTextColor,
                                                         fontWeight:
                                                             FontWeight.w800,
                                                         fontSize:
@@ -545,9 +593,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                                                         overflow: TextOverflow
                                                             .ellipsis,
                                                         style: TextStyle(
-                                                          color: const Color(
-                                                            0xFF94A3B8,
-                                                          ),
+                                                          color:
+                                                              sidebarMutedTextColor,
                                                           fontWeight:
                                                               FontWeight.w600,
                                                           fontSize:
@@ -575,15 +622,19 @@ class _SidebarState extends ConsumerState<Sidebar>
                                                 iconSize: (22 * baseScale)
                                                     .clamp(18.0, 24.0),
                                                 style: IconButton.styleFrom(
-                                                  backgroundColor: Colors.white
-                                                      .withOpacity(0.04),
-                                                  foregroundColor: Colors.white,
+                                                  backgroundColor:
+                                                      Color.alphaBlend(
+                                                        sidebarHighlight(0.04),
+                                                        sidebarBaseColor,
+                                                      ),
+                                                  foregroundColor:
+                                                      sidebarTextColor,
                                                 ),
                                                 icon: PhosphorIcon(
                                                   PhosphorIcons.caretLeft(
                                                     PhosphorIconsStyle.bold,
                                                   ),
-                                                  color: Colors.white,
+                                                  color: sidebarTextColor,
                                                 ),
                                               ),
                                             ],
@@ -620,9 +671,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                             child: Text(
                               text.toUpperCase(),
                               style: TextStyle(
-                                color: const Color(
-                                  0xFF94A3B8,
-                                ).withOpacity(0.92),
+                                color: sidebarMutedTextColor.withOpacity(0.92),
                                 fontSize: (9.3 * navScale).clamp(8.4, 10.4),
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 1.18,
@@ -742,7 +791,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                           end: Alignment.centerRight,
                                           colors: [
                                             Colors.transparent,
-                                            Colors.white.withOpacity(0.08),
+                                            sidebarBorderColor,
                                             Colors.transparent,
                                           ],
                                         ),
@@ -759,62 +808,6 @@ class _SidebarState extends ConsumerState<Sidebar>
                                       ),
                                     SizedBox(
                                       height: (6 * navScale).clamp(4.0, 8.0),
-                                    ),
-                                    buildNavEntry(
-                                      icon: _SidebarIconPair(
-                                        outline: PhosphorIcons.signOut(
-                                          PhosphorIconsStyle.regular,
-                                        ),
-                                        filled: PhosphorIcons.signOut(
-                                          PhosphorIconsStyle.fill,
-                                        ),
-                                      ),
-                                      title: 'Cerrar sesión',
-                                      route: null,
-                                      onTap: () async {
-                                        try {
-                                          await LogoutFlowService.requestLogout(
-                                            context,
-                                            performLogout: () async {
-                                              ref
-                                                  .read(appBootstrapProvider)
-                                                  .forceLoggedOut();
-                                              await SessionManager.logout();
-                                              await ref
-                                                  .read(appBootstrapProvider)
-                                                  .refreshAuth();
-                                              if (!context.mounted) {
-                                                return;
-                                              }
-                                              final rootCtx =
-                                                  ErrorHandler
-                                                      .navigatorKey
-                                                      .currentContext ??
-                                                  context;
-                                              GoRouter.of(rootCtx).refresh();
-                                              GoRouter.of(rootCtx).go('/login');
-                                            },
-                                          );
-                                        } catch (e) {
-                                          if (!context.mounted) {
-                                            return;
-                                          }
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                'No se pudo cerrar sesión: $e',
-                                              ),
-                                              backgroundColor: scheme.error,
-                                            ),
-                                          );
-                                        }
-                                      },
-                                      itemTextColor: effectiveSidebarTextColor,
-                                      itemActiveColor: scheme.error,
-                                      lowEmphasis: true,
-                                      showTrailingChevron: false,
                                     ),
                                   ],
                                 ),
@@ -847,6 +840,11 @@ class PremiumNavItem extends StatefulWidget {
   final Color textColor;
   final Color activeColor;
   final Color hoverColor;
+  final Color surfaceColor;
+  final Color tooltipBackgroundColor;
+  final Color tooltipTextColor;
+  final Color activeGradientStart;
+  final Color activeGradientEnd;
   final double scale;
   final bool lowEmphasis;
   final bool showTrailingChevron;
@@ -864,6 +862,11 @@ class PremiumNavItem extends StatefulWidget {
     required this.textColor,
     required this.activeColor,
     required this.hoverColor,
+    required this.surfaceColor,
+    required this.tooltipBackgroundColor,
+    required this.tooltipTextColor,
+    required this.activeGradientStart,
+    required this.activeGradientEnd,
     this.scale = 1.0,
     this.lowEmphasis = false,
     this.showTrailingChevron = true,
@@ -937,6 +940,15 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final isEnabled = widget.onTap != null || widget.route != null;
 
     final s = widget.scale.clamp(0.65, 1.12);
+    Color navHighlight(double opacity) => Color.alphaBlend(
+      widget.textColor.withOpacity(opacity),
+      widget.surfaceColor,
+    );
+
+    Color navShadow(double opacity) => Color.alphaBlend(
+      Theme.of(context).shadowColor.withOpacity(opacity),
+      widget.surfaceColor,
+    );
     final collapse = widget.collapseProgress.clamp(0.0, 1.0);
     final expanded = Curves.easeOutCubic.transform(1.0 - collapse);
     final visuallyCollapsed = collapse > 0.9;
@@ -946,28 +958,40 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
         ? 0.6
         : 1.0;
     final itemBorderColor = isActive
-        ? Colors.white.withOpacity(0.10)
-        : (_isHover ? Colors.white.withOpacity(0.07) : Colors.transparent);
+      ? Color.alphaBlend(widget.textColor.withOpacity(0.18), widget.surfaceColor)
+      : (_isHover
+          ? Color.alphaBlend(
+            widget.textColor.withOpacity(0.10),
+            widget.surfaceColor,
+          )
+          : Colors.transparent);
     final glowColor =
-        Color.lerp(_sidebarActiveBottomColor, widget.activeColor, 0.18) ??
-        _sidebarActiveBottomColor;
+      Color.lerp(widget.activeGradientEnd, widget.activeColor, 0.18) ??
+      widget.activeGradientEnd;
 
     final fgColor = isActive
-        ? Colors.white
+      ? ColorUtils.ensureReadableColor(
+        widget.tooltipTextColor,
+        widget.activeGradientEnd,
+        minRatio: 4.5,
+        )
         : widget.textColor.withOpacity(_isHover ? 0.98 : 0.88);
     final iconColor = isActive
-        ? Colors.white
+      ? fgColor
         : widget.textColor.withOpacity(_isHover ? 0.98 : 0.86);
     final collapsedIconShellSize = (36 * s).clamp(34.0, 40.0);
     final collapsedShellBase = isActive
-        ? const Color(0xFF1D4ED8)
-        : (_isHover ? const Color(0xFF22345B) : const Color(0xFF1B2A44));
+      ? widget.activeGradientEnd
+      : Color.alphaBlend(
+            navShadow(_isHover ? 0.08 : 0.14),
+        widget.surfaceColor,
+        );
     final collapsedShellTop = Color.alphaBlend(
-      Colors.white.withOpacity(isActive ? 0.26 : (_isHover ? 0.20 : 0.16)),
+      navHighlight(isActive ? 0.26 : (_isHover ? 0.20 : 0.16)),
       collapsedShellBase,
     );
     final collapsedShellBottom = Color.alphaBlend(
-      Colors.black.withOpacity(isActive ? 0.04 : (_isHover ? 0.08 : 0.12)),
+      navShadow(isActive ? 0.04 : (_isHover ? 0.08 : 0.12)),
       collapsedShellBase,
     );
     final tooltipGap = (14 * s).clamp(12.0, 16.0);
@@ -999,14 +1023,17 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                     constraints: const BoxConstraints(maxWidth: 190),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: _sidebarTooltipColor,
+                        color: widget.tooltipBackgroundColor,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.06),
+                          color: Color.alphaBlend(
+                            widget.tooltipTextColor.withOpacity(0.08),
+                            widget.tooltipBackgroundColor,
+                          ),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.28),
+                            color: navShadow(0.28),
                             blurRadius: 20,
                             spreadRadius: -10,
                             offset: const Offset(0, 12),
@@ -1022,8 +1049,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           widget.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: widget.tooltipTextColor,
                             fontSize: 16.5,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.08,
@@ -1067,8 +1094,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                   onTap: widget.onTap,
                   borderRadius: itemRadius,
                   hoverColor: Colors.transparent,
-                  splashColor: Colors.white.withOpacity(0.03),
-                  highlightColor: Colors.white.withOpacity(0.02),
+                  splashColor: widget.textColor.withOpacity(0.05),
+                  highlightColor: widget.textColor.withOpacity(0.03),
                   child: AnimatedContainer(
                     duration: _hoverDuration,
                     curve: Curves.easeInOut,
@@ -1085,12 +1112,12 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           ? null
                           : (_isHover ? widget.hoverColor : Colors.transparent),
                       gradient: isActive
-                          ? const LinearGradient(
+                          ? LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                _sidebarActiveTopColor,
-                                _sidebarActiveBottomColor,
+                                widget.activeGradientStart,
+                                widget.activeGradientEnd,
                               ],
                             )
                           : null,
@@ -1108,7 +1135,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                           : _isHover
                           ? [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.16),
+                                color: navShadow(0.16),
                                 blurRadius: 14,
                                 spreadRadius: -8,
                                 offset: const Offset(0, 8),
@@ -1138,17 +1165,20 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                     ),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: isActive
-                                          ? Colors.white.withOpacity(0.18)
-                                          : Colors.white.withOpacity(
-                                              _isHover ? 0.11 : 0.08,
-                                            ),
+                                      color: Color.alphaBlend(
+                                        widget.textColor.withOpacity(
+                                          isActive
+                                              ? 0.18
+                                              : (_isHover ? 0.11 : 0.08),
+                                        ),
+                                        collapsedShellBase,
+                                      ),
                                     ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: isActive
                                             ? glowColor.withOpacity(0.44)
-                                            : Colors.black.withOpacity(
+                                            : navShadow(
                                                 _isHover ? 0.18 : 0.10,
                                               ),
                                         blurRadius: isActive ? 18 : 12,
@@ -1169,7 +1199,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                   begin: Alignment.topLeft,
                                                   end: Alignment.bottomRight,
                                                   colors: [
-                                                    Colors.white.withOpacity(
+                                                    navHighlight(
                                                       isActive
                                                           ? 0.16
                                                           : (_isHover
@@ -1177,7 +1207,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                                 : 0.10),
                                                     ),
                                                     Colors.transparent,
-                                                    Colors.black.withOpacity(
+                                                    navShadow(
                                                       isActive ? 0.06 : 0.10,
                                                     ),
                                                   ],
@@ -1202,12 +1232,16 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                   end: Alignment.centerRight,
                                                   colors: [
                                                     Colors.transparent,
-                                                    Colors.white.withOpacity(
-                                                      isActive
-                                                          ? 0.32
-                                                          : (_isHover
-                                                                ? 0.26
-                                                                : 0.22),
+                                                    Color.alphaBlend(
+                                                      widget.textColor
+                                                          .withOpacity(
+                                                            isActive
+                                                                ? 0.32
+                                                                : (_isHover
+                                                                      ? 0.26
+                                                                      : 0.22),
+                                                          ),
+                                                      collapsedShellBase,
                                                     ),
                                                     Colors.transparent,
                                                   ],
@@ -1222,7 +1256,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                 ? widget.activeIcon
                                                 : widget.outlineIcon,
                                             color: isActive
-                                                ? Colors.white
+                                              ? fgColor
                                                 : widget.textColor.withOpacity(
                                                     _isHover ? 1.0 : 0.98,
                                                   ),

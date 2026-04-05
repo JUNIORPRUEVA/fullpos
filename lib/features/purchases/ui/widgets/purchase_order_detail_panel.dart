@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/theme/color_utils.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../data/purchase_order_models.dart';
 import '../../providers/purchase_orders_providers.dart';
 import 'purchase_ui.dart';
@@ -27,7 +28,7 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
     final detailAsync = ref.watch(purchaseSelectedOrderDetailProvider);
@@ -154,7 +155,9 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
                           label: Text(
                             isReceived
                                 ? 'Recibida'
-                                : (isPartial ? 'Continuar recepción' : 'Recibir'),
+                                : (isPartial
+                                      ? 'Continuar recepción'
+                                      : 'Recibir'),
                           ),
                         ),
                       ],

@@ -71,17 +71,17 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
 
   BoxConstraints _ticketPanelConstraints(double width) {
     if (width < 1350) {
-      final max = (width * 0.34).clamp(320.0, 420.0);
-      final min = (max - 70).clamp(300.0, max);
+      final max = (width * 0.38).clamp(320.0, 450.0);
+      final min = (max - 80).clamp(300.0, max);
       return BoxConstraints(minWidth: min, maxWidth: max);
     }
     if (width < 1600) {
-      final max = (width * 0.32).clamp(420.0, 520.0);
-      final min = (max - 80).clamp(360.0, max);
+      final max = (width * 0.35).clamp(400.0, 520.0);
+      final min = (max - 90).clamp(360.0, max);
       return BoxConstraints(minWidth: min, maxWidth: max);
     }
-    final max = (width * 0.30).clamp(460.0, 580.0);
-    final min = (max - 90).clamp(380.0, max);
+    final max = (width * 0.33).clamp(460.0, 600.0);
+    final min = (max - 100).clamp(380.0, max);
     return BoxConstraints(minWidth: min, maxWidth: max);
   }
 
@@ -108,48 +108,52 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          leading: IconButton(
-            onPressed: _goBack,
-            icon: const Icon(Icons.arrow_back_rounded),
-            tooltip: 'Volver',
-          ),
-          title: const Text(
-            'Compra Manual',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          titleSpacing: 10,
+          title: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: _goBack,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  tooltip: 'Volver',
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Compra Manual',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: () => context.go('/purchases/auto'),
+                  icon: const Icon(Icons.auto_awesome, size: 16),
+                  label: const Text('Automáticas'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    textStyle: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: () => context.go('/purchases/orders'),
+                  icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                  label: const Text('Órdenes'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    textStyle: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           toolbarHeight: 48,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: OutlinedButton.icon(
-                onPressed: () => context.go('/purchases/auto'),
-                icon: const Icon(Icons.auto_awesome, size: 16),
-                label: const Text('Automáticas'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  textStyle: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: FilledButton.icon(
-                onPressed: () => context.go('/purchases/orders'),
-                icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                label: const Text('Órdenes'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  textStyle: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
         ),
         body: Padding(
           padding: kPurchasePagePadding,
@@ -162,9 +166,10 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
                   builder: (context, constraints) {
                     final width = constraints.maxWidth;
                     final isNarrow = width < 980;
+                    final ticketConstraints = _ticketPanelConstraints(width);
 
                     final ticket = ConstrainedBox(
-                      constraints: _ticketPanelConstraints(width),
+                      constraints: ticketConstraints,
                       child: PurchaseTicketPanel(
                         onOrderCreated: (orderId) => context.go(
                           '/purchases/orders?orderId=$orderId',
@@ -192,9 +197,12 @@ class _PurchaseManualPageState extends ConsumerState<PurchaseManualPage> {
 
                     return Row(
                       children: [
-                        Expanded(flex: 7, child: catalog),
+                        Expanded(child: catalog),
                         const SizedBox(width: 12),
-                        Expanded(flex: 3, child: ticket),
+                        SizedBox(
+                          width: ticketConstraints.maxWidth,
+                          child: ticket,
+                        ),
                       ],
                     );
                   },

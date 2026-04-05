@@ -14,6 +14,7 @@ import '../../../core/session/session_manager.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/ui/ui_scale.dart';
 import '../../../theme/app_colors.dart' as ui_colors;
 import '../../settings/data/printer_settings_repository.dart';
@@ -41,6 +42,23 @@ class _QuotesPageState extends State<QuotesPage> {
   int? _selectedQuoteId;
 
   static const _brandRadius = 10.0;
+  static const _wideDetailBreakpoint = 1200.0;
+
+  BoxConstraints _detailPanelConstraints(double width) {
+    if (width < 1350) {
+      final max = (width * 0.38).clamp(320.0, 450.0);
+      final min = (max - 80).clamp(300.0, max);
+      return BoxConstraints(minWidth: min, maxWidth: max);
+    }
+    if (width < 1600) {
+      final max = (width * 0.35).clamp(400.0, 520.0);
+      final min = (max - 90).clamp(360.0, max);
+      return BoxConstraints(minWidth: min, maxWidth: max);
+    }
+    final max = (width * 0.33).clamp(460.0, 600.0);
+    final min = (max - 100).clamp(380.0, max);
+    return BoxConstraints(minWidth: min, maxWidth: max);
+  }
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
@@ -174,9 +192,9 @@ class _QuotesPageState extends State<QuotesPage> {
                 summary: totalsWidget,
               ),
               Expanded(
-                child: _buildQuotesList(
+                child: _buildQuotesContent(
                   listPadding: listPadding,
-                  isWide: constraints.maxWidth >= 1200,
+                  isWide: constraints.maxWidth >= _wideDetailBreakpoint,
                 ),
               ),
             ],
@@ -194,11 +212,7 @@ class _QuotesPageState extends State<QuotesPage> {
       0,
       (sum, q) => sum + q.quote.total,
     );
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
+    final money = CurrencyDisplay.currency();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -278,6 +292,41 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
+  Widget _buildQuotesContent({
+    required EdgeInsets listPadding,
+    required bool isWide,
+  }) {
+    if (!isWide) {
+      return _buildQuotesList(listPadding: listPadding, isWide: false);
+    }
+
+    final panelConstraints = _detailPanelConstraints(
+      MediaQuery.of(context).size.width,
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        listPadding.left,
+        listPadding.top,
+        listPadding.right,
+        listPadding.bottom,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _buildQuotesList(listPadding: EdgeInsets.zero, isWide: true),
+          ),
+          const SizedBox(width: 14),
+          SizedBox(
+            width: panelConstraints.maxWidth,
+            child: _buildQuoteDetailsPanel(_selectedQuote),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuotesList({
     required EdgeInsets listPadding,
     required bool isWide,
@@ -335,7 +384,7 @@ class _QuotesPageState extends State<QuotesPage> {
         return CompactQuoteRow(
           quoteDetail: quoteDetail,
           isSelected: isSelected,
-          onTap: () => _selectQuote(quoteDetail, showDetails: true),
+          onTap: () => _selectQuote(quoteDetail, showDetails: !isWide),
           onWhatsApp: () => _shareWhatsApp(quoteDetail),
           onPdf: () => _viewPDF(quoteDetail),
           onDownload: () => _downloadPDF(quoteDetail),
@@ -414,11 +463,7 @@ class _QuotesPageState extends State<QuotesPage> {
       visualDensity: VisualDensity.compact,
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
+    final money = CurrencyDisplay.currency();
 
     Color statusColor(String value) {
       switch (value) {
@@ -673,11 +718,9 @@ class _QuotesPageState extends State<QuotesPage> {
                                           SizedBox(
                                             width: 86,
                                             child: Text(
-                                              NumberFormat.currency(
-                                                locale: 'es_DO',
-                                                symbol: 'RD\$',
-                                                decimalDigits: 2,
-                                              ).format(item.totalLine),
+                                              CurrencyDisplay.format(
+                                                item.totalLine,
+                                              ),
                                               textAlign: TextAlign.right,
                                               style: theme.textTheme.bodySmall
                                                   ?.copyWith(
@@ -1906,7 +1949,7 @@ class _QuoteDetailsDialogState extends State<_QuoteDetailsDialog> {
           ),
           const SizedBox(width: 12),
           Text(
-            '${item.qty.toStringAsFixed(0)} x \$${item.price.toStringAsFixed(2)}',
+            '${item.qty.toStringAsFixed(0)} x ${CurrencyDisplay.format(item.price, symbol: r'$')}',
             style: TextStyle(
               fontSize: 13,
               color: scheme.onSurface.withOpacity(0.7),
@@ -1914,7 +1957,7 @@ class _QuoteDetailsDialogState extends State<_QuoteDetailsDialog> {
           ),
           const SizedBox(width: 12),
           Text(
-            '\$${item.totalLine.toStringAsFixed(2)}',
+            CurrencyDisplay.format(item.totalLine, symbol: r'$'),
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ],
@@ -1980,7 +2023,7 @@ class _QuoteDetailsDialogState extends State<_QuoteDetailsDialog> {
             ),
           ),
           Text(
-            '\$${amount.toStringAsFixed(2)}',
+            CurrencyDisplay.format(amount, symbol: r'$'),
             style: TextStyle(
               fontSize: large ? 20 : 15,
               fontWeight: bold ? FontWeight.bold : FontWeight.w600,

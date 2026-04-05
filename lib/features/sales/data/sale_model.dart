@@ -1,3 +1,4 @@
+import '../../../core/utils/currency_display.dart';
 import 'sale_item_model.dart';
 
 /// Modelo para ventas/facturas/cotizaciones
@@ -90,18 +91,25 @@ class SaleModel {
   bool get isCompleted => status == SaleStatus.completed;
   bool get isDraft => status == SaleStatus.draft;
   bool get isCancelled => status == SaleStatus.cancelled;
-  bool get isMixedPayment => (paymentMethod ?? '').trim().toLowerCase() == 'mixed';
+  bool get isMixedPayment =>
+      (paymentMethod ?? '').trim().toLowerCase() == 'mixed';
 
   List<String> get paymentBreakdownParts {
     final parts = <String>[];
     if (paymentCashAmount > 0.009) {
-      parts.add('Efectivo RD\$ ${paymentCashAmount.toStringAsFixed(2)}');
+      parts.add(
+        'Efectivo ${CurrencyDisplay.format(paymentCashAmount, symbol: 'RD\$')}',
+      );
     }
     if (paymentCardAmount > 0.009) {
-      parts.add('Tarjeta RD\$ ${paymentCardAmount.toStringAsFixed(2)}');
+      parts.add(
+        'Tarjeta ${CurrencyDisplay.format(paymentCardAmount, symbol: 'RD\$')}',
+      );
     }
     if (paymentTransferAmount > 0.009) {
-      parts.add('Transferencia RD\$ ${paymentTransferAmount.toStringAsFixed(2)}');
+      parts.add(
+        'Transferencia ${CurrencyDisplay.format(paymentTransferAmount, symbol: 'RD\$')}',
+      );
     }
     return parts;
   }
@@ -158,11 +166,11 @@ class SaleModel {
       itbisAmount: (map['itbis_amount'] as num).toDouble(),
       total: (map['total'] as num).toDouble(),
       paymentMethod: map['payment_method'] as String?,
-        paymentCashAmount:
+      paymentCashAmount:
           (map['payment_cash_amount'] as num?)?.toDouble() ?? 0.0,
-        paymentCardAmount:
+      paymentCardAmount:
           (map['payment_card_amount'] as num?)?.toDouble() ?? 0.0,
-        paymentTransferAmount:
+      paymentTransferAmount:
           (map['payment_transfer_amount'] as num?)?.toDouble() ?? 0.0,
       paidAmount: (map['paid_amount'] as num?)?.toDouble() ?? 0.0,
       changeAmount: (map['change_amount'] as num?)?.toDouble() ?? 0.0,
@@ -172,10 +180,9 @@ class SaleModel {
       creditDueDateMs: map['credit_due_date_ms'] as int?,
       creditInstallments: map['credit_installments'] as int?,
       creditNote: map['credit_note'] as String?,
-        electronicInvoiceEnabled:
-          (map['electronic_invoice_enabled'] as int) == 1,
-        electronicInvoiceCode: map['electronic_invoice_code'] as String?,
-        electronicDocumentType: map['electronic_document_type'] as String?,
+      electronicInvoiceEnabled: (map['electronic_invoice_enabled'] as int) == 1,
+      electronicInvoiceCode: map['electronic_invoice_code'] as String?,
+      electronicDocumentType: map['electronic_document_type'] as String?,
       sessionId: map['session_id'] as int?,
       createdAtMs: map['created_at_ms'] as int,
       updatedAtMs: map['updated_at_ms'] as int,
@@ -272,9 +279,9 @@ class SaleModel {
       itbisAmount: itbisAmount ?? this.itbisAmount,
       total: total ?? this.total,
       paymentMethod: paymentMethod ?? this.paymentMethod,
-        paymentCashAmount: paymentCashAmount ?? this.paymentCashAmount,
-        paymentCardAmount: paymentCardAmount ?? this.paymentCardAmount,
-        paymentTransferAmount:
+      paymentCashAmount: paymentCashAmount ?? this.paymentCashAmount,
+      paymentCardAmount: paymentCardAmount ?? this.paymentCardAmount,
+      paymentTransferAmount:
           paymentTransferAmount ?? this.paymentTransferAmount,
       paidAmount: paidAmount ?? this.paidAmount,
       changeAmount: changeAmount ?? this.changeAmount,
@@ -283,11 +290,11 @@ class SaleModel {
       creditDueDateMs: creditDueDateMs ?? this.creditDueDateMs,
       creditInstallments: creditInstallments ?? this.creditInstallments,
       creditNote: creditNote ?? this.creditNote,
-        electronicInvoiceEnabled:
+      electronicInvoiceEnabled:
           electronicInvoiceEnabled ?? this.electronicInvoiceEnabled,
-        electronicInvoiceCode:
+      electronicInvoiceCode:
           electronicInvoiceCode ?? this.electronicInvoiceCode,
-        electronicDocumentType:
+      electronicDocumentType:
           electronicDocumentType ?? this.electronicDocumentType,
       sessionId: sessionId ?? this.sessionId,
       createdAtMs: createdAtMs ?? this.createdAtMs,

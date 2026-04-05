@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../products/data/suppliers_repository.dart';
 import '../../products/models/supplier_model.dart';
 import '../../settings/data/business_settings_repository.dart';
@@ -216,7 +216,7 @@ class _PurchaseOrderCreateAutoPageState
 
   @override
   Widget build(BuildContext context) {
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -340,9 +340,8 @@ class _PurchaseOrderCreateAutoPageState
                                   value: _itbisEnabled,
                                   onChanged: _saving
                                       ? null
-                                      : (v) => setState(
-                                          () => _itbisEnabled = v,
-                                        ),
+                                      : (v) =>
+                                            setState(() => _itbisEnabled = v),
                                 ),
                                 Text(
                                   _itbisEnabled

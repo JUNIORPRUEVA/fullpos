@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../settings/providers/theme_provider.dart';
 import '../../auth/data/auth_repository.dart';
 import '../data/cash_movement_model.dart';
@@ -53,11 +54,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   bool _canCloseShift = false;
 
   late final DateFormat _openedAtFormat = DateFormat('dd/MM HH:mm');
-  late final NumberFormat _moneyFormat = NumberFormat.currency(
-    locale: 'en_US',
-    symbol: '\$',
-    decimalDigits: 2,
-  );
+  late final NumberFormat _moneyFormat = CurrencyDisplay.currency();
 
   Timer? _clockTimer;
 
@@ -245,19 +242,6 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                   isUltraCompact ? 12 : (isCompact ? 14 : 18),
                   0,
                   isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                  isUltraCompact ? 10 : (isCompact ? 12 : 14),
-                ),
-                child: _buildActionBanner(
-                  theme: theme,
-                  isCompact: isCompact,
-                  isUltraCompact: isUltraCompact,
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                  0,
-                  isUltraCompact ? 12 : (isCompact ? 14 : 18),
                   isUltraCompact ? 12 : (isCompact ? 14 : 16),
                 ),
                 child: _buildDashboard(
@@ -324,7 +308,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'CORTE DE TURNO',
+                  'RESUMEN DE TURNO',
                   style:
                       (isUltraCompact
                               ? theme.textTheme.titleSmall
@@ -483,7 +467,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     final foreground = readableOn(actionColor);
 
     return ElevatedButton.icon(
-      onPressed: enabled ? _showCloseDialog : null,
+      onPressed: null,
       style: ElevatedButton.styleFrom(
         backgroundColor: enabled ? actionColor : scheme.surfaceContainerHighest,
         foregroundColor: enabled
@@ -1072,7 +1056,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           : ListView.separated(
               padding: EdgeInsets.all(isCompactDialog ? 12 : 14),
               itemCount: _movements.length + 1,
-                separatorBuilder: (_, separatorIndex) =>
+              separatorBuilder: (_, separatorIndex) =>
                   const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 if (index == 0) {
@@ -1232,7 +1216,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             children: [
               Expanded(
                 child: _buildMiniStatCard(
-                    label: 'Base inicial',
+                  label: 'Base inicial',
                   value: _moneyFormat.format(summary.openingAmount),
                   color: scheme.primary,
                   icon: Icons.play_circle_outline_rounded,
@@ -1252,7 +1236,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               const SizedBox(width: 8),
               Expanded(
                 child: _buildMiniStatCard(
-                    label: 'Ventas turno',
+                  label: 'Ventas turno',
                   value: _moneyFormat.format(summary.totalSales),
                   color: status.success,
                   icon: Icons.trending_up_rounded,
@@ -1720,33 +1704,10 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   }
 
   Future<void> _showCloseDialog() async {
-    if (_session?.isOpen != true) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('La sesión ya está cerrada.')),
-      );
-      return;
-    }
-
-    if (!_canCloseShift) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text('No tienes permiso para cerrar la sesión.'),
-        ),
-      );
-      return;
-    }
-
-    final result = await CashCloseDialog.show(
-      context,
-      sessionId: widget.sessionId,
-      logoutAfterClose: true,
-      initialSummary: _summary,
-      initialSession: _session,
-      initialMovements: _movements,
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(
+        content: Text('Finaliza el turno desde el menú de usuario.'),
+      ),
     );
-
-    if (result == true && mounted) {
-      return;
-    }
   }
 }

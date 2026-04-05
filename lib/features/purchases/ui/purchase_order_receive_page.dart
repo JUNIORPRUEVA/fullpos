@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../products/data/products_repository.dart';
 import '../../products/models/product_model.dart';
 import '../data/purchase_order_models.dart';
@@ -848,7 +849,7 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final currency = NumberFormat('#,##0.00', 'en_US');
+    final currency = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final detail = _detail;
 

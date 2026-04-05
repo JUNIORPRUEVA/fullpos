@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/theme/app_status_theme.dart';
 import '../../../core/printing/models/receipt_text_utils.dart';
 import '../../../core/printing/models/ticket_layout_config.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/printing/models/company_info.dart'
     show CompanyInfo, CompanyInfoRepository;
 import '../../../core/db_hardening/db_hardening.dart';
@@ -44,7 +46,16 @@ class _SessionDetailData {
   });
 }
 
+enum _CortesHeaderAction {
+  pickRange,
+  showSessions,
+  showMovements,
+}
+
 class _CashHistoryPageState extends State<CashHistoryPage> {
+  static const double _compactMaxContentWidth = 1120;
+  static const double _wideMaxContentWidth = 1320;
+
   late DateTime _from;
   late DateTime _to;
   bool _loading = true;
@@ -57,7 +68,6 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   CashMovementModel? _selectedMovement;
   int _loadSeq = 0;
 
-  late final DateFormat _dateOnlyFormat = DateFormat('dd/MM/yyyy');
   late final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
   late final DateFormat _timeOnlyFormat = DateFormat('HH:mm');
   late final DateFormat _dateTimeShortFormat = DateFormat('dd/MM HH:mm');
@@ -97,11 +107,11 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     return sale.paymentMethodCompactLabel;
   }
 
-  EdgeInsets _contentPadding(BoxConstraints constraints) {
-    const maxContentWidth = 1280.0;
-    final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
-    return EdgeInsets.fromLTRB(side, 12, side, 12);
+  EdgeInsets _contentPadding(BoxConstraints constraints, {required bool isWide}) {
+    const minSide = 16.0;
+    final maxContentWidth = isWide ? _wideMaxContentWidth : _compactMaxContentWidth;
+    final side = math.max(minSide, (constraints.maxWidth - maxContentWidth) / 2);
+    return EdgeInsets.fromLTRB(side, 12, side, 16);
   }
 
   String _normalizeSearch(String input) {
@@ -144,108 +154,19 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         .toList(growable: false);
   }
 
-  Widget _buildTopHeaderLine({required bool isNarrow}) {
-    final theme = Theme.of(context);
+  Widget _buildTopHeaderLine(
+    BuildContext headerContext, {
+    required bool isNarrow,
+    required EdgeInsets contentPadding,
+  }) {
+    final theme = Theme.of(headerContext);
     final scheme = theme.colorScheme;
-    final dateFormat = _dateOnlyFormat;
+    final tabController = DefaultTabController.of(headerContext);
 
     final controlRadius = BorderRadius.circular(12);
-    final controlBorder = BorderSide(color: scheme.outlineVariant);
-
-    ButtonStyle primaryControlStyle({EdgeInsetsGeometry? padding}) {
-      return ElevatedButton.styleFrom(
-        backgroundColor: scheme.primary,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: controlRadius),
-        elevation: 0,
-        minimumSize: const Size(0, 42),
-        padding:
-            padding ?? const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        textStyle: theme.textTheme.labelLarge?.copyWith(
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-        ),
-      );
-    }
-
-    final rangeChip = Material(
-      color: scheme.surface,
-      borderRadius: controlRadius,
-      child: InkWell(
-        onTap: _pickRange,
-        borderRadius: controlRadius,
-        child: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            borderRadius: controlRadius,
-            border: Border.all(color: scheme.outlineVariant),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.date_range, size: 18, color: scheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                '${dateFormat.format(_from)} - ${dateFormat.format(_to)}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  color: scheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final refreshButton = ElevatedButton.icon(
-      onPressed: _load,
-      icon: const Icon(Icons.refresh, size: 18),
-      label: const Text('Actualizar'),
-      style: primaryControlStyle(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      ),
-    );
-
-    final tabControl = SizedBox(
-      height: kTextTabBarHeight,
-      child: Material(
-        color: scheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: controlRadius,
-          side: controlBorder,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: TabBar(
-          isScrollable: true,
-          indicator: BoxDecoration(
-            color: scheme.primary.withOpacity(0.16),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: scheme.primary.withOpacity(0.35)),
-          ),
-          indicatorPadding: const EdgeInsets.all(4),
-          dividerColor: Colors.transparent,
-          labelColor: scheme.primary,
-          unselectedLabelColor: scheme.onSurface.withOpacity(0.72),
-          labelStyle: theme.textTheme.labelLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-          ),
-          tabs: const [
-            Tab(text: 'Sesiones'),
-            Tab(text: 'Movimientos'),
-          ],
-        ),
-      ),
-    );
 
     final searchField = SizedBox(
-      width: isNarrow ? 260 : 320,
-      height: 42,
+      height: 48,
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
@@ -254,6 +175,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           isDense: true,
           filled: true,
           fillColor: scheme.surface,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           border: OutlineInputBorder(
             borderRadius: controlRadius,
             borderSide: BorderSide(color: scheme.outlineVariant),
@@ -261,6 +183,10 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           enabledBorder: OutlineInputBorder(
             borderRadius: controlRadius,
             borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: controlRadius,
+            borderSide: BorderSide(color: scheme.primary.withOpacity(0.7)),
           ),
           suffixIcon: _searchQuery.trim().isNotEmpty
               ? IconButton(
@@ -277,89 +203,105 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       ),
     );
 
-    final summaryPill = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    final filterButton = SizedBox(
+      height: 48,
+      child: PopupMenuButton<_CortesHeaderAction>(
+        tooltip: 'Filtros',
+        onSelected: (value) async {
+          switch (value) {
+            case _CortesHeaderAction.pickRange:
+              await _pickRange();
+              break;
+            case _CortesHeaderAction.showSessions:
+              tabController.animateTo(0);
+              break;
+            case _CortesHeaderAction.showMovements:
+              tabController.animateTo(1);
+              break;
+          }
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: _CortesHeaderAction.pickRange,
+            child: Text('Rango de fechas'),
+          ),
+          PopupMenuDivider(),
+          PopupMenuItem(
+            value: _CortesHeaderAction.showSessions,
+            child: Text('Ver sesiones'),
+          ),
+          PopupMenuItem(
+            value: _CortesHeaderAction.showMovements,
+            child: Text('Ver movimientos'),
+          ),
+        ],
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: scheme.surface,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: controlRadius,
             border: Border.all(color: scheme.outlineVariant),
           ),
-          child: Text(
-            'Sesiones: ${_filteredSessions.length}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: scheme.onSurface,
-            ),
-          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.filter_list, size: 20, color: scheme.onSurface),
         ),
+      ),
+    );
+
+    final refreshButton = SizedBox(
+      height: 48,
+      child: OutlinedButton(
+        onPressed: _load,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: RoundedRectangleBorder(borderRadius: controlRadius),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+        child: Icon(Icons.refresh, size: 20, color: scheme.onSurface),
+      ),
+    );
+
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        filterButton,
         const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: scheme.primary.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.primary.withOpacity(0.25)),
-          ),
-          child: Text(
-            'Mov: ${_filteredMovements.length}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: scheme.primary,
-            ),
-          ),
-        ),
+        refreshButton,
       ],
     );
 
-    return Container(
-      width: double.infinity,
-      color: scheme.surfaceVariant.withOpacity(0.22),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
+    final row = Row(
+      children: [
+        Expanded(child: searchField),
+        const SizedBox(width: 12),
+        actions,
+      ],
+    );
+
+    if (!isNarrow) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+          contentPadding.left,
+          contentPadding.top,
+          contentPadding.right,
+          12,
         ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(Icons.point_of_sale, color: scheme.primary, size: 20),
-              const SizedBox(width: 10),
-              Text(
-                'Cortes',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(width: 12),
-              searchField,
-              const SizedBox(width: 12),
-              rangeChip,
-              const SizedBox(width: 10),
-              summaryPill,
-              const SizedBox(width: 10),
-              refreshButton,
-              const SizedBox(width: 10),
-              tabControl,
-            ],
-          ),
-        ),
+        child: row,
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        contentPadding.left,
+        contentPadding.top,
+        contentPadding.right,
+        12,
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(width: 520, child: row),
       ),
     );
   }
@@ -428,10 +370,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
               final theme = Theme.of(context);
               final scheme = theme.colorScheme;
               final dateTime = _dateTimeFormat;
-              final money = NumberFormat.currency(
-                locale: 'es_DO',
-                symbol: 'RD\$ ',
-              );
+              final money = CurrencyDisplay.currency();
 
               return SafeArea(
                 child: Padding(
@@ -685,7 +624,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Future<void> _showMovementDetails(CashMovementModel movement) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final money = CurrencyDisplay.currency();
     final dateTime = _dateTimeFormat;
     final isIn = movement.isIn;
     final color = isIn ? scheme.primary : scheme.error;
@@ -984,8 +923,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     }
     lines.add(line());
 
-    lines.add('<BL>${twoCols('Base inicial turno', money(summary.openingAmount))}');
-    lines.add('<BL>${twoCols('Total ventas turno', money(summary.totalSales))}');
+    lines.add(
+      '<BL>${twoCols('Base inicial turno', money(summary.openingAmount))}',
+    );
+    lines.add(
+      '<BL>${twoCols('Total ventas turno', money(summary.totalSales))}',
+    );
     lines.add(
       '<BL>${twoCols('Ventas efectivo', money(summary.salesCashTotal))}',
     );
@@ -1133,7 +1076,9 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     lines.add('<H2C>TOTALES');
     lines.add(line());
     lines.add('<BL>${twoCols('Tickets', summary.totalTickets.toString())}');
-    lines.add('<BL>${twoCols('Total ventas del turno', money(summary.totalSales))}');
+    lines.add(
+      '<BL>${twoCols('Total ventas del turno', money(summary.totalSales))}',
+    );
     lines.add('');
     lines.add('<H2C>VENTAS DEL TURNO');
     lines.add('<H1C>${money(summary.totalSales)}');
@@ -1257,24 +1202,32 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         elevation: 0,
         surfaceTintColor: scheme.surface,
       ),
-      backgroundColor: scheme.surface.withOpacity(0.98),
+      backgroundColor: scheme.surface,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final padding = _contentPadding(constraints);
           final isWide = constraints.maxWidth >= 1200;
+          final padding = _contentPadding(constraints, isWide: isWide);
           final isNarrow = constraints.maxWidth < 720;
-          final sideWidth = (constraints.maxWidth * 0.25).clamp(320.0, 460.0);
+          final contentWidth = constraints.maxWidth - padding.left - padding.right;
+          final sideWidth = (contentWidth * 0.32).clamp(320.0, 420.0);
 
           return DefaultTabController(
             length: 2,
             child: Column(
               children: [
-                _buildTopHeaderLine(isNarrow: isNarrow),
+                Builder(
+                  builder: (headerContext) =>
+                      _buildTopHeaderLine(
+                        headerContext,
+                        isNarrow: isNarrow,
+                        contentPadding: padding,
+                      ),
+                ),
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
                       padding.left,
-                      12,
+                      0,
                       padding.right,
                       padding.bottom,
                     ),
@@ -1310,8 +1263,9 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final status = theme.extension<AppStatusTheme>();
     final dateTime = _dateTimeShortFormat;
-    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final money = CurrencyDisplay.currency();
 
     final sessions = _filteredSessions;
     if (sessions.isEmpty) {
@@ -1323,152 +1277,129 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       );
     }
 
+    Widget statusChip({required String text, required Color color}) {
+      return Chip(
+        label: Text(text),
+        labelStyle: theme.textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: EdgeInsets.zero,
+        backgroundColor: color.withOpacity(0.12),
+        side: BorderSide(color: color.withOpacity(0.35)),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
+    }
+
+    final success = status?.success ?? scheme.tertiary;
+    final warning = status?.warning ?? scheme.secondary;
+    final danger = status?.error ?? scheme.error;
+
     final list = ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: sessions.length,
-      separatorBuilder: (_, index) => const SizedBox(height: 14),
+      separatorBuilder: (context, index) => Divider(
+        height: 1,
+        thickness: 1,
+        color: scheme.outlineVariant.withOpacity(0.35),
+      ),
       itemBuilder: (context, index) {
         final session = sessions[index];
         final isSelected = _selectedSession?.id == session.id;
         final diff = session.difference ?? 0.0;
-        final diffColor = diff == 0
-            ? scheme.onSurface.withOpacity(0.58)
-            : (diff > 0 ? scheme.tertiary : scheme.error);
-        final diffBg = diff == 0
-            ? scheme.surfaceVariant.withOpacity(0.45)
-            : (diff > 0
-                  ? scheme.tertiary.withOpacity(0.14)
-                  : scheme.error.withOpacity(0.14));
-        final rowBorderColor = scheme.outlineVariant.withOpacity(0.55);
 
         final opened = dateTime.format(session.openedAt);
         final closed = session.closedAt != null
             ? dateTime.format(session.closedAt!)
             : null;
-        final headline = StringBuffer()..write('Turno #${session.id ?? '-'}');
+        final dateLabel = closed == null ? '$opened → —' : '$opened → $closed';
+
+        final idLabel = session.id?.toString() ?? '-';
         final userName = session.userName.trim();
-        if (userName.isNotEmpty) {
-          headline.write('  ·  $userName');
-        }
-        headline.write('  ·  $opened');
-        if (closed != null) {
-          headline.write(' → $closed');
-        }
+        final headline = userName.isEmpty ? 'Turno #$idLabel' : 'Turno #$idLabel · $userName';
+
         final totalLabel = money.format(session.closingAmount ?? 0);
 
-        return InkWell(
-          onTap: () => _selectSession(session, showDetails: !isWide),
-          borderRadius: BorderRadius.circular(16),
-          hoverColor: scheme.primary.withOpacity(0.08),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected ? scheme.primary : rowBorderColor,
-                width: isSelected ? 1.3 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.shadowColor.withOpacity(
-                    isSelected ? 0.12 : 0.07,
-                  ),
-                  blurRadius: isSelected ? 14 : 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.08),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.lock_clock,
-                    color: scheme.primary,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    headline.toString(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: isWide ? 260 : 220),
-                      child: LayoutBuilder(
-                        builder: (context, trailingConstraints) {
-                          final compact = trailingConstraints.maxWidth < 180;
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: compact ? 8 : 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: diffBg,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: diffColor.withOpacity(0.25),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'Dif ${money.format(diff)}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: diffColor,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: compact ? 8 : 12),
-                              Flexible(
-                                child: Text(
-                                  totalLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.right,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontSize: compact ? 15 : 17,
-                                    fontWeight: FontWeight.w800,
-                                    color: scheme.primary,
-                                  ),
-                                ),
-                              ),
-                              if (!compact) ...[
-                                const SizedBox(width: 6),
-                                Icon(
-                                  Icons.chevron_right,
-                                  color: scheme.outline,
-                                ),
-                              ],
-                            ],
-                          );
-                        },
+        final bool isOpen = session.closedAt == null;
+        final bool hasDiff = diff != 0;
+        final (statusText, statusColor) = hasDiff
+            ? ('Diferencia', danger)
+            : (isOpen ? ('Abierto', warning) : ('Cerrado', success));
+
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Material(
+            color: isSelected ? scheme.primary.withOpacity(0.06) : Colors.transparent,
+            child: InkWell(
+              onTap: () => _selectSession(session, showDetails: !isWide),
+              hoverColor: scheme.surfaceVariant.withOpacity(0.35),
+              child: SizedBox(
+                height: 54,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_clock, size: 18, color: scheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 4,
+                        child: Text(
+                          headline,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 4,
+                        child: Text(
+                          dateLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurface.withOpacity(0.68),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      statusChip(text: statusText, color: statusColor),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 130,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            totalLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 44,
+                        child: IconButton(
+                          tooltip: 'Detalle',
+                          icon: const Icon(Icons.chevron_right, size: 20),
+                          onPressed: () => _showSessionDetails(session),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         );
@@ -1481,7 +1412,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: list),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
+        Container(
+          width: 1,
+          color: scheme.outlineVariant.withOpacity(0.35),
+        ),
+        const SizedBox(width: 12),
         SizedBox(
           width: sideWidth,
           child: _buildSessionDetailsPanel(_selectedSession),
@@ -1493,56 +1429,52 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Widget _buildSessionDetailsPanel(CashSessionModel? session) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final money = CurrencyDisplay.currency();
     final dateTime = _dateTimeFormat;
+    final status = theme.extension<AppStatusTheme>();
 
-    if (session == null || session.id == null) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+    Widget kvRow({required String label, required String value}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 110,
+              child: Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.65),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: scheme.primary.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.analytics_outlined,
-                color: scheme.primary,
-                size: 24,
-              ),
+      );
+    }
+
+    if (session == null || session.id == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Selecciona un turno para ver el detalle.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurface.withOpacity(0.66),
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 14),
-            Text(
-              'Detalle del turno',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Selecciona un turno para ver la información.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurface.withOpacity(0.66),
-              ),
-            ),
-          ],
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
@@ -1551,25 +1483,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       future: _loadSessionDetail(session),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: const Center(child: CircularProgressIndicator()),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError || snapshot.data == null) {
-          return Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
+          return Padding(
+            padding: const EdgeInsets.all(16),
             child: Text(
               'No se pudieron cargar los detalles del turno.',
               style: theme.textTheme.bodyMedium,
@@ -1578,151 +1497,82 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         }
 
         final data = snapshot.data!;
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: scheme.outlineVariant),
-            boxShadow: [
-              BoxShadow(
-                color: theme.shadowColor.withOpacity(0.08),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: SingleChildScrollView(
+        final diff = data.closingAmount - data.summary.expectedCash;
+        final bool isOpen = data.session.closedAt == null;
+        final bool hasDiff = diff != 0;
+        final success = status?.success ?? scheme.tertiary;
+        final warning = status?.warning ?? scheme.secondary;
+        final danger = status?.error ?? scheme.error;
+        final (statusText, statusColor) = hasDiff
+            ? ('Diferencia', danger)
+            : (isOpen ? ('Abierto', warning) : ('Cerrado', success));
+
+        return SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text(
-                      'Turno #${session.id ?? '-'}',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: Text(
+                        'Turno #${session.id ?? '-'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                    const Spacer(),
                     IconButton(
                       onPressed: () => _reprintSession(data),
                       icon: const Icon(Icons.print, size: 18),
                       tooltip: 'Reimprimir',
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    IconButton(
+                      onPressed: () => _showSessionDetails(session),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      tooltip: 'Abrir detalle',
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _pill('Cajero: ${session.userName}', scheme),
-                    _pill(
-                      'Apertura: ${dateTime.format(session.openedAt)}',
-                      scheme,
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Chip(
+                    label: Text(statusText),
+                    labelStyle: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: statusColor,
                     ),
-                    if (session.closedAt != null)
-                      _pill(
-                        'Cierre: ${dateTime.format(session.closedAt!)}',
-                        scheme,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                _detailGrid(theme, money, data),
-                const SizedBox(height: 14),
-                Text(
-                  'Ventas',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                    padding: EdgeInsets.zero,
+                    backgroundColor: statusColor.withOpacity(0.12),
+                    side: BorderSide(color: statusColor.withOpacity(0.35)),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
                 const SizedBox(height: 8),
-                _buildSalesListSection(
-                  data: data,
-                  theme: theme,
-                  scheme: scheme,
-                  timeFormat: _timeOnlyFormat,
-                  moneyFormat: money,
+                const Divider(height: 24),
+                kvRow(label: 'Cajero', value: session.userName),
+                kvRow(label: 'Apertura', value: dateTime.format(session.openedAt)),
+                kvRow(
+                  label: 'Cierre',
+                  value: session.closedAt == null
+                      ? '—'
+                      : dateTime.format(session.closedAt!),
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'Movimientos',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 160,
-                  child: data.movements.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.receipt_long_outlined,
-                                size: 22,
-                                color: scheme.onSurface.withOpacity(0.45),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Sin movimientos registrados',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurface.withOpacity(0.58),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          itemCount: data.movements.length,
-                          separatorBuilder: (context, index) => Divider(
-                            height: 1,
-                            color: scheme.outlineVariant.withOpacity(0.35),
-                          ),
-                          itemBuilder: (context, i) {
-                            final movement = data.movements[i];
-                            final isIn = movement.isIn;
-                            final color = isIn ? scheme.primary : scheme.error;
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    isIn
-                                        ? Icons.add_circle_outline
-                                        : Icons.remove_circle_outline,
-                                    size: 16,
-                                    color: color,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      movement.reason,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '${isIn ? '+' : '-'}${money.format(movement.amount)}',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: color,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                kvRow(label: 'Contado', value: money.format(data.closingAmount)),
+                kvRow(label: 'Esperado', value: money.format(data.summary.expectedCash)),
+                kvRow(label: 'Diferencia', value: money.format(diff)),
+                if (data.note.trim().isNotEmpty)
+                  kvRow(label: 'Nota', value: data.note.trim()),
               ],
             ),
           ),
@@ -1739,7 +1589,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dateTime = _dateTimeShortFormat;
-    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final money = CurrencyDisplay.currency();
 
     final movements = _filteredMovements;
     if (movements.isEmpty) {
@@ -1754,55 +1604,98 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final list = ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: movements.length,
-      separatorBuilder: (_, index) => const SizedBox(height: 6),
+      separatorBuilder: (context, index) => Divider(
+        height: 1,
+        thickness: 1,
+        color: scheme.outlineVariant.withOpacity(0.35),
+      ),
       itemBuilder: (context, index) {
         final movement = movements[index];
+        final isSelected = _selectedMovement?.id == movement.id;
         final isIn = movement.isIn;
         final color = isIn ? scheme.primary : scheme.error;
-        final isSelected = _selectedMovement?.id == movement.id;
-        final rowBorderColor = scheme.outlineVariant.withOpacity(0.65);
 
-        final title =
-            '${movement.reason}  ·  ${dateTime.format(movement.createdAt)}';
-        return InkWell(
-          onTap: () => _selectMovement(movement, showDetails: !isWide),
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? scheme.primary : rowBorderColor,
-                width: isSelected ? 1.2 : 0.9,
+        final title = movement.reason;
+        final meta = '${dateTime.format(movement.createdAt)} · Sesión #${movement.sessionId}';
+        final amountLabel = '${isIn ? '+' : '-'}${money.format(movement.amount)}';
+
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Material(
+            color: isSelected ? scheme.primary.withOpacity(0.06) : Colors.transparent,
+            child: InkWell(
+              onTap: () => _selectMovement(movement, showDetails: !isWide),
+              hoverColor: scheme.surfaceVariant.withOpacity(0.35),
+              child: SizedBox(
+                height: 54,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isIn
+                            ? Icons.add_circle_outline
+                            : Icons.remove_circle_outline,
+                        color: color,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 5,
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 4,
+                        child: Text(
+                          meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurface.withOpacity(0.68),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 130,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            amountLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 44,
+                        child: IconButton(
+                          tooltip: 'Detalle',
+                          icon: const Icon(Icons.chevron_right, size: 20),
+                          onPressed: () => _showMovementDetails(movement),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isIn ? Icons.add_circle_outline : Icons.remove_circle_outline,
-                  color: color,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${isIn ? '+' : '-'}${money.format(movement.amount)}',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
             ),
           ),
         );
@@ -1815,7 +1708,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: list),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
+        Container(
+          width: 1,
+          color: scheme.outlineVariant.withOpacity(0.35),
+        ),
+        const SizedBox(width: 12),
         SizedBox(
           width: sideWidth,
           child: _buildMovementDetailsPanel(_selectedMovement),
@@ -1827,38 +1725,32 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Widget _buildMovementDetailsPanel(CashMovementModel? movement) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(locale: 'es_DO', symbol: 'RD\$ ');
+    final money = CurrencyDisplay.currency();
     final dateTime = _dateTimeFormat;
 
-    if (movement == null) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outlineVariant),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
+    Widget kvRow({required String label, required String value}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Detalle del movimiento',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+            SizedBox(
+              width: 110,
+              child: Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.65),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Selecciona un movimiento para ver la información.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurface.withOpacity(0.66),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -1866,76 +1758,65 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       );
     }
 
+    if (movement == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Selecciona un movimiento para ver el detalle.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurface.withOpacity(0.66),
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
     final isIn = movement.isIn;
     final color = isIn ? scheme.primary : scheme.error;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Movimiento',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withOpacity(0.3)),
-            ),
-            child: Row(
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Icon(
-                  isIn ? Icons.add_circle_outline : Icons.remove_circle_outline,
-                  color: color,
-                ),
-                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    movement.reason,
+                    'Movimiento',
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
+                IconButton(
+                  onPressed: () => _showMovementDetails(movement),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  tooltip: 'Abrir detalle',
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${isIn ? '+' : '-'}${money.format(movement.amount)}',
-            style: theme.textTheme.titleLarge?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 12),
+            Text(
+              '${isIn ? '+' : '-'}${money.format(movement.amount)}',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 6,
-            children: [
-              _pill('Tipo: ${isIn ? 'Entrada' : 'Retiro'}', scheme),
-              _pill('Sesión: #${movement.sessionId}', scheme),
-              _pill('Fecha: ${dateTime.format(movement.createdAt)}', scheme),
-            ],
-          ),
-        ],
+            const SizedBox(height: 8),
+            const Divider(height: 24),
+            kvRow(label: 'Motivo', value: movement.reason),
+            kvRow(label: 'Tipo', value: isIn ? 'Entrada' : 'Retiro'),
+            kvRow(label: 'Sesión', value: '#${movement.sessionId}'),
+            kvRow(label: 'Fecha', value: dateTime.format(movement.createdAt)),
+          ],
+        ),
       ),
     );
   }

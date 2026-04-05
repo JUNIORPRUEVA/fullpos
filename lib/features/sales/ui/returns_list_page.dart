@@ -12,6 +12,7 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../theme/app_colors.dart';
 import '../../cash/data/cash_movement_model.dart';
 import '../../cash/data/cash_repository.dart';
@@ -221,7 +222,9 @@ class _FacturaPageState extends State<FacturaPage> {
       return sale.localCode.toLowerCase().contains(query) ||
           (sale.customerNameSnapshot?.toLowerCase().contains(query) ?? false) ||
           sale.total.toString().contains(query) ||
-          _cashierLabelForSessionId(sale.sessionId).toLowerCase().contains(query);
+          _cashierLabelForSessionId(
+            sale.sessionId,
+          ).toLowerCase().contains(query);
     }).toList();
   }
 
@@ -233,8 +236,8 @@ class _FacturaPageState extends State<FacturaPage> {
       if (query.isEmpty) return true;
 
       final code = ((ret['local_code'] as String?) ?? '').toLowerCase();
-      final customer =
-          ((ret['customer_name_snapshot'] as String?) ?? '').toLowerCase();
+      final customer = ((ret['customer_name_snapshot'] as String?) ?? '')
+          .toLowerCase();
       final total = ((ret['total'] as num?)?.toDouble().abs() ?? 0.0)
           .toStringAsFixed(2);
       final cashier = _cashierLabelForSessionId(sessionId).toLowerCase();
@@ -538,7 +541,7 @@ class _FacturaPageState extends State<FacturaPage> {
         final hasActiveFilters =
             _searchQuery.trim().isNotEmpty ||
             _selectedFilter != DateFilter.thisMonth ||
-          _selectedSessionId != null ||
+            _selectedSessionId != null ||
             (_selectedFilter == DateFilter.custom &&
                 (_customDateFrom != null || _customDateTo != null));
 
@@ -1101,16 +1104,14 @@ class _FacturaPageState extends State<FacturaPage> {
   Widget _buildHeaderSummary() {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
+    final money = CurrencyDisplay.currency();
 
-    final count = _activeTab == 0 ? _filteredSales.length : _filteredReturns.length;
+    final count = _activeTab == 0
+        ? _filteredSales.length
+        : _filteredReturns.length;
     final total = _activeTab == 0
         ? _filteredSales.fold<double>(0, (sum, s) => sum + s.total)
-      : _filteredReturns.fold<double>(
+        : _filteredReturns.fold<double>(
             0,
             (sum, r) => sum + ((r['total'] as num?)?.toDouble().abs() ?? 0.0),
           );
@@ -1514,19 +1515,13 @@ class _FacturaPageState extends State<FacturaPage> {
     required TextStyle? bigStyle,
     required TextStyle? smallStyle,
   }) {
-    final whole = amount.truncate();
-    final decimal = ((amount - whole) * 100).round().abs().toString().padLeft(
-      2,
-      '0',
-    );
-    final formatter = NumberFormat.decimalPattern('es_DO');
+    final formatter = CurrencyDisplay.currency(symbol: '');
 
     return RichText(
       text: TextSpan(
         children: [
           TextSpan(text: 'RD\$ ', style: smallStyle),
-          TextSpan(text: formatter.format(whole), style: bigStyle),
-          TextSpan(text: '.$decimal', style: smallStyle),
+          TextSpan(text: formatter.format(amount).trim(), style: bigStyle),
         ],
       ),
     );
@@ -1535,11 +1530,7 @@ class _FacturaPageState extends State<FacturaPage> {
   Future<void> _showReturnDetails(Map<String, dynamic> ret) async {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
+    final money = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
 
     final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
@@ -1726,10 +1717,7 @@ class _SaleTicketDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-    );
+    final currencyFormat = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final screenSize = MediaQuery.of(context).size;
@@ -2146,8 +2134,8 @@ class _RefundDialogState extends State<_RefundDialog> {
       builder: (ctx) => AlertDialog(
         title: const Text('Caja sin efectivo suficiente'),
         content: Text(
-          'Disponible en caja: RD\$ ${available.toStringAsFixed(2)}\n'
-          'Reembolso requerido: RD\$ ${amount.toStringAsFixed(2)}\n\n'
+          'Disponible en caja: ${CurrencyDisplay.format(available)}\n'
+          'Reembolso requerido: ${CurrencyDisplay.format(amount)}\n\n'
           'Ingrese efectivo a caja antes de continuar.',
         ),
         actions: [
@@ -2179,7 +2167,7 @@ class _RefundDialogState extends State<_RefundDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Sigue faltando efectivo. Disponible: RD\$ ${refreshed.expectedCash.toStringAsFixed(2)}',
+              'Sigue faltando efectivo. Disponible: ${CurrencyDisplay.format(refreshed.expectedCash)}',
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
@@ -2360,10 +2348,7 @@ class _RefundDialogState extends State<_RefundDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-    );
+    final currencyFormat = CurrencyDisplay.currency();
     final screenSize = MediaQuery.of(context).size;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;

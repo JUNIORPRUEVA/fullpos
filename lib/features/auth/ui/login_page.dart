@@ -1,16 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_sizes.dart';
 import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
-import '../../../core/window/window_service.dart';
 import '../../settings/data/user_model.dart';
 import '../../settings/data/users_repository.dart';
 import '../data/auth_repository.dart';
@@ -35,11 +32,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _usernameFocusNode = FocusNode();
 
   bool _firstRunPrefillChecked = false;
+  List<UserModel> _availableUsers = const [];
 
   bool _isLoading = false;
   bool _obscurePassword = true;
   _LoginMode _mode = _LoginMode.password;
   String? _errorMessage;
+  bool _showDemoHint = false;
+  bool _showDemoCredentials = false;
 
   bool get _usingPin => _mode == _LoginMode.pin;
 
@@ -47,9 +47,31 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   void initState() {
     super.initState();
     unawaited(_maybePrefillFirstRunCredentials());
+    unawaited(_registerDemoHintVisibility());
+    unawaited(_loadAvailableUsers());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _usernameFocusNode.requestFocus();
+    });
+  }
+
+  Future<void> _loadAvailableUsers() async {
+    try {
+      final users = await UsersRepository.getActiveUsers();
+      if (!mounted) return;
+      setState(() {
+        _availableUsers = users;
+      });
+    } catch (_) {
+      // Nunca bloquear el login por no poder cargar el selector.
+    }
+  }
+
+  Future<void> _registerDemoHintVisibility() async {
+    final launchCount = await FirstRunAuthFlags.registerLoginDemoLaunch();
+    if (!mounted) return;
+    setState(() {
+      _showDemoHint = launchCount <= 2;
     });
   }
 
@@ -472,29 +494,27 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final brandName = FullposBrandTheme.appName;
-
     final theme = Theme.of(context);
-    const pageBackground = Color(0xFFFFFFFF);
-    const panelColor = Color(0xFF7A7C7D);
+    const pageBackground = Color(0xFFF5F7FA);
+    const cardColor = Color(0xFF374151);
+    const cardTitle = Color(0xFFF9FAFB);
+    const cardText = Color(0xFFD1D5DB);
+    const cardMutedText = Color(0xFFCBD5E1);
     const primaryBlue = Color(0xFF2563EB);
-    const panelText = Color(0xFFFFFFFF);
-    const panelMutedText = Color(0xCCFFFFFF);
     const inputBackground = Color(0xFFFFFFFF);
-    const inputText = Color(0xFF000000);
-    const inputHint = Color(0xFF6B7280);
-    const inactiveTrack = Color(0xFFD1D5DB);
-    final cardBorder = Colors.white.withOpacity(0.18);
-    final dividerColor = Colors.white.withOpacity(0.14);
-    final subtleButtonBackground = Colors.white.withOpacity(0.10);
-    final subtleButtonBorder = Colors.white.withOpacity(0.24);
+    const inputText = Color(0xFF111827);
+    const inputHint = Color(0xFF94A3B8);
+    const borderColor = Color(0xFF4B5563);
+    final subtleBlue = primaryBlue.withOpacity(0.06);
+    final dividerColor = Colors.white.withOpacity(0.10);
 
     final forgotPasswordStyle = ButtonStyle(
-      foregroundColor: const WidgetStatePropertyAll(primaryBlue),
-      overlayColor: WidgetStatePropertyAll(primaryBlue.withOpacity(0.10)),
+      foregroundColor: WidgetStatePropertyAll(Colors.white.withOpacity(0.82)),
+      overlayColor: WidgetStatePropertyAll(Colors.white.withOpacity(0.06)),
       textStyle: WidgetStateProperty.resolveWith<TextStyle?>((states) {
         return TextStyle(
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
           decoration: states.contains(WidgetState.hovered)
               ? TextDecoration.underline
               : TextDecoration.none,
@@ -505,33 +525,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       ),
     );
 
-    final secondaryActionStyle = TextButton.styleFrom(
-      foregroundColor: panelMutedText,
-      backgroundColor: subtleButtonBackground,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      side: BorderSide(color: subtleButtonBorder),
-    );
-
     InputDecoration decoration({
-      required String label,
       required String hint,
-      required IconData icon,
       Widget? suffix,
     }) {
       return InputDecoration(
-        labelText: label,
         hintText: hint,
-        labelStyle: const TextStyle(color: inputHint),
-        floatingLabelStyle: const TextStyle(
-          color: primaryBlue,
-          fontWeight: FontWeight.w700,
-        ),
-        hintStyle: const TextStyle(color: inputHint),
-        prefixIcon: Icon(icon, color: primaryBlue),
+        hintStyle: const TextStyle(color: inputHint, fontSize: 13),
         suffixIcon: suffix,
         filled: true,
         fillColor: inputBackground,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -544,402 +551,458 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: primaryBlue, width: 1.6),
         ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFF87171), width: 1.2),
+          borderSide: BorderSide.none,
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFF87171), width: 1.4),
+          borderSide: const BorderSide(color: primaryBlue, width: 1.6),
         ),
+        errorStyle: const TextStyle(
+          color: Color(0xFFB91C1C),
+          fontSize: 12,
+          height: 1.2,
+        ),
+      );
+    }
+
+    Widget buildUsernameSuffix() {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_usernameController.text.isNotEmpty)
+            IconButton(
+              tooltip: 'Limpiar usuario',
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      _usernameController.clear();
+                      setState(() {
+                        _errorMessage = null;
+                      });
+                      _usernameFocusNode.requestFocus();
+                    },
+              icon: const Icon(
+                Icons.close_rounded,
+                size: 18,
+                color: inputHint,
+              ),
+            ),
+          PopupMenuButton<String>(
+            enabled: !_isLoading && _availableUsers.isNotEmpty,
+            tooltip: 'Elegir usuario',
+            position: PopupMenuPosition.under,
+            icon: const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: inputHint,
+            ),
+            onSelected: (username) {
+              _usernameController.text = username;
+              setState(() {
+                _errorMessage = null;
+              });
+              FocusScope.of(context).nextFocus();
+            },
+            itemBuilder: (context) => _availableUsers
+                .map(
+                  (user) {
+                    final displayName = user.displayName?.trim() ?? '';
+                    return PopupMenuItem<String>(
+                      value: user.username,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            displayName.isEmpty ? user.username : displayName,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          if (displayName.isNotEmpty)
+                            Text(
+                              user.username,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                )
+                .toList(),
+          ),
+          const SizedBox(width: 6),
+        ],
       );
     }
 
     return Scaffold(
       backgroundColor: pageBackground,
-      body: Container(
-        color: pageBackground,
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSizes.paddingL),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x14000000),
-                      blurRadius: 20,
-                      offset: Offset(0, 8),
-                    ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFFF8FAFD),
+                    pageBackground,
+                    const Color(0xFFF1F5F9),
                   ],
                 ),
-                child: Card(
-                  margin: EdgeInsets.zero,
-                  color: panelColor,
-                  elevation: 0,
-                  shadowColor: Colors.transparent,
-                  surfaceTintColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    side: BorderSide(color: cardBorder),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 28,
+              ),
+            ),
+          ),
+          Positioned(
+            top: -100,
+            left: -30,
+            child: Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryBlue.withOpacity(0.055),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -60,
+            bottom: -80,
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF0F172A).withOpacity(0.025),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 404),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x260F172A),
+                          blurRadius: 44,
+                          offset: Offset(0, 24),
+                        ),
+                        BoxShadow(
+                          color: Color(0x120F172A),
+                          blurRadius: 20,
+                          offset: Offset(0, 6),
+                        ),
+                      ],
                     ),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 76,
-                                height: 76,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(color: cardBorder),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: Image.asset(
-                                  FullposBrandTheme.logoAsset,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Center(
-                                        child: Icon(
-                                          Icons.storefront,
-                                          size: 36,
-                                          color: panelText,
-                                        ),
-                                      ),
-                                ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Center(
+                              child: Image.asset(
+                                FullposBrandTheme.logoAsset,
+                                height: 54,
+                                fit: BoxFit.contain,
                               ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      brandName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.titleLarge
-                                          ?.copyWith(
-                                            color: panelText,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.2,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Inicia sesión para continuar',
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(color: panelMutedText),
-                                    ),
-                                  ],
+                            ),
+                            const SizedBox(height: 18),
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4B1D1D),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _errorMessage!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: const Color(0xFFFCA5A5),
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.25,
+                                  ),
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 18),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: dividerColor),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  'Contraseña',
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                    color: _usingPin
-                                        ? panelMutedText
-                                        : panelText,
-                                    fontWeight: _usingPin
-                                        ? FontWeight.w600
-                                        : FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Switch.adaptive(
-                                  value: _usingPin,
-                                  activeTrackColor: primaryBlue,
-                                  inactiveTrackColor: inactiveTrack,
-                                  thumbColor: const WidgetStatePropertyAll(
-                                    Colors.white,
-                                  ),
-                                  trackOutlineColor:
-                                      const WidgetStatePropertyAll(
-                                        Colors.transparent,
-                                      ),
-                                  onChanged: _isLoading
-                                      ? null
-                                      : (value) {
-                                          FocusScope.of(context).unfocus();
-                                          _setMode(
-                                            value
-                                                ? _LoginMode.pin
-                                                : _LoginMode.password,
-                                          );
-                                        },
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'PIN',
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                    color: _usingPin
-                                        ? panelText
-                                        : panelMutedText,
-                                    fontWeight: _usingPin
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Icon(
-                                  Icons.lock_outline_rounded,
-                                  color: panelText,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          if (_errorMessage != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0x33DC2626),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0x66F87171),
-                                ),
+                            const SizedBox(height: 6),
+                            TextFormField(
+                              controller: _usernameController,
+                              focusNode: _usernameFocusNode,
+                              style: const TextStyle(color: inputText),
+                              cursorColor: primaryBlue,
+                              decoration: decoration(
+                                hint: 'Ingresa tu usuario',
+                                suffix: buildUsernameSuffix(),
                               ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(
-                                    Icons.error_outline,
-                                    color: panelText,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: panelText,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              validator: (value) {
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Ingrese un usuario';
+                                }
+                                return null;
+                              },
+                              enabled: !_isLoading,
+                              textInputAction: TextInputAction.next,
+                              autofocus: true,
+                              onChanged: (_) {
+                                if (_errorMessage != null) {
+                                  setState(() {
+                                    _errorMessage = null;
+                                  });
+                                } else {
+                                  setState(() {});
+                                }
+                              },
                             ),
                             const SizedBox(height: 16),
-                          ],
-                          TextFormField(
-                            controller: _usernameController,
-                            focusNode: _usernameFocusNode,
-                            style: const TextStyle(color: inputText),
-                            cursorColor: primaryBlue,
-                            decoration: decoration(
-                              label: 'Usuario',
-                              hint: 'Ingresa tu usuario',
-                              icon: Icons.person_outline,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Ingrese un usuario';
-                              }
-                              return null;
-                            },
-                            enabled: !_isLoading,
-                            textInputAction: TextInputAction.next,
-                            autofocus: true,
-                          ),
-                          const SizedBox(height: 14),
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 160),
-                            switchInCurve: Curves.easeOut,
-                            switchOutCurve: Curves.easeIn,
-                            child: _usingPin
-                                ? TextFormField(
-                                    key: const ValueKey('pinField'),
-                                    controller: _pinController,
-                                    enabled: !_isLoading,
-                                    style: const TextStyle(color: inputText),
-                                    cursorColor: primaryBlue,
-                                    decoration: decoration(
-                                      label: 'PIN',
-                                      hint: '4-6 dígitos',
-                                      icon: Icons.dialpad,
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    obscureText: true,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                      LengthLimitingTextInputFormatter(6),
-                                    ],
-                                    validator: (_) {
-                                      final value = _pinController.text.trim();
-                                      if (value.length < 4) {
-                                        return 'PIN mínimo de 4 dígitos';
-                                      }
-                                      return null;
-                                    },
-                                    textInputAction: TextInputAction.done,
-                                    onFieldSubmitted: (_) => _handleLogin(),
-                                  )
-                                : TextFormField(
-                                    key: const ValueKey('passwordField'),
-                                    controller: _passwordController,
-                                    style: const TextStyle(color: inputText),
-                                    cursorColor: primaryBlue,
-                                    decoration: decoration(
-                                      label: 'Contraseña',
-                                      hint: 'Ingresa tu contraseña',
-                                      icon: Icons.lock_outline,
-                                      suffix: IconButton(
-                                        tooltip: _obscurePassword
-                                            ? 'Mostrar contraseña'
-                                            : 'Ocultar contraseña',
-                                        icon: Icon(
-                                          _obscurePassword
-                                              ? Icons.visibility_off_outlined
-                                              : Icons.visibility_outlined,
-                                          color: inputHint,
-                                        ),
-                                        onPressed: () {
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 160),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              child: _usingPin
+                                  ? TextFormField(
+                                      key: const ValueKey('pinField'),
+                                      controller: _pinController,
+                                      enabled: !_isLoading,
+                                      style: const TextStyle(color: inputText),
+                                      cursorColor: primaryBlue,
+                                      decoration: decoration(
+                                        hint: '4-6 dígitos',
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      obscureText: true,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                        LengthLimitingTextInputFormatter(6),
+                                      ],
+                                      validator: (_) {
+                                        final value = _pinController.text.trim();
+                                        if (value.length < 4) {
+                                          return 'PIN mínimo de 4 dígitos';
+                                        }
+                                        return null;
+                                      },
+                                      textInputAction: TextInputAction.done,
+                                      onChanged: (_) {
+                                        if (_errorMessage != null) {
                                           setState(() {
-                                            _obscurePassword =
-                                                !_obscurePassword;
+                                            _errorMessage = null;
                                           });
-                                        },
-                                      ),
-                                    ),
-                                    obscureText: _obscurePassword,
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Ingrese una contraseña';
-                                      }
-                                      return null;
-                                    },
-                                    enabled: !_isLoading,
-                                    textInputAction: TextInputAction.done,
-                                    onFieldSubmitted: (_) => _handleLogin(),
-                                  ),
-                          ),
-                          const SizedBox(height: 18),
-                          FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: primaryBlue,
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              shadowColor: const Color(0x33000000),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 14,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            onPressed: _isLoading ? null : _handleLogin,
-                            icon: const Icon(Icons.login_rounded),
-                            label: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      height: 22,
-                                      width: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.4,
-                                        color: Colors.white,
-                                      ),
+                                        }
+                                      },
+                                      onFieldSubmitted: (_) => _handleLogin(),
                                     )
-                                  : const Text('Iniciar sesión'),
+                                  : TextFormField(
+                                      key: const ValueKey('passwordField'),
+                                      controller: _passwordController,
+                                      style: const TextStyle(color: inputText),
+                                      cursorColor: primaryBlue,
+                                      decoration: decoration(
+                                        hint: 'Ingresa tu contraseña',
+                                        suffix: IconButton(
+                                          tooltip: _obscurePassword
+                                              ? 'Mostrar contraseña'
+                                              : 'Ocultar contraseña',
+                                          icon: Icon(
+                                            _obscurePassword
+                                                ? Icons.visibility_off_outlined
+                                                : Icons.visibility_outlined,
+                                            color: inputHint,
+                                          ),
+                                          onPressed: _isLoading
+                                              ? null
+                                              : () {
+                                                  setState(() {
+                                                    _obscurePassword =
+                                                        !_obscurePassword;
+                                                  });
+                                                },
+                                        ),
+                                      ),
+                                      obscureText: _obscurePassword,
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Ingrese una contraseña';
+                                        }
+                                        return null;
+                                      },
+                                      enabled: !_isLoading,
+                                      textInputAction: TextInputAction.done,
+                                      onChanged: (_) {
+                                        if (_errorMessage != null) {
+                                          setState(() {
+                                            _errorMessage = null;
+                                          });
+                                        }
+                                      },
+                                      onFieldSubmitted: (_) => _handleLogin(),
+                                    ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              style: forgotPasswordStyle,
-                              onPressed: _isLoading
-                                  ? null
-                                  : _openForgotPasswordDialog,
-                              child: const Text('Olvidé mi contraseña'),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Center(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              alignment: WrapAlignment.center,
+                            const SizedBox(height: 10),
+                            Row(
                               children: [
-                                TextButton.icon(
-                                  onPressed: _isLoading
-                                      ? null
-                                      : () => WindowService.minimize(),
-                                  icon: const Icon(Icons.minimize_rounded),
-                                  label: const Text('Minimizar'),
-                                  style: secondaryActionStyle,
+                                Transform.scale(
+                                  scale: 0.86,
+                                  child: Switch(
+                                    value: _usingPin,
+                                    onChanged: _isLoading
+                                        ? null
+                                        : (value) {
+                                            FocusScope.of(context).unfocus();
+                                            _setMode(
+                                              value
+                                                  ? _LoginMode.pin
+                                                  : _LoginMode.password,
+                                            );
+                                          },
+                                    activeColor: Colors.white,
+                                    activeTrackColor: primaryBlue.withOpacity(0.9),
+                                    inactiveThumbColor: Colors.white,
+                                    inactiveTrackColor: Colors.white.withOpacity(0.18),
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
                                 ),
-                                TextButton.icon(
-                                  onPressed: _isLoading
-                                      ? null
-                                      : () => WindowService.close(),
-                                  icon: const Icon(Icons.exit_to_app_rounded),
-                                  label: const Text('Salir'),
-                                  style: secondaryActionStyle,
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    'Usar codigo',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: cardText.withOpacity(0.88),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                                 ),
+                                if (!_usingPin)
+                                  TextButton(
+                                    style: forgotPasswordStyle,
+                                    onPressed: _isLoading
+                                        ? null
+                                        : _openForgotPasswordDialog,
+                                    child: const Text('Olvidé mi contraseña'),
+                                  ),
                               ],
                             ),
-                          ),
-                          if (kDebugMode) ...[
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.10),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: cardBorder),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.info_outline,
-                                    color: panelText,
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 48,
+                                    child: FilledButton(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: primaryBlue,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        textStyle: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      onPressed: _isLoading ? null : _handleLogin,
+                                      child: _isLoading
+                                          ? const SizedBox(
+                                              height: 20,
+                                              width: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Text('Acceder'),
+                                    ),
                                   ),
+                                ),
+                                if (_showDemoHint) ...[
                                   const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Demo: admin / admin123',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: panelMutedText,
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                  SizedBox(
+                                    width: 48,
+                                    height: 48,
+                                    child: IconButton(
+                                      tooltip: _showDemoCredentials
+                                          ? 'Ocultar acceso de demo'
+                                          : 'Mostrar acceso de demo',
+                                      style: IconButton.styleFrom(
+                                        backgroundColor:
+                                            Colors.white.withOpacity(0.08),
+                                        foregroundColor: Colors.white.withOpacity(
+                                          _showDemoCredentials ? 1 : 0.76,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _showDemoCredentials =
+                                              !_showDemoCredentials;
+                                        });
+                                      },
+                                      icon: Icon(
+                                        _showDemoCredentials
+                                            ? Icons.lock_open_rounded
+                                            : Icons.lock_outline_rounded,
+                                        size: 20,
+                                      ),
                                     ),
                                   ),
                                 ],
-                              ),
+                              ],
                             ),
+                            if (_showDemoHint && _showDemoCredentials) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: subtleBlue,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.08),
+                                  ),
+                                ),
+                                child: Text(
+                                  'Demo: admin / admin123',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white.withOpacity(0.82),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -947,7 +1010,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

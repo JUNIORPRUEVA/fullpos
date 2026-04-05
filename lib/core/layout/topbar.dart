@@ -1,20 +1,24 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../features/auth/data/auth_repository.dart';
+import '../../features/auth/services/logout_flow_service.dart';
+import '../../features/cash/data/operation_flow_service.dart';
+import '../../features/cash/ui/cash_close_dialog.dart';
+import '../../features/cash/ui/cash_open_dialog.dart';
+import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../constants/app_sizes.dart';
+import '../session/session_manager.dart';
+import '../session/ui_preferences.dart';
 import '../theme/app_status_theme.dart';
 import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
-import '../session/session_manager.dart';
-import '../session/ui_preferences.dart';
-import '../../features/auth/data/auth_repository.dart';
-import '../../features/cash/data/operation_flow_service.dart';
-import '../../features/cash/ui/cash_open_dialog.dart';
-import '../../features/cash/ui/cash_panel_sheet.dart';
 
-/// Topbar del layout principal con fecha/hora y usuario
+/// Topbar del layout principal con fecha/hora y usuario.
 class Topbar extends ConsumerStatefulWidget {
   final bool showMenuButton;
   final VoidCallback? onMenuPressed;
@@ -35,20 +39,31 @@ class Topbar extends ConsumerStatefulWidget {
   ConsumerState<Topbar> createState() => _TopbarState();
 }
 
+enum _UserMenuAction {
+  profile,
+  finishShift,
+  viewCurrentCut,
+  cutHistory,
+  logout,
+}
+
 class _TopbarState extends ConsumerState<Topbar>
     with SingleTickerProviderStateMixin {
   late Timer _cashTimer;
   AnimationController? _cashPulseController;
   StreamSubscription<void>? _sessionSub;
   StreamSubscription<void>? _uiPrefsSub;
+
   String? _username;
   String? _displayName;
   String? _profileImagePath;
 
   bool _canAccessCash = false;
+  bool _canViewCashHistory = false;
+  bool _canCloseShift = false;
+  bool _canOpenCashbox = false;
   int? _openCashSessionId;
   bool _loadingOpenCashSessionId = false;
-  bool _isCashHover = false;
 
   @override
   void initState() {
@@ -56,10 +71,13 @@ class _TopbarState extends ConsumerState<Topbar>
     _cashPulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    );
-    _cashPulseController?.repeat(reverse: true);
+    )..repeat(reverse: true);
+
     _loadUserSummary();
     _loadProfileImage();
+    _loadCashAccess();
+    _loadOpenCashSessionId();
+
     _sessionSub = SessionManager.changes.listen((_) {
       if (!mounted) return;
       _loadUserSummary();
@@ -72,10 +90,7 @@ class _TopbarState extends ConsumerState<Topbar>
       if (!mounted) return;
       _loadProfileImage();
     });
-    _loadCashAccess();
-    _loadOpenCashSessionId();
 
-    // Refrescar estado de caja sin recargar la UI completa (cada 10s)
     _cashTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _loadOpenCashSessionId();
     });
@@ -84,7 +99,6 @@ class _TopbarState extends ConsumerState<Topbar>
   @override
   void dispose() {
     _cashPulseController?.dispose();
-    _cashPulseController = null;
     _cashTimer.cancel();
     _sessionSub?.cancel();
     _uiPrefsSub?.cancel();
@@ -98,7 +112,7 @@ class _TopbarState extends ConsumerState<Topbar>
     if (!mounted) return;
     setState(() {
       _username = username ?? 'Usuario';
-      _displayName = (displayName != null && displayName.trim().isNotEmpty)
+      _displayName = displayName != null && displayName.trim().isNotEmpty
           ? displayName.trim()
           : null;
     });
@@ -106,15 +120,16 @@ class _TopbarState extends ConsumerState<Topbar>
 
   String? _buildUserKey({required int? userId, required String? username}) {
     if (userId != null) return 'id:$userId';
-    final u = username?.trim();
-    if (u == null || u.isEmpty) return null;
-    return 'u:$u';
+    final trimmedUsername = username?.trim();
+    if (trimmedUsername == null || trimmedUsername.isEmpty) return null;
+    return 'u:$trimmedUsername';
   }
 
   Future<void> _loadProfileImage() async {
     final userId = await SessionManager.userId();
     final username = await SessionManager.username();
     final userKey = _buildUserKey(userId: userId, username: username);
+
     if (userKey == null) {
       if (!mounted) return;
       setState(() => _profileImagePath = null);
@@ -136,29 +151,108 @@ class _TopbarState extends ConsumerState<Topbar>
 
   Future<void> _loadCashAccess() async {
     try {
-      final perms = await AuthRepository.getCurrentPermissions();
+      final permissions = await AuthRepository.getCurrentPermissions();
       final isAdmin = await AuthRepository.isAdmin();
-      final allowed = isAdmin || perms.canOpenCash || perms.canCloseCash;
-      if (mounted) {
-        setState(() => _canAccessCash = allowed);
-      }
+      final allowed = isAdmin ||
+          permissions.canOpenCash ||
+          permissions.canCloseCash;
+      final canHistory = isAdmin || permissions.canViewCashHistory;
+      final canCloseShift =
+          isAdmin || permissions.canCloseShift || permissions.canCloseCash;
+      final canOpenCashbox =
+          isAdmin || permissions.canOpenCashbox || permissions.canOpenCash;
+      if (!mounted) return;
+      setState(() {
+        _canAccessCash = allowed;
+        _canViewCashHistory = canHistory;
+        _canCloseShift = canCloseShift;
+        _canOpenCashbox = canOpenCashbox;
+      });
     } catch (_) {
-      if (mounted) setState(() => _canAccessCash = false);
+      if (!mounted) return;
+      setState(() {
+        _canAccessCash = false;
+        _canViewCashHistory = false;
+        _canCloseShift = false;
+        _canOpenCashbox = false;
+      });
+    }
+  }
+
+  Future<void> _handleUserMenuAction(_UserMenuAction action) async {
+    switch (action) {
+      case _UserMenuAction.profile:
+        context.go('/account');
+        return;
+      case _UserMenuAction.finishShift:
+        final sessionId = _openCashSessionId;
+        if (sessionId == null) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(content: Text('No hay turno abierto.')),
+          );
+          return;
+        }
+        await CashCloseDialog.show(
+          context,
+          sessionId: sessionId,
+          logoutAfterClose: false,
+          autoCloseImmediately: false,
+        );
+        if (!mounted) return;
+        unawaited(_loadOpenCashSessionId());
+        return;
+      case _UserMenuAction.viewCurrentCut:
+        final sessionId = _openCashSessionId;
+        if (sessionId == null) {
+          context.go('/cash');
+          return;
+        }
+        await CashPanelSheet.show(context, sessionId: sessionId);
+        if (!mounted) return;
+        unawaited(_loadOpenCashSessionId());
+        return;
+      case _UserMenuAction.cutHistory:
+        context.go('/cash/history');
+        return;
+      case _UserMenuAction.logout:
+        if (_openCashSessionId != null) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Finaliza el turno antes de cerrar sesión.',
+              ),
+            ),
+          );
+          return;
+        }
+        try {
+          await LogoutFlowService.defaultPerformLogout(context);
+        } catch (e) {
+          if (!mounted) return;
+          final scheme = Theme.of(context).colorScheme;
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text('No se pudo cerrar sesión: $e'),
+              backgroundColor: scheme.error,
+            ),
+          );
+        }
+        return;
     }
   }
 
   Future<void> _loadOpenCashSessionId() async {
     if (_loadingOpenCashSessionId) return;
     _loadingOpenCashSessionId = true;
-    try {
-      final id = (await OperationFlowService.loadActiveSession())?.shiftId;
-      if (!mounted) return;
 
-      // Evitar rebuilds innecesarios si no hay cambios.
-      if (id == _openCashSessionId) return;
-      setState(() => _openCashSessionId = id);
+    try {
+      final sessionId =
+          (await OperationFlowService.loadActiveSession())?.shiftId;
+      if (!mounted) return;
+      if (sessionId == _openCashSessionId) return;
+      setState(() => _openCashSessionId = sessionId);
     } catch (_) {
-      // Si falla, no bloquear la UI
+      // No bloquear la UI si falla la consulta del estado de caja.
     } finally {
       _loadingOpenCashSessionId = false;
     }
@@ -173,9 +267,7 @@ class _TopbarState extends ConsumerState<Topbar>
       return;
     }
 
-    // Re-validar estado al momento del click solo si no hay cache local.
     final sessionId = (await OperationFlowService.loadActiveSession())?.shiftId;
-
     if (!mounted) return;
 
     if (sessionId != null) {
@@ -185,13 +277,13 @@ class _TopbarState extends ConsumerState<Topbar>
     }
 
     final opened = await CashOpenDialog.show(context);
-
     if (!mounted) return;
+
     if (opened == true) {
       final newSessionId =
           (await OperationFlowService.loadActiveSession())?.shiftId;
-
       if (!mounted) return;
+
       if (newSessionId != null) {
         await CashPanelSheet.show(context, sessionId: newSessionId);
       }
@@ -205,18 +297,33 @@ class _TopbarState extends ConsumerState<Topbar>
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-    final appBarBg = tokens.topbarBackground.withOpacity(0.92);
+    final appBarBg = tokens.topbarBackground;
     final appBarFg = ColorUtils.ensureReadableColor(
       tokens.topbarText,
       appBarBg,
       minRatio: 4.5,
+    );
+    final chromeBorderColor = Color.alphaBlend(
+      tokens.outline.withOpacity(
+        theme.brightness == Brightness.dark ? 0.34 : 0.52,
+      ),
+      appBarBg,
+    );
+    final chromeShadowColor = Color.alphaBlend(
+      theme.shadowColor.withOpacity(
+        theme.brightness == Brightness.dark ? 0.28 : 0.12,
+      ),
+      appBarBg,
     );
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 900;
         final s = widget.scale.clamp(0.85, 1.12);
-        final topbarHeight = (AppSizes.topbarHeight * s).clamp(46.0, 66.0);
+        final topbarHeight = ((AppSizes.topbarHeight + 8) * s).clamp(
+          56.0,
+          70.0,
+        );
         final topInset = (widget.topPadding * s).clamp(0.0, 12.0);
         final padM = AppSizes.paddingM * s;
         final padL = AppSizes.paddingL * s;
@@ -231,20 +338,15 @@ class _TopbarState extends ConsumerState<Topbar>
           height: topbarHeight + topInset,
           decoration: BoxDecoration(
             color: appBarBg,
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: Colors.black12,
+                color: chromeShadowColor,
                 blurRadius: 8,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
             border: widget.showBottomBorder
-                ? Border(
-                    bottom: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      width: 1,
-                    ),
-                  )
+                ? Border(bottom: BorderSide(color: chromeBorderColor, width: 1))
                 : null,
           ),
           padding: EdgeInsets.fromLTRB(
@@ -299,253 +401,422 @@ class _TopbarState extends ConsumerState<Topbar>
                 ),
               ),
               SizedBox(width: spaceS * 0.6),
-
-              // Icono de estado de caja (caja de dinero realista) — colocado antes del perfil
               Builder(
                 builder: (context) {
                   final isOpen = _openCashSessionId != null;
                   final statusColor = isOpen
                       ? (status?.success ?? scheme.tertiary)
                       : (status?.error ?? scheme.error);
-                  final tooltipBase = isOpen
-                      ? 'Sesión activa (#$_openCashSessionId)\nClic para ver panel'
-                      : 'Sin sesión activa\nClic para abrir caja';
-                  final tooltip = _canAccessCash
-                      ? tooltipBase
-                      : '$tooltipBase\nSi no tienes permiso, te pedirá autorización (PIN).';
-
-                  final boxBg = Color.alphaBlend(
-                    Colors.white.withValues(alpha: 0.10),
-                    appBarBg.withValues(alpha: 0.08),
+                  final brandAccent = ColorUtils.ensureReadableColor(
+                    tokens.buttonPrimary,
+                    appBarBg,
+                    minRatio: 3.0,
                   );
-                  final boxBorder = isOpen
-                      ? statusColor.withValues(alpha: 0.45)
-                      : appBarFg.withValues(alpha: 0.22);
-                  final hoverBg = Color.alphaBlend(
-                    Colors.white.withValues(alpha: 0.16),
-                    appBarBg.withValues(alpha: 0.12),
+                  final capsuleBg = Color.alphaBlend(
+                    brandAccent.withOpacity(0.05),
+                    appBarBg,
                   );
-                  final hoverBorder = Colors.white.withValues(alpha: 0.3);
+                  final capsuleBorder = Color.alphaBlend(
+                    brandAccent.withOpacity(0.24),
+                    appBarFg.withOpacity(0.06),
+                  );
+                  final neutralSectionTint = Color.alphaBlend(
+                    appBarFg.withOpacity(0.035),
+                    appBarBg,
+                  );
+                  final statusSectionTint = Color.alphaBlend(
+                    statusColor.withOpacity(isOpen ? 0.08 : 0.05),
+                    neutralSectionTint,
+                  );
+                  final sectionStroke = Color.alphaBlend(
+                    brandAccent.withOpacity(0.12),
+                    appBarFg.withOpacity(0.05),
+                  );
                   final pulse = CurvedAnimation(
                     parent: _cashPulseController ?? kAlwaysDismissedAnimation,
                     curve: Curves.easeInOut,
                   );
+                  final cashLabel = isOpen ? 'Caja abierta' : 'Caja cerrada';
+                  final profileName = (_displayName ?? _username ?? 'Usuario')
+                      .trim();
+                  final cashDetail = isOpen
+                      ? 'Corte #$_openCashSessionId'
+                      : (_canAccessCash
+                            ? 'Abrir o consultar caja'
+                            : 'Sin acceso de caja');
+                  final capsuleRadius = (18 * s).clamp(17.0, 21.0);
+                  final sectionRadius = (14 * s).clamp(13.0, 16.0);
+                  final sectionHorizontalPadding = (10 * s).clamp(9.0, 12.0);
+                  final sectionVerticalPadding = (4.5 * s).clamp(4.0, 5.5);
+                  final labelTextStyle = TextStyle(
+                    color: appBarFg.withOpacity(0.58),
+                    fontSize: (7.9 * s).clamp(7.6, 8.8),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.18,
+                    height: 1.0,
+                  );
+                  final valueTextStyle = TextStyle(
+                    color: appBarFg,
+                    fontSize: (11.3 * s).clamp(10.8, 12.4),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.04,
+                    height: 1.02,
+                  );
 
-                  return Tooltip(
-                    message: tooltip,
-                    waitDuration: const Duration(milliseconds: 350),
+                  return Align(
+                    alignment: Alignment.centerRight,
                     child: AnimatedBuilder(
-                      animation: pulse,
-                      builder: (context, child) {
-                        final pulseValue = isOpen && !_isCashHover
-                            ? pulse.value
-                            : 0.0;
-                        final scale = 1.0 + (pulseValue * 0.03);
-
-                        return Transform.scale(scale: scale, child: child);
-                      },
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        onEnter: (_) => setState(() => _isCashHover = true),
-                        onExit: (_) => setState(() => _isCashHover = false),
-                        child: Material(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            onTap: _onCashPressed,
-                            borderRadius: BorderRadius.circular(14),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 160),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 10.0 * s,
-                                vertical: 7.0 * s,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _isCashHover ? hoverBg : boxBg,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: _isCashHover
-                                      ? hoverBorder
-                                      : (isOpen
-                                            ? statusColor.withValues(
-                                                alpha: 0.72,
-                                              )
-                                            : boxBorder),
-                                  width: isOpen ? 1.25 : 1.0,
+                    animation: pulse,
+                    builder: (context, child) {
+                      final glowStrength = isOpen ? pulse.value : 0.0;
+                      final animatedBorder = Color.lerp(
+                        capsuleBorder,
+                        brandAccent.withOpacity(0.30),
+                        glowStrength * 0.55,
+                      )!;
+                      final animatedShadow = Color.lerp(
+                        brandAccent.withOpacity(0.06),
+                        brandAccent.withOpacity(0.14),
+                        glowStrength,
+                      )!;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        constraints: BoxConstraints(
+                          maxWidth: (isCompact ? 278.0 : 432.0) * s,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: (10 * s).clamp(9.0, 13.0),
+                          vertical: (4.5 * s).clamp(4.0, 5.5),
+                        ),
+                        decoration: BoxDecoration(
+                          color: capsuleBg,
+                          borderRadius: BorderRadius.circular(capsuleRadius),
+                          border: Border.all(color: animatedBorder),
+                          boxShadow: [
+                            BoxShadow(
+                              color: animatedShadow,
+                              blurRadius: 12 + (glowStrength * 6),
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: child,
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          flex: 5,
+                          child: Tooltip(
+                            message: '$cashLabel. $cashDetail',
+                            waitDuration: const Duration(milliseconds: 350),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: null,
+                                borderRadius: BorderRadius.circular(
+                                  sectionRadius,
                                 ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color:
-                                        (isOpen ? statusColor : scheme.shadow)
-                                            .withValues(
-                                              alpha: isOpen
-                                                  ? (_isCashHover ? 0.22 : 0.18)
-                                                  : (_isCashHover
-                                                        ? 0.12
-                                                        : 0.06),
-                                            ),
-                                    blurRadius: isOpen
-                                        ? (_isCashHover ? 18 : 14)
-                                        : (_isCashHover ? 12 : 8),
-                                    offset: const Offset(0, 4),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: sectionHorizontalPadding,
+                                    vertical: sectionVerticalPadding,
                                   ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Stack(
-                                    clipBehavior: Clip.none,
+                                  decoration: BoxDecoration(
+                                    color: statusSectionTint,
+                                    borderRadius: BorderRadius.circular(
+                                      sectionRadius,
+                                    ),
+                                    border: Border.all(color: sectionStroke),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
                                     children: [
-                                      Icon(
-                                        isOpen
-                                            ? Icons.account_balance_wallet
-                                            : Icons.inventory_2_rounded,
-                                        size: (19 * s).clamp(17.0, 24.0),
-                                        color: appBarFg.withValues(
-                                          alpha: _isCashHover ? 1.0 : 0.96,
+                                      Container(
+                                        width: (28 * s).clamp(25.0, 30.0),
+                                        height: (28 * s).clamp(25.0, 30.0),
+                                        decoration: BoxDecoration(
+                                          color: brandAccent.withOpacity(0.10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: Stack(
+                                          clipBehavior: Clip.none,
+                                          alignment: Alignment.center,
+                                          children: [
+                                            Icon(
+                                              isOpen
+                                                  ? Icons.account_balance_wallet_outlined
+                                                  : Icons.lock_outline_rounded,
+                                              size: (13 * s).clamp(11.0, 14.0),
+                                              color: brandAccent,
+                                            ),
+                                            Positioned(
+                                              right: -1,
+                                              top: -1,
+                                              child: Container(
+                                                width: (8 * s).clamp(7.0, 9.0),
+                                                height: (8 * s).clamp(7.0, 9.0),
+                                                decoration: BoxDecoration(
+                                                  color: statusColor,
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: capsuleBg,
+                                                    width: 1.1,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      if (isOpen)
-                                        Positioned(
-                                          top: -5 * s,
-                                          right: -5 * s,
-                                          child: Container(
-                                            padding: EdgeInsets.all(3.0 * s),
-                                            decoration: BoxDecoration(
-                                              color: statusColor,
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: statusColor.withValues(
-                                                    alpha: 0.24,
-                                                  ),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
+                                      SizedBox(
+                                        width: (8 * s).clamp(6.0, 10.0),
+                                      ),
+                                      Flexible(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              'Estado de caja',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: labelTextStyle,
                                             ),
-                                            child: Icon(
-                                              Icons.attach_money,
-                                              size: (10 * s).clamp(9.0, 12.0),
-                                              color: scheme.onPrimary,
+                                            SizedBox(
+                                              height: (2.5 * s).clamp(2.0, 3.0),
                                             ),
-                                          ),
-                                        )
-                                      else
-                                        Positioned(
-                                          top: -5 * s,
-                                          right: -5 * s,
-                                          child: Container(
-                                            padding: EdgeInsets.all(3.0 * s),
-                                            decoration: BoxDecoration(
-                                              color: appBarFg.withValues(
-                                                alpha: 0.10,
-                                              ),
-                                              shape: BoxShape.circle,
+                                            Text(
+                                              isOpen && !isCompact
+                                                  ? 'Caja abierta #$_openCashSessionId'
+                                                  : cashLabel,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: valueTextStyle,
                                             ),
-                                            child: Icon(
-                                              Icons.lock_outline,
-                                              size: (10 * s).clamp(9.0, 12.0),
-                                              color: appBarFg.withValues(
-                                                alpha: 0.70,
-                                              ),
-                                            ),
-                                          ),
+                                          ],
                                         ),
+                                      ),
                                     ],
                                   ),
-                                  SizedBox(width: (8 * s).clamp(6.0, 10.0)),
-                                  Text(
-                                    isOpen ? 'Corte' : 'Caja',
-                                    style: TextStyle(
-                                      color: appBarFg,
-                                      fontSize: (11.5 * s).clamp(10.0, 12.5),
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.15,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-
-              SizedBox(width: spaceS / 1.5),
-              // Línea vertical elegante separando icono de caja y perfil/nombre
-              Container(
-                width: 1,
-                height: (topbarHeight * 0.52).clamp(20.0, 34.0),
-                decoration: BoxDecoration(
-                  color: appBarFg.withValues(alpha: 0.20),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-
-              SizedBox(width: spaceM),
-              Tooltip(
-                message: 'Perfil',
-                waitDuration: const Duration(milliseconds: 350),
-                child: InkWell(
-                  onTap: () => context.go('/account'),
-                  borderRadius: BorderRadius.circular(999),
-                  child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: (isCompact ? 160.0 : 240.0) * s,
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: (12 * s).clamp(10.0, 14.0),
-                      vertical: (8 * s).clamp(7.0, 10.0),
-                    ),
-                    decoration: BoxDecoration(
-                      color: appBarFg.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: appBarFg.withValues(alpha: 0.22),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircleAvatar(
-                          radius: (14 * s).clamp(12.0, 14.0),
-                          backgroundColor: scheme.secondary,
-                          backgroundImage: (_profileImagePath != null)
-                              ? FileImage(File(_profileImagePath!))
-                              : null,
-                          child: (_profileImagePath == null)
-                              ? Icon(
-                                  Icons.person,
-                                  size: (14 * s).clamp(12.0, 14.0),
-                                  color: ColorUtils.ensureReadableColor(
-                                    scheme.onSecondary,
-                                    scheme.secondary,
-                                  ),
-                                )
-                              : null,
+                        SizedBox(width: (9 * s).clamp(7.0, 11.0)),
+                        Container(
+                          width: 1,
+                          height: (topbarHeight * 0.42).clamp(16.0, 26.0),
+                          decoration: BoxDecoration(
+                            color: appBarFg.withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                         ),
-                        SizedBox(width: (8 * s).clamp(6.0, 10.0)),
+                        SizedBox(width: (9 * s).clamp(7.0, 11.0)),
                         Flexible(
-                          child: Text(
-                            (_displayName ?? _username ?? 'Usuario').trim(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: appBarFg,
-                              fontSize: (13.5 * s).clamp(12.0, 14.5),
-                              fontWeight: FontWeight.w700,
+                          flex: 5,
+                          child: Tooltip(
+                            message:
+                                '$profileName · @${(_username ?? 'usuario').trim()}',
+                            waitDuration: const Duration(milliseconds: 350),
+                            child: PopupMenuButton<_UserMenuAction>(
+                              tooltip: '',
+                              offset: const Offset(0, 10),
+                              onSelected: _handleUserMenuAction,
+                              itemBuilder: (context) {
+                                final canCash = _canAccessCash;
+                                final canHistory = _canViewCashHistory || canCash;
+                                final canFinishShift = _canCloseShift;
+                                final canViewCurrentCut =
+                                    canCash || _canCloseShift || _canOpenCashbox;
+                                final hasShift = _openCashSessionId != null;
+                                final warn = status?.warning ?? scheme.tertiary;
+
+                                Widget row(
+                                  IconData icon,
+                                  String text, {
+                                  Color? color,
+                                  FontWeight? weight,
+                                }) {
+                                  final effectiveColor =
+                                      color ?? Theme.of(context).colorScheme.onSurface;
+                                  return Row(
+                                    children: [
+                                      Icon(icon, size: 18, color: effectiveColor),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        text,
+                                        style: TextStyle(
+                                          color: effectiveColor,
+                                          fontWeight: weight ?? FontWeight.w700,
+                                          fontFamily: 'Inter',
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+
+                                return [
+                                  PopupMenuItem(
+                                    value: _UserMenuAction.profile,
+                                    child: row(
+                                      Icons.person_outline_rounded,
+                                      'Perfil',
+                                    ),
+                                  ),
+                                  const PopupMenuDivider(),
+                                  PopupMenuItem(
+                                    value: _UserMenuAction.finishShift,
+                                    enabled: canFinishShift && hasShift,
+                                    child: row(
+                                      Icons.flag_outlined,
+                                      'Finalizar turno',
+                                      color: warn,
+                                      weight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: _UserMenuAction.viewCurrentCut,
+                                    enabled: canViewCurrentCut,
+                                    child: row(
+                                      Icons.receipt_long_outlined,
+                                      'Ver corte actual',
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: _UserMenuAction.cutHistory,
+                                    enabled: canHistory,
+                                    child: row(
+                                      Icons.history_rounded,
+                                      'Historial de cortes',
+                                    ),
+                                  ),
+                                  const PopupMenuDivider(),
+                                  PopupMenuItem(
+                                    value: _UserMenuAction.logout,
+                                    child: row(
+                                      Icons.logout_rounded,
+                                      'Cerrar sesión',
+                                      color: scheme.error,
+                                      weight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ];
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                                decoration: BoxDecoration(
+                                  color: neutralSectionTint,
+                                  borderRadius: BorderRadius.circular(
+                                    sectionRadius,
+                                  ),
+                                  border: Border.all(color: sectionStroke),
+                                ),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: sectionHorizontalPadding,
+                                  vertical: sectionVerticalPadding,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
+                                        color: brandAccent.withOpacity(0.12),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: CircleAvatar(
+                                        radius: (13 * s).clamp(11.0, 13.0),
+                                        backgroundColor: brandAccent,
+                                        backgroundImage: _profileImagePath != null
+                                            ? FileImage(
+                                                File(_profileImagePath!),
+                                              )
+                                            : null,
+                                        child: _profileImagePath == null
+                                            ? Icon(
+                                                Icons.person,
+                                                size: (12 * s).clamp(
+                                                  10.0,
+                                                  12.0,
+                                                ),
+                                                color:
+                                                    ColorUtils.ensureReadableColor(
+                                                  scheme.onPrimary,
+                                                  brandAccent,
+                                                ),
+                                              )
+                                            : null,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: (8 * s).clamp(6.0, 10.0),
+                                    ),
+                                    Flexible(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Usuario activo',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: labelTextStyle,
+                                          ),
+                                          SizedBox(
+                                            height: (2.5 * s).clamp(2.0, 3.0),
+                                          ),
+                                          Text(
+                                            profileName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: valueTextStyle,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: (4 * s).clamp(3.0, 6.0),
+                                    ),
+                                    Container(
+                                      width: (22 * s).clamp(20.0, 24.0),
+                                      height: (22 * s).clamp(20.0, 24.0),
+                                      decoration: BoxDecoration(
+                                        color: brandAccent.withOpacity(0.10),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        Icons.expand_more_rounded,
+                                        size: (14 * s).clamp(12.0, 16.0),
+                                        color: brandAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
               SizedBox(width: spaceM),
             ],

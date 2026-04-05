@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../core/utils/accounting_amount_formatter.dart';
 
 class CashboxOpenDialog extends StatefulWidget {
   final bool canOpen;
@@ -46,13 +48,13 @@ class CashboxOpenDialog extends StatefulWidget {
 }
 
 class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
-  final _amountController = TextEditingController(text: '0.00');
+  final _amountController = TextEditingController(text: '0');
   bool _submitting = false;
 
   void _submit() {
     if (!widget.canOpen || _submitting) return;
     setState(() => _submitting = true);
-    final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+    final amount = AccountingAmountFormatter.parse(_amountController.text);
     Navigator.pop(context, amount);
   }
 
@@ -182,13 +184,18 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                             TextFormField(
                               controller: _amountController,
                               enabled: !_submitting,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                AccountingAmountFormatter(allowEmpty: false),
+                              ],
                               decoration: InputDecoration(
                                 labelText: 'Fondo inicial',
-                                hintText: '0.00',
+                                hintText: '25,250',
                                 prefixText: 'RD\$ ',
-                                prefixIcon: Icon(Icons.payments_outlined, color: scheme.primary),
+                                prefixIcon: Icon(
+                                  Icons.payments_outlined,
+                                  color: scheme.primary,
+                                ),
                                 filled: true,
                                 fillColor: inputFill,
                                 border: OutlineInputBorder(
@@ -201,7 +208,10 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: scheme.primary, width: 2),
+                                  borderSide: BorderSide(
+                                    color: scheme.primary,
+                                    width: 2,
+                                  ),
                                 ),
                               ),
                             ),

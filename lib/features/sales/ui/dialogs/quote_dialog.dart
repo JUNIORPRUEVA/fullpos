@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../data/sale_item_model.dart';
 import '../../data/quote_model.dart';
 import '../../data/quotes_repository.dart';
@@ -260,7 +260,8 @@ class _QuoteDialogState extends State<QuoteDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final status = theme.extension<AppStatusTheme>() ??
+    final status =
+        theme.extension<AppStatusTheme>() ??
         AppStatusTheme(
           success: scheme.primary,
           warning: scheme.tertiary,
@@ -280,176 +281,178 @@ class _QuoteDialogState extends State<QuoteDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: headerColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.description, color: headerForeground, size: 32),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'NUEVA COTIZACIÓN',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: headerForeground,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        Text(
-                          'Configure los detalles de la cotización',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: headerForeground.withOpacity(0.8),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: Icon(Icons.close, color: headerForeground),
-                  ),
-                ],
-              ),
-            ),
-
-            // Body
-            Flexible(
-              child: SingleChildScrollView(
+              // Header
+              Container(
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                decoration: BoxDecoration(
+                  color: headerColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
                   children: [
-                    // Sección Cliente
-                    _buildSectionTitle('CLIENTE', Icons.person),
-                    const SizedBox(height: 12),
-                    _buildClientSection(),
-
-                    const SizedBox(height: 24),
-
-                    // Sección Productos
-                    _buildSectionTitle(
-                      'PRODUCTOS (${_items.length})',
-                      Icons.shopping_cart,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildItemsList(),
-
-                    const SizedBox(height: 24),
-
-                    // Sección Configuración
-                    _buildSectionTitle('CONFIGURACIÓN', Icons.settings),
-                    const SizedBox(height: 12),
-                    _buildConfigSection(),
-
-                    const SizedBox(height: 24),
-
-                    // Sección Notas
-                    _buildSectionTitle('NOTAS', Icons.note),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _notesController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        hintText: 'Notas adicionales para el cliente...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: scheme.surfaceContainerHighest,
+                    Icon(Icons.description, color: headerForeground, size: 32),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'NUEVA COTIZACIÓN',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              color: headerForeground,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Text(
+                            'Configure los detalles de la cotización',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: headerForeground.withOpacity(0.8),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-
-                    const SizedBox(height: 24),
-
-                    // Totales
-                    _buildTotalsSection(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.close, color: headerForeground),
+                    ),
                   ],
                 ),
               ),
-            ),
 
-            // Footer con acciones
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(16),
+              // Body
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Sección Cliente
+                      _buildSectionTitle('CLIENTE', Icons.person),
+                      const SizedBox(height: 12),
+                      _buildClientSection(),
+
+                      const SizedBox(height: 24),
+
+                      // Sección Productos
+                      _buildSectionTitle(
+                        'PRODUCTOS (${_items.length})',
+                        Icons.shopping_cart,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildItemsList(),
+
+                      const SizedBox(height: 24),
+
+                      // Sección Configuración
+                      _buildSectionTitle('CONFIGURACIÓN', Icons.settings),
+                      const SizedBox(height: 12),
+                      _buildConfigSection(),
+
+                      const SizedBox(height: 24),
+
+                      // Sección Notas
+                      _buildSectionTitle('NOTAS', Icons.note),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _notesController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Notas adicionales para el cliente...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          filled: true,
+                          fillColor: scheme.surfaceContainerHighest,
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Totales
+                      _buildTotalsSection(),
+                    ],
+                  ),
                 ),
               ),
-              child: Row(
-                children: [
-                  // Botón cancelar
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('CANCELAR'),
-                  ),
-                  const Spacer(),
 
-                  // Botón Vista Previa PDF
-                  OutlinedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () => _saveQuote(preview: true),
-                    icon: const Icon(Icons.picture_as_pdf, size: 18),
-                    label: const Text('VER PDF'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: status.error,
-                      side: BorderSide(color: status.error),
+              // Footer con acciones
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // Botón cancelar
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('CANCELAR'),
                     ),
-                  ),
-                  const SizedBox(width: 8),
+                    const Spacer(),
 
-                  // Botón Guardar e Imprimir
-                  OutlinedButton.icon(
-                    onPressed: _isLoading
-                        ? null
-                        : () => _saveQuote(print: true),
-                    icon: const Icon(Icons.print, size: 18),
-                    label: const Text('GUARDAR E IMPRIMIR'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: scheme.primary,
-                      side: BorderSide(color: scheme.primary),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // Botón Guardar
-                  ElevatedButton.icon(
-                    onPressed: _isLoading ? null : () => _saveQuote(),
-                    icon: _isLoading
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: scheme.onPrimary,
-                            ),
-                          )
-                        : const Icon(Icons.save, size: 18),
-                    label: const Text('GUARDAR'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: scheme.primary,
-                      foregroundColor: scheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
+                    // Botón Vista Previa PDF
+                    OutlinedButton.icon(
+                      onPressed: _isLoading
+                          ? null
+                          : () => _saveQuote(preview: true),
+                      icon: const Icon(Icons.picture_as_pdf, size: 18),
+                      label: const Text('VER PDF'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: status.error,
+                        side: BorderSide(color: status.error),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+
+                    // Botón Guardar e Imprimir
+                    OutlinedButton.icon(
+                      onPressed: _isLoading
+                          ? null
+                          : () => _saveQuote(print: true),
+                      icon: const Icon(Icons.print, size: 18),
+                      label: const Text('GUARDAR E IMPRIMIR'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: scheme.primary,
+                        side: BorderSide(color: scheme.primary),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+
+                    // Botón Guardar
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : () => _saveQuote(),
+                      icon: _isLoading
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: scheme.onPrimary,
+                              ),
+                            )
+                          : const Icon(Icons.save, size: 18),
+                      label: const Text('GUARDAR'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: scheme.primary,
+                        foregroundColor: scheme.onPrimary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             ],
           ),
         ),
@@ -661,14 +664,14 @@ class _QuoteDialogState extends State<QuoteDialog> {
                   ),
                   Expanded(
                     child: Text(
-                      '\$${item.price.toStringAsFixed(2)}',
+                      CurrencyDisplay.format(item.price, symbol: r'$'),
                       textAlign: TextAlign.right,
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
                   Expanded(
                     child: Text(
-                      '\$${item.totalLine.toStringAsFixed(2)}',
+                      CurrencyDisplay.format(item.totalLine, symbol: r'$'),
                       textAlign: TextAlign.right,
                       style: const TextStyle(
                         fontSize: 13,
@@ -682,11 +685,7 @@ class _QuoteDialogState extends State<QuoteDialog> {
                       onPressed: () {
                         setState(() => _items.removeAt(index));
                       },
-                      icon: Icon(
-                        Icons.delete,
-                        size: 18,
-                        color: status.error,
-                      ),
+                      icon: Icon(Icons.delete, size: 18, color: status.error),
                       tooltip: 'Eliminar',
                     ),
                   ),
@@ -799,7 +798,7 @@ class _QuoteDialogState extends State<QuoteDialog> {
         (isBold
             ? scheme.onPrimaryContainer
             : scheme.onPrimaryContainer.withOpacity(0.85));
-    final formatter = NumberFormat('#,##0.00', 'en_US');
+    final formatter = CurrencyDisplay.currency(symbol: r'$');
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -814,7 +813,7 @@ class _QuoteDialogState extends State<QuoteDialog> {
             ),
           ),
           Text(
-            '\$${formatter.format(amount)}',
+            formatter.format(amount),
             style: TextStyle(
               fontSize: fontSize,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
@@ -909,48 +908,48 @@ class _ClientPickerDialogState extends State<_ClientPickerDialog> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-            const Text(
-              'SELECCIONAR CLIENTE',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              onChanged: (value) => setState(() => _searchQuery = value),
-              decoration: InputDecoration(
-                hintText: 'Buscar por nombre, teléfono o RNC...',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+              const Text(
+                'SELECCIONAR CLIENTE',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                onChanged: (value) => setState(() => _searchQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Buscar por nombre, teléfono o RNC...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _filteredClients.isEmpty
-                  ? const Center(child: Text('No se encontraron clientes'))
-                  : ListView.builder(
-                      itemCount: _filteredClients.length,
-                      itemBuilder: (context, index) {
-                        final client = _filteredClients[index];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: scheme.primaryContainer,
-                            child: Icon(
-                              Icons.person,
-                              color: scheme.onPrimaryContainer,
+              const SizedBox(height: 12),
+              Expanded(
+                child: _filteredClients.isEmpty
+                    ? const Center(child: Text('No se encontraron clientes'))
+                    : ListView.builder(
+                        itemCount: _filteredClients.length,
+                        itemBuilder: (context, index) {
+                          final client = _filteredClients[index];
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: scheme.primaryContainer,
+                              child: Icon(
+                                Icons.person,
+                                color: scheme.onPrimaryContainer,
+                              ),
                             ),
-                          ),
-                          title: Text(client.nombre),
-                          subtitle: Text(client.telefono ?? client.rnc ?? ''),
-                          onTap: () => Navigator.pop(context, client),
-                        );
-                      },
-                    ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('CANCELAR'),
-            ),
+                            title: Text(client.nombre),
+                            subtitle: Text(client.telefono ?? client.rnc ?? ''),
+                            onTap: () => Navigator.pop(context, client),
+                          );
+                        },
+                      ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CANCELAR'),
+              ),
             ],
           ),
         ),

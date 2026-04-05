@@ -12,6 +12,7 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../theme/app_colors.dart';
 import '../../cash/data/cash_movement_model.dart';
 import '../../cash/data/cash_repository.dart';
@@ -28,7 +29,9 @@ enum DateFilter { all, today, yesterday, thisWeek, thisMonth, custom }
 
 enum _SalesRowAction { view, refund }
 
-/// Pantalla unificada de facturas y devoluciones.
+enum _InvoiceStatusFilter { all, active, withRefund, partialRefund, refunded }
+
+/// Pantalla de facturas con devolucion integrada por factura.
 class FacturaPage extends StatefulWidget {
   const FacturaPage({super.key});
 
@@ -39,13 +42,9 @@ class FacturaPage extends StatefulWidget {
 class _FacturaPageState extends State<FacturaPage> {
   final _searchController = TextEditingController();
   Timer? _searchDebounce;
-  int _activeTab = 0; // 0: Facturas | 1: Devoluciones
 
   SaleModel? _selectedSale;
   int? _selectedSaleId;
-
-  Map<String, dynamic>? _selectedReturn;
-  int? _selectedReturnId;
 
   List<SaleModel> _completedSales = [];
   List<Map<String, dynamic>> _returns = [];
@@ -59,6 +58,7 @@ class _FacturaPageState extends State<FacturaPage> {
   DateTime? _customDateFrom;
   DateTime? _customDateTo;
   int? _selectedSessionId;
+  _InvoiceStatusFilter _statusFilter = _InvoiceStatusFilter.all;
 
   ColorScheme get scheme => Theme.of(context).colorScheme;
   AppStatusTheme get status =>
@@ -138,6 +138,24 @@ class _FacturaPageState extends State<FacturaPage> {
     return _cashierNameBySessionId[sessionId] ?? 'Cajero #$sessionId';
   }
 
+  List<Map<String, dynamic>> _returnsForSale(SaleModel sale) {
+    final saleId = sale.id;
+    if (saleId == null) return const [];
+    return _returns.where((ret) => ret['original_sale_id'] == saleId).toList()
+      ..sort(
+        (a, b) => ((b['created_at_ms'] as int?) ?? 0).compareTo(
+          (a['created_at_ms'] as int?) ?? 0,
+        ),
+      );
+  }
+
+  double _refundedAmountForSale(SaleModel sale) {
+    return _returnsForSale(sale).fold<double>(
+      0,
+      (sum, ret) => sum + (((ret['total'] as num?)?.toDouble() ?? 0).abs()),
+    );
+  }
+
   Future<void> _loadData() async {
     if (!mounted) return;
     final seq = ++_loadSeq;
@@ -180,12 +198,7 @@ class _FacturaPageState extends State<FacturaPage> {
       if (!mounted || seq != _loadSeq) return;
       _safeSetState(() {
         _completedSales = sales
-            .where(
-              (s) =>
-                  s.kind == 'invoice' &&
-                  s.status != 'cancelled' &&
-                  s.status != 'REFUNDED',
-            )
+            .where((s) => s.kind == 'invoice' && s.status != 'cancelled')
             .toList();
         _returns = returns;
         _cashierNameBySessionId = cashierNames;
@@ -216,33 +229,15 @@ class _FacturaPageState extends State<FacturaPage> {
     final query = _searchQuery.toLowerCase();
     return _completedSales.where((sale) {
       if (!_matchesCashier(sale.sessionId)) return false;
+      if (!_matchesStatusFilter(sale)) return false;
       if (query.isEmpty) return true;
 
       return sale.localCode.toLowerCase().contains(query) ||
           (sale.customerNameSnapshot?.toLowerCase().contains(query) ?? false) ||
           sale.total.toString().contains(query) ||
-          _cashierLabelForSessionId(sale.sessionId).toLowerCase().contains(query);
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> get _filteredReturns {
-    final query = _searchQuery.toLowerCase();
-    return _returns.where((ret) {
-      final sessionId = ret['session_id'] as int?;
-      if (!_matchesCashier(sessionId)) return false;
-      if (query.isEmpty) return true;
-
-      final code = ((ret['local_code'] as String?) ?? '').toLowerCase();
-      final customer =
-          ((ret['customer_name_snapshot'] as String?) ?? '').toLowerCase();
-      final total = ((ret['total'] as num?)?.toDouble().abs() ?? 0.0)
-          .toStringAsFixed(2);
-      final cashier = _cashierLabelForSessionId(sessionId).toLowerCase();
-
-      return code.contains(query) ||
-          customer.contains(query) ||
-          total.contains(query) ||
-          cashier.contains(query);
+          _cashierLabelForSessionId(
+            sale.sessionId,
+          ).toLowerCase().contains(query);
     }).toList();
   }
 
@@ -255,80 +250,70 @@ class _FacturaPageState extends State<FacturaPage> {
     });
   }
 
-  void _setActiveTab(int index) {
-    if (index == _activeTab) return;
-    _safeSetState(() {
-      _activeTab = index;
-      _ensureSelection();
-    });
+  bool _matchesStatusFilter(SaleModel sale) {
+    final statusValue = sale.status.toUpperCase();
+    final hasRefund =
+        statusValue == 'PARTIAL_REFUND' || statusValue == 'REFUNDED';
+
+    switch (_statusFilter) {
+      case _InvoiceStatusFilter.all:
+        return true;
+      case _InvoiceStatusFilter.active:
+        return !hasRefund;
+      case _InvoiceStatusFilter.withRefund:
+        return hasRefund;
+      case _InvoiceStatusFilter.partialRefund:
+        return statusValue == 'PARTIAL_REFUND';
+      case _InvoiceStatusFilter.refunded:
+        return statusValue == 'REFUNDED';
+    }
+  }
+
+  String _statusFilterLabel(_InvoiceStatusFilter filter) {
+    switch (filter) {
+      case _InvoiceStatusFilter.all:
+        return 'Todas';
+      case _InvoiceStatusFilter.active:
+        return 'Sin devolucion';
+      case _InvoiceStatusFilter.withRefund:
+        return 'Con devolucion';
+      case _InvoiceStatusFilter.partialRefund:
+        return 'Parcial';
+      case _InvoiceStatusFilter.refunded:
+        return 'Devueltas';
+    }
   }
 
   void _ensureSelection() {
-    if (_activeTab == 0) {
-      final list = _filteredSales;
-      if (list.isEmpty) {
-        _selectedSale = null;
-        _selectedSaleId = null;
-        return;
-      }
-
-      final currentId = _selectedSaleId;
-      if (currentId == null) {
-        _selectedSale = list.first;
-        _selectedSaleId = _selectedSale?.id;
-        return;
-      }
-
-      final match = list.firstWhere(
-        (s) => s.id == currentId,
-        orElse: () => list.first,
-      );
-      _selectedSale = match;
-      _selectedSaleId = match.id;
-      return;
-    }
-
-    final list = _filteredReturns;
+    final list = _filteredSales;
     if (list.isEmpty) {
-      _selectedReturn = null;
-      _selectedReturnId = null;
+      _selectedSale = null;
+      _selectedSaleId = null;
       return;
     }
 
-    final currentId = _selectedReturnId;
+    final currentId = _selectedSaleId;
     if (currentId == null) {
-      _selectedReturn = list.first;
-      _selectedReturnId = (_selectedReturn?['id'] as int?);
+      _selectedSale = list.first;
+      _selectedSaleId = _selectedSale?.id;
       return;
     }
 
     final match = list.firstWhere(
-      (r) => (r['id'] as int?) == currentId,
+      (s) => s.id == currentId,
       orElse: () => list.first,
     );
-    _selectedReturn = match;
-    _selectedReturnId = (match['id'] as int?);
+    _selectedSale = match;
+    _selectedSaleId = match.id;
   }
 
   void _selectSale(SaleModel sale, {required bool showDetails}) {
     _safeSetState(() {
-      _activeTab = 0;
       _selectedSale = sale;
       _selectedSaleId = sale.id;
     });
     if (showDetails) {
       _showSaleDetails(sale);
-    }
-  }
-
-  void _selectReturn(Map<String, dynamic> ret, {required bool showDetails}) {
-    _safeSetState(() {
-      _activeTab = 1;
-      _selectedReturn = ret;
-      _selectedReturnId = (ret['id'] as int?);
-    });
-    if (showDetails) {
-      _showReturnDetails(ret);
     }
   }
 
@@ -426,7 +411,6 @@ class _FacturaPageState extends State<FacturaPage> {
             28.0,
           );
           final verticalPadding = 10.0;
-          final itemSpacing = 8.0;
           final isWide = constraints.maxWidth >= 1200;
           final detailWidth = (constraints.maxWidth * 0.28).clamp(320.0, 460.0);
 
@@ -448,17 +432,10 @@ class _FacturaPageState extends State<FacturaPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
-                            child: _activeTab == 0
-                                ? _buildSalesTab(
-                                    listPadding: listPadding,
-                                    itemSpacing: itemSpacing,
-                                    isWide: true,
-                                  )
-                                : _buildHistoryTab(
-                                    listPadding: listPadding,
-                                    itemSpacing: itemSpacing,
-                                    isWide: true,
-                                  ),
+                            child: _buildSalesTab(
+                              listPadding: listPadding,
+                              isWide: true,
+                            ),
                           ),
                           const SizedBox(width: 24),
                           SizedBox(
@@ -467,17 +444,7 @@ class _FacturaPageState extends State<FacturaPage> {
                           ),
                         ],
                       )
-                    : _activeTab == 0
-                    ? _buildSalesTab(
-                        listPadding: listPadding,
-                        itemSpacing: itemSpacing,
-                        isWide: false,
-                      )
-                    : _buildHistoryTab(
-                        listPadding: listPadding,
-                        itemSpacing: itemSpacing,
-                        isWide: false,
-                      ),
+                    : _buildSalesTab(listPadding: listPadding, isWide: false),
               ),
             ],
           );
@@ -538,25 +505,38 @@ class _FacturaPageState extends State<FacturaPage> {
         final hasActiveFilters =
             _searchQuery.trim().isNotEmpty ||
             _selectedFilter != DateFilter.thisMonth ||
-          _selectedSessionId != null ||
+            _selectedSessionId != null ||
+            _statusFilter != _InvoiceStatusFilter.all ||
             (_selectedFilter == DateFilter.custom &&
                 (_customDateFrom != null || _customDateTo != null));
 
-        final tabToggle = ToggleButtons(
-          isSelected: [_activeTab == 0, _activeTab == 1],
-          onPressed: (i) => _setActiveTab(i),
-          borderRadius: BorderRadius.circular(10),
-          constraints: const BoxConstraints(minHeight: 40),
-          children: const [
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text('Facturas'),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text('Devoluciones'),
-            ),
-          ],
+        final statusDropdown = Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(10),
+            color: scheme.surface,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: DropdownButton<_InvoiceStatusFilter>(
+            value: _statusFilter,
+            underline: const SizedBox(),
+            isDense: true,
+            items: _InvoiceStatusFilter.values
+                .map(
+                  (filter) => DropdownMenuItem<_InvoiceStatusFilter>(
+                    value: filter,
+                    child: Text(_statusFilterLabel(filter)),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              _safeSetState(() {
+                _statusFilter = value;
+                _ensureSelection();
+              });
+            },
+          ),
         );
 
         final dateDropdown = Container(
@@ -659,7 +639,7 @@ class _FacturaPageState extends State<FacturaPage> {
         final actionsRow = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            tabToggle,
+            statusDropdown,
             SizedBox(width: gap),
             dateDropdown,
             SizedBox(width: gap),
@@ -677,6 +657,7 @@ class _FacturaPageState extends State<FacturaPage> {
                     _customDateFrom = null;
                     _customDateTo = null;
                     _selectedSessionId = null;
+                    _statusFilter = _InvoiceStatusFilter.all;
                   });
                   _loadData();
                 },
@@ -706,7 +687,14 @@ class _FacturaPageState extends State<FacturaPage> {
         );
 
         return Container(
-          color: scheme.surfaceContainerHighest,
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: scheme.outlineVariant.withOpacity(0.35),
+              ),
+            ),
+          ),
           padding: EdgeInsets.symmetric(
             horizontal: horizontalPadding,
             vertical: 10,
@@ -724,15 +712,32 @@ class _FacturaPageState extends State<FacturaPage> {
                         ),
                         const SizedBox(width: 4),
                         Expanded(
-                          child: Text(
-                            'Factura',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Facturas',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Consulta, imprime y procesa devoluciones desde una sola vista.',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        summary,
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -745,21 +750,60 @@ class _FacturaPageState extends State<FacturaPage> {
                   ],
                 )
               : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    IconButton(
-                      onPressed: _handleBack,
-                      tooltip: 'Volver',
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Factura',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
+                    Container(
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.borderSoft),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(8, 8, 14, 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: _handleBack,
+                            tooltip: 'Volver',
+                            icon: const Icon(Icons.arrow_back),
+                          ),
+                          const SizedBox(width: 4),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Facturas',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Vista compacta con devolucion integrada',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                     SizedBox(width: gap),
-                    Expanded(flex: 3, child: searchField),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        children: [
+                          searchField,
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: summary,
+                          ),
+                        ],
+                      ),
+                    ),
                     SizedBox(width: gap),
                     Expanded(
                       flex: 4,
@@ -777,7 +821,6 @@ class _FacturaPageState extends State<FacturaPage> {
 
   Widget _buildSalesTab({
     required EdgeInsets listPadding,
-    required double itemSpacing,
     required bool isWide,
   }) {
     final theme = Theme.of(context);
@@ -787,333 +830,436 @@ class _FacturaPageState extends State<FacturaPage> {
     final sales = _filteredSales;
     if (sales.isEmpty) {
       return Center(
-        child: Text(
-          _searchQuery.trim().isEmpty
-              ? 'No hay facturas en este periodo'
-              : 'No se encontraron resultados',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 420),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.borderSoft),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.receipt_long_outlined,
+                size: 34,
+                color: scheme.primary,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _searchQuery.trim().isEmpty
+                    ? 'No hay facturas en este periodo'
+                    : 'No se encontraron resultados',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Prueba otro rango, otro cajero o cambia el filtro de devolucion.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       );
     }
 
-    return ListView.separated(
-      padding: listPadding,
-      itemCount: sales.length,
-      separatorBuilder: (context, index) => SizedBox(height: itemSpacing),
-      itemBuilder: (context, index) {
-        final sale = sales[index];
-        final isSelected = sale.id != null && sale.id == _selectedSaleId;
-        final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
-        final customer = sale.customerNameSnapshot ?? 'Cliente General';
-        final isPartial = sale.status == 'PARTIAL_REFUND';
-        final statusLabel = isPartial ? 'PARCIAL' : 'OK';
-        const statusBg = Color(0xFFDCFCE7);
-        const statusFg = Color(0xFF166534);
-
-        return Material(
-          color: isSelected
-              ? AppColors.lightBlueHover.withOpacity(0.55)
-              : scheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: () => _selectSale(sale, showDetails: !isWide),
-            borderRadius: BorderRadius.circular(12),
-            hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.borderSoft),
+    return Container(
+      margin: listPadding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLowest,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      sale.localCode,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 5,
-                    child: Text(
-                      customer,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        fontFamily: 'Inter',
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      dateFormat.format(date),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w400,
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: _buildMoneyText(
-                        amount: sale.total,
-                        bigStyle: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'Inter',
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Listado de facturas',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
                         ),
-                        smallStyle: theme.textTheme.bodySmall?.copyWith(
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Selecciona una factura para ver el resumen completo a la derecha.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
                           fontWeight: FontWeight.w500,
-                          fontFamily: 'Inter',
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusBg,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: statusFg,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Inter',
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  PopupMenuButton<_SalesRowAction>(
-                    tooltip: 'Acciones',
-                    icon: Icon(
-                      Icons.more_vert,
-                      size: 18,
-                      color: scheme.onSurface.withOpacity(0.7),
-                    ),
-                    onSelected: (action) {
-                      switch (action) {
-                        case _SalesRowAction.view:
-                          _showSaleDetails(sale);
-                          break;
-                        case _SalesRowAction.refund:
-                          _showRefundDialog(sale);
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: _SalesRowAction.view,
-                        child: Row(
-                          children: [
-                            Icon(Icons.visibility_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Ver factura'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: _SalesRowAction.refund,
-                        child: Row(
-                          children: [
-                            Icon(Icons.assignment_return_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Devolver'),
-                          ],
                         ),
                       ),
                     ],
                   ),
+                ),
+                if (isWide) ...[
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Text(
+                      _statusFilter == _InvoiceStatusFilter.all
+                          ? 'Mostrando todas las facturas'
+                          : 'Filtro: ${_statusFilterLabel(_statusFilter)}',
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHistoryTab({
-    required EdgeInsets listPadding,
-    required double itemSpacing,
-    required bool isWide,
-  }) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final dateFormat = DateFormat('dd/MM/yy HH:mm');
-
-    final returns = _filteredReturns;
-    if (returns.isEmpty) {
-      return Center(
-        child: Text(
-          'No hay devoluciones en este periodo',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      padding: listPadding,
-      itemCount: returns.length,
-      separatorBuilder: (context, index) => SizedBox(height: itemSpacing),
-      itemBuilder: (context, index) {
-        final ret = returns[index];
-        final isSelected =
-            (ret['id'] as int?) != null &&
-            (ret['id'] as int?) == _selectedReturnId;
-        final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
-        final customer =
-            (ret['customer_name_snapshot'] as String?) ?? 'Cliente General';
-        final createdMs = (ret['created_at_ms'] as int?) ?? 0;
-        final date = DateTime.fromMillisecondsSinceEpoch(createdMs);
-        final total = (ret['total'] as num?)?.toDouble().abs() ?? 0.0;
-        final hasNote = (ret['note'] as String?)?.trim().isNotEmpty ?? false;
-
-        return Material(
-          color: isSelected
-              ? AppColors.lightBlueHover.withOpacity(0.55)
-              : scheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: () => _selectReturn(ret, showDetails: !isWide),
-            borderRadius: BorderRadius.circular(12),
-            hoverColor: AppColors.lightBlueHover.withOpacity(0.65),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.borderSoft),
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              itemCount: sales.length,
+              separatorBuilder: (context, index) => Divider(
+                height: 1,
+                thickness: 1,
+                color: AppColors.borderSoft,
+                indent: 16,
+                endIndent: 16,
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      code,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Inter',
-                        fontSize: 14,
+              itemBuilder: (context, index) {
+                final sale = sales[index];
+                final isSelected =
+                    sale.id != null && sale.id == _selectedSaleId;
+                final date = DateTime.fromMillisecondsSinceEpoch(
+                  sale.createdAtMs,
+                );
+                final customer = sale.customerNameSnapshot ?? 'Cliente General';
+                final statusStyle = _saleStatusStyle(sale);
+                final canRefund = sale.status.toUpperCase() != 'REFUNDED';
+
+                return Material(
+                  color: isSelected
+                      ? AppColors.lightBlueHover.withOpacity(0.30)
+                      : Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _selectSale(sale, showDetails: !isWide),
+                    hoverColor: AppColors.lightBlueHover.withOpacity(0.22),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, rowConstraints) {
+                          final compact = rowConstraints.maxWidth < 860;
+                          if (compact) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            sale.localCode,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontFamily: 'Inter',
+                                                ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            customer,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: scheme.onSurface,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontFamily: 'Inter',
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    _buildStatusChip(statusStyle),
+                                    PopupMenuButton<_SalesRowAction>(
+                                      tooltip: 'Acciones',
+                                      icon: Icon(
+                                        Icons.more_horiz,
+                                        size: 18,
+                                        color: scheme.onSurface.withOpacity(
+                                          0.7,
+                                        ),
+                                      ),
+                                      onSelected: (action) {
+                                        switch (action) {
+                                          case _SalesRowAction.view:
+                                            _showSaleDetails(sale);
+                                            break;
+                                          case _SalesRowAction.refund:
+                                            _showRefundDialog(sale);
+                                            break;
+                                        }
+                                      },
+                                      itemBuilder: (context) => [
+                                        const PopupMenuItem(
+                                          value: _SalesRowAction.view,
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.visibility_outlined,
+                                                size: 18,
+                                              ),
+                                              SizedBox(width: 8),
+                                              Text('Ver factura'),
+                                            ],
+                                          ),
+                                        ),
+                                        if (canRefund)
+                                          const PopupMenuItem(
+                                            value: _SalesRowAction.refund,
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons
+                                                      .assignment_return_outlined,
+                                                  size: 18,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text('Devolver'),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      dateFormat.format(date),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontFamily: 'Inter',
+                                          ),
+                                    ),
+                                    Text(
+                                      _cashierLabelForSessionId(sale.sessionId),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontFamily: 'Inter',
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: _buildMoneyText(
+                                    amount: sale.total,
+                                    bigStyle: theme.textTheme.bodyLarge
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          fontFamily: 'Inter',
+                                        ),
+                                    smallStyle: theme.textTheme.bodySmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          fontFamily: 'Inter',
+                                          color: AppColors.textSecondary,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          return Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      sale.localCode,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            fontFamily: 'Inter',
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _cashierLabelForSessionId(sale.sessionId),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontFamily: 'Inter',
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                flex: 5,
+                                child: Text(
+                                  customer,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  dateFormat.format(date),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textSecondary,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              _buildStatusChip(statusStyle),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                flex: 2,
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: _buildMoneyText(
+                                    amount: sale.total,
+                                    bigStyle: theme.textTheme.bodyLarge
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          fontFamily: 'Inter',
+                                        ),
+                                    smallStyle: theme.textTheme.bodySmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          fontFamily: 'Inter',
+                                          color: AppColors.textSecondary,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              PopupMenuButton<_SalesRowAction>(
+                                tooltip: 'Acciones',
+                                icon: Icon(
+                                  Icons.more_horiz,
+                                  size: 18,
+                                  color: scheme.onSurface.withOpacity(0.7),
+                                ),
+                                onSelected: (action) {
+                                  switch (action) {
+                                    case _SalesRowAction.view:
+                                      _showSaleDetails(sale);
+                                      break;
+                                    case _SalesRowAction.refund:
+                                      _showRefundDialog(sale);
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: _SalesRowAction.view,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.visibility_outlined,
+                                          size: 18,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text('Ver factura'),
+                                      ],
+                                    ),
+                                  ),
+                                  if (canRefund)
+                                    const PopupMenuItem(
+                                      value: _SalesRowAction.refund,
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.assignment_return_outlined,
+                                            size: 18,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text('Devolver'),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 5,
-                    child: Text(
-                      customer,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        fontFamily: 'Inter',
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      dateFormat.format(date),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w400,
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: _buildMoneyText(
-                        amount: total,
-                        bigStyle: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'Inter',
-                        ),
-                        smallStyle: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          fontFamily: 'Inter',
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  if (hasNote)
-                    Icon(
-                      Icons.comment_outlined,
-                      size: 18,
-                      color: scheme.onSurface.withOpacity(0.65),
-                    )
-                  else
-                    const SizedBox(width: 18),
-                ],
-              ),
+                );
+              },
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
   Widget _buildHeaderSummary() {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
+    final money = CurrencyDisplay.currency();
 
-    final count = _activeTab == 0 ? _filteredSales.length : _filteredReturns.length;
-    final total = _activeTab == 0
-        ? _filteredSales.fold<double>(0, (sum, s) => sum + s.total)
-      : _filteredReturns.fold<double>(
-            0,
-            (sum, r) => sum + ((r['total'] as num?)?.toDouble().abs() ?? 0.0),
-          );
+    final count = _filteredSales.length;
+    final total = _filteredSales.fold<double>(0, (sum, s) => sum + s.total);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1132,7 +1278,7 @@ class _FacturaPageState extends State<FacturaPage> {
           ),
           const SizedBox(width: 8),
           Text(
-            _activeTab == 0 ? 'Facturas: $count' : 'Devoluciones: $count',
+            'Facturas: $count',
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w800,
             ),
@@ -1153,24 +1299,70 @@ class _FacturaPageState extends State<FacturaPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    final child = _activeTab == 0
-        ? _buildSaleDetailsPanel(_selectedSale)
-        : _buildReturnDetailsPanel(_selectedReturn);
-
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 2,
-      shadowColor: scheme.shadow.withOpacity(0.08),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: AppColors.borderSoft),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSoft),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: DefaultTextStyle(
           style: theme.textTheme.bodyMedium ?? const TextStyle(),
-          child: child,
+          child: _buildSaleDetailsPanel(_selectedSale),
+        ),
+      ),
+    );
+  }
+
+  ({String label, Color background, Color foreground}) _saleStatusStyle(
+    SaleModel sale,
+  ) {
+    switch (sale.status.toUpperCase()) {
+      case 'REFUNDED':
+        return (
+          label: 'DEVUELTA',
+          background: const Color(0xFFFEE2E2),
+          foreground: const Color(0xFF991B1B),
+        );
+      case 'PARTIAL_REFUND':
+        return (
+          label: 'PARCIAL',
+          background: const Color(0xFFFEF3C7),
+          foreground: const Color(0xFF92400E),
+        );
+      default:
+        return (
+          label: 'ACTIVA',
+          background: const Color(0xFFDCFCE7),
+          foreground: const Color(0xFF166534),
+        );
+    }
+  }
+
+  Widget _buildStatusChip(
+    ({String label, Color background, Color foreground}) style,
+  ) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: style.background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        style.label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: style.foreground,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
         ),
       ),
     );
@@ -1196,139 +1388,151 @@ class _FacturaPageState extends State<FacturaPage> {
 
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final customer = sale.customerNameSnapshot ?? 'Cliente General';
-    final isPartial = sale.status == 'PARTIAL_REFUND';
+    final statusStyle = _saleStatusStyle(sale);
+    final canRefund = sale.status.toUpperCase() != 'REFUNDED';
+    final relatedReturns = _returnsForSale(sale);
+    final refundedAmount = _refundedAmountForSale(sale);
+    final netAmount = (sale.total - refundedAmount).clamp(0, sale.total);
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            sale.localCode,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Inter',
-              fontSize: 22,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            customer,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w400,
-              fontFamily: 'Inter',
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _cashierLabelForSessionId(sale.sessionId),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Inter',
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(
-                Icons.access_time,
-                size: 16,
-                color: scheme.onSurface.withOpacity(0.65),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  dateFormat.format(date),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w400,
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Divider(color: AppColors.borderSoft, height: 16),
-          const SizedBox(height: 8),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.borderSoft),
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Total',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        sale.localCode,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                          fontSize: 22,
+                        ),
+                      ),
+                    ),
+                    _buildStatusChip(statusStyle),
+                  ],
                 ),
-                const Spacer(),
-                _buildMoneyText(
-                  amount: sale.total,
-                  bigStyle: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 23,
-                    fontFamily: 'Inter',
-                  ),
-                  smallStyle: theme.textTheme.titleMedium?.copyWith(
+                const SizedBox(height: 8),
+                Text(
+                  customer,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'Inter',
-                    fontSize: 16,
-                    color: AppColors.textSecondary,
+                    fontSize: 14,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoBadge(Icons.person_outline, customer),
+              _buildInfoBadge(
+                Icons.point_of_sale_outlined,
+                _cashierLabelForSessionId(sale.sessionId),
+              ),
+              _buildInfoBadge(Icons.schedule_outlined, dateFormat.format(date)),
+              if (relatedReturns.isNotEmpty)
+                _buildInfoBadge(
+                  Icons.assignment_return_outlined,
+                  '${relatedReturns.length} devolucion${relatedReturns.length == 1 ? '' : 'es'}',
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricTile(
+                  label: 'Total factura',
+                  value: sale.total,
+                  highlight: scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricTile(
+                  label: 'Devuelto',
+                  value: refundedAmount,
+                  highlight: relatedReturns.isEmpty
+                      ? scheme.outline
+                      : status.warning,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricTile(
+                  label: 'Neto vigente',
+                  value: netAmount.toDouble(),
+                  highlight: canRefund ? status.success : status.error,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: (isPartial ? status.warning : status.success).withOpacity(
-                0.10,
-              ),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: (isPartial ? status.warning : status.success)
-                    .withOpacity(0.35),
-              ),
+              color: statusStyle.background.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              isPartial ? 'Devolución parcial detectada' : 'Venta completada',
+              canRefund
+                  ? sale.status.toUpperCase() == 'PARTIAL_REFUND'
+                        ? 'Factura con devolucion parcial. Puede registrar otra devolucion si corresponde.'
+                        : 'Factura activa lista para consulta, impresion o devolucion.'
+                  : 'Factura totalmente devuelta. Se mantiene visible para consulta y filtros.',
               style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 fontFamily: 'Inter',
               ),
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _showRefundDialog(sale),
-            icon: const Icon(Icons.assignment_return_outlined, size: 18),
-            label: const Text('Devolver'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(44),
-              textStyle: theme.textTheme.titleSmall?.copyWith(
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.w600,
+          if (relatedReturns.isNotEmpty) ...[
+            Text(
+              'Historial de devoluciones',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 10),
+            ...relatedReturns.take(3).map(_buildRefundEntryCard),
+            const SizedBox(height: 16),
+          ],
+          if (canRefund) ...[
+            FilledButton.icon(
+              onPressed: () => _showRefundDialog(sale),
+              icon: const Icon(Icons.assignment_return_outlined, size: 18),
+              label: const Text('Devolver'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+                textStyle: theme.textTheme.titleSmall?.copyWith(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           OutlinedButton.icon(
             onPressed: () => _showSaleDetails(sale),
             icon: const Icon(Icons.visibility_outlined, size: 18),
@@ -1351,159 +1555,133 @@ class _FacturaPageState extends State<FacturaPage> {
     );
   }
 
-  Widget _buildReturnDetailsPanel(Map<String, dynamic>? ret) {
+  Widget _buildInfoBadge(IconData icon, String text) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dateFormat = DateFormat('dd/MM/yy HH:mm');
-
-    if (ret == null) {
-      return Center(
-        child: Text(
-          'Seleccione una devolución para ver detalles',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: scheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+            ),
           ),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
+        ],
+      ),
+    );
+  }
 
-    final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
-    final customer =
-        (ret['customer_name_snapshot'] as String?) ?? 'Cliente General';
-    final createdMs = (ret['created_at_ms'] as int?) ?? 0;
-    final date = DateTime.fromMillisecondsSinceEpoch(createdMs);
-    final total = (ret['total'] as num?)?.toDouble().abs() ?? 0.0;
-    final note = (ret['note'] as String?)?.trim();
-    final cashier = _cashierLabelForSessionId(ret['session_id'] as int?);
-
-    return SingleChildScrollView(
+  Widget _buildMetricTile({
+    required String label,
+    required double value,
+    required Color highlight,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: highlight.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: highlight.withOpacity(0.22)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            code,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Inter',
-              fontSize: 22,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            customer,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w400,
-              fontFamily: 'Inter',
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            cashier,
+            label,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Inter',
-              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
+          _buildMoneyText(
+            amount: value,
+            bigStyle: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              fontFamily: 'Inter',
+            ),
+            smallStyle: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRefundEntryCard(Map<String, dynamic> ret) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dateFormat = DateFormat('dd/MM/yy HH:mm');
+    final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
+    final total = ((ret['total'] as num?)?.toDouble() ?? 0).abs();
+    final createdMs = (ret['created_at_ms'] as int?) ?? 0;
+    final note = (ret['note'] as String?)?.trim();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
             children: [
-              Icon(
-                Icons.access_time,
-                size: 16,
-                color: scheme.onSurface.withOpacity(0.65),
-              ),
-              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  dateFormat.format(date),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w400,
-                    fontFamily: 'Inter',
-                    fontSize: 13,
+                  code,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+              ),
+              _buildMoneyText(
+                amount: total,
+                bigStyle: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+                smallStyle: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Divider(color: AppColors.borderSoft, height: 16),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.borderSoft),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'Total',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                  ),
-                ),
-                const Spacer(),
-                _buildMoneyText(
-                  amount: total,
-                  bigStyle: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 23,
-                    fontFamily: 'Inter',
-                  ),
-                  smallStyle: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    fontFamily: 'Inter',
-                    fontSize: 16,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 6),
+          Text(
+            dateFormat.format(DateTime.fromMillisecondsSinceEpoch(createdMs)),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
             ),
           ),
           if (note != null && note.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
-              'Nota',
+              note,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w800,
+                color: scheme.onSurface,
               ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: Text(note),
             ),
           ],
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () => _showReturnDetails(ret),
-            icon: const Icon(Icons.visibility_outlined, size: 18),
-            label: const Text('Ver detalles'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(42),
-            ),
-          ),
         ],
       ),
     );
@@ -1514,100 +1692,15 @@ class _FacturaPageState extends State<FacturaPage> {
     required TextStyle? bigStyle,
     required TextStyle? smallStyle,
   }) {
-    final whole = amount.truncate();
-    final decimal = ((amount - whole) * 100).round().abs().toString().padLeft(
-      2,
-      '0',
-    );
-    final formatter = NumberFormat.decimalPattern('es_DO');
+    final formatter = CurrencyDisplay.currency(symbol: '');
 
     return RichText(
       text: TextSpan(
         children: [
           TextSpan(text: 'RD\$ ', style: smallStyle),
-          TextSpan(text: formatter.format(whole), style: bigStyle),
-          TextSpan(text: '.$decimal', style: smallStyle),
+          TextSpan(text: formatter.format(amount).trim(), style: bigStyle),
         ],
       ),
-    );
-  }
-
-  Future<void> _showReturnDetails(Map<String, dynamic> ret) async {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-      decimalDigits: 2,
-    );
-    final dateFormat = DateFormat('dd/MM/yy HH:mm');
-
-    final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
-    final customer =
-        (ret['customer_name_snapshot'] as String?) ?? 'Cliente General';
-    final createdMs = (ret['created_at_ms'] as int?) ?? 0;
-    final date = DateTime.fromMillisecondsSinceEpoch(createdMs);
-    final total = (ret['total'] as num?)?.toDouble().abs() ?? 0.0;
-    final note = (ret['note'] as String?)?.trim();
-    final cashier = _cashierLabelForSessionId(ret['session_id'] as int?);
-
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(code),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(customer, style: theme.textTheme.bodyMedium),
-                const SizedBox(height: 8),
-                Text(
-                  cashier,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  dateFormat.format(date),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Total: ${money.format(total)}',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                if (note != null && note.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'Nota:',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(note),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar'),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -1726,10 +1819,7 @@ class _SaleTicketDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-    );
+    final currencyFormat = CurrencyDisplay.currency();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
     final screenSize = MediaQuery.of(context).size;
@@ -2146,8 +2236,8 @@ class _RefundDialogState extends State<_RefundDialog> {
       builder: (ctx) => AlertDialog(
         title: const Text('Caja sin efectivo suficiente'),
         content: Text(
-          'Disponible en caja: RD\$ ${available.toStringAsFixed(2)}\n'
-          'Reembolso requerido: RD\$ ${amount.toStringAsFixed(2)}\n\n'
+          'Disponible en caja: ${CurrencyDisplay.format(available)}\n'
+          'Reembolso requerido: ${CurrencyDisplay.format(amount)}\n\n'
           'Ingrese efectivo a caja antes de continuar.',
         ),
         actions: [
@@ -2179,7 +2269,7 @@ class _RefundDialogState extends State<_RefundDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Sigue faltando efectivo. Disponible: RD\$ ${refreshed.expectedCash.toStringAsFixed(2)}',
+              'Sigue faltando efectivo. Disponible: ${CurrencyDisplay.format(refreshed.expectedCash)}',
             ),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
@@ -2360,10 +2450,7 @@ class _RefundDialogState extends State<_RefundDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(
-      locale: 'es_DO',
-      symbol: 'RD\$',
-    );
+    final currencyFormat = CurrencyDisplay.currency();
     final screenSize = MediaQuery.of(context).size;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;

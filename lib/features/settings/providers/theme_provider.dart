@@ -228,6 +228,7 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
   Future<void> updateChromeBackgroundColor(Color color) async {
     final newSettings = state.copyWith(
       // "Chrome" = AppBar principal (Topbar) + Sidebar + Footer.
+      appBarColor: state.applyChromeToEntireLayout ? color : state.appBarColor,
       topbarColor: color,
       sidebarColor: color,
       footerColor: color,
@@ -238,6 +239,9 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
 
   Future<void> updateChromeTextColor(Color color) async {
     final newSettings = state.copyWith(
+      appBarTextColor: state.applyChromeToEntireLayout
+          ? color
+          : state.appBarTextColor,
       topbarTextColor: color,
       sidebarTextColor: color,
       footerTextColor: color,
@@ -251,6 +255,18 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
       sidebarActiveColor: color,
       hoverColor: color,
     );
+    state = newSettings;
+    await _repository.saveThemeSettings(newSettings);
+  }
+
+  Future<void> updateApplyChromeToEntireLayout(bool enabled) async {
+    final newSettings = enabled
+        ? state.copyWith(
+            applyChromeToEntireLayout: true,
+            appBarColor: state.topbarColor,
+            appBarTextColor: state.topbarTextColor,
+          )
+        : state.copyWith(applyChromeToEntireLayout: false);
     state = newSettings;
     await _repository.saveThemeSettings(newSettings);
   }
@@ -571,8 +587,14 @@ final themeDataProvider = Provider<ThemeData>((ref) {
   return _buildThemeData(settings);
 });
 
+final appThemeConfigProvider = Provider<AppThemeConfig>((ref) {
+  final settings = ref.watch(themeProvider);
+  return settings.toAppThemeConfig();
+});
+
 /// Construye el ThemeData a partir de ThemeSettings
 ThemeData _buildThemeData(ThemeSettings settings) {
+  final config = settings.toAppThemeConfig();
   final brightness = settings.isDarkMode ? Brightness.dark : Brightness.light;
   final onPrimary = _getContrastColor(settings.primaryColor);
   final onAccent = _getContrastColor(settings.accentColor);
@@ -660,22 +682,22 @@ ThemeData _buildThemeData(ThemeSettings settings) {
   );
 
   final tokens = AppTokens(
-    topbarBackground: settings.topbarColor,
+    topbarBackground: config.appbarColor,
     topbarText: settings.topbarTextColor,
-    footerBackground: settings.footerColor,
+    footerBackground: config.footerColor,
     footerText: settings.footerTextColor,
     panelBackground: settings.backgroundColor,
     panelBorder: outlineVariant,
-    cardBackground: settings.cardColor,
+    cardBackground: config.cardColor,
     cardBorder: outlineVariant,
-    sidebarBackground: settings.sidebarColor,
+    sidebarBackground: config.sidebarColor,
     sidebarBorder: outlineVariant,
     sidebarText: settings.sidebarTextColor,
     sidebarActive: settings.sidebarActiveColor,
     controlBarBackground: settings.salesControlBarBackgroundColor,
     controlBarBorder: settings.salesControlBarBorderColor,
     controlBarText: settings.salesControlBarTextColor,
-    buttonPrimary: settings.primaryColor,
+    buttonPrimary: config.primaryColor,
     buttonSecondary: settings.accentColor,
     buttonDanger: settings.errorColor,
     searchFieldBackground: searchBg,
