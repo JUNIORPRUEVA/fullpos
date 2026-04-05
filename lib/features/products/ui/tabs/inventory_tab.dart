@@ -1012,7 +1012,7 @@ class _InventoryTabState extends State<InventoryTab> {
                                       ),
                                     ),
                                     child: Text(
-                                      '${filteredProductCount} visibles',
+                                      '$filteredProductCount visibles',
                                       style: theme.textTheme.labelLarge?.copyWith(
                                         color: scheme.onSurface,
                                         fontWeight: FontWeight.w800,

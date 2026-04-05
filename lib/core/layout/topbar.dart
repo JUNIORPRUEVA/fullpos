@@ -195,11 +195,9 @@ class _TopbarState extends ConsumerState<Topbar>
         await CashCloseDialog.show(
           context,
           sessionId: sessionId,
-          logoutAfterClose: false,
-          autoCloseImmediately: false,
+          logoutAfterClose: true,
+          autoCloseImmediately: true,
         );
-        if (!mounted) return;
-        unawaited(_loadOpenCashSessionId());
         return;
       case _UserMenuAction.viewCurrentCut:
         final sessionId = _openCashSessionId;

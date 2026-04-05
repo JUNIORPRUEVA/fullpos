@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -364,42 +363,55 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       );
       await ref.read(activeSessionControllerProvider.notifier).refresh();
 
-      // Imprimir ticket automáticamente al hacer el corte.
-      // Importante: un fallo de impresión NO debe impedir que el corte se complete.
-      try {
-        final summaryForPrint = _summary ?? closedSummary;
-
-        await _printClosingArtifacts(
-          summary: summaryForPrint,
-          closingAmount: _closingAmount,
-          note: closeNote,
-        );
-      } catch (e) {
-        if (mounted && !widget.logoutAfterClose) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('La sesión se cerró, pero no se pudo imprimir: $e'),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        } else {
-          debugPrint('Cierre de turno completado sin ticket impreso: $e');
-        }
-      }
+      final summaryForPrint = _summary ?? closedSummary;
+      final appContext = ErrorHandler.navigatorKey.currentContext;
 
       if (mounted) {
-        final rootContext = Navigator.of(context, rootNavigator: true).context;
         Navigator.of(context).pop(true);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (widget.logoutAfterClose) {
-            unawaited(LogoutFlowService.defaultPerformLogout(rootContext));
-            return;
+        if (widget.logoutAfterClose) {
+          unawaited(
+            _printClosingArtifacts(
+              summary: summaryForPrint,
+              closingAmount: _closingAmount,
+              note: closeNote,
+            ).catchError((Object error, StackTrace stackTrace) {
+              debugPrint('Cierre de turno completado sin ticket impreso: $error');
+            }),
+          );
+          if (appContext != null) {
+            unawaited(LogoutFlowService.defaultPerformLogout(appContext));
           }
+          return;
+        }
 
-          ScaffoldMessenger.of(rootContext).showSnackBar(
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(
+            _printClosingArtifacts(
+              summary: summaryForPrint,
+              closingAmount: _closingAmount,
+              note: closeNote,
+            ).catchError((Object error, StackTrace stackTrace) {
+              final messenger = appContext != null
+                  ? ScaffoldMessenger.maybeOf(appContext)
+                  : null;
+              if (messenger == null) return;
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text('La sesión se cerró, pero no se pudo imprimir: $error'),
+                  backgroundColor: Theme.of(messenger.context).colorScheme.error,
+                ),
+              );
+            }),
+          );
+
+          final messenger = appContext != null
+              ? ScaffoldMessenger.maybeOf(appContext)
+              : null;
+          if (messenger == null) return;
+          messenger.showSnackBar(
             SnackBar(
               content: const Text('Sesión cerrada correctamente'),
-              backgroundColor: Theme.of(rootContext).colorScheme.primary,
+              backgroundColor: Theme.of(messenger.context).colorScheme.primary,
             ),
           );
         });

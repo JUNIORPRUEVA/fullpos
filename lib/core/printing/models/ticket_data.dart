@@ -1,4 +1,5 @@
 /// Modelo de datos para un ticket
+/// Modelo de datos para un ticket
 /// Representa cualquier tipo de ticket (venta, cotización, devolución, etc.)
 class TicketData {
   /// Número/código del ticket
@@ -56,6 +57,9 @@ class TicketData {
   /// Codigo de documento electronico
   final String? electronicInvoiceCode;
 
+  /// Tipo de documento electronico/fiscal cuando aplica.
+  final String? electronicDocumentType;
+
   /// Es una copia/reimpresión
   final bool isCopy;
 
@@ -93,6 +97,7 @@ class TicketData {
     this.creditDueDate,
     this.creditNote,
     this.electronicInvoiceCode,
+    this.electronicDocumentType,
     this.isCopy = false,
     this.extraLegend,
     this.statusLabel,
@@ -143,6 +148,7 @@ class TicketData {
     required double changeAmount,
     required double discountTotal,
     String? electronicInvoiceCode,
+    String? electronicDocumentType,
     String? customerName,
     String? customerPhone,
     String? customerRnc,
@@ -183,6 +189,7 @@ class TicketData {
       creditDueDate: creditDueDate,
       creditNote: creditNote,
       electronicInvoiceCode: electronicInvoiceCode,
+      electronicDocumentType: electronicDocumentType,
       isCopy: isCopy,
       statusLabel: statusLabel,
       isLayaway: isLayaway,
@@ -231,6 +238,7 @@ class TicketData {
     DateTime? creditDueDate,
     String? creditNote,
     String? electronicInvoiceCode,
+    String? electronicDocumentType,
     bool? isCopy,
     String? extraLegend,
     String? statusLabel,
@@ -258,8 +266,10 @@ class TicketData {
       creditInstallments: creditInstallments ?? this.creditInstallments,
       creditDueDate: creditDueDate ?? this.creditDueDate,
       creditNote: creditNote ?? this.creditNote,
-        electronicInvoiceCode:
+      electronicInvoiceCode:
           electronicInvoiceCode ?? this.electronicInvoiceCode,
+      electronicDocumentType:
+          electronicDocumentType ?? this.electronicDocumentType,
       isCopy: isCopy ?? this.isCopy,
       extraLegend: extraLegend ?? this.extraLegend,
       statusLabel: statusLabel ?? this.statusLabel,

@@ -43,6 +43,14 @@ Future<void> main() async {
         final stack = details.stack ?? StackTrace.current;
         final message = details.exceptionAsString();
 
+        // Windows/Flutter debug can emit a non-fatal assertion when Alt/AltGr
+        // repeat events arrive with inconsistent modifier flags.
+        if (message.contains(
+          'Attempted to send a key down event when no keys are in keysPressed',
+        )) {
+          return;
+        }
+
         // Ignore noisy, non-fatal image 404s (e.g. sample Unsplash URLs) so
         // navigation doesn't spam the console.
         if (message.contains('NetworkImageLoadException') &&

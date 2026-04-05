@@ -68,9 +68,9 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   CashMovementModel? _selectedMovement;
   int _loadSeq = 0;
 
-  late final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
-  late final DateFormat _timeOnlyFormat = DateFormat('HH:mm');
-  late final DateFormat _dateTimeShortFormat = DateFormat('dd/MM HH:mm');
+  late final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy hh:mm a');
+  late final DateFormat _timeOnlyFormat = DateFormat('hh:mm a');
+  late final DateFormat _dateTimeShortFormat = DateFormat('dd/MM hh:mm a');
 
   @override
   void initState() {
@@ -910,65 +910,43 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     lines.add(line());
     lines.add('<H2C>CORTE DE CAJA');
     lines.add(line());
-    lines.add('<BL>${twoCols('Sesion', '#${session.id ?? ''}')}');
-    lines.add('<BL>${twoCols('Cajero', session.userName)}');
-    lines.add('<BL>${twoCols('Apertura', fmt.format(session.openedAt))}');
+    lines.add(twoCols('Sesion', '#${session.id ?? ''}'));
+    lines.add(twoCols('Cajero', session.userName));
+    lines.add(twoCols('Apertura', fmt.format(session.openedAt)));
     if (session.closedAt != null) {
-      lines.add('<BL>${twoCols('Cierre', fmt.format(session.closedAt!))}');
+      lines.add(twoCols('Cierre', fmt.format(session.closedAt!)));
     }
     final end = session.closedAt ?? DateTime.now();
     final duration = end.difference(session.openedAt);
     if (duration.inMinutes >= 1) {
-      lines.add('<BL>${twoCols('Duracion', fmtDuration(duration))}');
+      lines.add(twoCols('Duracion', fmtDuration(duration)));
     }
     lines.add(line());
 
-    lines.add(
-      '<BL>${twoCols('Base inicial turno', money(summary.openingAmount))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Total ventas turno', money(summary.totalSales))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas efectivo', money(summary.salesCashTotal))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas tarjeta', money(summary.salesCardTotal))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas transferencia', money(summary.salesTransferTotal))}',
-    );
-    lines.add(
-      '<BL>${twoCols('Ventas credito', money(summary.salesCreditTotal))}',
-    );
+    lines.add(twoCols('Base inicial turno', money(summary.openingAmount)));
+    lines.add(twoCols('Total ventas turno', money(summary.totalSales)));
+    lines.add(twoCols('Ventas efectivo', money(summary.salesCashTotal)));
+    lines.add(twoCols('Ventas tarjeta', money(summary.salesCardTotal)));
+    lines.add(twoCols('Ventas transferencia', money(summary.salesTransferTotal)));
+    lines.add(twoCols('Ventas credito', money(summary.salesCreditTotal)));
     if (summary.refundsCash > 0) {
-      lines.add('<BL>${twoCols('Devoluciones', money(summary.refundsCash))}');
+      lines.add(twoCols('Devoluciones', money(summary.refundsCash)));
     }
     if (summary.creditAbonos > 0) {
-      lines.add(
-        '<BL>${twoCols('Abonos crédito', money(summary.creditAbonos))}',
-      );
+      lines.add(twoCols('Abonos crédito', money(summary.creditAbonos)));
     }
     if (summary.layawayAbonos > 0) {
-      lines.add(
-        '<BL>${twoCols('Abonos apartado', money(summary.layawayAbonos))}',
-      );
+      lines.add(twoCols('Abonos apartado', money(summary.layawayAbonos)));
     }
     final manualNoAbonos =
         (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
             .clamp(0.0, double.infinity);
-    lines.add('<BL>${twoCols('Entradas manuales', money(manualNoAbonos))}');
-    lines.add(
-      '<BL>${twoCols('Retiros manuales', money(summary.cashOutManual))}',
-    );
+    lines.add(twoCols('Entradas manuales', money(manualNoAbonos)));
+    lines.add(twoCols('Retiros manuales', money(summary.cashOutManual)));
     lines.add(line());
-    lines.add(
-      '<BL>${twoCols('Efectivo esperado en caja', money(summary.expectedCash))}',
-    );
-    lines.add('<BL>${twoCols('Efectivo contado', money(closingAmount))}');
-    lines.add(
-      '<BL>${twoCols('Diferencia', money(closingAmount - summary.expectedCash))}',
-    );
+    lines.add(twoCols('Efectivo esperado en caja', money(summary.expectedCash)));
+    lines.add(twoCols('Efectivo contado', money(closingAmount)));
+    lines.add(twoCols('Diferencia', money(closingAmount - summary.expectedCash)));
     lines.add(line());
 
     if (note.trim().isNotEmpty) {
@@ -996,12 +974,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         lines.add(twoCols(left, right));
       }
       lines.add(line());
-      lines.add(
-        '<BL>${twoCols('Total entradas', money(summary.cashInManual))}',
-      );
-      lines.add(
-        '<BL>${twoCols('Total retiros', money(summary.cashOutManual))}',
-      );
+      lines.add(twoCols('Total entradas', money(summary.cashInManual)));
+      lines.add(twoCols('Total retiros', money(summary.cashOutManual)));
     }
 
     String methodAbbr(SaleModel sale) {
@@ -1036,9 +1010,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       final sorted = [...sales]
         ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
 
-      lines.add(
-        '<BL>${saleRow(time: 'HORA', name: 'PRODUCTO', method: 'MET', total: 'TOTAL')}',
-      );
+      lines.add(saleRow(time: 'HORA', name: 'PRODUCTO', method: 'MET', total: 'TOTAL'));
       lines.add(ReceiptText.line(char: '=', width: w));
 
       final timeFmt = _timeOnlyFormat;
@@ -1075,22 +1047,16 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
 
     lines.add('<H2C>TOTALES');
     lines.add(line());
-    lines.add('<BL>${twoCols('Tickets', summary.totalTickets.toString())}');
-    lines.add(
-      '<BL>${twoCols('Total ventas del turno', money(summary.totalSales))}',
-    );
+    lines.add(twoCols('Tickets', summary.totalTickets.toString()));
+    lines.add(twoCols('Total ventas del turno', money(summary.totalSales)));
     lines.add('');
-    lines.add('<H2C>VENTAS DEL TURNO');
-    lines.add('<H1C>${money(summary.totalSales)}');
+    lines.add(twoCols('Ventas del turno', money(summary.totalSales)));
     lines.add('');
-    lines.add('<H2C>EFECTIVO ESPERADO EN CAJA');
-    lines.add('<H1C>${money(summary.expectedCash)}');
+    lines.add(twoCols('Efectivo esperado en caja', money(summary.expectedCash)));
     lines.add('');
-    lines.add('<H2C>EFECTIVO CONTADO');
-    lines.add('<H1C>${money(closingAmount)}');
+    lines.add(twoCols('Efectivo contado', money(closingAmount)));
     lines.add('');
-    lines.add('<H2C>DIFERENCIA');
-    lines.add('<H1C>${money(closingAmount - summary.expectedCash)}');
+    lines.add(twoCols('Diferencia', money(closingAmount - summary.expectedCash)));
 
     lines.add(line());
     lines.add(fit('Firma cajero: _______________________'));

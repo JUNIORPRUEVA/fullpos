@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,22 +33,47 @@ class LogoutFlowService {
   }
 
   static Future<void> defaultPerformLogout(BuildContext context) async {
-    final rootCtx = ErrorHandler.navigatorKey.currentContext ?? context;
-    FocusManager.instance.primaryFocus?.unfocus();
-    ScaffoldMessenger.maybeOf(rootCtx)?.hideCurrentSnackBar();
+    final stableContext =
+        ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+        ErrorHandler.navigatorKey.currentContext ??
+        context;
 
-    final container = ProviderScope.containerOf(rootCtx, listen: false);
-    container.read(appBootstrapProvider).forceLoggedOut();
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      ScaffoldMessenger.maybeOf(stableContext)?.hideCurrentSnackBar();
 
-    await SessionManager.logout();
-    await container.read(appBootstrapProvider).refreshAuth();
+      final container = ProviderScope.containerOf(stableContext, listen: false);
+      container.read(appBootstrapProvider).forceLoggedOut();
 
-    if (!rootCtx.mounted) return;
-    final navigator = ErrorHandler.navigatorKey.currentState;
-    while (navigator?.canPop() == true) {
-      navigator?.pop();
+      await SessionManager.logout();
+
+      try {
+        await container
+            .read(appBootstrapProvider)
+            .refreshAuth()
+            .timeout(const Duration(seconds: 2));
+      } on TimeoutException catch (error) {
+        debugPrint('Logout refreshAuth agotó tiempo, continuando salida: $error');
+      } catch (error) {
+        debugPrint('Logout refreshAuth falló, continuando salida: $error');
+      }
+
+      final navigator = ErrorHandler.navigatorKey.currentState;
+      while (navigator?.canPop() == true) {
+        navigator?.pop();
+      }
+
+      final routerContext =
+          navigator?.overlay?.context ??
+          ErrorHandler.navigatorKey.currentContext ??
+          stableContext;
+      if (!routerContext.mounted) return;
+
+      final router = GoRouter.of(routerContext);
+      router.refresh();
+      router.go('/login');
+    } catch (error) {
+      debugPrint('Logout inmediato falló de forma no fatal: $error');
     }
-    GoRouter.of(rootCtx).refresh();
-    GoRouter.of(rootCtx).go('/login');
   }
 }

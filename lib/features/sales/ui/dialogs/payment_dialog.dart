@@ -582,7 +582,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     if (_isQuoteMode) {
       return 'Configure los datos de la propuesta antes de guardarla';
     }
-    return 'SELECCIONE EL MÉTODO DE PAGO';
+    return '';
   }
 
   IconData _dialogIcon() {
@@ -733,7 +733,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   @override
   Widget build(BuildContext context) {
     final viewport = MediaQuery.sizeOf(context);
-    final dialogWidth = (viewport.width * 0.76).clamp(430.0, 620.0);
+    final dialogWidth = (viewport.width * 0.88).clamp(520.0, 860.0);
     final dialogMaxHeight = (viewport.height * 0.93).clamp(700.0, 980.0);
 
     return DialogKeyboardShortcuts(
@@ -772,13 +772,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               color: scheme.onPrimary,
                             ),
                           ),
-                          Text(
-                            _dialogSubtitle(),
-                            style: TextStyle(
-                              color: scheme.onPrimary.withAlpha(179),
-                              fontSize: 13,
+                          if (_dialogSubtitle().isNotEmpty)
+                            Text(
+                              _dialogSubtitle(),
+                              style: TextStyle(
+                                color: scheme.onPrimary.withAlpha(179),
+                                fontSize: 13,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -797,73 +798,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'TIPO DE DOCUMENTO',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<PaymentDocumentType>(
-                        isExpanded: true,
-                        value: _selectedDocumentType,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: scheme.surface,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(
-                              color: scheme.outlineVariant,
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: scheme.primary),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                        ),
-                        items: [
-                          DropdownMenuItem(
-                            value: PaymentDocumentType.consumidorFinal,
-                            child: Text(
-                              _documentTypeLabel(
-                                PaymentDocumentType.consumidorFinal,
-                              ),
-                            ),
-                          ),
-                          if (widget.allowElectronicInvoiceOption)
-                            DropdownMenuItem(
-                              value: PaymentDocumentType.creditoFiscal,
-                              child: Text(
-                                _documentTypeLabel(
-                                  PaymentDocumentType.creditoFiscal,
-                                ),
-                              ),
-                            ),
-                          DropdownMenuItem(
-                            value: PaymentDocumentType.cotizacion,
-                            child: Text(
-                              _documentTypeLabel(
-                                PaymentDocumentType.cotizacion,
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null) return;
-                          unawaited(_selectDocumentType(value));
-                        },
-                      ),
-
-                      const SizedBox(height: 24),
-
                       // Total a pagar
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -925,6 +859,78 @@ class _PaymentDialogState extends State<PaymentDialog> {
                           ],
                         ),
                       ),
+
+                      if (widget.allowElectronicInvoiceOption) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Tipo de documento',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 44,
+                          child: DropdownButtonFormField<PaymentDocumentType>(
+                            isExpanded: true,
+                            value: _selectedDocumentType,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              filled: true,
+                              fillColor: scheme.surfaceContainerHighest,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: scheme.primary,
+                                  width: 1.5,
+                                ),
+                              ),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            items: [
+                              DropdownMenuItem(
+                                value: PaymentDocumentType.consumidorFinal,
+                                child: Text(
+                                  _documentTypeLabel(
+                                    PaymentDocumentType.consumidorFinal,
+                                  ),
+                                ),
+                              ),
+                              if (widget.allowElectronicInvoiceOption)
+                                DropdownMenuItem(
+                                  value: PaymentDocumentType.creditoFiscal,
+                                  child: Text(
+                                    _documentTypeLabel(
+                                      PaymentDocumentType.creditoFiscal,
+                                    ),
+                                  ),
+                                ),
+                              DropdownMenuItem(
+                                value: PaymentDocumentType.cotizacion,
+                                child: Text(
+                                  _documentTypeLabel(
+                                    PaymentDocumentType.cotizacion,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null) return;
+                              unawaited(_selectDocumentType(value));
+                            },
+                          ),
+                        ),
+                      ],
 
                       const SizedBox(height: 16),
 
@@ -1522,11 +1528,11 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   children: [
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        final tileWidth = constraints.maxWidth;
                         if (_isQuoteMode) {
-                          return Column(
+                          return _buildOutputSwitchRow(
+                            constraints: constraints,
                             children: [
-                              _buildOutputSwitchTile(
+                              _buildOutputSwitchCard(
                                 label: 'GUARDAR',
                                 subtitle: 'Registrar cotización',
                                 icon: Icons.save_outlined,
@@ -1536,10 +1542,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                     _selectQuoteOutput(QuoteOutputMode.save);
                                   }
                                 },
-                                width: tileWidth,
                               ),
-                              const SizedBox(height: 8),
-                              _buildOutputSwitchTile(
+                              _buildOutputSwitchCard(
                                 label: 'VISTA PREVIA',
                                 subtitle: 'Guardar y mostrar PDF',
                                 icon: Icons.visibility_outlined,
@@ -1550,10 +1554,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                     _selectQuoteOutput(QuoteOutputMode.preview);
                                   }
                                 },
-                                width: tileWidth,
                               ),
-                              const SizedBox(height: 8),
-                              _buildOutputSwitchTile(
+                              _buildOutputSwitchCard(
                                 label: 'IMPRIMIR',
                                 subtitle: 'Guardar e imprimir',
                                 icon: Icons.print_outlined,
@@ -1564,14 +1566,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
                                     _selectQuoteOutput(QuoteOutputMode.print);
                                   }
                                 },
-                                width: tileWidth,
                               ),
                             ],
                           );
                         }
-                        return Column(
+                        return _buildOutputSwitchRow(
+                          constraints: constraints,
                           children: [
-                            _buildOutputSwitchTile(
+                            _buildOutputSwitchCard(
                               label: 'TICKET',
                               subtitle: 'Cobrar e imprimir',
                               icon: Icons.print,
@@ -1579,10 +1581,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               onChanged: (enabled) {
                                 if (enabled) _selectPrint();
                               },
-                              width: tileWidth,
                             ),
-                            const SizedBox(height: 8),
-                            _buildOutputSwitchTile(
+                            _buildOutputSwitchCard(
                               label: 'PDF',
                               subtitle: 'Cobrar y descargar',
                               icon: Icons.download,
@@ -1591,10 +1591,8 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               onChanged: (enabled) {
                                 if (enabled) _selectDownloadInvoicePdf();
                               },
-                              width: tileWidth,
                             ),
-                            const SizedBox(height: 8),
-                            _buildOutputSwitchTile(
+                            _buildOutputSwitchCard(
                               label: 'SIN IMPRIMIR',
                               subtitle: 'Solo cobrar',
                               icon: Icons.block,
@@ -1602,7 +1600,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
                               onChanged: (enabled) {
                                 if (enabled) _selectWithoutPrinting();
                               },
-                              width: tileWidth,
                             ),
                           ],
                         );
@@ -1690,70 +1687,108 @@ class _PaymentDialogState extends State<PaymentDialog> {
     }
   }
 
-  Widget _buildOutputSwitchTile({
+  Widget _buildOutputSwitchRow({
+    required BoxConstraints constraints,
+    required List<Widget> children,
+  }) {
+    final minCardWidth = constraints.maxWidth >= 760
+        ? (constraints.maxWidth - 24) / 3
+        : 220.0;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var index = 0; index < children.length; index++) ...[
+            SizedBox(width: minCardWidth, child: children[index]),
+            if (index != children.length - 1) const SizedBox(width: 12),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOutputSwitchCard({
     required String label,
     required String subtitle,
     required IconData icon,
     required bool value,
     required ValueChanged<bool> onChanged,
-    required double width,
     bool enabled = true,
   }) {
     final textColor = enabled
         ? scheme.onSurface
         : scheme.onSurface.withAlpha(120);
 
-    return SizedBox(
-      width: width,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: value ? scheme.primary : scheme.outlineVariant,
-            width: value ? 1.6 : 1,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: value ? scheme.primary : scheme.outlineVariant,
+          width: value ? 1.8 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: (value ? scheme.primary : scheme.outlineVariant).withAlpha(
+                28,
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: value ? scheme.primary : textColor,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: value ? scheme.primary : textColor),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: textColor,
-                    ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: textColor,
                   ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: textColor.withAlpha(210),
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: textColor.withAlpha(210),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            Transform.scale(
-              scale: 0.86,
-              child: Switch(
-                value: value,
-                onChanged: enabled ? onChanged : null,
-                activeThumbColor: scheme.primary,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
+          ),
+          const SizedBox(width: 8),
+          Transform.scale(
+            scale: 0.84,
+            child: Switch(
+              value: value,
+              onChanged: enabled ? onChanged : null,
+              activeThumbColor: scheme.primary,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

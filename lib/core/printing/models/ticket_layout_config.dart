@@ -279,7 +279,8 @@ class TicketLayoutConfig {
       fontFamily: _parseFontFamily(settings.fontFamily),
       showDateTime: settings.showDatetime == 1,
       showTicketCode: settings.showCode == 1,
-      showElectronicInvoiceReference: settings.showElectronicInvoiceReference == 1,
+      showElectronicInvoiceReference:
+          settings.showElectronicInvoiceReference == 1,
       showItbis: settings.showItbis == 1,
       showCashier: settings.showCashier == 1,
       showTotalsBreakdown: settings.showSubtotalItbisTotal == 1,
@@ -302,12 +303,12 @@ class TicketLayoutConfig {
     required int paperWidthMm,
     required int charsPerLine,
   }) {
-    // Heurística conservadora: solo corregir valores demasiado altos para 58mm.
-    if (paperWidthMm == 58 && charsPerLine > 34) return 32;
-    // Para 80mm: 42 chars por línea suele dar letra muy pequeña cuando el ancho
-    // imprimible real ronda ~72mm. Para mejorar legibilidad sin cambiar el orden
-    // del ticket, normalizamos valores altos a un ancho más legible.
-    if (paperWidthMm == 80 && charsPerLine >= 42) return 34;
+    if (paperWidthMm == 58) {
+      return charsPerLine.clamp(28, 32);
+    }
+    if (paperWidthMm == 80) {
+      return charsPerLine.clamp(42, 48);
+    }
     return charsPerLine.clamp(16, 64);
   }
 
@@ -385,6 +386,7 @@ class TicketLayoutConfig {
     bool? showPaymentInfo,
     bool? showFooterMessage,
     String? footerMessage,
+    String? warrantyPolicy,
     TicketFontSize? fontSize,
     TicketFontFamily? fontFamily,
     bool? showDateTime,
@@ -417,13 +419,13 @@ class TicketLayoutConfig {
       showPaymentInfo: showPaymentInfo ?? this.showPaymentInfo,
       showFooterMessage: showFooterMessage ?? this.showFooterMessage,
       footerMessage: footerMessage ?? this.footerMessage,
+      warrantyPolicy: warrantyPolicy ?? this.warrantyPolicy,
       fontSize: fontSize ?? this.fontSize,
       fontFamily: fontFamily ?? this.fontFamily,
       showDateTime: showDateTime ?? this.showDateTime,
       showTicketCode: showTicketCode ?? this.showTicketCode,
-        showElectronicInvoiceReference:
-          showElectronicInvoiceReference ??
-          this.showElectronicInvoiceReference,
+      showElectronicInvoiceReference:
+          showElectronicInvoiceReference ?? this.showElectronicInvoiceReference,
       showItbis: showItbis ?? this.showItbis,
       showCashier: showCashier ?? this.showCashier,
       showTotalsBreakdown: showTotalsBreakdown ?? this.showTotalsBreakdown,

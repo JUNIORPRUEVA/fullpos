@@ -1,5 +1,4 @@
 import 'package:intl/intl.dart';
-import 'dart:math' as math;
 
 import '../../../core/printing/models/company_info.dart';
 import '../../../core/printing/models/receipt_text_utils.dart';
@@ -98,67 +97,37 @@ class DailyCashCloseTicketPrinter {
   }) {
     final w = layout.maxCharsPerLine;
     final lines = <String>[];
-    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    final fmt = DateFormat('dd/MM/yyyy hh:mm a');
     final dateFmt = DateFormat('dd/MM/yyyy');
     final totalSales =
         salesCashTotal +
         salesCardTotal +
         salesTransferTotal +
         salesCreditTotal;
+    final totalExpenses = refundsCash + cashOutManual;
+    final finalCash = cashbox.currentAmount;
+    final difference = finalCash - expectedCash;
 
     String sanitize(String text) => _sanitizeTicketText(text);
-    String fit(String text) => ReceiptText.fitText(sanitize(text), w);
+    String fit(String text) => ReceiptText.fitText(text, w);
     String line() => ReceiptText.line(width: w);
 
     String center(String text) {
-      final cleaned = sanitize(text);
-      if (cleaned.length >= w) return cleaned.substring(0, w);
-      final left = ((w - cleaned.length) / 2).floor();
-      final right = w - cleaned.length - left;
-      return ' ' * left + cleaned + ' ' * right;
+      final cleaned = sanitize(text).toUpperCase();
+      return ReceiptText.alignColumns(
+        values: [cleaned],
+        widths: [w],
+        aligns: const [TextAlignMode.center],
+      );
     }
 
-    String twoCols(String left, String right) {
-      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
-      final leftWidth = (w - rightWidth - 1).clamp(8, w);
-      final leftText = ReceiptText.padRight(sanitize(left), leftWidth);
-      final rightText = ReceiptText.padLeft(sanitize(right), rightWidth);
-      return ReceiptText.fitText('$leftText $rightText', w);
+    String pair(String left, String right) {
+      return ReceiptText.formatLine(sanitize(left), sanitize(right), w);
     }
 
-    void addKeyValue(String left, String right, {String prefix = '<BL>'}) {
-      final cleanLeft = sanitize(left);
-      final cleanRight = sanitize(right);
-      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
-      final leftWidth = (w - rightWidth - 1).clamp(8, w).toInt();
+    void addPair(String left, String right) => lines.add(pair(left, right));
 
-      if (cleanLeft.length <= leftWidth && cleanRight.length <= rightWidth) {
-        lines.add('$prefix${twoCols(cleanLeft, cleanRight)}');
-        return;
-      }
-
-      final leftLines = ReceiptText.wrapText(cleanLeft, leftWidth);
-      if (cleanRight.length <= rightWidth) {
-        for (final extraLeft in leftLines.take(math.max(0, leftLines.length - 1))) {
-          lines.add(fit(extraLeft));
-        }
-        final lastLeft = leftLines.isEmpty ? '' : leftLines.last;
-        final leftText = ReceiptText.padRight(lastLeft, leftWidth);
-        final rightText = ReceiptText.padLeft(cleanRight, rightWidth);
-        lines.add('$prefix$leftText $rightText');
-        return;
-      }
-
-      for (final leftLine in leftLines) {
-        lines.add(fit(leftLine));
-      }
-      final rightLines = ReceiptText.wrapText(cleanRight, w);
-      for (final rightLine in rightLines) {
-        lines.add('$prefix${ReceiptText.padLeft(rightLine, w)}');
-      }
-    }
-
-    String money(double value) => 'RD\$ ${ReceiptText.money(value)}';
+    String money(double value) => ReceiptText.formatMoney(value);
 
     DateTime? msToLocal(int? ms) =>
         ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
@@ -167,22 +136,18 @@ class DailyCashCloseTicketPrinter {
     final closedAt = msToLocal(cashbox.closedAtMs);
 
     if (companyName.trim().isNotEmpty) {
-      lines.add('<H2C>${sanitize(companyName)}');
+      lines.add(center(companyName));
     }
 
-    final headerParts = <String>[];
     if ((companyRnc ?? '').trim().isNotEmpty) {
-      headerParts.add('RNC: ${companyRnc!.trim()}');
+      lines.add(center('RNC: ${companyRnc!.trim()}'));
     }
     if ((companyPhone ?? '').trim().isNotEmpty) {
-      headerParts.add('TEL: ${companyPhone!.trim()}');
-    }
-    if (headerParts.isNotEmpty) {
-      lines.add(center(headerParts.join('  ')));
+      lines.add(center('TEL: ${companyPhone!.trim()}'));
     }
 
     lines.add(line());
-    lines.add('<H2C>CIERRE CAJA DEL DIA');
+    lines.add('<H2C>CORTE DE TURNO');
     lines.add(line());
 
     final parsedBizDate = DateTime.tryParse(businessDate)?.toLocal();
@@ -190,80 +155,54 @@ class DailyCashCloseTicketPrinter {
         ? businessDate
         : dateFmt.format(parsedBizDate);
 
-    lines.add('<BL>${twoCols('Fecha', bizLabel)}');
-    lines.add('<BL>${twoCols('Caja', '#${cashbox.id ?? ''}')}');
+    addPair('CAJA:', '#${cashbox.id ?? ''}');
+    addPair('CAJERO:', 'USER #${cashbox.openedByUserId}');
+    addPair('FECHA:', bizLabel);
     if (openedAt != null) {
-      lines.add('<BL>${twoCols('Apertura', fmt.format(openedAt))}');
+      addPair('APERTURA:', fmt.format(openedAt));
     }
     if (closedAt != null) {
-      lines.add('<BL>${twoCols('Cierre', fmt.format(closedAt))}');
+      addPair('CIERRE:', fmt.format(closedAt));
     }
     lines.add(line());
 
-    lines.add('<H2C>BASE DE CAJA');
+    addPair('FONDO INICIAL:', money(openingAmount));
+    addPair('VENTAS:', money(totalSales));
+    addPair('GASTOS:', money(totalExpenses));
+    addPair('EFECTIVO FINAL:', money(finalCash));
+    addPair('DIFERENCIA:', money(difference));
+    addPair('TICKETS:', totalTickets.toString());
     lines.add(line());
-    addKeyValue('Fondo inicial', money(openingAmount));
-    addKeyValue('Tickets', totalTickets.toString());
 
-    lines.add(line());
-    lines.add('<H2C>VENTAS DEL DIA');
-    lines.add(line());
-    addKeyValue('Total ventas del dia', money(totalSales));
-    addKeyValue('Ventas efectivo', money(salesCashTotal));
-    addKeyValue('Ventas tarjeta', money(salesCardTotal));
-    addKeyValue('Ventas transferencia', money(salesTransferTotal));
-    addKeyValue('Ventas credito', money(salesCreditTotal));
-    if (refundsCash > 0) {
-      addKeyValue('Devoluciones', money(refundsCash));
-    }
-
-    if (creditAbonos > 0) {
-      addKeyValue('Abonos credito', money(creditAbonos));
-    }
-    if (layawayAbonos > 0) {
-      addKeyValue('Abonos apartado', money(layawayAbonos));
-    }
-
-    final manualNoAbonos = (cashInManual - creditAbonos - layawayAbonos).clamp(
-      0.0,
-      double.infinity,
-    );
-    addKeyValue('Entradas manuales', money(manualNoAbonos));
-    addKeyValue('Retiros manuales', money(cashOutManual));
-
-    lines.add(line());
-  addKeyValue('Efectivo esperado en caja', money(expectedCash));
-    lines.add(line());
+    if (salesCardTotal > 0) addPair('TARJETA:', money(salesCardTotal));
+    if (salesTransferTotal > 0) addPair('TRANSFERENCIA:', money(salesTransferTotal));
+    if (salesCreditTotal > 0) addPair('CREDITO:', money(salesCreditTotal));
+    if (creditAbonos > 0) addPair('ABONOS CREDITO:', money(creditAbonos));
+    if (layawayAbonos > 0) addPair('ABONOS APARTADO:', money(layawayAbonos));
+    if (cashInManual > 0) addPair('ENTRADAS:', money(cashInManual));
+    if (cashOutManual > 0) addPair('SALIDAS:', money(cashOutManual));
 
     if ((note ?? '').trim().isNotEmpty) {
-      lines.add(fit('Nota:'));
-      final wrapped = ReceiptText.wrapText(
-        sanitize(note!.trim()),
-        (w - 2).clamp(1, w),
-      );
-      for (final lineText in wrapped) {
-        lines.add(fit('  $lineText'));
-      }
       lines.add(line());
+      lines.add(fit('NOTA:'));
+      for (final lineText in ReceiptText.wrapText(sanitize(note!.trim()), w)) {
+        lines.add(fit(lineText));
+      }
     }
 
-    lines.add('<H2C>MOVIMIENTOS DEL DIA');
-    lines.add(line());
-
-    if (movements.isEmpty) {
-      lines.add(center('Sin movimientos'));
-    } else {
-      final timeFmt = DateFormat('HH:mm');
-      for (final m in movements) {
-        final sign = m.isIn ? '+' : '-';
-        final right = '$sign${money(m.amount)}';
-        final left =
-            '${timeFmt.format(m.createdAt)} (#${m.sessionId}) ${m.reason}';
-        addKeyValue(left, right, prefix: '');
-      }
+    if (movements.isNotEmpty) {
       lines.add(line());
-      addKeyValue('Total entradas', money(cashInManual));
-      addKeyValue('Total retiros', money(cashOutManual));
+      lines.add('<H2C>MOVIMIENTOS');
+      lines.add(line());
+      final timeFmt = DateFormat('hh:mm a');
+      for (final movement in movements.take(8)) {
+        final label = '${timeFmt.format(movement.createdAt)} ${movement.reason}';
+        final amount = '${movement.isIn ? '+' : '-'}${money(movement.amount)}';
+        addPair(label, amount);
+      }
+      if (movements.length > 8) {
+        addPair('MOVIMIENTOS ADICIONALES:', '${movements.length - 8}');
+      }
     }
 
     if (layout.autoCut) {

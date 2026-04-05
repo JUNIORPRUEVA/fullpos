@@ -28,7 +28,7 @@ class _CashBoxPageState extends State<CashBoxPage> {
   bool _isLoading = true;
   bool _canOpenCashbox = false;
   bool _canCloseShift = false;
-  bool _isMutating = false;
+  final bool _isMutating = false;
 
   @override
   void initState() {

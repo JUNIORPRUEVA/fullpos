@@ -35,6 +35,7 @@ class Sidebar extends ConsumerStatefulWidget {
 class _SidebarState extends ConsumerState<Sidebar>
     with SingleTickerProviderStateMixin {
   bool _isCollapsed = false;
+  bool _isClientsExpanded = true;
   bool _isAdministrationExpanded = true;
   AnimationController? _collapseController;
 
@@ -119,7 +120,6 @@ class _SidebarState extends ConsumerState<Sidebar>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
     final screenSize = MediaQuery.of(context).size;
 
@@ -263,10 +263,22 @@ class _SidebarState extends ConsumerState<Sidebar>
                       : topbarHeight;
 
                   final reportRoutes = <String>{'/reports', '/factura'};
+                  final clientsRoutes = <String>{
+                    '/clients',
+                    '/quotes-list',
+                    '/credits-list',
+                  };
                   final administrationRoutes = <String>{
                     '/purchases',
                     '/cash/expenses',
                   };
+                  final shouldShowClientsChildren =
+                      _isClientsExpanded ||
+                      clientsRoutes.any(
+                        (route) =>
+                            currentRoute == route ||
+                            currentRoute.startsWith('$route/'),
+                      );
                   final shouldShowAdministrationChildren =
                       _isAdministrationExpanded ||
                       administrationRoutes.any(
@@ -338,6 +350,46 @@ class _SidebarState extends ConsumerState<Sidebar>
                         ),
                       ];
 
+                  final clientChildEntries =
+                      <({_SidebarIconPair icon, String title, String route})>[
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.userList(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.userList(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Clientes',
+                          route: '/clients',
+                        ),
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.notePencil(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.notePencil(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Cotizaciones',
+                          route: '/quotes-list',
+                        ),
+                        (
+                          icon: _SidebarIconPair(
+                            outline: PhosphorIcons.creditCard(
+                              PhosphorIconsStyle.regular,
+                            ),
+                            filled: PhosphorIcons.creditCard(
+                              PhosphorIconsStyle.fill,
+                            ),
+                          ),
+                          title: 'Créditos',
+                          route: '/credits-list',
+                        ),
+                      ];
+
                   final administrationEntries =
                       <({_SidebarIconPair icon, String title, String route})>[
                         (
@@ -390,6 +442,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                     Set<String>? activeRoutes,
                     bool lowEmphasis = false,
                     bool showTrailingChevron = true,
+                    Widget? trailing,
+                    bool showSubmenuBadge = false,
                   }) {
                     return PremiumNavItem(
                       outlineIcon: icon.outline,
@@ -414,6 +468,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                           showTrailingChevron &&
                           !visualCollapsed &&
                           !compactHeight,
+                      trailing: trailing,
+                      showSubmenuBadge: showSubmenuBadge,
                     );
                   }
 
@@ -712,6 +768,111 @@ class _SidebarState extends ConsumerState<Sidebar>
                                   children: [
                                     sectionLabel('Principal'),
                                     for (final entry in primaryEntries)
+                                      if (entry.title != 'Clientes' &&
+                                          entry.title != 'Reportes')
+                                        buildNavEntry(
+                                          icon: entry.icon,
+                                          title: entry.title,
+                                          route: entry.route,
+                                          onTap: entry.onTap,
+                                          activeRoutes: entry.title == 'Reportes'
+                                              ? reportRoutes
+                                              : null,
+                                        ),
+                                    buildNavEntry(
+                                      icon: _SidebarIconPair(
+                                        outline: PhosphorIcons.usersThree(
+                                          PhosphorIconsStyle.regular,
+                                        ),
+                                        filled: PhosphorIcons.usersThree(
+                                          PhosphorIconsStyle.fill,
+                                        ),
+                                      ),
+                                      title: 'Clientes',
+                                      route: null,
+                                      onTap: () {
+                                        if (visualCollapsed) {
+                                          _setCollapsed(false);
+                                          setState(
+                                            () => _isClientsExpanded = true,
+                                          );
+                                          return;
+                                        }
+                                        setState(
+                                          () => _isClientsExpanded =
+                                              !_isClientsExpanded,
+                                        );
+                                      },
+                                      activeRoutes: clientsRoutes,
+                                      trailing: AnimatedRotation(
+                                        turns: _isClientsExpanded ? 0.25 : 0.0,
+                                        duration:
+                                            const Duration(milliseconds: 220),
+                                        curve: Curves.easeOutCubic,
+                                        child: PhosphorIcon(
+                                          PhosphorIcons.caretRight(
+                                            PhosphorIconsStyle.bold,
+                                          ),
+                                          size: (13.5 * navScale).clamp(
+                                            12.0,
+                                            14.0,
+                                          ),
+                                          color: effectiveSidebarTextColor
+                                              .withOpacity(0.58),
+                                        ),
+                                      ),
+                                      showSubmenuBadge: true,
+                                    ),
+                                    AnimatedSize(
+                                      duration:
+                                          const Duration(milliseconds: 240),
+                                      curve: Curves.easeOutCubic,
+                                      alignment: Alignment.topCenter,
+                                      child: shouldShowClientsChildren &&
+                                              !visualCollapsed
+                                          ? Padding(
+                                              padding: EdgeInsets.only(
+                                                left: (16 * navScale).clamp(
+                                                  12.0,
+                                                  18.0,
+                                                ),
+                                                top: (4 * navScale).clamp(
+                                                  2.0,
+                                                  6.0,
+                                                ),
+                                              ),
+                                              child: AnimatedOpacity(
+                                                duration: const Duration(
+                                                  milliseconds: 180,
+                                                ),
+                                                curve: Curves.easeOut,
+                                                opacity: shouldShowClientsChildren
+                                                    ? 1
+                                                    : 0,
+                                                child: Column(
+                                                  children: [
+                                                    for (final entry
+                                                        in clientChildEntries)
+                                                      buildNavEntry(
+                                                        icon: entry.icon,
+                                                        title: entry.title,
+                                                        route: entry.route,
+                                                        onTap: () => _go(
+                                                          context,
+                                                          entry.route,
+                                                        ),
+                                                        lowEmphasis: true,
+                                                        showTrailingChevron:
+                                                            false,
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                    for (final entry in primaryEntries)
+                                      if (entry.title == 'Reportes')
                                       buildNavEntry(
                                         icon: entry.icon,
                                         title: entry.title,
@@ -750,32 +911,75 @@ class _SidebarState extends ConsumerState<Sidebar>
                                         );
                                       },
                                       activeRoutes: administrationRoutes,
-                                    ),
-                                    if (shouldShowAdministrationChildren &&
-                                        !visualCollapsed)
-                                      Padding(
-                                        padding: EdgeInsets.only(
-                                          left: (16 * navScale).clamp(
-                                            12.0,
-                                            18.0,
+                                      trailing: AnimatedRotation(
+                                        turns: _isAdministrationExpanded
+                                            ? 0.25
+                                            : 0.0,
+                                        duration:
+                                            const Duration(milliseconds: 220),
+                                        curve: Curves.easeOutCubic,
+                                        child: PhosphorIcon(
+                                          PhosphorIcons.caretRight(
+                                            PhosphorIconsStyle.bold,
                                           ),
-                                          top: (4 * navScale).clamp(2.0, 6.0),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            for (final entry
-                                                in administrationEntries)
-                                              buildNavEntry(
-                                                icon: entry.icon,
-                                                title: entry.title,
-                                                route: entry.route,
-                                                onTap: () =>
-                                                    _go(context, entry.route),
-                                                showTrailingChevron: false,
-                                              ),
-                                          ],
+                                          size: (13.5 * navScale).clamp(
+                                            12.0,
+                                            14.0,
+                                          ),
+                                          color: effectiveSidebarTextColor
+                                              .withOpacity(0.58),
                                         ),
                                       ),
+                                      showSubmenuBadge: true,
+                                    ),
+                                    AnimatedSize(
+                                      duration:
+                                          const Duration(milliseconds: 240),
+                                      curve: Curves.easeOutCubic,
+                                      alignment: Alignment.topCenter,
+                                      child: shouldShowAdministrationChildren &&
+                                              !visualCollapsed
+                                          ? Padding(
+                                              padding: EdgeInsets.only(
+                                                left: (16 * navScale).clamp(
+                                                  12.0,
+                                                  18.0,
+                                                ),
+                                                top: (4 * navScale).clamp(
+                                                  2.0,
+                                                  6.0,
+                                                ),
+                                              ),
+                                              child: AnimatedOpacity(
+                                                duration: const Duration(
+                                                  milliseconds: 180,
+                                                ),
+                                                curve: Curves.easeOut,
+                                                opacity:
+                                                    shouldShowAdministrationChildren
+                                                    ? 1
+                                                    : 0,
+                                                child: Column(
+                                                  children: [
+                                                    for (final entry
+                                                        in administrationEntries)
+                                                      buildNavEntry(
+                                                        icon: entry.icon,
+                                                        title: entry.title,
+                                                        route: entry.route,
+                                                        onTap: () => _go(
+                                                          context,
+                                                          entry.route,
+                                                        ),
+                                                        showTrailingChevron:
+                                                            false,
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
                                     const Spacer(),
                                     Container(
                                       margin: EdgeInsets.fromLTRB(
@@ -848,6 +1052,8 @@ class PremiumNavItem extends StatefulWidget {
   final double scale;
   final bool lowEmphasis;
   final bool showTrailingChevron;
+  final Widget? trailing;
+  final bool showSubmenuBadge;
 
   const PremiumNavItem({
     super.key,
@@ -870,6 +1076,8 @@ class PremiumNavItem extends StatefulWidget {
     this.scale = 1.0,
     this.lowEmphasis = false,
     this.showTrailingChevron = true,
+    this.trailing,
+    this.showSubmenuBadge = false,
   });
 
   @override
@@ -934,9 +1142,18 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
 
   @override
   Widget build(BuildContext context) {
-    final isActive =
-        (widget.route != null && widget.currentRoute == widget.route) ||
-        (widget.activeRoutes?.contains(widget.currentRoute) ?? false);
+    final matchesRoute =
+      widget.route != null &&
+      (widget.currentRoute == widget.route ||
+        widget.currentRoute.startsWith('${widget.route}/'));
+    final matchesActiveRoute =
+      widget.activeRoutes?.any(
+        (route) =>
+          widget.currentRoute == route ||
+          widget.currentRoute.startsWith('$route/'),
+      ) ??
+      false;
+    final isActive = matchesRoute || matchesActiveRoute;
     final isEnabled = widget.onTap != null || widget.route != null;
 
     final s = widget.scale.clamp(0.65, 1.12);
@@ -998,6 +1215,33 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final rowHeight = visuallyCollapsed
         ? (48 * s).clamp(46.0, 52.0)
         : (44 * s).clamp(40.0, 48.0);
+
+    Widget buildSubmenuBadge() {
+      return Container(
+        key: Key('submenu-badge-${widget.title}'),
+        width: visuallyCollapsed ? 15 : 14,
+        height: visuallyCollapsed ? 15 : 14,
+        decoration: BoxDecoration(
+          color: isActive
+              ? fgColor.withOpacity(0.16)
+              : widget.textColor.withOpacity(_isHover ? 0.16 : 0.12),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isActive
+                ? fgColor.withOpacity(0.34)
+                : widget.textColor.withOpacity(0.18),
+            width: 0.8,
+          ),
+        ),
+        child: Center(
+          child: PhosphorIcon(
+            PhosphorIcons.caretDown(PhosphorIconsStyle.bold),
+            size: visuallyCollapsed ? 8.5 : 8,
+            color: isActive ? fgColor : widget.textColor.withOpacity(0.72),
+          ),
+        ),
+      );
+    }
 
     return OverlayPortal(
       controller: _tooltipController,
@@ -1251,16 +1495,31 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                           ),
                                         ),
                                         Center(
-                                          child: PhosphorIcon(
-                                            isActive
-                                                ? widget.activeIcon
-                                                : widget.outlineIcon,
-                                            color: isActive
-                                              ? fgColor
-                                                : widget.textColor.withOpacity(
-                                                    _isHover ? 1.0 : 0.98,
-                                                  ),
-                                            size: (22.5 * s).clamp(21.5, 24.0),
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            children: [
+                                              PhosphorIcon(
+                                                isActive
+                                                    ? widget.activeIcon
+                                                    : widget.outlineIcon,
+                                                color: isActive
+                                                    ? fgColor
+                                                    : widget.textColor
+                                                        .withOpacity(
+                                                          _isHover ? 1.0 : 0.98,
+                                                        ),
+                                                size: (22.5 * s).clamp(
+                                                  21.5,
+                                                  24.0,
+                                                ),
+                                              ),
+                                              if (widget.showSubmenuBadge)
+                                                Positioned(
+                                                  right: -5,
+                                                  bottom: -4,
+                                                  child: buildSubmenuBadge(),
+                                                ),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -1271,12 +1530,23 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                             : Row(
                                 mainAxisAlignment: MainAxisAlignment.start,
                                 children: [
-                                  PhosphorIcon(
-                                    isActive
-                                        ? widget.activeIcon
-                                        : widget.outlineIcon,
-                                    color: iconColor,
-                                    size: (23 * s).clamp(22.0, 24.0),
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      PhosphorIcon(
+                                        isActive
+                                            ? widget.activeIcon
+                                            : widget.outlineIcon,
+                                        color: iconColor,
+                                        size: (23 * s).clamp(22.0, 24.0),
+                                      ),
+                                      if (widget.showSubmenuBadge)
+                                        Positioned(
+                                          right: -6,
+                                          bottom: -5,
+                                          child: buildSubmenuBadge(),
+                                        ),
+                                    ],
                                   ),
                                   if (expanded > 0.001)
                                     Expanded(
@@ -1313,6 +1583,9 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                     ),
                                                   ),
                                                   if (widget
+                                                      .trailing != null)
+                                                    widget.trailing!
+                                                  else if (widget
                                                       .showTrailingChevron)
                                                     PhosphorIcon(
                                                       PhosphorIcons.caretRight(

@@ -8,12 +8,10 @@ import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../settings/providers/theme_provider.dart';
-import '../../auth/data/auth_repository.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_session_model.dart';
 import '../data/cash_summary_model.dart';
 import '../data/cash_repository.dart';
-import 'cash_close_dialog.dart';
 
 /// Panel lateral de caja con resumen y opciones
 class CashPanelSheet extends ConsumerStatefulWidget {
@@ -47,11 +45,9 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   bool _loadingSummary = true;
   bool _loadingMovements = true;
   bool _loadingSession = true;
-  bool _loadingPermissions = true;
   CashSummaryModel? _summary;
   List<CashMovementModel> _movements = [];
   CashSessionModel? _session;
-  bool _canCloseShift = false;
 
   late final DateFormat _openedAtFormat = DateFormat('dd/MM HH:mm');
   late final NumberFormat _moneyFormat = CurrencyDisplay.currency();
@@ -80,26 +76,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       _loadSession(),
       _loadSummary(),
       _loadMovements(),
-      _loadPermissions(),
     ]);
-  }
-
-  Future<void> _loadPermissions() async {
-    try {
-      final perms = await AuthRepository.getCurrentPermissions();
-      if (!mounted) return;
-      setState(() {
-        _canCloseShift = perms.canCloseShift || perms.canCloseCash;
-        _loadingPermissions = false;
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _canCloseShift = false;
-          _loadingPermissions = false;
-        });
-      }
-    }
   }
 
   Future<void> _loadSession() async {
@@ -162,12 +139,20 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     final settings = ref.watch(themeProvider);
     final screenSize = MediaQuery.of(context).size;
     final viewInsets = MediaQuery.of(context).viewInsets;
-    final safeWidth = (screenSize.width - 28).clamp(320.0, 1000.0);
-    final desiredSide = (screenSize.width * 0.35).clamp(320.0, safeWidth);
-    final dialogWidth = math.min(desiredSide, safeWidth);
-    final availableHeight = screenSize.height - viewInsets.vertical - 28;
-    final isCompact = dialogWidth < 560 || availableHeight < 590;
-    final isUltraCompact = dialogWidth < 470 || availableHeight < 540;
+    final safeWidth = (screenSize.width - 24).clamp(360.0, 620.0);
+    final dialogWidth = math.min(
+      (screenSize.width * 0.34).clamp(420.0, 540.0),
+      safeWidth,
+    );
+    final availableHeight = math.min(
+      (screenSize.height - viewInsets.vertical - 12).clamp(
+        640.0,
+        screenSize.height,
+      ),
+      screenSize.height - 4,
+    );
+    final isCompact = dialogWidth < 620 || availableHeight < 760;
+    final isUltraCompact = dialogWidth < 500 || availableHeight < 640;
     final sidebarColor = settings.sidebarColor;
     final sidebarAccent = settings.sidebarActiveColor;
     final sidebarText = ColorUtils.ensureReadableColor(
@@ -182,15 +167,16 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
         : DateTime.now().difference(openedAt);
     final durationText = duration == null ? null : _formatDuration(duration);
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: (screenSize.width * 0.035).clamp(12.0, 52.0),
-        vertical: (screenSize.height * 0.04).clamp(12.0, 42.0),
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: dialogWidth, minWidth: 320),
-        child: Container(
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(12, 6, 10, 6),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: SizedBox(
+            width: dialogWidth,
+            height: availableHeight,
+            child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
             border: Border.all(
@@ -227,7 +213,6 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               _buildHeader(
                 theme: theme,
@@ -237,23 +222,27 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                 isUltraCompact: isUltraCompact,
                 sidebarAccent: sidebarAccent,
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                  0,
-                  isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                  isUltraCompact ? 12 : (isCompact ? 14 : 16),
-                ),
-                child: _buildDashboard(
-                  theme: theme,
-                  isCompact: isCompact,
-                  isUltraCompact: isUltraCompact,
-                  sidebarColor: sidebarColor,
-                  sidebarAccent: sidebarAccent,
-                  sidebarText: sidebarText,
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    isUltraCompact ? 12 : (isCompact ? 14 : 18),
+                    isUltraCompact ? 10 : 6,
+                    isUltraCompact ? 12 : (isCompact ? 14 : 18),
+                    isUltraCompact ? 12 : (isCompact ? 14 : 16),
+                  ),
+                  child: _buildDashboard(
+                    theme: theme,
+                    isCompact: isCompact,
+                    isUltraCompact: isUltraCompact,
+                    sidebarColor: sidebarColor,
+                    sidebarAccent: sidebarAccent,
+                    sidebarText: sidebarText,
+                  ),
                 ),
               ),
             ],
+          ),
+        ),
           ),
         ),
       ),
@@ -275,10 +264,10 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
 
     return Container(
       padding: EdgeInsets.fromLTRB(
-        isUltraCompact ? 12 : (isCompact ? 14 : 18),
         isUltraCompact ? 12 : (isCompact ? 14 : 16),
-        isUltraCompact ? 8 : (isCompact ? 10 : 12),
         isUltraCompact ? 10 : (isCompact ? 12 : 14),
+        isUltraCompact ? 8 : (isCompact ? 10 : 12),
+        isUltraCompact ? 8 : (isCompact ? 10 : 12),
       ),
       decoration: BoxDecoration(
         border: Border(
@@ -289,17 +278,17 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: isUltraCompact ? 36 : (isCompact ? 40 : 46),
-            height: isUltraCompact ? 36 : (isCompact ? 40 : 46),
+            width: isUltraCompact ? 34 : (isCompact ? 38 : 42),
+            height: isUltraCompact ? 34 : (isCompact ? 38 : 42),
             decoration: BoxDecoration(
               color: badgeColor,
-              borderRadius: BorderRadius.circular(isUltraCompact ? 12 : 14),
+              borderRadius: BorderRadius.circular(isUltraCompact ? 11 : 13),
               border: Border.all(color: scheme.primary.withOpacity(0.16)),
             ),
             child: Icon(
               Icons.account_balance_wallet_rounded,
               color: sidebarAccent,
-              size: isUltraCompact ? 18 : (isCompact ? 20 : 22),
+              size: isUltraCompact ? 17 : (isCompact ? 19 : 20),
             ),
           ),
           SizedBox(width: isUltraCompact ? 10 : 12),
@@ -308,7 +297,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'RESUMEN DE TURNO',
+                  'CORTE ACTUAL',
                   style:
                       (isUltraCompact
                               ? theme.textTheme.titleSmall
@@ -316,11 +305,10 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                           ?.copyWith(
                             fontWeight: FontWeight.w900,
                             color: scheme.onSurface,
-                            letterSpacing: 0.25,
+                            letterSpacing: 0.15,
                           ),
                 ),
-                SizedBox(height: isUltraCompact ? 2 : 3),
-                SizedBox(height: isUltraCompact ? 6 : 8),
+                SizedBox(height: isUltraCompact ? 5 : 7),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -362,7 +350,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
 
   Widget _buildInfoChip({required IconData icon, required String label}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
           scheme.primary.withOpacity(0.06),
@@ -381,7 +369,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: scheme.onSurface.withOpacity(0.78),
               fontWeight: FontWeight.w700,
-              fontSize: 10.5,
+              fontSize: 10,
             ),
           ),
         ],
@@ -394,13 +382,11 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     required bool isCompact,
     required bool isUltraCompact,
   }) {
-    final enabled =
-        !_loadingPermissions && (_session?.isOpen == true) && _canCloseShift;
-    final accent = enabled ? scheme.primary : scheme.outline;
-    final actionColor = enabled ? status.error : scheme.outline;
+    final accent = scheme.primary;
+    final actionColor = scheme.outline;
 
     return Container(
-      padding: EdgeInsets.all(isUltraCompact ? 10 : (isCompact ? 12 : 14)),
+      padding: EdgeInsets.all(isUltraCompact ? 9 : (isCompact ? 11 : 12)),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -410,17 +396,16 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             Color.alphaBlend(actionColor.withOpacity(0.08), scheme.surface),
           ],
         ),
-        borderRadius: BorderRadius.circular(isUltraCompact ? 16 : 18),
+        borderRadius: BorderRadius.circular(isUltraCompact ? 14 : 16),
         border: Border.all(color: accent.withOpacity(0.22)),
       ),
       child: Row(
         children: [
           Expanded(child: _buildActionBannerCopy(theme, isUltraCompact)),
-          const SizedBox(width: 10),
+          SizedBox(width: isUltraCompact ? 8 : 10),
           SizedBox(
-            width: isUltraCompact ? 138 : 156,
-            child: _buildActionButton(
-              enabled: enabled,
+            width: isUltraCompact ? 132 : 144,
+            child: _buildViewOnlyBadge(
               actionColor: actionColor,
               isUltraCompact: isUltraCompact,
             ),
@@ -436,74 +421,58 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          'Aquí haces el corte',
+          'Cierre del turno',
           style: theme.textTheme.labelLarge?.copyWith(
             color: scheme.onSurface,
             fontWeight: FontWeight.w900,
-            fontSize: isUltraCompact ? 11.5 : 12.5,
+            fontSize: isUltraCompact ? 11.0 : 11.8,
           ),
         ),
         const SizedBox(height: 2),
         Text(
-          'Todo visible en una sola vista.',
+          'Resumen y movimientos en la misma vista.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: scheme.onSurface.withOpacity(0.72),
             height: 1.1,
             fontWeight: FontWeight.w500,
-            fontSize: isUltraCompact ? 9.8 : 10.2,
+            fontSize: isUltraCompact ? 9.3 : 9.7,
           ),
-          maxLines: 1,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
       ],
     );
   }
 
-  Widget _buildActionButton({
-    required bool enabled,
+  Widget _buildViewOnlyBadge({
     required Color actionColor,
     required bool isUltraCompact,
   }) {
-    final foreground = readableOn(actionColor);
-
-    return ElevatedButton.icon(
-      onPressed: null,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: enabled ? actionColor : scheme.surfaceContainerHighest,
-        foregroundColor: enabled
-            ? foreground
-            : scheme.onSurface.withOpacity(0.42),
-        elevation: 0,
-        padding: EdgeInsets.symmetric(
-          horizontal: isUltraCompact ? 10 : 12,
-          vertical: isUltraCompact ? 10 : 12,
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        visualDensity: VisualDensity.compact,
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isUltraCompact ? 10 : 12,
+        vertical: isUltraCompact ? 8 : 10,
       ),
-      icon: Icon(
-        enabled ? Icons.receipt_long_rounded : Icons.lock_outline,
-        size: isUltraCompact ? 16 : 18,
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: actionColor.withOpacity(0.35)),
       ),
-      label: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            'Hacer corte',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: isUltraCompact ? 11.4 : 12.4,
-            ),
+          Icon(
+            Icons.visibility_outlined,
+            size: isUltraCompact ? 15 : 16,
+            color: scheme.onSurface.withOpacity(0.58),
           ),
+          SizedBox(width: isUltraCompact ? 6 : 8),
           Text(
-            enabled ? 'Cerrar e imprimir' : 'Sin acceso',
+            'Solo vista',
             style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: isUltraCompact ? 9.2 : 9.8,
-              color: enabled
-                  ? foreground.withOpacity(0.78)
-                  : scheme.onSurface.withOpacity(0.42),
+              fontWeight: FontWeight.w800,
+              fontSize: isUltraCompact ? 9.8 : 10.4,
+              color: scheme.onSurface.withOpacity(0.66),
             ),
           ),
         ],
@@ -536,7 +505,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final gap = isUltraCompact ? 8.0 : (isCompact ? 10.0 : 12.0);
+        final gap = isUltraCompact ? 8.0 : (isCompact ? 9.0 : 10.0);
 
         final hero = _buildSummaryHero(
           theme: theme,
@@ -546,9 +515,14 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           sidebarAccent: sidebarAccent,
           sidebarText: sidebarText,
         );
-        final detailsButton = _buildDetailsButton(
+        final breakdown = _buildBreakdownDetailsTab(
           theme: theme,
-          isUltraCompact: isUltraCompact,
+          isCompactDialog: isUltraCompact,
+          sidebarAccent: sidebarAccent,
+        );
+        final movements = _buildMovementDetailsTab(
+          theme: theme,
+          isCompactDialog: isUltraCompact,
           sidebarAccent: sidebarAccent,
         );
 
@@ -557,345 +531,29 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           children: [
             hero,
             SizedBox(height: gap),
-            Align(alignment: Alignment.topRight, child: detailsButton),
+            _buildActionBanner(
+              theme: theme,
+              isCompact: isCompact,
+              isUltraCompact: isUltraCompact,
+            ),
+            SizedBox(height: gap),
+            if (constraints.maxWidth >= 940)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: breakdown),
+                  SizedBox(width: gap),
+                  Expanded(child: movements),
+                ],
+              )
+            else ...[
+              breakdown,
+              SizedBox(height: gap),
+              movements,
+            ],
           ],
         );
       },
-    );
-  }
-
-  Widget _buildDetailsButton({
-    required ThemeData theme,
-    required bool isUltraCompact,
-    required Color sidebarAccent,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: _showDetailsDialog,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: sidebarAccent,
-        side: BorderSide(color: sidebarAccent.withOpacity(0.28)),
-        backgroundColor: Color.alphaBlend(
-          sidebarAccent.withOpacity(0.06),
-          scheme.surface,
-        ),
-        padding: EdgeInsets.symmetric(
-          horizontal: isUltraCompact ? 10 : 12,
-          vertical: isUltraCompact ? 8 : 9,
-        ),
-        visualDensity: VisualDensity.compact,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      icon: Icon(Icons.visibility_outlined, size: isUltraCompact ? 14 : 16),
-      label: Text(
-        'Ver desglose',
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: isUltraCompact ? 10.2 : 10.8,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showDetailsDialog() async {
-    if (_summary == null) return;
-
-    final theme = Theme.of(context);
-    final settings = ref.read(themeProvider);
-    final scheme = theme.colorScheme;
-    final sidebarAccent = settings.sidebarActiveColor;
-    final sidebarColor = settings.sidebarColor;
-    final sidebarText = ColorUtils.ensureReadableColor(
-      settings.sidebarTextColor,
-      sidebarColor,
-    );
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        final screenSize = MediaQuery.of(dialogContext).size;
-        final width = (screenSize.width * 0.36).clamp(340.0, 560.0);
-        final height = (screenSize.height * 0.64).clamp(420.0, 760.0);
-        final isCompactDialog = width < 430;
-
-        return DefaultTabController(
-          length: 2,
-          child: Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.all(18),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: width,
-                maxHeight: height,
-                minWidth: 340,
-                minHeight: 420,
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: sidebarAccent.withOpacity(0.3)),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color.alphaBlend(
-                        sidebarColor.withOpacity(0.2),
-                        scheme.surface,
-                      ),
-                      Color.alphaBlend(
-                        sidebarAccent.withOpacity(0.06),
-                        scheme.surface,
-                      ),
-                      scheme.surface,
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.shadowColor.withOpacity(0.18),
-                      blurRadius: 28,
-                      offset: const Offset(0, 16),
-                    ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Padding(
-                  padding: EdgeInsets.all(isCompactDialog ? 16 : 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildDetailsDialogHeader(
-                        theme: theme,
-                        sidebarAccent: sidebarAccent,
-                        sidebarColor: sidebarColor,
-                        sidebarText: sidebarText,
-                        isCompactDialog: isCompactDialog,
-                        onClose: () => Navigator.pop(dialogContext),
-                      ),
-                      SizedBox(height: isCompactDialog ? 12 : 14),
-                      _buildDetailsDialogTabBar(
-                        theme: theme,
-                        sidebarAccent: sidebarAccent,
-                        isCompactDialog: isCompactDialog,
-                      ),
-                      SizedBox(height: isCompactDialog ? 12 : 14),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            _buildBreakdownDetailsTab(
-                              theme: theme,
-                              isCompactDialog: isCompactDialog,
-                              sidebarAccent: sidebarAccent,
-                            ),
-                            _buildMovementDetailsTab(
-                              theme: theme,
-                              isCompactDialog: isCompactDialog,
-                              sidebarAccent: sidebarAccent,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDetailsDialogHeader({
-    required ThemeData theme,
-    required Color sidebarAccent,
-    required Color sidebarColor,
-    required Color sidebarText,
-    required bool isCompactDialog,
-    required VoidCallback onClose,
-  }) {
-    final summary = _summary!;
-
-    return Container(
-      padding: EdgeInsets.all(isCompactDialog ? 14 : 16),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          sidebarColor.withOpacity(0.12),
-          scheme.surfaceContainerHighest,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: sidebarAccent.withOpacity(0.18)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: isCompactDialog ? 40 : 44,
-                height: isCompactDialog ? 40 : 44,
-                decoration: BoxDecoration(
-                  color: Color.alphaBlend(
-                    sidebarAccent.withOpacity(0.14),
-                    scheme.surface,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.analytics_rounded,
-                  color: sidebarAccent,
-                  size: isCompactDialog ? 20 : 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Detalle del turno',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: scheme.onSurface,
-                        fontWeight: FontWeight.w900,
-                        fontSize: isCompactDialog ? 15.2 : 16.4,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Consulta ventas, movimientos y cifras del corte.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurface.withOpacity(0.66),
-                        fontWeight: FontWeight.w600,
-                        fontSize: isCompactDialog ? 10.2 : 10.8,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: onClose,
-                icon: Icon(
-                  Icons.close,
-                  color: scheme.onSurface.withOpacity(0.64),
-                ),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          SizedBox(height: isCompactDialog ? 12 : 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildDetailsMetricChip(
-                label: 'Caja esperada',
-                value: _moneyFormat.format(summary.expectedCash),
-                accent: sidebarAccent,
-                textColor: sidebarText,
-                icon: Icons.account_balance_wallet_rounded,
-              ),
-              _buildDetailsMetricChip(
-                label: 'Ventas turno',
-                value: _moneyFormat.format(summary.totalSales),
-                accent: status.success,
-                textColor: scheme.onSurface,
-                icon: Icons.trending_up_rounded,
-              ),
-              _buildDetailsMetricChip(
-                label: 'Tickets',
-                value: '${summary.totalTickets}',
-                accent: scheme.secondary,
-                textColor: scheme.onSurface,
-                icon: Icons.receipt_long_rounded,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailsMetricChip({
-    required String label,
-    required String value,
-    required Color accent,
-    required Color textColor,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), scheme.surface),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.14)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: accent),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.58),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 9.6,
-                ),
-              ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: textColor,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 10.8,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailsDialogTabBar({
-    required ThemeData theme,
-    required Color sidebarAccent,
-    required bool isCompactDialog,
-  }) {
-    return Container(
-      height: isCompactDialog ? 42 : 46,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.32)),
-      ),
-      child: TabBar(
-        dividerColor: Colors.transparent,
-        indicator: BoxDecoration(
-          color: Color.alphaBlend(
-            sidebarAccent.withOpacity(0.16),
-            scheme.surface,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        labelColor: sidebarAccent,
-        unselectedLabelColor: scheme.onSurface.withOpacity(0.62),
-        labelStyle: theme.textTheme.labelLarge?.copyWith(
-          fontWeight: FontWeight.w900,
-          fontSize: isCompactDialog ? 11.2 : 11.8,
-        ),
-        unselectedLabelStyle: theme.textTheme.labelLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-          fontSize: isCompactDialog ? 11.2 : 11.8,
-        ),
-        tabs: const [
-          Tab(text: 'Ventas'),
-          Tab(text: 'Movimientos'),
-        ],
-      ),
     );
   }
 
@@ -954,40 +612,57 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.36)),
       ),
-      child: ListView(
-        padding: EdgeInsets.all(isCompactDialog ? 12 : 14),
-        children: [
-          Text(
-            'Composición del corte',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: scheme.onSurface,
-              fontWeight: FontWeight.w900,
+      child: Padding(
+        padding: EdgeInsets.all(isCompactDialog ? 11 : 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Composición del corte',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w900,
+                      fontSize: isCompactDialog ? 12.4 : 13,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${items.length}',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurface.withOpacity(0.48),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'La apertura forma parte de la caja esperada, pero no del total de ventas del turno.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurface.withOpacity(0.64),
-              fontWeight: FontWeight.w600,
-              fontSize: isCompactDialog ? 10.0 : 10.4,
+            const SizedBox(height: 4),
+            Text(
+              'La apertura forma parte de la caja esperada, pero no del total de ventas del turno.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurface.withOpacity(0.64),
+                fontWeight: FontWeight.w600,
+                fontSize: isCompactDialog ? 9.6 : 10.0,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          for (var index = 0; index < items.length; index++) ...[
-            _buildBreakdownTile(
-              icon: items[index].icon,
-              label: items[index].label,
-              amount: items[index].amount,
-              color: items[index].color,
-              isUltraCompact: false,
-            ),
-            if (index != items.length - 1) const SizedBox(height: 10),
+            const SizedBox(height: 10),
+            for (var index = 0; index < items.length; index++) ...[
+              _buildBreakdownTile(
+                icon: items[index].icon,
+                label: items[index].label,
+                amount: items[index].amount,
+                color: items[index].color,
+                isUltraCompact: false,
+              ),
+              if (index != items.length - 1) const SizedBox(height: 8),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1002,11 +677,16 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.36)),
       ),
       child: _loadingMovements
-          ? Center(child: CircularProgressIndicator(color: scheme.primary))
+          ? Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: CircularProgressIndicator(color: scheme.primary),
+              ),
+            )
           : _movements.isEmpty
           ? Center(
               child: Padding(
@@ -1053,43 +733,53 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                 ),
               ),
             )
-          : ListView.separated(
-              padding: EdgeInsets.all(isCompactDialog ? 12 : 14),
-              itemCount: _movements.length + 1,
-              separatorBuilder: (_, separatorIndex) =>
-                  const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          : Padding(
+              padding: EdgeInsets.all(isCompactDialog ? 11 : 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        'Historial de movimientos',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: scheme.onSurface,
-                          fontWeight: FontWeight.w900,
+                      Expanded(
+                        child: Text(
+                          'Historial de movimientos',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: scheme.onSurface,
+                            fontWeight: FontWeight.w900,
+                            fontSize: isCompactDialog ? 12.4 : 13,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
-                        '${_movements.length} registros dentro del turno actual.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurface.withOpacity(0.64),
-                          fontWeight: FontWeight.w600,
-                          fontSize: isCompactDialog ? 10.0 : 10.4,
+                        '${_movements.length}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.onSurface.withOpacity(0.48),
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
-                  );
-                }
-
-                final movement = _movements[index - 1];
-                return _buildMovementTile(
-                  movement: movement,
-                  timeLabel: dateFormat.format(movement.createdAt),
-                  isUltraCompact: false,
-                );
-              },
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_movements.length} registros dentro del turno actual.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.64),
+                      fontWeight: FontWeight.w600,
+                      fontSize: isCompactDialog ? 9.6 : 10.0,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (var index = 0; index < _movements.length; index++) ...[
+                    _buildMovementTile(
+                      movement: _movements[index],
+                      timeLabel: dateFormat.format(_movements[index].createdAt),
+                      isUltraCompact: false,
+                    ),
+                    if (index != _movements.length - 1)
+                      const SizedBox(height: 8),
+                  ],
+                ],
+              ),
             ),
     );
   }
@@ -1105,7 +795,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     final summary = _summary!;
 
     return Container(
-      padding: EdgeInsets.all(isUltraCompact ? 12 : (isCompact ? 14 : 16)),
+      padding: EdgeInsets.all(isUltraCompact ? 10 : (isCompact ? 12 : 13)),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -1116,7 +806,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             scheme.surfaceContainerHighest,
           ],
         ),
-        borderRadius: BorderRadius.circular(isUltraCompact ? 16 : 18),
+        borderRadius: BorderRadius.circular(isUltraCompact ? 14 : 16),
         border: Border.all(color: sidebarAccent.withOpacity(0.22)),
       ),
       child: Column(
@@ -1128,9 +818,9 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                 'EFECTIVO ESPERADO',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: scheme.onSurface.withOpacity(0.74),
-                  letterSpacing: 0.8,
+                  letterSpacing: 0.5,
                   fontWeight: FontWeight.w800,
-                  fontSize: isUltraCompact ? 10.4 : 11,
+                  fontSize: isUltraCompact ? 10.0 : 10.4,
                 ),
               ),
               const Spacer(),
@@ -1144,25 +834,25 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                   foregroundColor: sidebarText,
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
+                    horizontal: 8,
+                    vertical: 6,
                   ),
                 ),
                 icon: Icon(
                   Icons.refresh_rounded,
-                  size: isUltraCompact ? 14 : 16,
+                  size: isUltraCompact ? 13 : 14,
                 ),
                 label: Text(
                   'Actualizar',
-                  style: TextStyle(fontSize: isUltraCompact ? 10 : 10.8),
+                  style: TextStyle(fontSize: isUltraCompact ? 9.6 : 10),
                 ),
               ),
             ],
           ),
-          SizedBox(height: isUltraCompact ? 8 : 10),
+          SizedBox(height: isUltraCompact ? 6 : 8),
           Wrap(
-            spacing: 10,
-            runSpacing: 8,
+            spacing: 8,
+            runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
@@ -1174,13 +864,13 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                         ?.copyWith(
                           color: scheme.onSurface,
                           fontWeight: FontWeight.w900,
-                          fontSize: isUltraCompact ? 24 : (isCompact ? 28 : 30),
+                          fontSize: isUltraCompact ? 21 : (isCompact ? 24 : 26),
                         ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+                  horizontal: 8,
+                  vertical: 5,
                 ),
                 decoration: BoxDecoration(
                   color: Color.alphaBlend(
@@ -1203,7 +893,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: sidebarAccent,
                         fontWeight: FontWeight.w800,
-                        fontSize: isUltraCompact ? 10 : 10.4,
+                        fontSize: isUltraCompact ? 9.4 : 9.8,
                       ),
                     ),
                   ],
@@ -1211,7 +901,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               ),
             ],
           ),
-          SizedBox(height: isUltraCompact ? 8 : 10),
+          SizedBox(height: isUltraCompact ? 6 : 8),
           Row(
             children: [
               Expanded(
@@ -1258,10 +948,10 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     required bool isUltraCompact,
   }) {
     return Container(
-      padding: EdgeInsets.all(isUltraCompact ? 8 : 10),
+      padding: EdgeInsets.all(isUltraCompact ? 7 : 8),
       decoration: BoxDecoration(
         color: Color.alphaBlend(color.withOpacity(0.08), scheme.surface),
-        borderRadius: BorderRadius.circular(isUltraCompact ? 12 : 14),
+        borderRadius: BorderRadius.circular(isUltraCompact ? 10 : 12),
         border: Border.all(color: color.withOpacity(0.16)),
       ),
       child: Column(
@@ -1276,7 +966,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
               color: scheme.onSurface,
               fontWeight: FontWeight.w900,
-              fontSize: isUltraCompact ? 12.2 : 13.4,
+              fontSize: isUltraCompact ? 11.4 : 12.4,
             ),
           ),
           Text(
@@ -1284,7 +974,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: scheme.onSurface.withOpacity(0.62),
               fontWeight: FontWeight.w600,
-              fontSize: isUltraCompact ? 9.4 : 10,
+              fontSize: isUltraCompact ? 8.8 : 9.2,
             ),
           ),
         ],
@@ -1432,26 +1122,26 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   }) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isUltraCompact ? 8 : 10,
-        vertical: isUltraCompact ? 7 : 8,
+        horizontal: isUltraCompact ? 8 : 9,
+        vertical: isUltraCompact ? 6 : 7,
       ),
       decoration: BoxDecoration(
         color: Color.alphaBlend(color.withOpacity(0.08), scheme.surface),
-        borderRadius: BorderRadius.circular(isUltraCompact ? 12 : 14),
+        borderRadius: BorderRadius.circular(isUltraCompact ? 10 : 12),
         border: Border.all(color: color.withOpacity(0.14)),
       ),
       child: Row(
         children: [
           Container(
-            width: isUltraCompact ? 24 : 28,
-            height: isUltraCompact ? 24 : 28,
+            width: isUltraCompact ? 22 : 24,
+            height: isUltraCompact ? 22 : 24,
             decoration: BoxDecoration(
               color: color.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: color, size: isUltraCompact ? 13 : 15),
+            child: Icon(icon, color: color, size: isUltraCompact ? 12 : 13),
           ),
-          SizedBox(width: isUltraCompact ? 8 : 10),
+          SizedBox(width: isUltraCompact ? 7 : 8),
           Expanded(
             child: Text(
               label,
@@ -1460,17 +1150,21 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
-                fontSize: isUltraCompact ? 10.2 : 10.8,
+                fontSize: isUltraCompact ? 9.8 : 10.1,
               ),
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            _moneyFormat.format(amount),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: isUltraCompact ? 10.4 : 11.2,
+          SizedBox(
+            width: isUltraCompact ? 92 : 104,
+            child: Text(
+              _moneyFormat.format(amount),
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+                fontSize: isUltraCompact ? 9.8 : 10.4,
+              ),
             ),
           ),
         ],
@@ -1639,20 +1333,20 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     final movementColor = isIncome ? status.success : status.error;
 
     return Container(
-      padding: EdgeInsets.all(isUltraCompact ? 8 : 10),
+      padding: EdgeInsets.all(isUltraCompact ? 7 : 8),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
           movementColor.withOpacity(0.08),
           scheme.surface,
         ),
-        borderRadius: BorderRadius.circular(isUltraCompact ? 12 : 14),
+        borderRadius: BorderRadius.circular(isUltraCompact ? 10 : 12),
         border: Border.all(color: movementColor.withOpacity(0.14)),
       ),
       child: Row(
         children: [
           Container(
-            width: isUltraCompact ? 24 : 28,
-            height: isUltraCompact ? 24 : 28,
+            width: isUltraCompact ? 22 : 24,
+            height: isUltraCompact ? 22 : 24,
             decoration: BoxDecoration(
               color: movementColor.withOpacity(0.14),
               borderRadius: BorderRadius.circular(8),
@@ -1660,10 +1354,10 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             child: Icon(
               isIncome ? Icons.south_west_rounded : Icons.north_east_rounded,
               color: movementColor,
-              size: isUltraCompact ? 13 : 15,
+              size: isUltraCompact ? 12 : 13,
             ),
           ),
-          SizedBox(width: isUltraCompact ? 8 : 10),
+          SizedBox(width: isUltraCompact ? 7 : 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1675,7 +1369,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurface,
                     fontWeight: FontWeight.w700,
-                    fontSize: isUltraCompact ? 10.1 : 10.6,
+                    fontSize: isUltraCompact ? 9.8 : 10.1,
                   ),
                 ),
                 Text(
@@ -1683,19 +1377,23 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurface.withOpacity(0.58),
                     fontWeight: FontWeight.w600,
-                    fontSize: isUltraCompact ? 9.2 : 9.8,
+                    fontSize: isUltraCompact ? 8.8 : 9.2,
                   ),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 6),
-          Text(
-            '${isIncome ? '+' : '-'}${_moneyFormat.format(movement.amount)}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: movementColor,
-              fontWeight: FontWeight.w900,
-              fontSize: isUltraCompact ? 10 : 10.6,
+          SizedBox(
+            width: isUltraCompact ? 92 : 104,
+            child: Text(
+              '${isIncome ? '+' : '-'}${_moneyFormat.format(movement.amount)}',
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: movementColor,
+                fontWeight: FontWeight.w900,
+                fontSize: isUltraCompact ? 9.6 : 10.0,
+              ),
             ),
           ),
         ],
@@ -1703,11 +1401,4 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     );
   }
 
-  Future<void> _showCloseDialog() async {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(
-        content: Text('Finaliza el turno desde el menú de usuario.'),
-      ),
-    );
-  }
 }

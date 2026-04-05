@@ -30,7 +30,10 @@ class UnifiedTicketPrinter {
       final printerSettings = await PrinterSettingsRepository.getOrCreate();
 
       // 3. Crear configuración de layout desde settings
-      final layout = TicketLayoutConfig.fromPrinterSettings(printerSettings);
+      final baseLayout = TicketLayoutConfig.fromPrinterSettings(
+        printerSettings,
+      );
+      final layout = _layoutForPrintedTicket(baseLayout, data);
 
       // 4. Crear builder con datos centralizados
       final builder = TicketBuilder(layout: layout, company: company);
@@ -65,6 +68,25 @@ class UnifiedTicketPrinter {
         ticketNumber: data.ticketNumber,
       );
     }
+  }
+
+  static TicketLayoutConfig _layoutForPrintedTicket(
+    TicketLayoutConfig layout,
+    TicketData data,
+  ) {
+    if (data.type != TicketType.sale) {
+      return layout;
+    }
+
+    return layout.copyWith(
+      showClientInfo: true,
+      showPaymentInfo: true,
+      showDateTime: true,
+      showTicketCode: true,
+      showElectronicInvoiceReference: true,
+      showCashier: true,
+      showTotalsBreakdown: true,
+    );
   }
 
   /// Imprime un ticket usando una lista de lineas ya alineadas.
@@ -161,6 +183,7 @@ class UnifiedTicketPrinter {
       changeAmount: normalizedChange,
       discountTotal: sale.discountTotal,
       electronicInvoiceCode: sale.electronicInvoiceCode,
+      electronicDocumentType: sale.electronicDocumentType,
       customerName: sale.customerNameSnapshot,
       customerPhone: sale.customerPhoneSnapshot,
       customerRnc: sale.customerRncSnapshot,
@@ -244,6 +267,7 @@ class UnifiedTicketPrinter {
       changeAmount: sale.changeAmount,
       discountTotal: sale.discountTotal,
       electronicInvoiceCode: sale.electronicInvoiceCode,
+      electronicDocumentType: sale.electronicDocumentType,
       customerName: sale.customerNameSnapshot,
       customerPhone: sale.customerPhoneSnapshot,
       customerRnc: sale.customerRncSnapshot,
