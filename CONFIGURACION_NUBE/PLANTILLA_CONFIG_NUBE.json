@@ -1,8 +1,0 @@
-{
-  "cloudEnabled": false,
-  "cloudOwnerUsername": "owner",
-  "cloudApiKey": "(opcional, si el servidor lo requiere)",
-  "cloudAllowedRoles": ["admin"],
-  "cloudOwnerAppAndroidUrl": null,
-  "cloudOwnerAppIosUrl": null
-}

@@ -68,6 +68,13 @@ class CloudSyncService {
   static const int _historyDaysToSync = 90;
   static const int _chunkSize = 200;
 
+  static const Set<CloudSyncTarget> _enabledTargets = {
+    CloudSyncTarget.users,
+    CloudSyncTarget.companyConfig,
+    CloudSyncTarget.products,
+    CloudSyncTarget.sales,
+  };
+
   void startRealtimeSyncEngine() {
     if (_engineStarted) return;
     _engineStarted = true;
@@ -129,7 +136,7 @@ class CloudSyncService {
   }
 
   void scheduleProductsSyncSoon({
-    Duration delay = const Duration(milliseconds: 800),
+    Duration delay = const Duration(milliseconds: 150),
     String reason = 'products_changed',
   }) {
     unawaited(
@@ -138,7 +145,7 @@ class CloudSyncService {
   }
 
   void scheduleSalesSyncSoon({
-    Duration delay = const Duration(milliseconds: 600),
+    Duration delay = const Duration(milliseconds: 150),
     String reason = 'sales_changed',
   }) {
     unawaited(
@@ -178,6 +185,14 @@ class CloudSyncService {
     required Duration delay,
     required String reason,
   }) async {
+    if (!_enabledTargets.contains(target)) {
+      await AppLogger.instance.logInfo(
+        'Sync target skipped target=${target.value} reason=$reason',
+        module: 'cloud_sync',
+      );
+      return;
+    }
+
     await _outbox.enqueue(target: target.value, reason: reason, delay: delay);
     await AppLogger.instance.logInfo(
       'Sync job queued target=${target.value} reason=$reason delayMs=${delay.inMilliseconds}',
@@ -188,7 +203,7 @@ class CloudSyncService {
 
   void _kickOutboxDispatcher() {
     _outboxDispatchDebounce?.cancel();
-    _outboxDispatchDebounce = Timer(const Duration(milliseconds: 250), () {
+    _outboxDispatchDebounce = Timer(const Duration(milliseconds: 75), () {
       _outboxDispatchDebounce = null;
       unawaited(_drainOutbox());
     });
@@ -251,6 +266,10 @@ class CloudSyncService {
   }
 
   Future<bool> _runTargetSync(CloudSyncTarget target) {
+    if (!_enabledTargets.contains(target)) {
+      return Future.value(true);
+    }
+
     switch (target) {
       case CloudSyncTarget.users:
         return syncUsersIfEnabled(force: true);

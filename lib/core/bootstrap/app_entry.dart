@@ -62,33 +62,13 @@ class _AppEntryState extends ConsumerState<AppEntry> {
         delay: const Duration(milliseconds: 150),
         reason: 'startup_company_config',
       );
-      CloudSyncService.instance.scheduleClientsSyncSoon(
-        delay: const Duration(milliseconds: 200),
-        reason: 'startup_clients',
-      );
-      CloudSyncService.instance.scheduleCategoriesSyncSoon(
-        delay: const Duration(milliseconds: 220),
-        reason: 'startup_categories',
-      );
-      CloudSyncService.instance.scheduleSuppliersSyncSoon(
-        delay: const Duration(milliseconds: 240),
-        reason: 'startup_suppliers',
-      );
       CloudSyncService.instance.scheduleProductsSyncSoon(
         delay: const Duration(milliseconds: 250),
         reason: 'startup_products',
       );
-      CloudSyncService.instance.scheduleCashSyncSoon(
-        delay: const Duration(milliseconds: 350),
-        reason: 'startup_cash',
-      );
       CloudSyncService.instance.scheduleSalesSyncSoon(
         delay: const Duration(milliseconds: 450),
         reason: 'startup_sales',
-      );
-      CloudSyncService.instance.scheduleQuotesSyncSoon(
-        delay: const Duration(milliseconds: 550),
-        reason: 'startup_quotes',
       );
     } catch (_) {
       // Nunca bloquear UI por sync.
