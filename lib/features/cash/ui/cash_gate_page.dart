@@ -12,8 +12,6 @@ import '../providers/cash_providers.dart';
 const _cashGatePageBackground = Color(0xFFF5F7FA);
 const _cashGatePanelColor = Color(0xFF374151);
 const _cashGatePrimaryBlue = Color(0xFF2563EB);
-const _cashGatePanelText = Color(0xFFF9FAFB);
-const _cashGatePanelMutedText = Color(0xFFD1D5DB);
 const _cashGateInputBackground = Color(0xFFFFFFFF);
 const _cashGateInputText = Color(0xFF111827);
 const _cashGateInputHint = Color(0xFF94A3B8);
@@ -76,7 +74,7 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
       );
       if (!authorized || !mounted) return;
 
-        final amount = AccountingAmountFormatter.parse(_amountController.text);
+      final amount = AccountingAmountFormatter.parse(_amountController.text);
       await ref
           .read(activeSessionControllerProvider.notifier)
           .startSession(openingAmount: amount, note: '');
@@ -101,41 +99,8 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardBorder = Colors.white.withOpacity(0.08);
-    final dividerColor = Colors.white.withOpacity(0.10);
     final inputFill = _cashGateInputBackground;
     final focusedAmountFill = _cashGateInputBackground;
-
-    InputDecoration decoration({
-      required String hint,
-      Color? fillColor,
-    }) {
-      return InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: _cashGateInputHint, fontSize: 13),
-        filled: true,
-        fillColor: fillColor ?? inputFill,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _cashGatePrimaryBlue, width: 1.6),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFF87171), width: 1.2),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFF87171), width: 1.4),
-        ),
-      );
-    }
 
     return Scaffold(
       backgroundColor: _cashGatePageBackground,
@@ -238,9 +203,8 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                   boxShadow: _amountHasFocus
                                       ? [
                                           BoxShadow(
-                                            color: _cashGatePrimaryBlue.withOpacity(
-                                              0.18,
-                                            ),
+                                            color: _cashGatePrimaryBlue
+                                                .withOpacity(0.18),
                                             blurRadius: 20,
                                             offset: const Offset(0, 8),
                                           ),
@@ -317,18 +281,15 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                             }
                                             return null;
                                           },
-                                          textInputAction:
-                                              TextInputAction.done,
+                                          textInputAction: TextInputAction.done,
                                           onFieldSubmitted: (_) => _openCash(),
                                           onTap: () {
-                                            _amountController.selection =
-                                                TextSelection(
-                                                  baseOffset: 0,
-                                                  extentOffset:
-                                                      _amountController
-                                                          .text
-                                                          .length,
-                                                );
+                                            _amountController
+                                                .selection = TextSelection(
+                                              baseOffset: 0,
+                                              extentOffset:
+                                                  _amountController.text.length,
+                                            );
                                           },
                                         ),
                                       ),
@@ -352,7 +313,9 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                         )
                                       : const Icon(Icons.lock_open_rounded),
                                   label: Text(
-                                    _isLoading ? 'Abriendo caja...' : 'Abrir caja',
+                                    _isLoading
+                                        ? 'Abriendo caja...'
+                                        : 'Abrir caja',
                                   ),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: _cashGatePrimaryBlue,

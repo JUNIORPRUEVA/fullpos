@@ -33,16 +33,16 @@ class LogoutFlowService {
   }
 
   static Future<void> defaultPerformLogout(BuildContext context) async {
-    final stableContext =
+    final routerContext = ErrorHandler.navigatorKey.currentContext ?? context;
+    final messengerContext =
         ErrorHandler.navigatorKey.currentState?.overlay?.context ??
-        ErrorHandler.navigatorKey.currentContext ??
-        context;
+        routerContext;
 
     try {
       FocusManager.instance.primaryFocus?.unfocus();
-      ScaffoldMessenger.maybeOf(stableContext)?.hideCurrentSnackBar();
+      ScaffoldMessenger.maybeOf(messengerContext)?.hideCurrentSnackBar();
 
-      final container = ProviderScope.containerOf(stableContext, listen: false);
+      final container = ProviderScope.containerOf(routerContext, listen: false);
       container.read(appBootstrapProvider).forceLoggedOut();
 
       await SessionManager.logout();
@@ -63,10 +63,6 @@ class LogoutFlowService {
         navigator?.pop();
       }
 
-      final routerContext =
-          navigator?.overlay?.context ??
-          ErrorHandler.navigatorKey.currentContext ??
-          stableContext;
       if (!routerContext.mounted) return;
 
       final router = GoRouter.of(routerContext);

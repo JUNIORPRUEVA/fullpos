@@ -34,9 +34,9 @@ class Sidebar extends ConsumerStatefulWidget {
 
 class _SidebarState extends ConsumerState<Sidebar>
     with SingleTickerProviderStateMixin {
-  bool _isCollapsed = false;
-  bool _isClientsExpanded = true;
-  bool _isAdministrationExpanded = true;
+  bool _isCollapsed = true;
+  bool _isClientsExpanded = false;
+  bool _isAdministrationExpanded = false;
   AnimationController? _collapseController;
 
   AnimationController _ensureCollapseController() {
@@ -55,7 +55,7 @@ class _SidebarState extends ConsumerState<Sidebar>
   @override
   void initState() {
     super.initState();
-    _isCollapsed = widget.forcedCollapsed ?? false;
+    _isCollapsed = widget.forcedCollapsed ?? true;
     _ensureCollapseController();
     _loadState();
   }
@@ -169,7 +169,9 @@ class _SidebarState extends ConsumerState<Sidebar>
       minRatio: 4.5,
     );
     final sidebarBorderColor = Color.alphaBlend(
-      tokens.outline.withOpacity(theme.brightness == Brightness.dark ? 0.32 : 0.5),
+      tokens.outline.withOpacity(
+        theme.brightness == Brightness.dark ? 0.32 : 0.5,
+      ),
       sidebarBaseColor,
     );
     final currentRoute = _safeCurrentPath(context);
@@ -203,10 +205,7 @@ class _SidebarState extends ConsumerState<Sidebar>
           decoration: BoxDecoration(
             color: sidebarBaseColor,
             border: Border(
-              right: BorderSide(
-                color: sidebarBorderColor,
-                width: 1,
-              ),
+              right: BorderSide(color: sidebarBorderColor, width: 1),
             ),
             boxShadow: [
               BoxShadow(
@@ -494,6 +493,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                       final btnSize = math.min(desiredBtnSize, contentWidth);
 
                       Widget brandIconShell() {
+                        final showCollapsedToggleBadge = visualCollapsed;
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
                           curve: Curves.easeInOut,
@@ -515,9 +515,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                 ),
                               ],
                             ),
-                            border: Border.all(
-                              color: sidebarBorderColor,
-                            ),
+                            border: Border.all(color: sidebarBorderColor),
                             boxShadow: [
                               BoxShadow(
                                 color: sidebarShadow(0.18),
@@ -529,8 +527,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                           ),
                           child: Center(
                             child: SizedBox(
-                              width: (25 * baseScale).clamp(22.0, 27.0),
-                              height: (25 * baseScale).clamp(22.0, 27.0),
+                              width: (28 * baseScale).clamp(24.0, 30.0),
+                              height: (28 * baseScale).clamp(24.0, 30.0),
                               child: Stack(
                                 clipBehavior: Clip.none,
                                 alignment: Alignment.center,
@@ -539,20 +537,68 @@ class _SidebarState extends ConsumerState<Sidebar>
                                     PhosphorIcons.receipt(
                                       PhosphorIconsStyle.regular,
                                     ),
-                                    size: (22.5 * baseScale).clamp(20.0, 24.0),
+                                    size: (23 * baseScale).clamp(20.0, 24.0),
                                     color: sidebarTextColor,
                                   ),
                                   Positioned(
-                                    right: -1,
-                                    top: 1,
+                                    right: -1.5,
+                                    bottom: 1,
                                     child: PhosphorIcon(
-                                      PhosphorIcons.squaresFour(
+                                      PhosphorIcons.creditCard(
                                         PhosphorIconsStyle.fill,
                                       ),
-                                      size: (9.8 * baseScale).clamp(8.5, 11.2),
+                                      size: (10.6 * baseScale).clamp(9.0, 12.0),
                                       color: sidebarActiveColor,
                                     ),
                                   ),
+                                  if (showCollapsedToggleBadge)
+                                    Positioned(
+                                      right: -5,
+                                      bottom: -5,
+                                      child: Container(
+                                        width: (15.5 * baseScale).clamp(
+                                          14.0,
+                                          18.0,
+                                        ),
+                                        height: (15.5 * baseScale).clamp(
+                                          14.0,
+                                          18.0,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: sidebarActiveColor,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: sidebarBaseColor,
+                                            width: 1.4,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: sidebarShadow(0.22),
+                                              blurRadius: 10,
+                                              spreadRadius: -4,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Center(
+                                          child: PhosphorIcon(
+                                            PhosphorIcons.caretRight(
+                                              PhosphorIconsStyle.bold,
+                                            ),
+                                            size: (9 * baseScale).clamp(
+                                              8.0,
+                                              10.0,
+                                            ),
+                                            color:
+                                                ColorUtils.ensureReadableColor(
+                                                  sidebarTextColor,
+                                                  sidebarActiveColor,
+                                                  minRatio: 4.5,
+                                                ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -564,15 +610,18 @@ class _SidebarState extends ConsumerState<Sidebar>
                         return SizedBox(
                           height: headerHeight,
                           child: Center(
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: _toggleSidebar,
-                                borderRadius: BorderRadius.circular(16),
-                                hoverColor: Colors.transparent,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2),
-                                  child: brandIconShell(),
+                            child: Tooltip(
+                              message: 'Mostrar menu POS',
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _toggleSidebar,
+                                  borderRadius: BorderRadius.circular(16),
+                                  hoverColor: Colors.transparent,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(2),
+                                    child: brandIconShell(),
+                                  ),
                                 ),
                               ),
                             ),
@@ -775,7 +824,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                                           title: entry.title,
                                           route: entry.route,
                                           onTap: entry.onTap,
-                                          activeRoutes: entry.title == 'Reportes'
+                                          activeRoutes:
+                                              entry.title == 'Reportes'
                                               ? reportRoutes
                                               : null,
                                         ),
@@ -806,8 +856,9 @@ class _SidebarState extends ConsumerState<Sidebar>
                                       activeRoutes: clientsRoutes,
                                       trailing: AnimatedRotation(
                                         turns: _isClientsExpanded ? 0.25 : 0.0,
-                                        duration:
-                                            const Duration(milliseconds: 220),
+                                        duration: const Duration(
+                                          milliseconds: 220,
+                                        ),
                                         curve: Curves.easeOutCubic,
                                         child: PhosphorIcon(
                                           PhosphorIcons.caretRight(
@@ -824,11 +875,13 @@ class _SidebarState extends ConsumerState<Sidebar>
                                       showSubmenuBadge: true,
                                     ),
                                     AnimatedSize(
-                                      duration:
-                                          const Duration(milliseconds: 240),
+                                      duration: const Duration(
+                                        milliseconds: 240,
+                                      ),
                                       curve: Curves.easeOutCubic,
                                       alignment: Alignment.topCenter,
-                                      child: shouldShowClientsChildren &&
+                                      child:
+                                          shouldShowClientsChildren &&
                                               !visualCollapsed
                                           ? Padding(
                                               padding: EdgeInsets.only(
@@ -846,7 +899,8 @@ class _SidebarState extends ConsumerState<Sidebar>
                                                   milliseconds: 180,
                                                 ),
                                                 curve: Curves.easeOut,
-                                                opacity: shouldShowClientsChildren
+                                                opacity:
+                                                    shouldShowClientsChildren
                                                     ? 1
                                                     : 0,
                                                 child: Column(
@@ -873,15 +927,16 @@ class _SidebarState extends ConsumerState<Sidebar>
                                     ),
                                     for (final entry in primaryEntries)
                                       if (entry.title == 'Reportes')
-                                      buildNavEntry(
-                                        icon: entry.icon,
-                                        title: entry.title,
-                                        route: entry.route,
-                                        onTap: entry.onTap,
-                                        activeRoutes: entry.title == 'Reportes'
-                                            ? reportRoutes
-                                            : null,
-                                      ),
+                                        buildNavEntry(
+                                          icon: entry.icon,
+                                          title: entry.title,
+                                          route: entry.route,
+                                          onTap: entry.onTap,
+                                          activeRoutes:
+                                              entry.title == 'Reportes'
+                                              ? reportRoutes
+                                              : null,
+                                        ),
                                     SizedBox(
                                       height: (5 * navScale).clamp(4.0, 7.0),
                                     ),
@@ -915,8 +970,9 @@ class _SidebarState extends ConsumerState<Sidebar>
                                         turns: _isAdministrationExpanded
                                             ? 0.25
                                             : 0.0,
-                                        duration:
-                                            const Duration(milliseconds: 220),
+                                        duration: const Duration(
+                                          milliseconds: 220,
+                                        ),
                                         curve: Curves.easeOutCubic,
                                         child: PhosphorIcon(
                                           PhosphorIcons.caretRight(
@@ -933,11 +989,13 @@ class _SidebarState extends ConsumerState<Sidebar>
                                       showSubmenuBadge: true,
                                     ),
                                     AnimatedSize(
-                                      duration:
-                                          const Duration(milliseconds: 240),
+                                      duration: const Duration(
+                                        milliseconds: 240,
+                                      ),
                                       curve: Curves.easeOutCubic,
                                       alignment: Alignment.topCenter,
-                                      child: shouldShowAdministrationChildren &&
+                                      child:
+                                          shouldShowAdministrationChildren &&
                                               !visualCollapsed
                                           ? Padding(
                                               padding: EdgeInsets.only(
@@ -1143,16 +1201,16 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
   @override
   Widget build(BuildContext context) {
     final matchesRoute =
-      widget.route != null &&
-      (widget.currentRoute == widget.route ||
-        widget.currentRoute.startsWith('${widget.route}/'));
+        widget.route != null &&
+        (widget.currentRoute == widget.route ||
+            widget.currentRoute.startsWith('${widget.route}/'));
     final matchesActiveRoute =
-      widget.activeRoutes?.any(
-        (route) =>
-          widget.currentRoute == route ||
-          widget.currentRoute.startsWith('$route/'),
-      ) ??
-      false;
+        widget.activeRoutes?.any(
+          (route) =>
+              widget.currentRoute == route ||
+              widget.currentRoute.startsWith('$route/'),
+        ) ??
+        false;
     final isActive = matchesRoute || matchesActiveRoute;
     final isEnabled = widget.onTap != null || widget.route != null;
 
@@ -1175,34 +1233,37 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
         ? 0.6
         : 1.0;
     final itemBorderColor = isActive
-      ? Color.alphaBlend(widget.textColor.withOpacity(0.18), widget.surfaceColor)
-      : (_isHover
-          ? Color.alphaBlend(
-            widget.textColor.withOpacity(0.10),
+        ? Color.alphaBlend(
+            widget.textColor.withOpacity(0.18),
             widget.surfaceColor,
           )
-          : Colors.transparent);
+        : (_isHover
+              ? Color.alphaBlend(
+                  widget.textColor.withOpacity(0.10),
+                  widget.surfaceColor,
+                )
+              : Colors.transparent);
     final glowColor =
-      Color.lerp(widget.activeGradientEnd, widget.activeColor, 0.18) ??
-      widget.activeGradientEnd;
+        Color.lerp(widget.activeGradientEnd, widget.activeColor, 0.18) ??
+        widget.activeGradientEnd;
 
     final fgColor = isActive
-      ? ColorUtils.ensureReadableColor(
-        widget.tooltipTextColor,
-        widget.activeGradientEnd,
-        minRatio: 4.5,
-        )
+        ? ColorUtils.ensureReadableColor(
+            widget.tooltipTextColor,
+            widget.activeGradientEnd,
+            minRatio: 4.5,
+          )
         : widget.textColor.withOpacity(_isHover ? 0.98 : 0.88);
     final iconColor = isActive
-      ? fgColor
+        ? fgColor
         : widget.textColor.withOpacity(_isHover ? 0.98 : 0.86);
     final collapsedIconShellSize = (36 * s).clamp(34.0, 40.0);
     final collapsedShellBase = isActive
-      ? widget.activeGradientEnd
-      : Color.alphaBlend(
+        ? widget.activeGradientEnd
+        : Color.alphaBlend(
             navShadow(_isHover ? 0.08 : 0.14),
-        widget.surfaceColor,
-        );
+            widget.surfaceColor,
+          );
     final collapsedShellTop = Color.alphaBlend(
       navHighlight(isActive ? 0.26 : (_isHover ? 0.20 : 0.16)),
       collapsedShellBase,
@@ -1422,9 +1483,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                       BoxShadow(
                                         color: isActive
                                             ? glowColor.withOpacity(0.44)
-                                            : navShadow(
-                                                _isHover ? 0.18 : 0.10,
-                                              ),
+                                            : navShadow(_isHover ? 0.18 : 0.10),
                                         blurRadius: isActive ? 18 : 12,
                                         spreadRadius: -8,
                                         offset: const Offset(0, 8),
@@ -1505,9 +1564,11 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                 color: isActive
                                                     ? fgColor
                                                     : widget.textColor
-                                                        .withOpacity(
-                                                          _isHover ? 1.0 : 0.98,
-                                                        ),
+                                                          .withOpacity(
+                                                            _isHover
+                                                                ? 1.0
+                                                                : 0.98,
+                                                          ),
                                                 size: (22.5 * s).clamp(
                                                   21.5,
                                                   24.0,
@@ -1582,8 +1643,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                       softWrap: false,
                                                     ),
                                                   ),
-                                                  if (widget
-                                                      .trailing != null)
+                                                  if (widget.trailing != null)
                                                     widget.trailing!
                                                   else if (widget
                                                       .showTrailingChevron)

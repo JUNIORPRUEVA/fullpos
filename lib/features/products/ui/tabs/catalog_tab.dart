@@ -346,7 +346,10 @@ class _CatalogTabState extends State<CatalogTab> {
           : await _productsRepo.search(query, filters: _currentFilters);
 
       if (mounted) {
-        final visibleIds = products.where((product) => product.id != null).map((product) => product.id!).toSet();
+        final visibleIds = products
+            .where((product) => product.id != null)
+            .map((product) => product.id!)
+            .toSet();
         setState(() {
           _products = products;
           _selectedProductIds.retainWhere(visibleIds.contains);
@@ -651,79 +654,6 @@ class _CatalogTabState extends State<CatalogTab> {
     }
   }
 
-  EdgeInsets _contentPadding(BoxConstraints constraints) {
-    const maxContentWidth = 1280.0;
-    final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
-    return EdgeInsets.fromLTRB(side, 8, side, 8);
-  }
-
-  Future<void> _softDelete(ProductModel product) async {
-    if (product.isDeleted) {
-      final canDelete = await _authorizeAction(
-        AppActions.deleteProduct,
-        resourceType: 'product',
-        resourceId: product.id?.toString(),
-      );
-      if (!canDelete) return;
-
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Restaurar producto'),
-          content: Text('¿Desea restaurar "${product.name}"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Restaurar'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirm == true) {
-        try {
-          await _productsRepo.restore(product.id!);
-          await _loadProducts();
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Producto restaurado')),
-          );
-        } catch (e) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-      }
-      return;
-    }
-
-    await _deleteProducts([product]);
-  }
-
-  String? _getCategoryName(int? categoryId) {
-    if (categoryId == null) return null;
-    try {
-      return _categories.firstWhere((c) => c.id == categoryId).name;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  String? _getSupplierName(int? supplierId) {
-    if (supplierId == null) return null;
-    try {
-      return _suppliers.firstWhere((s) => s.id == supplierId).name;
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _requestAdjustStock(ProductModel product) async {
     final canAdjust = await _authorizeAction(
       AppActions.adjustStock,
@@ -811,7 +741,8 @@ class _CatalogTabState extends State<CatalogTab> {
   List<ProductModel> _selectedProducts() {
     return _products
         .where(
-          (product) => product.id != null && _selectedProductIds.contains(product.id),
+          (product) =>
+              product.id != null && _selectedProductIds.contains(product.id),
         )
         .toList();
   }
@@ -879,7 +810,9 @@ class _CatalogTabState extends State<CatalogTab> {
     if (deletable.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay productos activos para eliminar.')),
+        const SnackBar(
+          content: Text('No hay productos activos para eliminar.'),
+        ),
       );
       return;
     }
@@ -904,7 +837,9 @@ class _CatalogTabState extends State<CatalogTab> {
       if (!mounted) return;
       setState(() {
         _selectedProductIds.removeAll(
-          deletable.where((product) => product.id != null).map((product) => product.id!),
+          deletable
+              .where((product) => product.id != null)
+              .map((product) => product.id!),
         );
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1032,10 +967,14 @@ class _CatalogTabState extends State<CatalogTab> {
         final scheme = theme.colorScheme;
         const maxContentWidth = 1280.0;
         final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-        final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
+        final side = ((constraints.maxWidth - contentWidth) / 2).clamp(
+          12.0,
+          40.0,
+        );
         final padding = EdgeInsets.fromLTRB(side, 14, side, 16);
         final compactToolbar = contentWidth < 1040;
-        final canViewPurchasePrice = _isAdmin || _permissions.canViewPurchasePrice;
+        final canViewPurchasePrice =
+            _isAdmin || _permissions.canViewPurchasePrice;
         final canViewProfit = _isAdmin || _permissions.canViewProfit;
         final canEditProducts = _isAdmin || _permissions.canEditProducts;
         final visibleSelectableIds = _products
@@ -1046,9 +985,11 @@ class _CatalogTabState extends State<CatalogTab> {
             .where(_selectedProductIds.contains)
             .length;
         final allVisibleSelected =
-            visibleSelectableIds.isNotEmpty && selectedVisibleCount == visibleSelectableIds.length;
+            visibleSelectableIds.isNotEmpty &&
+            selectedVisibleCount == visibleSelectableIds.length;
         final someVisibleSelected =
-            selectedVisibleCount > 0 && selectedVisibleCount < visibleSelectableIds.length;
+            selectedVisibleCount > 0 &&
+            selectedVisibleCount < visibleSelectableIds.length;
         final activeFilterCount = [
           _currentFilters?.categoryId,
           _currentFilters?.supplierId,
@@ -1063,7 +1004,9 @@ class _CatalogTabState extends State<CatalogTab> {
             decoration: BoxDecoration(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: scheme.outlineVariant.withOpacity(0.72)),
+              border: Border.all(
+                color: scheme.outlineVariant.withOpacity(0.72),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: scheme.shadow.withOpacity(0.03),
@@ -1102,7 +1045,8 @@ class _CatalogTabState extends State<CatalogTab> {
                         color: scheme.onSurface,
                       ),
                       decoration: InputDecoration(
-                        hintText: 'Buscar productos por nombre, código o referencia',
+                        hintText:
+                            'Buscar productos por nombre, código o referencia',
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
@@ -1197,7 +1141,8 @@ class _CatalogTabState extends State<CatalogTab> {
           Color? backgroundColor,
           Color? borderColor,
         }) {
-          final effectiveForeground = foregroundColor ?? scheme.onSurfaceVariant;
+          final effectiveForeground =
+              foregroundColor ?? scheme.onSurfaceVariant;
           return Tooltip(
             message: tooltip,
             child: Material(
@@ -1229,7 +1174,11 @@ class _CatalogTabState extends State<CatalogTab> {
                                   color: effectiveForeground.withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Icon(icon, size: 18, color: effectiveForeground),
+                                child: Icon(
+                                  icon,
+                                  size: 18,
+                                  color: effectiveForeground,
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Column(
@@ -1247,11 +1196,12 @@ class _CatalogTabState extends State<CatalogTab> {
                                   if (description != null)
                                     Text(
                                       description,
-                                      style: theme.textTheme.labelSmall?.copyWith(
-                                        color: scheme.onSurfaceVariant,
-                                        fontWeight: FontWeight.w700,
-                                        fontFamily: 'Inter',
-                                      ),
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: scheme.onSurfaceVariant,
+                                            fontWeight: FontWeight.w700,
+                                            fontFamily: 'Inter',
+                                          ),
                                     ),
                                 ],
                               ),
@@ -1275,7 +1225,9 @@ class _CatalogTabState extends State<CatalogTab> {
                 Icon(
                   Icons.tune_rounded,
                   size: 18,
-                  color: hasActiveFilters ? scheme.primary : scheme.onSurfaceVariant,
+                  color: hasActiveFilters
+                      ? scheme.primary
+                      : scheme.onSurfaceVariant,
                 ),
                 if (activeFilterCount > 0)
                   Positioned(
@@ -1305,7 +1257,9 @@ class _CatalogTabState extends State<CatalogTab> {
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               side: BorderSide(
-                color: hasActiveFilters ? scheme.primary.withOpacity(0.28) : scheme.outlineVariant,
+                color: hasActiveFilters
+                    ? scheme.primary.withOpacity(0.28)
+                    : scheme.outlineVariant,
               ),
               backgroundColor: hasActiveFilters
                   ? scheme.primary.withOpacity(0.06)
@@ -1364,7 +1318,9 @@ class _CatalogTabState extends State<CatalogTab> {
             decoration: BoxDecoration(
               color: scheme.surfaceContainerHighest.withOpacity(0.36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: scheme.outlineVariant.withOpacity(0.75)),
+              border: Border.all(
+                color: scheme.outlineVariant.withOpacity(0.75),
+              ),
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -1378,7 +1334,9 @@ class _CatalogTabState extends State<CatalogTab> {
                     tooltip: 'Importar Excel',
                     onPressed: _importProductsFromExcel,
                     foregroundColor: ui_colors.AppColors.primaryBlue,
-                    borderColor: ui_colors.AppColors.primaryBlue.withOpacity(0.16),
+                    borderColor: ui_colors.AppColors.primaryBlue.withOpacity(
+                      0.16,
+                    ),
                     backgroundColor: ui_colors.AppColors.lightBlueHover,
                   ),
                   const SizedBox(width: 8),
@@ -1387,7 +1345,9 @@ class _CatalogTabState extends State<CatalogTab> {
                     tooltip: 'Exportar Excel',
                     onPressed: _exportProductsToExcel,
                     foregroundColor: ui_colors.AppColors.primaryBlue,
-                    borderColor: ui_colors.AppColors.primaryBlue.withOpacity(0.16),
+                    borderColor: ui_colors.AppColors.primaryBlue.withOpacity(
+                      0.16,
+                    ),
                     backgroundColor: ui_colors.AppColors.lightBlueHover,
                   ),
                   if (selectedVisibleCount > 0) ...[
@@ -1490,7 +1450,9 @@ class _CatalogTabState extends State<CatalogTab> {
                               begin: Alignment.centerLeft,
                               end: Alignment.centerRight,
                               colors: [
-                                scheme.surfaceContainerHighest.withOpacity(0.84),
+                                scheme.surfaceContainerHighest.withOpacity(
+                                  0.84,
+                                ),
                                 scheme.surface.withOpacity(0.98),
                               ],
                             ),
@@ -1498,9 +1460,7 @@ class _CatalogTabState extends State<CatalogTab> {
                               top: Radius.circular(18),
                             ),
                             border: Border(
-                              bottom: BorderSide(
-                                color: scheme.outlineVariant,
-                              ),
+                              bottom: BorderSide(color: scheme.outlineVariant),
                             ),
                           ),
                           child: Row(
@@ -1518,7 +1478,8 @@ class _CatalogTabState extends State<CatalogTab> {
                                   ),
                                   onChanged: visibleSelectableIds.isEmpty
                                       ? null
-                                      : (value) => _toggleSelectAllVisible(value),
+                                      : (value) =>
+                                            _toggleSelectAllVisible(value),
                                 ),
                               ),
                               const SizedBox(width: 44),
@@ -1572,9 +1533,11 @@ class _CatalogTabState extends State<CatalogTab> {
                               itemBuilder: (context, index) {
                                 final product = _products[index];
                                 final productId = product.id;
-                                final isChecked = productId != null &&
+                                final isChecked =
+                                    productId != null &&
                                     _selectedProductIds.contains(productId);
-                                final isFocused = _selectedProduct?.id == product.id;
+                                final isFocused =
+                                    _selectedProduct?.id == product.id;
 
                                 return _CatalogProductRow(
                                   product: product,
@@ -1586,7 +1549,10 @@ class _CatalogTabState extends State<CatalogTab> {
                                     setState(() => _selectedProduct = product);
                                   },
                                   onToggleSelected: (selected) =>
-                                      _toggleProductSelection(product, selected),
+                                      _toggleProductSelection(
+                                        product,
+                                        selected,
+                                      ),
                                   onOpenPreview: () =>
                                       _showProductImagePreview(product),
                                   onEdit: canEditProducts
@@ -1727,7 +1693,9 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
             decoration: BoxDecoration(
               color: rowColor,
               border: Border(
-                bottom: BorderSide(color: scheme.outlineVariant.withOpacity(0.45)),
+                bottom: BorderSide(
+                  color: scheme.outlineVariant.withOpacity(0.45),
+                ),
               ),
             ),
             child: Row(
@@ -1740,7 +1708,9 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
                       horizontal: -4,
                       vertical: -4,
                     ),
-                    onChanged: product.id == null ? null : widget.onToggleSelected,
+                    onChanged: product.id == null
+                        ? null
+                        : widget.onToggleSelected,
                   ),
                 ),
                 SizedBox(

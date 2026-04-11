@@ -291,7 +291,7 @@ class _CategoriesTabState extends State<CategoriesTab> {
                                     child: ListView.separated(
                                       padding: const EdgeInsets.symmetric(horizontal: 20),
                                       itemCount: _categories.length,
-                                      separatorBuilder: (_, __) => Divider(
+                                      separatorBuilder: (_, _) => Divider(
                                         height: 1,
                                         color: AppColors.borderSoft.withOpacity(0.75),
                                       ),

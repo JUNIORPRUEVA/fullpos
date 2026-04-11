@@ -64,17 +64,20 @@ void main() {
     expect(base1, ThemeSettings.defaultSettings);
 
     const customPrimary = Color(0xFF12AB7C);
-    const customSalesMid = Color(0xFF2B4057);
+    const customSalesBackground = Color(0xFF2B4057);
     final purplePrimary = ThemeSettings.defaultSettings.copyWith(
       primaryColor: customPrimary,
-      salesDetailGradientMid: customSalesMid,
+      salesDetailBackgroundColor: customSalesBackground,
     );
 
     await repo.saveThemeSettings(purplePrimary);
 
     final loaded1 = await repo.loadThemeSettings();
     expect(loaded1.primaryColor.value, customPrimary.value);
-    expect(loaded1.salesDetailGradientMid.value, customSalesMid.value);
+    expect(
+      loaded1.salesDetailBackgroundColor.value,
+      customSalesBackground.value,
+    );
 
     // Switching company must not inherit A's overrides.
     await SessionManager.setCompanyId(2);
@@ -90,7 +93,10 @@ void main() {
 
     final loaded1Again = await repo.loadThemeSettings();
     expect(loaded1Again.primaryColor.value, customPrimary.value);
-    expect(loaded1Again.salesDetailGradientMid.value, customSalesMid.value);
+    expect(
+      loaded1Again.salesDetailBackgroundColor.value,
+      customSalesBackground.value,
+    );
 
     // Reset clears overrides only for that company.
     await repo.resetToDefault();

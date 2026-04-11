@@ -38,15 +38,15 @@ void main() {
     'ThemeSettings restores arbitrary custom colors from numeric and hex values',
     () {
       const customPrimary = Color(0xFF12AB7C);
-      const customDetailMid = Color(0xFF2B4057);
+      const customDetailBg = Color(0xFF2B4057);
 
       final restored = ThemeSettings.fromMap({
         'primaryColor': customPrimary.value,
-        'salesDetailGradientMid': '#2B4057',
+        'salesDetailBackgroundColor': '#2B4057',
       });
 
       expect(restored.primaryColor.value, customPrimary.value);
-      expect(restored.salesDetailGradientMid.value, customDetailMid.value);
+      expect(restored.salesDetailBackgroundColor.value, customDetailBg.value);
     },
   );
 
@@ -74,9 +74,7 @@ void main() {
       salesProductCardAltBorderColor: const Color(0xFFC7984C),
       salesProductCardAltTextColor: const Color(0xFF24180D),
       salesProductPriceColor: const Color(0xFFB76A16),
-      salesDetailGradientStart: const Color(0xFF1E2A37),
-      salesDetailGradientMid: const Color(0xFF2A3D4F),
-      salesDetailGradientEnd: const Color(0xFF18232E),
+      salesDetailBackgroundColor: const Color(0xFF2A3D4F),
       salesDetailTextColor: Colors.white,
       fontSize: 16,
       fontFamily: 'Montserrat',
@@ -106,10 +104,9 @@ void main() {
     final theme = container.read(themeDataProvider);
     final tokens = theme.extension<AppTokens>();
     final appGradient = theme.extension<AppGradientTheme>();
-    final salesGradient = theme.extension<SalesDetailGradientTheme>();
+    final salesDetail = theme.extension<SalesDetailTheme>();
     final salesProducts = theme.extension<SalesProductsTheme>();
     final salesPage = theme.extension<SalesPageTheme>();
-    final salesText = theme.extension<SalesDetailTextTheme>();
 
     expect(
       theme.scaffoldBackgroundColor.value,
@@ -171,25 +168,12 @@ void main() {
       customSettings.salesProductPriceColor.value,
     );
 
-    expect(salesGradient, isNotNull);
+    expect(salesDetail, isNotNull);
     expect(
-      salesGradient!.start.value,
-      customSettings.salesDetailGradientStart.value,
+      salesDetail!.backgroundColor.value,
+      customSettings.salesDetailBackgroundColor.value,
     );
-    expect(
-      salesGradient.mid.value,
-      customSettings.salesDetailGradientMid.value,
-    );
-    expect(
-      salesGradient.end.value,
-      customSettings.salesDetailGradientEnd.value,
-    );
-
-    expect(salesText, isNotNull);
-    expect(
-      salesText!.textColor.value,
-      customSettings.salesDetailTextColor.value,
-    );
+    expect(salesDetail.textColor.value, customSettings.salesDetailTextColor.value);
 
     expect(salesPage, isNotNull);
     expect(
@@ -258,7 +242,7 @@ void main() {
       footerColor: const Color(0xFF304050),
       cardColor: const Color(0xFFF6F2EA),
       salesGridBackgroundColor: const Color(0xFFEDE2CF),
-      salesDetailGradientMid: const Color(0xFF24394A),
+      salesDetailBackgroundColor: const Color(0xFF24394A),
       textColor: const Color(0xFF1E140D),
       applyChromeToEntireLayout: false,
     );
@@ -274,7 +258,7 @@ void main() {
       config.gridBackgroundColor.value,
       settings.salesGridBackgroundColor.value,
     );
-    expect(config.salesDetailColor.value, settings.salesDetailGradientMid.value);
+    expect(config.salesDetailColor.value, settings.salesDetailBackgroundColor.value);
     expect(config.textPrimary.value, settings.textColor.value);
     expect(config.applyChromeToEntireLayout, isFalse);
   });
@@ -325,5 +309,26 @@ void main() {
     expect(updated.sidebarColor.value, const Color(0xFF114477).value);
     expect(updated.footerColor.value, const Color(0xFF114477).value);
     expect(updated.appBarColor.value, const Color(0xFFAA3300).value);
+  });
+
+  test('Sales detail background update persists through semantic notifier', () async {
+    final initialSettings = ThemeSettings.defaultSettings;
+    final repository = _MemoryThemeSettingsRepository(initialSettings);
+    final container = ProviderContainer(
+      overrides: [themeRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(themeProvider.notifier).saveSettings(initialSettings);
+
+    await container
+        .read(themeProvider.notifier)
+        .updateSalesDetailBackgroundColor(const Color(0xFF24394A));
+
+    final updated = container.read(themeProvider);
+    expect(
+      updated.salesDetailBackgroundColor.value,
+      const Color(0xFF24394A).value,
+    );
   });
 }

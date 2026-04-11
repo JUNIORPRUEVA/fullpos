@@ -497,16 +497,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final theme = Theme.of(context);
     const pageBackground = Color(0xFFF5F7FA);
     const cardColor = Color(0xFF374151);
-    const cardTitle = Color(0xFFF9FAFB);
     const cardText = Color(0xFFD1D5DB);
-    const cardMutedText = Color(0xFFCBD5E1);
     const primaryBlue = Color(0xFF2563EB);
     const inputBackground = Color(0xFFFFFFFF);
     const inputText = Color(0xFF111827);
     const inputHint = Color(0xFF94A3B8);
-    const borderColor = Color(0xFF4B5563);
     final subtleBlue = primaryBlue.withOpacity(0.06);
-    final dividerColor = Colors.white.withOpacity(0.10);
 
     final forgotPasswordStyle = ButtonStyle(
       foregroundColor: WidgetStatePropertyAll(Colors.white.withOpacity(0.82)),
@@ -525,10 +521,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       ),
     );
 
-    InputDecoration decoration({
-      required String hint,
-      Widget? suffix,
-    }) {
+    InputDecoration decoration({required String hint, Widget? suffix}) {
       return InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: inputHint, fontSize: 13),
@@ -587,11 +580,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       });
                       _usernameFocusNode.requestFocus();
                     },
-              icon: const Icon(
-                Icons.close_rounded,
-                size: 18,
-                color: inputHint,
-              ),
+              icon: const Icon(Icons.close_rounded, size: 18, color: inputHint),
             ),
           PopupMenuButton<String>(
             enabled: !_isLoading && _availableUsers.isNotEmpty,
@@ -608,34 +597,30 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               });
               FocusScope.of(context).nextFocus();
             },
-            itemBuilder: (context) => _availableUsers
-                .map(
-                  (user) {
-                    final displayName = user.displayName?.trim() ?? '';
-                    return PopupMenuItem<String>(
-                      value: user.username,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            displayName.isEmpty ? user.username : displayName,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          if (displayName.isNotEmpty)
-                            Text(
-                              user.username,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                        ],
+            itemBuilder: (context) => _availableUsers.map((user) {
+              final displayName = user.displayName?.trim() ?? '';
+              return PopupMenuItem<String>(
+                value: user.username,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      displayName.isEmpty ? user.username : displayName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    if (displayName.isNotEmpty)
+                      Text(
+                        user.username,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                        ),
                       ),
-                    );
-                  },
-                )
-                .toList(),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
           const SizedBox(width: 6),
         ],
@@ -800,7 +785,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                         LengthLimitingTextInputFormatter(6),
                                       ],
                                       validator: (_) {
-                                        final value = _pinController.text.trim();
+                                        final value = _pinController.text
+                                            .trim();
                                         if (value.length < 4) {
                                           return 'PIN mínimo de 4 dígitos';
                                         }
@@ -880,9 +866,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                             );
                                           },
                                     activeColor: Colors.white,
-                                    activeTrackColor: primaryBlue.withOpacity(0.9),
+                                    activeTrackColor: primaryBlue.withOpacity(
+                                      0.9,
+                                    ),
                                     inactiveThumbColor: Colors.white,
-                                    inactiveTrackColor: Colors.white.withOpacity(0.18),
+                                    inactiveTrackColor: Colors.white
+                                        .withOpacity(0.18),
                                     materialTapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,
                                   ),
@@ -923,10 +912,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                           fontWeight: FontWeight.w700,
                                         ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                         ),
                                       ),
-                                      onPressed: _isLoading ? null : _handleLogin,
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _handleLogin,
                                       child: _isLoading
                                           ? const SizedBox(
                                               height: 20,
@@ -950,13 +943,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                           ? 'Ocultar acceso de demo'
                                           : 'Mostrar acceso de demo',
                                       style: IconButton.styleFrom(
-                                        backgroundColor:
-                                            Colors.white.withOpacity(0.08),
-                                        foregroundColor: Colors.white.withOpacity(
-                                          _showDemoCredentials ? 1 : 0.76,
-                                        ),
+                                        backgroundColor: Colors.white
+                                            .withOpacity(0.08),
+                                        foregroundColor: Colors.white
+                                            .withOpacity(
+                                              _showDemoCredentials ? 1 : 0.76,
+                                            ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                         ),
                                       ),
                                       onPressed: () {

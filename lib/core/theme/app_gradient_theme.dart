@@ -38,64 +38,30 @@ class AppGradientTheme extends ThemeExtension<AppGradientTheme> {
   }
 }
 
-class SalesDetailGradientTheme extends ThemeExtension<SalesDetailGradientTheme> {
-  const SalesDetailGradientTheme({
-    required this.start,
-    required this.mid,
-    required this.end,
+class SalesDetailTheme extends ThemeExtension<SalesDetailTheme> {
+  const SalesDetailTheme({
+    required this.backgroundColor,
+    required this.textColor,
   });
 
-  final Color start;
-  final Color mid;
-  final Color end;
-
-  LinearGradient get backgroundGradient => LinearGradient(
-        colors: [start, mid, end],
-        stops: const [0.0, 0.7, 1.0],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-
-  @override
-  SalesDetailGradientTheme copyWith({Color? start, Color? mid, Color? end}) {
-    return SalesDetailGradientTheme(
-      start: start ?? this.start,
-      mid: mid ?? this.mid,
-      end: end ?? this.end,
-    );
-  }
-
-  @override
-  SalesDetailGradientTheme lerp(
-    ThemeExtension<SalesDetailGradientTheme>? other,
-    double t,
-  ) {
-    if (other is! SalesDetailGradientTheme) return this;
-    return SalesDetailGradientTheme(
-      start: Color.lerp(start, other.start, t) ?? start,
-      mid: Color.lerp(mid, other.mid, t) ?? mid,
-      end: Color.lerp(end, other.end, t) ?? end,
-    );
-  }
-}
-
-class SalesDetailTextTheme extends ThemeExtension<SalesDetailTextTheme> {
-  const SalesDetailTextTheme({required this.textColor});
-
+  final Color backgroundColor;
   final Color textColor;
 
   @override
-  SalesDetailTextTheme copyWith({Color? textColor}) {
-    return SalesDetailTextTheme(textColor: textColor ?? this.textColor);
+  SalesDetailTheme copyWith({Color? backgroundColor, Color? textColor}) {
+    return SalesDetailTheme(
+      backgroundColor: backgroundColor ?? this.backgroundColor,
+      textColor: textColor ?? this.textColor,
+    );
   }
 
   @override
-  SalesDetailTextTheme lerp(
-    ThemeExtension<SalesDetailTextTheme>? other,
-    double t,
-  ) {
-    if (other is! SalesDetailTextTheme) return this;
-    return SalesDetailTextTheme(
+  SalesDetailTheme lerp(ThemeExtension<SalesDetailTheme>? other, double t) {
+    if (other is! SalesDetailTheme) return this;
+    return SalesDetailTheme(
+      backgroundColor:
+          Color.lerp(backgroundColor, other.backgroundColor, t) ??
+          backgroundColor,
       textColor: Color.lerp(textColor, other.textColor, t) ?? textColor,
     );
   }

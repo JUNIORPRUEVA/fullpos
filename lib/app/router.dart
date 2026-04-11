@@ -160,7 +160,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (isOnBlocked) {
         return isLoggedIn ? await privateLanding() : '/login';
       }
-      if (isOnPublicLicense || isOnSettingsLicense) {
+      if (isOnPublicLicense) {
+        return isLoggedIn ? await privateLanding() : '/login';
+      }
+      if (isOnSettingsLicense) {
         // En debug permitimos abrir la pantalla de licencia desde Configuración
         // para poder resetear TRIAL/licencia en esta misma PC.
         if (kDebugMode) return null;

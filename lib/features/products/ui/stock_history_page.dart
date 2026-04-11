@@ -26,7 +26,6 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
 
   bool _loading = false;
   List<StockMovementDetail> _history = [];
-  StockSummary? _summary;
   StockMovementType? _filterType;
   DateTimeRange? _range;
 
@@ -46,15 +45,9 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
         to: _range?.end,
         limit: 300,
       );
-      final summary = await _stockRepo.summarize(
-        type: _filterType,
-        from: _range?.start,
-        to: _range?.end,
-      );
       if (!mounted) return;
       setState(() {
         _history = items;
-        _summary = summary;
       });
     } catch (e) {
       if (mounted) {

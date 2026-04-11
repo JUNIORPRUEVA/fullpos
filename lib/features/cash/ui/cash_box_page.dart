@@ -27,7 +27,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
   List<CashSessionModel> _history = const [];
   bool _isLoading = true;
   bool _canOpenCashbox = false;
-  bool _canCloseShift = false;
   final bool _isMutating = false;
 
   @override
@@ -55,7 +54,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
       _cashboxToday = gate.cashboxToday;
       _history = history;
       _canOpenCashbox = perms.canOpenCashbox || perms.canOpenCash;
-      _canCloseShift = perms.canCloseShift || perms.canCloseCash;
       _isLoading = false;
     });
   }
@@ -100,18 +98,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
           context,
         ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
-    }
-  }
-
-  Future<void> _closeCashDialog() async {
-    try {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text('Finaliza el turno desde el menú de usuario.'),
-        ),
-      );
-    } catch (_) {
-      // No-op
     }
   }
 

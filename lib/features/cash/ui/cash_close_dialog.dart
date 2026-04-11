@@ -1,4 +1,4 @@
-//  moignore_for_file: unused_element
+// ignore_for_file: unused_element, unused_field
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -176,14 +176,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     }
   }
 
-  String _formatDuration(Duration d) {
-    final totalMinutes = d.inMinutes;
-    final hours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-    if (hours <= 0) return '${minutes}m';
-    return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
-  }
-
   Future<void> _loadSummary() async {
     try {
       final summary = await CashRepository.buildSummary(
@@ -228,11 +220,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           }
         } else {
           final current = _selectedRefundIndex;
-          _selectedRefundIndex = (current != null && current < refunds.length)
-              ? current
-              : 0;
-
-          // Si no hay selección, por defecto selecciona la primera devolución.
+          _selectedRefundIndex =
+              (current != null && current < refunds.length) ? current : 0;
           _selectedKind ??= _SelectionKind.refund;
         }
         _loadingRefunds = false;
@@ -267,8 +256,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           final current = _selectedMovementIndex;
           _selectedMovementIndex =
               (current != null && current < movements.length) ? current : 0;
-
-          // Si no hay selección y no hay devoluciones, selecciona movimientos.
           _selectedKind ??= _SelectionKind.movement;
         }
         _loadingMovements = false;
@@ -304,16 +291,15 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         _loadingCategorySummary = false;
       });
     } catch (e, st) {
-      if (mounted) {
-        setState(() => _loadingCategorySummary = false);
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _loadCategorySummary,
-          module: 'cash/category_summary',
-        );
-      }
+      if (!mounted) return;
+      setState(() => _loadingCategorySummary = false);
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _loadCategorySummary,
+        module: 'cash/category_summary',
+      );
     }
   }
 
@@ -328,7 +314,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final raw = _closingAmountController.text.trim();
     final parsed = raw.isEmpty ? null : AccountingAmountFormatter.parse(raw);
     if (parsed != null) return parsed;
-    // Si el usuario deja vacío (opcional), usar el efectivo esperado.
     return _summary?.expectedCash ?? 0.0;
   }
 
@@ -338,18 +323,46 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   }
 
   Future<void> _closeCash() async {
-    final formState = _formKey.currentState;
-    if (formState != null && !formState.validate()) return;
+    if (!widget.autoCloseImmediately) {
+      final formState = _formKey.currentState;
+      if (formState != null && !formState.validate()) return;
+    }
 
-    final ok = await AuthzService.runGuardedCurrent<bool>(
-      context,
-      authz_perm.Permission.action(AppActions.closeSession),
-      () async => true,
-      reason: 'Cerrar sesión',
-      resourceType: 'cash_session',
-      resourceId: widget.sessionId.toString(),
-    );
-    if (ok != true) return;
+    if (widget.autoCloseImmediately) {
+      final currentUser = await AuthzService.currentUser();
+      final canClose =
+          currentUser != null &&
+          AuthzService.can(
+            currentUser,
+            authz_perm.Permission.action(AppActions.closeSession),
+          );
+      if (!canClose) {
+        if (mounted) {
+          final messenger = ScaffoldMessenger.maybeOf(
+            ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+                ErrorHandler.navigatorKey.currentContext ??
+                context,
+          );
+          messenger?.showSnackBar(
+            const SnackBar(
+              content: Text('No tienes permiso para cerrar este turno.'),
+            ),
+          );
+          Navigator.of(context).maybePop(false);
+        }
+        return;
+      }
+    } else {
+      final ok = await AuthzService.runGuardedCurrent<bool>(
+        context,
+        authz_perm.Permission.action(AppActions.closeSession),
+        () async => true,
+        reason: 'Cerrar sesión',
+        resourceType: 'cash_session',
+        resourceId: widget.sessionId.toString(),
+      );
+      if (ok != true) return;
+    }
     if (!mounted) return;
 
     setState(() => _isLoading = true);
@@ -364,58 +377,55 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       await ref.read(activeSessionControllerProvider.notifier).refresh();
 
       final summaryForPrint = _summary ?? closedSummary;
-      final appContext = ErrorHandler.navigatorKey.currentContext;
+      final appContext =
+          ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+          ErrorHandler.navigatorKey.currentContext ??
+          Navigator.of(context, rootNavigator: true).context;
 
-      if (mounted) {
-        Navigator.of(context).pop(true);
-        if (widget.logoutAfterClose) {
-          unawaited(
-            _printClosingArtifacts(
-              summary: summaryForPrint,
-              closingAmount: _closingAmount,
-              note: closeNote,
-            ).catchError((Object error, StackTrace stackTrace) {
-              debugPrint('Cierre de turno completado sin ticket impreso: $error');
-            }),
-          );
-          if (appContext != null) {
-            unawaited(LogoutFlowService.defaultPerformLogout(appContext));
-          }
-          return;
-        }
-
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          unawaited(
-            _printClosingArtifacts(
-              summary: summaryForPrint,
-              closingAmount: _closingAmount,
-              note: closeNote,
-            ).catchError((Object error, StackTrace stackTrace) {
-              final messenger = appContext != null
-                  ? ScaffoldMessenger.maybeOf(appContext)
-                  : null;
-              if (messenger == null) return;
-              messenger.showSnackBar(
-                SnackBar(
-                  content: Text('La sesión se cerró, pero no se pudo imprimir: $error'),
-                  backgroundColor: Theme.of(messenger.context).colorScheme.error,
-                ),
-              );
-            }),
-          );
-
-          final messenger = appContext != null
-              ? ScaffoldMessenger.maybeOf(appContext)
-              : null;
-          if (messenger == null) return;
-          messenger.showSnackBar(
-            SnackBar(
-              content: const Text('Sesión cerrada correctamente'),
-              backgroundColor: Theme.of(messenger.context).colorScheme.primary,
-            ),
-          );
-        });
+      Navigator.of(context).pop(true);
+      if (widget.logoutAfterClose) {
+        unawaited(
+          _printClosingArtifacts(
+            summary: summaryForPrint,
+            closingAmount: _closingAmount,
+            note: closeNote,
+          ).catchError((Object error, StackTrace stackTrace) {
+            debugPrint('Cierre de turno completado sin ticket impreso: $error');
+          }),
+        );
+        unawaited(LogoutFlowService.defaultPerformLogout(appContext));
+        return;
       }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+          _printClosingArtifacts(
+            summary: summaryForPrint,
+            closingAmount: _closingAmount,
+            note: closeNote,
+          ).catchError((Object error, StackTrace stackTrace) {
+            final messenger = ScaffoldMessenger.maybeOf(appContext);
+            if (messenger == null) return;
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                  'La sesión se cerró, pero no se pudo imprimir: $error',
+                ),
+                backgroundColor: Theme.of(messenger.context).colorScheme.error,
+              ),
+            );
+          }),
+        );
+
+        final messenger = ScaffoldMessenger.maybeOf(appContext);
+        if (messenger == null) return;
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text('Sesión cerrada correctamente'),
+            backgroundColor: Theme.of(messenger.context).colorScheme.primary,
+          ),
+        );
+      });
     } catch (e, st) {
       if (mounted) {
         await ErrorHandler.instance.handle(
@@ -726,7 +736,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       required String method,
       required String total,
     }) {
-      // Formato: HH:mm  NOMBRE...............  MET  RD$ 000.00
       final timeWidth = 5;
       final methodWidth = 3;
       final int totalWidth = (18).clamp(12, w - 10).toInt();
@@ -1397,485 +1406,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     );
   }
 
-  Widget _buildSummarySection({String? fontFamily}) {
-    if (_summary == null) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final summary = _summary!;
-    final bg = scheme.surfaceContainerHighest;
-    final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
-    final titleColor = ColorUtils.ensureReadableColor(scheme.primary, bg);
-
-    Widget row(String label, double value, {Color? color}) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: fg.withOpacity(0.72),
-                  fontWeight: FontWeight.w600,
-                  fontFamily: fontFamily,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              CurrencyDisplay.format(value),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: color ?? fg,
-                fontWeight: FontWeight.w800,
-                fontFamily: fontFamily,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'RESUMEN',
-            style: theme.textTheme.labelLarge?.copyWith(
-              letterSpacing: 1,
-              fontWeight: FontWeight.w800,
-              color: titleColor,
-              fontFamily: fontFamily,
-            ),
-          ),
-          const SizedBox(height: 6),
-          row('Base inicial turno', summary.openingAmount, color: fg),
-          row('Ventas efectivo', summary.salesCashTotal, color: fg),
-          row('Entradas manuales', summary.cashInManual, color: fg),
-          row('Retiros manuales', summary.cashOutManual, color: scheme.error),
-          if (summary.refundsCash > 0)
-            row('Devoluciones', summary.refundsCash, color: scheme.error),
-          const Divider(height: 14),
-          row(
-            'Efectivo esperado',
-            summary.expectedCash,
-            color: ColorUtils.ensureReadableColor(scheme.primary, bg),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _buildStatChip(
-                '${summary.totalTickets}',
-                'Tickets',
-                scheme.primary,
-                fg: fg,
-                fontFamily: fontFamily,
-              ),
-              const SizedBox(width: 8),
-              _buildStatChip(
-                CurrencyDisplay.format(summary.totalSales),
-                'Ventas turno',
-                scheme.secondary,
-                fg: fg,
-                fontFamily: fontFamily,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRefundsSection({String? fontFamily}) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    final bg = scheme.surfaceContainerHighest;
-    final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
-    final accent = ColorUtils.ensureReadableColor(scheme.error, bg);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'DEVOLUCIONES DE LA SESION',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    letterSpacing: 1,
-                    fontWeight: FontWeight.w800,
-                    color: accent,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-              ),
-              if (!_loadingRefunds)
-                Text(
-                  '${_refunds.length}',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: fg.withOpacity(0.7),
-                    fontWeight: FontWeight.w700,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (_loadingRefunds)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: CircularProgressIndicator(color: accent),
-              ),
-            )
-          else if (_refunds.isEmpty)
-            Text(
-              'No hay devoluciones registradas en esta sesión.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: fg.withOpacity(0.7),
-                fontFamily: fontFamily,
-              ),
-            )
-          else
-            _buildRefundsList(
-              bg: bg,
-              fg: fg,
-              accent: accent,
-              fontFamily: fontFamily,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMovementsSection({String? fontFamily}) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    final bg = scheme.surfaceContainerHighest;
-    final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
-    final accent = ColorUtils.ensureReadableColor(scheme.primary, bg);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'MOVIMIENTOS DE LA SESION',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    letterSpacing: 1,
-                    fontWeight: FontWeight.w800,
-                    color: accent,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-              ),
-              if (!_loadingMovements)
-                Text(
-                  '${_movements.length}',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: fg.withOpacity(0.7),
-                    fontWeight: FontWeight.w700,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (_loadingMovements)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: CircularProgressIndicator(color: accent),
-              ),
-            )
-          else if (_movements.isEmpty)
-            Text(
-              'No hay movimientos (entradas/retiros) en esta sesión.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: fg.withOpacity(0.7),
-                fontFamily: fontFamily,
-              ),
-            )
-          else
-            _buildMovementsList(
-              bg: bg,
-              fg: fg,
-              accent: accent,
-              fontFamily: fontFamily,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategorySummarySection({String? fontFamily}) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final currency = CurrencyDisplay.currency();
-    final bg = scheme.surfaceContainerHighest;
-    final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
-    final accent = ColorUtils.ensureReadableColor(scheme.primary, bg);
-
-    if (_loadingCategorySummary) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                'CIERRE POR CATEGORIA',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  letterSpacing: 1,
-                  fontWeight: FontWeight.w800,
-                  color: accent,
-                  fontFamily: fontFamily,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: accent),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_categorySummary.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Text(
-          'No hay datos por categoría en esta sesión.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: fg.withOpacity(0.7),
-            fontFamily: fontFamily,
-          ),
-        ),
-      );
-    }
-
-    final refundMap = <String, List<RefundItemByCategory>>{};
-    for (final item in _refundItemsByCategory) {
-      refundMap.putIfAbsent(item.category, () => []).add(item);
-    }
-
-    String qtyText(double qty) {
-      final isWhole = (qty - qty.roundToDouble()).abs() < 0.001;
-      return isWhole ? qty.toInt().toString() : qty.toStringAsFixed(2);
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'CIERRE POR CATEGORIA',
-            style: theme.textTheme.labelLarge?.copyWith(
-              letterSpacing: 1,
-              fontWeight: FontWeight.w800,
-              color: accent,
-              fontFamily: fontFamily,
-            ),
-          ),
-          const SizedBox(height: 10),
-          ..._categorySummary.map((cat) {
-            final refunds = refundMap[cat.category] ?? const [];
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: scheme.surface.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: scheme.outlineVariant.withOpacity(0.4),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    cat.category,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: fg,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: fontFamily,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  _buildCategoryRow(
-                    label: 'Ventas',
-                    value: currency.format(cat.salesTotal),
-                    color: fg,
-                    fontFamily: fontFamily,
-                  ),
-                  _buildCategoryRow(
-                    label: 'Devoluciones',
-                    value: currency.format(cat.refundTotal),
-                    color: fg,
-                    fontFamily: fontFamily,
-                  ),
-                  _buildCategoryRow(
-                    label: 'Neto',
-                    value: currency.format(cat.netTotal),
-                    color: accent,
-                    fontFamily: fontFamily,
-                    bold: true,
-                  ),
-                  _buildCategoryRow(
-                    label: 'Items vendidos',
-                    value: qtyText(cat.itemsSold),
-                    color: fg,
-                    fontFamily: fontFamily,
-                  ),
-                  if (cat.itemsRefunded > 0)
-                    _buildCategoryRow(
-                      label: 'Items devueltos',
-                      value: qtyText(cat.itemsRefunded),
-                      color: fg,
-                      fontFamily: fontFamily,
-                    ),
-                  if (refunds.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Reembolsos:',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: fg.withOpacity(0.75),
-                        fontWeight: FontWeight.w700,
-                        fontFamily: fontFamily,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    ...refunds.map(
-                      (item) => _buildCategoryRow(
-                        label: '${item.productName} x${qtyText(item.qty)}',
-                        value: currency.format(item.total.abs()),
-                        color: fg.withOpacity(0.9),
-                        fontFamily: fontFamily,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryRow({
-    required String label,
-    required String value,
-    required Color color,
-    String? fontFamily,
-    bool bold = false,
-  }) {
-    final theme = Theme.of(context);
-    final textStyle = theme.textTheme.bodySmall?.copyWith(
-      color: color,
-      fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-      fontFamily: fontFamily,
-    );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: textStyle)),
-          Text(value, style: textStyle),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryTile(
-    String label,
-    double amount,
-    Color color,
-    double width,
-  ) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: width,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: scheme.onSurface.withOpacity(0.7),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            CurrencyDisplay.format(amount, symbol: r'$'),
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatChip(
     String value,
     String label,
@@ -1915,264 +1445,6 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         ],
       ),
     );
-  }
-
-  Widget _buildClosingSection({String? fontFamily}) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final diffColor = _difference == 0
-        ? scheme.primary
-        : (_difference > 0 ? scheme.tertiary : scheme.error);
-    final diffBg = diffColor.withOpacity(0.12);
-    final diffBorder = diffColor.withOpacity(0.35);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'CIERRE',
-          style: theme.textTheme.labelLarge?.copyWith(
-            letterSpacing: 1,
-            fontWeight: FontWeight.bold,
-            color: scheme.primary,
-            fontFamily: fontFamily,
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        // Efectivo contado (opcional)
-        Text(
-          'Efectivo contado (opcional)',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurface.withOpacity(0.7),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: _closingAmountController,
-          keyboardType: TextInputType.number,
-          inputFormatters: [AccountingAmountFormatter()],
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: scheme.onSurface,
-          ),
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            prefixText: r'$ ',
-            prefixStyle: theme.textTheme.titleMedium?.copyWith(
-              color: scheme.primary,
-              fontWeight: FontWeight.w800,
-            ),
-            hintText: 'Opcional',
-            helperText: null,
-            filled: true,
-            fillColor: scheme.surfaceContainerHighest,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: scheme.primary, width: 1),
-            ),
-          ),
-          validator: (value) {
-            if (value == null || value.trim().isEmpty) return null;
-            final amount = AccountingAmountFormatter.parse(value.trim());
-            if (amount < 0) return 'Monto inválido';
-            return null;
-          },
-        ),
-        const SizedBox(height: 10),
-
-        // Diferencia
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: diffBg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: diffBorder),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Diferencia:',
-                style: TextStyle(
-                  color: scheme.onSurface.withOpacity(0.7),
-                  fontSize: 13,
-                ),
-              ),
-              Text(
-                '${_difference >= 0 ? '+' : ''}${AccountingAmountFormatter.formatWithSymbol(_difference.abs(), symbol: r'$')}',
-                style: TextStyle(
-                  color: diffColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Nota
-        Text(
-          'Nota del cierre',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurface.withOpacity(0.7),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: _noteController,
-          maxLines: 2,
-          style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
-          decoration: InputDecoration(
-            hintText: 'Observaciones del cierre...',
-            hintStyle: TextStyle(color: scheme.onSurface.withOpacity(0.5)),
-            filled: true,
-            fillColor: scheme.surfaceContainerHighest,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _selectKind(_SelectionKind kind) {
-    setState(() {
-      _selectedKind = kind;
-      if (kind == _SelectionKind.refund) {
-        if (_refunds.isNotEmpty) {
-          _selectedRefundIndex ??= 0;
-          if (_selectedRefundIndex! >= _refunds.length) {
-            _selectedRefundIndex = 0;
-          }
-        } else {
-          _selectedRefundIndex = null;
-        }
-      } else {
-        if (_movements.isNotEmpty) {
-          _selectedMovementIndex ??= 0;
-          if (_selectedMovementIndex! >= _movements.length) {
-            _selectedMovementIndex = 0;
-          }
-        } else {
-          _selectedMovementIndex = null;
-        }
-      }
-    });
-  }
-
-  Widget _buildDetailSegmentedToggle({
-    required Color bg,
-    required Color fg,
-    String? fontFamily,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-
-    final hasRefunds = _refunds.isNotEmpty;
-    final hasMovements = _movements.isNotEmpty;
-    if (!(hasRefunds && hasMovements)) return const SizedBox.shrink();
-
-    final current = _selectedKind ?? _SelectionKind.refund;
-    final trackBg = Color.alphaBlend(scheme.surface.withOpacity(0.65), bg);
-    final border = scheme.outlineVariant.withOpacity(0.35);
-
-    Widget seg({
-      required _SelectionKind kind,
-      required String label,
-      required IconData icon,
-    }) {
-      final selected = current == kind;
-      final selBg = Color.alphaBlend(scheme.primary.withOpacity(0.18), bg);
-      final selBorder = scheme.primary.withOpacity(0.45);
-      final segBg = selected ? selBg : Colors.transparent;
-      final segBorder = selected ? selBorder : Colors.transparent;
-      final segFg = selected
-          ? ColorUtils.ensureReadableColor(scheme.primary, segBg)
-          : fg.withOpacity(0.85);
-
-      return Expanded(
-        child: InkWell(
-          onTap: () => _selectKind(kind),
-          borderRadius: BorderRadius.circular(10),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: segBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: segBorder, width: 1),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 16, color: segFg),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: segFg,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: fontFamily,
-                    letterSpacing: 0.2,
-                    height: 1.05,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: trackBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border, width: 1),
-      ),
-      child: Row(
-        children: [
-          seg(
-            kind: _SelectionKind.refund,
-            label: 'Devoluciones',
-            icon: Icons.receipt_long,
-          ),
-          const SizedBox(width: 6),
-          seg(
-            kind: _SelectionKind.movement,
-            label: 'Movimientos',
-            icon: Icons.swap_horiz,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Map<String, dynamic>? get _selectedRefund {
-    if (_selectedKind != _SelectionKind.refund) return null;
-    final idx = _selectedRefundIndex;
-    if (idx == null) return null;
-    if (idx < 0 || idx >= _refunds.length) return null;
-    return _refunds[idx];
-  }
-
-  CashMovementModel? get _selectedMovement {
-    if (_selectedKind != _SelectionKind.movement) return null;
-    final idx = _selectedMovementIndex;
-    if (idx == null) return null;
-    if (idx < 0 || idx >= _movements.length) return null;
-    return _movements[idx];
   }
 
   Widget _buildRefundsList({
@@ -2464,363 +1736,4 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     );
   }
 
-  Widget _buildSelectionDetailsPanel({String? fontFamily}) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final selected = _selectedRefund;
-    final selectedMovement = _selectedMovement;
-
-    final bg = scheme.surfaceContainerHighest;
-    final fg = ColorUtils.ensureReadableColor(scheme.onSurface, bg);
-    final accent = ColorUtils.ensureReadableColor(scheme.error, bg);
-
-    if (selected == null && selectedMovement == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'DETALLE',
-              style: theme.textTheme.labelLarge?.copyWith(
-                letterSpacing: 1,
-                fontWeight: FontWeight.w800,
-                color: fg,
-                fontFamily: fontFamily,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _buildDetailSegmentedToggle(bg: bg, fg: fg, fontFamily: fontFamily),
-            const SizedBox(height: 10),
-            Text(
-              'Selecciona una devolución o movimiento para ver el detalle aquí.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: fg.withOpacity(0.7),
-                fontFamily: fontFamily,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (selectedMovement != null) {
-      final currency = CurrencyDisplay.currency();
-      final dateFormat = _dateTimeFormat;
-      final m = selectedMovement;
-
-      final movementColor = m.isIn
-          ? scheme.tertiary
-          : ColorUtils.ensureReadableColor(scheme.error, bg);
-      final sign = m.isIn ? '+' : '-';
-
-      Widget kv(String k, String v) {
-        if (v.trim().isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 108,
-                child: Text(
-                  k,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: fg.withOpacity(0.7),
-                    fontWeight: FontWeight.w700,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  v,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: fg,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDetailSegmentedToggle(bg: bg, fg: fg, fontFamily: fontFamily),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: movementColor.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: movementColor.withOpacity(0.18)),
-                  ),
-                  child: Icon(
-                    m.isIn
-                        ? Icons.add_circle_outline
-                        : Icons.remove_circle_outline,
-                    color: movementColor,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'DETALLE DE MOVIMIENTO',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      letterSpacing: 0.8,
-                      fontWeight: FontWeight.w900,
-                      color: fg,
-                      fontFamily: fontFamily,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$sign${currency.format(m.amount)}',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: movementColor,
-                    fontWeight: FontWeight.w900,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            kv('Fecha', dateFormat.format(m.createdAt)),
-            kv('Tipo', m.isIn ? 'Entrada' : 'Retiro'),
-            kv('Motivo', m.reason),
-            kv('Usuario ID', m.userId.toString()),
-          ],
-        ),
-      );
-    }
-
-    final selectedRefund = selected;
-    if (selectedRefund == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Text(
-          'Selecciona una devolución o movimiento para ver el detalle aquí.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: fg.withOpacity(0.7),
-            fontFamily: fontFamily,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-
-    final currency = CurrencyDisplay.currency();
-    final dateFormat = _dateTimeFormat;
-    final amount = (selectedRefund['total'] as num?)?.toDouble().abs() ?? 0.0;
-    final note = (selectedRefund['note'] as String?)?.trim() ?? '';
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(
-      selectedRefund['created_at_ms'] as int,
-    );
-    final returnCode = (selectedRefund['return_code'] as String?)?.trim() ?? '';
-    final originalCode =
-        (selectedRefund['original_code'] as String?)?.trim() ?? '';
-    final originalElectronicCode =
-        (selectedRefund['original_electronic_invoice_code'] as String?)
-            ?.trim() ??
-        '';
-    final itemCount = (selectedRefund['item_count'] as int?) ?? 0;
-    final productsPreview =
-        (selectedRefund['products_preview'] as String?)?.trim() ?? '';
-    final firstProductName =
-        (selectedRefund['first_product_name'] as String?)?.trim() ?? '';
-    final customerName =
-        (selectedRefund['customer_name'] as String?)?.trim() ?? '';
-    final customerPhone =
-        (selectedRefund['customer_phone'] as String?)?.trim() ?? '';
-    final customerRnc =
-        (selectedRefund['customer_rnc'] as String?)?.trim() ?? '';
-
-    final productLabel = productsPreview.isNotEmpty
-        ? productsPreview
-        : (firstProductName.isNotEmpty ? firstProductName : 'Devolución');
-
-    Widget kv(String k, String v) {
-      if (v.trim().isEmpty) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 108,
-              child: Text(
-                k,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: fg.withOpacity(0.7),
-                  fontWeight: FontWeight.w700,
-                  fontFamily: fontFamily,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                v,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: fg,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: fontFamily,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildDetailSegmentedToggle(bg: bg, fg: fg, fontFamily: fontFamily),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: accent.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: accent.withOpacity(0.18)),
-                ),
-                child: Icon(Icons.receipt_long, color: accent, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'DETALLE DE DEVOLUCIÓN',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w900,
-                    color: fg,
-                    fontFamily: fontFamily,
-                  ),
-                ),
-              ),
-              Text(
-                currency.format(amount),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w900,
-                  fontFamily: fontFamily,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            productLabel,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w800,
-              fontFamily: fontFamily,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 10),
-          kv('Fecha', dateFormat.format(createdAt)),
-          kv('Código', returnCode.isNotEmpty ? returnCode : ''),
-          kv('Items', itemCount > 0 ? itemCount.toString() : ''),
-          kv('Ticket orig.', originalCode),
-          kv('e-CF orig.', originalElectronicCode),
-          if (customerName.isNotEmpty ||
-              customerPhone.isNotEmpty ||
-              customerRnc.isNotEmpty)
-            kv(
-              'Cliente',
-              [
-                if (customerName.isNotEmpty) customerName,
-                if (customerPhone.isNotEmpty) customerPhone,
-                if (customerRnc.isNotEmpty) customerRnc,
-              ].join('  •  '),
-            ),
-          if (note.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Motivo / Nota',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: fg.withOpacity(0.7),
-                fontWeight: FontWeight.w800,
-                fontFamily: fontFamily,
-                letterSpacing: 0.4,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: scheme.surface.withOpacity(0.55),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: scheme.outlineVariant.withOpacity(0.3),
-                ),
-              ),
-              child: Text(
-                note,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: fg,
-                  fontFamily: fontFamily,
-                  height: 1.15,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryMetric {
-  final String label;
-  final double amount;
-  final Color color;
-
-  const _SummaryMetric(this.label, this.amount, this.color);
 }

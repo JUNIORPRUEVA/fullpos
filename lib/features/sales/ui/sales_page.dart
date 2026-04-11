@@ -112,34 +112,35 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       );
   Color readableOn(Color bg) => ColorUtils.readableTextColor(bg);
   Color get transparent => scheme.surface.withOpacity(0);
+  Color get salesDetailBackgroundColor {
+    final detailTheme = Theme.of(context).extension<SalesDetailTheme>();
+    return detailTheme?.backgroundColor ?? scheme.surface;
+  }
+
   Color get salesDetailTextColor =>
-      Theme.of(context).extension<SalesDetailTextTheme>()?.textColor ??
+      Theme.of(context).extension<SalesDetailTheme>()?.textColor ??
       scheme.onSurface;
 
-  LinearGradient _resolveSalesDetailGradient(
-    SalesDetailGradientTheme? gradientTheme,
-  ) {
-    final fallbackAccent = scheme.primary.withOpacity(0.14);
-    return gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.surface, fallbackAccent],
-          stops: const [0.0, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-  }
-
-  Color get salesDetailPanelColor {
-    final gradientTheme = Theme.of(
-      context,
-    ).extension<SalesDetailGradientTheme>();
-    final base = gradientTheme?.mid ?? scheme.surface;
-    return Color.alphaBlend(scheme.surface.withOpacity(0.08), base);
-  }
+  Color get salesDetailPanelColor => salesDetailBackgroundColor;
 
   Color get salesDetailBorderColor => salesDetailTextColor.withOpacity(0.14);
 
   Color get salesDetailMutedTextColor => salesDetailTextColor.withOpacity(0.7);
+
+  Color _salesDetailBlend(double opacity) => Color.alphaBlend(
+    salesDetailTextColor.withOpacity(opacity),
+    salesDetailBackgroundColor,
+  );
+
+  Color get salesDetailSurfaceColor => _salesDetailBlend(0.06);
+
+  Color get salesDetailSurfaceStrongColor => _salesDetailBlend(0.12);
+
+  Color get salesDetailSelectedColor => _salesDetailBlend(0.1);
+
+  Color get salesDetailSelectedBorderColor => salesDetailTextColor.withOpacity(
+    0.22,
+  );
 
   final List<_Cart> _carts = [_Cart(name: 'Ticket 1')];
   int _currentCartIndex = 0;
@@ -210,19 +211,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   int? _selectedCartItemIndex;
 
-    int? _inlineEditCartItemIndex;
-    DiscountType _inlineLineDiscountType = DiscountType.amount;
-    final TextEditingController _inlineQtyController = TextEditingController();
-    final TextEditingController _inlineLineDiscountController =
+  int? _inlineEditCartItemIndex;
+  DiscountType _inlineLineDiscountType = DiscountType.amount;
+  final TextEditingController _inlineQtyController = TextEditingController();
+  final TextEditingController _inlineLineDiscountController =
       TextEditingController();
-    final FocusNode _inlineQtyFocusNode = FocusNode();
-    final FocusNode _inlineLineDiscountFocusNode = FocusNode();
+  final FocusNode _inlineQtyFocusNode = FocusNode();
+  final FocusNode _inlineLineDiscountFocusNode = FocusNode();
 
-    bool _isInlineTotalDiscountOpen = false;
-    DiscountType _inlineTotalDiscountType = DiscountType.percent;
-    final TextEditingController _inlineTotalDiscountController =
+  DiscountType _inlineTotalDiscountType = DiscountType.percent;
+  final TextEditingController _inlineTotalDiscountController =
       TextEditingController();
-    final FocusNode _inlineTotalDiscountFocusNode = FocusNode();
+  final FocusNode _inlineTotalDiscountFocusNode = FocusNode();
 
   bool _keyboardShortcutsEnabled = true;
   ScannerInputController? _scanner;
@@ -1124,6 +1124,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     return cached;
   }
 
+  String _catalogScopeLabel() {
+    if (_searchController.text.trim().isNotEmpty) {
+      return 'Resultados';
+    }
+    if (_selectedCategory != null && _selectedCategory!.trim().isNotEmpty) {
+      return _selectedCategory!;
+    }
+    return 'Todo el catalogo';
+  }
+
   Future<void> _searchProducts(String query) async {
     if (!mounted) return;
     setState(() => _isSearching = true);
@@ -1301,7 +1311,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     required double width,
     required double maxHeight,
     required Widget Function(BuildContext dialogContext, VoidCallback close)
-        childBuilder,
+    childBuilder,
   }) async {
     final overlayState = Overlay.of(context, rootOverlay: true);
     final overlayBox = overlayState.context.findRenderObject() as RenderBox?;
@@ -1336,8 +1346,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     return showGeneralDialog<T>(
       context: context,
       barrierDismissible: true,
-      barrierLabel:
-          MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 120),
       pageBuilder: (dialogContext, animation, secondaryAnimation) {
@@ -1388,13 +1397,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     setState(() {
       _inlineEditCartItemIndex = null;
       final currentType = _currentCart.discountTotalType == 'percent'
-        ? DiscountType.percent
-        : DiscountType.amount;
+          ? DiscountType.percent
+          : DiscountType.amount;
       _inlineTotalDiscountType = currentType;
 
       final value = _currentCart.discountTotalValue ?? 0.0;
-      _inlineTotalDiscountController.text =
-          value > 0 ? value.toStringAsFixed(2) : '';
+      _inlineTotalDiscountController.text = value > 0
+          ? value.toStringAsFixed(2)
+          : '';
     });
 
     var requestedFocus = false;
@@ -1446,15 +1456,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 (_currentCart.discountTotalValue ?? 0.0) > 0.0;
 
             final subtotal = _currentCart.calculateSubtotal();
-            final raw = double.tryParse(_inlineTotalDiscountController.text) ??
-                0.0;
+            final raw =
+                double.tryParse(_inlineTotalDiscountController.text) ?? 0.0;
             final discountAmount = _computeTotalDiscountAmount(
               subtotal,
               _inlineTotalDiscountType,
               raw,
             );
-            final after =
-                (subtotal - discountAmount).clamp(0.0, double.infinity);
+            final after = (subtotal - discountAmount).clamp(
+              0.0,
+              double.infinity,
+            );
             final itbis = _currentCart.itbisEnabled
                 ? after * _currentCart.itbisRate
                 : 0.0;
@@ -1498,10 +1510,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           selectedColor: scheme.primary,
                           fillColor: scheme.primary.withOpacity(0.10),
                           children: const [
-                            Text('%',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
-                            Text('RD\$',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
+                            Text(
+                              '%',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            Text(
+                              'RD\$',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
                           ],
                         ),
                         const Spacer(),
@@ -1548,8 +1564,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               focusNode: _inlineTotalDiscountFocusNode,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                                    decimal: true,
+                                  ),
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
                                   RegExp(r'^\d*\.?\d{0,2}'),
@@ -1570,13 +1586,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
-                                  borderSide:
-                                      BorderSide(color: scheme.outlineVariant),
+                                  borderSide: BorderSide(
+                                    color: scheme.outlineVariant,
+                                  ),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
-                                  borderSide:
-                                      BorderSide(color: scheme.outlineVariant),
+                                  borderSide: BorderSide(
+                                    color: scheme.outlineVariant,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
@@ -1658,13 +1676,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 if (!mounted) return;
                 final (focusNode, controller) = switch (focus) {
                   _InlineItemFocus.discount => (
-                      _inlineLineDiscountFocusNode,
-                      _inlineLineDiscountController,
-                    ),
+                    _inlineLineDiscountFocusNode,
+                    _inlineLineDiscountController,
+                  ),
                   _InlineItemFocus.qty => (
-                      _inlineQtyFocusNode,
-                      _inlineQtyController,
-                    ),
+                    _inlineQtyFocusNode,
+                    _inlineQtyController,
+                  ),
                 };
                 focusNode.requestFocus();
                 controller.selection = TextSelection(
@@ -1787,8 +1805,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               InkWell(
                                 onTap: () {
                                   final currentQty =
-                                      double.tryParse(_inlineQtyController.text) ??
-                                          item.qty;
+                                      double.tryParse(
+                                        _inlineQtyController.text,
+                                      ) ??
+                                      item.qty;
                                   setQty((currentQty - 1).clamp(1.0, 999999));
                                 },
                                 borderRadius: BorderRadius.circular(10),
@@ -1796,15 +1816,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   width: 30,
                                   height: 30,
                                   decoration: BoxDecoration(
-                                    color: scheme
-                                        .surfaceContainerHighest
+                                    color: scheme.surfaceContainerHighest
                                         .withOpacity(0.55),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
                                     Icons.remove,
                                     size: 18,
-                                    color: salesDetailTextColor.withOpacity(0.86),
+                                    color: salesDetailTextColor.withOpacity(
+                                      0.86,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1818,8 +1839,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   textAlign: TextAlign.center,
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
+                                        decimal: true,
+                                      ),
                                   inputFormatters: [
                                     FilteringTextInputFormatter.allow(
                                       RegExp(r'^\d*\.?\d{0,3}'),
@@ -1839,13 +1860,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                     ),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
-                                      borderSide:
-                                          BorderSide(color: scheme.outlineVariant),
+                                      borderSide: BorderSide(
+                                        color: scheme.outlineVariant,
+                                      ),
                                     ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
-                                      borderSide:
-                                          BorderSide(color: scheme.outlineVariant),
+                                      borderSide: BorderSide(
+                                        color: scheme.outlineVariant,
+                                      ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(10),
@@ -1863,8 +1886,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               InkWell(
                                 onTap: () {
                                   final currentQty =
-                                      double.tryParse(_inlineQtyController.text) ??
-                                          item.qty;
+                                      double.tryParse(
+                                        _inlineQtyController.text,
+                                      ) ??
+                                      item.qty;
                                   setQty((currentQty + 1).clamp(1.0, 999999));
                                 },
                                 borderRadius: BorderRadius.circular(10),
@@ -1872,15 +1897,16 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   width: 30,
                                   height: 30,
                                   decoration: BoxDecoration(
-                                    color: scheme
-                                        .surfaceContainerHighest
+                                    color: scheme.surfaceContainerHighest
                                         .withOpacity(0.55),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
                                     Icons.add,
                                     size: 18,
-                                    color: salesDetailTextColor.withOpacity(0.86),
+                                    color: salesDetailTextColor.withOpacity(
+                                      0.86,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1946,10 +1972,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           selectedColor: scheme.primary,
                           fillColor: scheme.primary.withOpacity(0.10),
                           children: const [
-                            Text('%',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
-                            Text('RD\$',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
+                            Text(
+                              '%',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            Text(
+                              'RD\$',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
                           ],
                         ),
                         const SizedBox(width: 8),
@@ -1961,8 +1991,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               focusNode: _inlineLineDiscountFocusNode,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                                    decimal: true,
+                                  ),
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(
                                   RegExp(r'^\d*\.?\d{0,2}'),
@@ -1983,13 +2013,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
-                                  borderSide:
-                                      BorderSide(color: scheme.outlineVariant),
+                                  borderSide: BorderSide(
+                                    color: scheme.outlineVariant,
+                                  ),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
-                                  borderSide:
-                                      BorderSide(color: scheme.outlineVariant),
+                                  borderSide: BorderSide(
+                                    color: scheme.outlineVariant,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
@@ -1999,8 +2031,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 ),
                               ),
                               onChanged: (_) => setPopoverState(() {}),
-                              onSubmitted: (_) =>
-                                  unawaited(applyAndClose()),
+                              onSubmitted: (_) => unawaited(applyAndClose()),
                             ),
                           ),
                         ),
@@ -2037,11 +2068,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
-  bool _isValidTotalDiscount(
-    double subtotal,
-    DiscountType type,
-    double value,
-  ) {
+  bool _isValidTotalDiscount(double subtotal, DiscountType type, double value) {
     if (value <= 0) return false;
     if (type == DiscountType.percent) {
       return value > 0 && value <= 100;
@@ -2069,7 +2096,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       raw,
     );
     final after = (subtotal - discountAmount).clamp(0.0, double.infinity);
-    final itbis = _currentCart.itbisEnabled ? after * _currentCart.itbisRate : 0.0;
+    final itbis = _currentCart.itbisEnabled
+        ? after * _currentCart.itbisRate
+        : 0.0;
     return after + itbis;
   }
 
@@ -2078,7 +2107,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       _currentCart.discountTotalType = null;
       _currentCart.discountTotalValue = null;
     });
-    setState(() => _isInlineTotalDiscountOpen = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Descuento eliminado'),
@@ -2108,7 +2136,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     await _applyTotalDiscountResult(DiscountResult(type: type, value: value));
     if (!mounted) return;
-    setState(() => _isInlineTotalDiscountOpen = false);
   }
 
   Future<void> _applyTotalDiscountResult(DiscountResult result) async {
@@ -2133,8 +2160,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (!mounted) return;
     _updateCurrentCart(() {
-      _currentCart.discountTotalType =
-          result.type == DiscountType.percent ? 'percent' : 'amount';
+      _currentCart.discountTotalType = result.type == DiscountType.percent
+          ? 'percent'
+          : 'amount';
       _currentCart.discountTotalValue = result.value;
     });
     final discountLabel = result.type == DiscountType.percent
@@ -2255,16 +2283,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     _updateCurrentCart(() => _currentCart.updateQuantity(index, item.qty + 1));
   }
 
-  void _showEditItemDialog(SaleItemModel item, int index) {
-    unawaited(
-      _showItemEditPopover(
-        context,
-        index,
-        focus: _InlineItemFocus.qty,
-      ),
-    );
-  }
-
   void _openInlineItemEditor(
     SaleItemModel item,
     int index, {
@@ -2326,7 +2344,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         type: _inlineLineDiscountType,
         rawText: text,
       );
-      _currentCart.items[index] = current.copyWith(discountLine: discountAmount);
+      _currentCart.items[index] = current.copyWith(
+        discountLine: discountAmount,
+      );
     });
   }
 
@@ -2426,7 +2446,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     _isProcessingSaleExecution = true;
     try {
-      // Flujo profesional: no permitir ventas sin turno abierto.
       final activeShiftId = await _ensureActiveShiftOrRedirect(
         showMessage: true,
       );
@@ -2446,8 +2465,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
       if (!mounted) return;
 
-      // Importante: usar las funciones del carrito como fuente única.
-      // Evita doble descuento (bug: totales guardados/impresos en 0).
       final totalDiscount = _currentCart.calculateTotalDiscountsCombined();
       final subtotalAfterDiscount = _currentCart
           .calculateSubtotalAfterDiscount();
@@ -2500,13 +2517,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       );
       if (activeShiftIdAfterDialog == null) return;
 
-      // Permite que el cierre del dialogo se renderice antes de continuar con
-      // operaciones pesadas (DB/PDF/impresion). Evita que se "congele" la UI con
-      // el dialogo aun visible.
       await WidgetsBinding.instance.endOfFrame;
-      // En desktop (Windows/Linux/macOS) el cierre del dialog puede quedar visualmente
-      // “pegado” si arrancamos trabajo pesado inmediatamente, y parece que hay que
-      // presionar Cobrar dos veces. Dar un pequeño margen para completar la animación.
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         await Future<void>.delayed(const Duration(milliseconds: 220));
       }
@@ -2612,7 +2623,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       for (final item in _currentCart.items) {
         var enriched = item;
 
-        // Refresca datos del producto para guardar código, nombre, precio y costo actuales
         if (item.productId != null) {
           final product = await productsRepo.getById(item.productId!);
           if (product != null) {
@@ -2773,7 +2783,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _applyStockAdjustments(itemsPayload);
       }
 
-      // ✅ LIMPIEZA INMEDIATA (UX): cerrar/limpiar detalles sin esperar impresión/descarga/DB.
       if (!mounted) return;
       setState(() {
         if (cartIndexToRemove >= 0 && cartIndexToRemove < _carts.length) {
@@ -2796,7 +2805,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✔ Venta completada correctamente',
+            'Venta completada correctamente',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
           backgroundColor: status.success,
@@ -3477,7 +3486,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                                           ),
                                                     ),
                                                     child: Text(
-                                                      'Vista compacta',
+                                                      _catalogScopeLabel(),
                                                       style: TextStyle(
                                                         color:
                                                             gridMutedTextColor,
@@ -3651,13 +3660,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   panelMargin,
                                 ),
                                 decoration: BoxDecoration(
-                                  // Ligeramente más claro/suave que el fondo principal.
-                                  color: Color.alphaBlend(
-                                    scheme.onSurface.withOpacity(0.02),
-                                    theme.scaffoldBackgroundColor,
-                                  ),
+                                  color: salesDetailPanelColor,
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: tokens.outline),
+                                  border: Border.all(color: salesDetailBorderColor),
                                   boxShadow: [
                                     BoxShadow(
                                       color: theme.shadowColor.withOpacity(
@@ -3786,11 +3791,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }) {
     final qtyInCart = _qtyInCart(product.id);
     final effectiveStock = product.stock - qtyInCart;
-    final isLowStock = effectiveStock > 0 && effectiveStock <= 10;
+    final isCriticalStock = effectiveStock <= 1;
+    final isLowStock = effectiveStock > 1 && effectiveStock <= 10;
     final isOutOfStock = effectiveStock <= 0;
     final stockColor = isOutOfStock
         ? scheme.error
-        : (isLowStock ? status.warning : scheme.primary.withOpacity(0.85));
+        : (isCriticalStock
+              ? scheme.error
+              : (isLowStock ? status.warning : status.success));
     final theme = Theme.of(context);
     final salesProducts = theme.extension<SalesProductsTheme>();
     final rawPrice = product.salePrice;
@@ -3800,6 +3808,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final isHovered = _hoveredProductIndexes.contains(index);
     final stockLabel = isOutOfStock
         ? 'Sin stock'
+      : isCriticalStock
+      ? 'Ultima unidad'
         : 'Stock ${effectiveStock.toInt()}';
     final cardColor = isHovered
         ? (salesProducts?.cardAltBackgroundColor.opacity ?? 0) == 0
@@ -3825,6 +3835,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final priceColor = (salesProducts?.priceColor.opacity ?? 0) == 0
         ? scheme.onSurface
         : salesProducts!.priceColor;
+    final codeColor = cardTextColor.withOpacity(0.74);
 
     return MouseRegion(
       onEnter: (_) =>
@@ -3927,15 +3938,37 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              '${product.code.toUpperCase()}  •  $stockLabel',
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: product.code.toUpperCase(),
+                                    style: TextStyle(
+                                      color: codeColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: '  •  ',
+                                    style: TextStyle(
+                                      color: codeColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: stockLabel,
+                                    style: TextStyle(
+                                      color: stockColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: stockColor,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
                             ),
                           ],
                         ),
@@ -4412,9 +4445,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   /// Panel de ticket refactorizado con 3 cards profesionales
   Widget _buildTicketPanel() {
-    final theme = Theme.of(context);
-    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-    final dividerColor = tokens.outline.withOpacity(0.85);
+    final dividerColor = salesDetailBorderColor;
 
     return Padding(
       padding: const EdgeInsets.all(10),
@@ -4431,7 +4462,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 Text(
                   'Detalle',
                   style: TextStyle(
-                    color: scheme.onSurface.withOpacity(0.92),
+                    color: salesDetailTextColor,
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
                   ),
@@ -4440,7 +4471,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 Text(
                   '${_currentCart.items.length} líneas',
                   style: TextStyle(
-                    color: scheme.onSurface.withOpacity(0.55),
+                    color: salesDetailMutedTextColor,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -4461,23 +4492,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget _buildTicketHeaderCard({bool embedded = false}) {
     final totalTickets = _carts.length;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     Color actionBackground(bool isHovered) {
-      if (isDark) {
-        final base = scheme.surfaceContainerHighest.withOpacity(0.18);
-        final hover = scheme.surfaceContainerHighest.withOpacity(0.26);
-        return isHovered ? hover : base;
-      }
-
-      final base = Color.alphaBlend(
-        scheme.onSurface.withOpacity(0.02),
-        scheme.surfaceContainerHighest,
-      );
-      final hover = Color.alphaBlend(
-        scheme.primary.withOpacity(0.06),
-        scheme.surfaceContainerHighest,
-      );
+      final base = salesDetailSurfaceColor;
+      final hover = salesDetailSurfaceStrongColor;
       return isHovered ? hover : base;
     }
 
@@ -4506,8 +4523,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isHovered
-                  ? scheme.primary.withOpacity(0.22)
-                  : scheme.outlineVariant,
+                  ? salesDetailSelectedBorderColor
+                  : salesDetailBorderColor,
             ),
             boxShadow: [
               if (isHovered)
@@ -4530,7 +4547,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 ),
                 child: Row(
                   children: [
-                    Icon(icon, size: 20, color: scheme.primary),
+                    Icon(icon, size: 20, color: salesDetailTextColor),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -4538,7 +4555,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: scheme.onSurface,
+                          color: salesDetailTextColor,
                           fontSize: emphasize ? 13 : 12,
                           fontWeight: emphasize
                               ? FontWeight.w700
@@ -4580,8 +4597,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isHovered
-                  ? scheme.primary.withOpacity(0.22)
-                  : scheme.outlineVariant,
+                  ? salesDetailSelectedBorderColor
+                  : salesDetailBorderColor,
             ),
             boxShadow: [
               if (isHovered)
@@ -4603,7 +4620,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   width: 42,
                   height: 42,
                   child: Center(
-                    child: Icon(icon, size: 20, color: scheme.primary),
+                    child: Icon(icon, size: 20, color: salesDetailTextColor),
                   ),
                 ),
               ),
@@ -4799,160 +4816,159 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       builder: (rowContext) => InkWell(
         onTap: () => setState(() => _selectedCartItemIndex = index),
         onDoubleTap: () => unawaited(
-          _showItemEditPopover(
-            rowContext,
-            index,
-            focus: _InlineItemFocus.qty,
-          ),
+          _showItemEditPopover(rowContext, index, focus: _InlineItemFocus.qty),
         ),
         child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? scheme.primary.withOpacity(0.055)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: isSelected
-              ? Border.all(color: scheme.primary.withOpacity(0.18), width: 1.2)
-              : Border(bottom: BorderSide(color: rowDividerColor, width: 1)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: Text(
-                  '${item.qty.toInt()}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: salesDetailTextColor,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? salesDetailSelectedColor
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: isSelected
+                ? Border.all(
+                    color: salesDetailSelectedBorderColor,
+                    width: 1.2,
+                  )
+                : Border(bottom: BorderSide(color: rowDividerColor, width: 1)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: salesDetailSurfaceStrongColor,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    '${item.qty.toInt()}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: salesDetailTextColor,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.productNameSnapshot,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: salesDetailTextColor,
+                        height: 1.15,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${item.productCodeSnapshot}  •  Unitario ${CurrencyDisplay.format(item.unitPrice, decimalDigits: 2)}',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: salesDetailMutedTextColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    item.productNameSnapshot,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: salesDetailTextColor,
-                      height: 1.15,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${item.productCodeSnapshot}  •  Unitario ${CurrencyDisplay.format(item.unitPrice, decimalDigits: 2)}',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: salesDetailMutedTextColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  _buildCompactStepperButton(Icons.remove, () {
+                    if (item.qty > 1) {
+                      _updateCurrentCart(
+                        () => _currentCart.updateQuantity(index, item.qty - 1),
+                      );
+                    }
+                  }),
+                  const SizedBox(width: 4),
+                  _buildCompactStepperButton(
+                    Icons.add,
+                    () => _incrementCartItemQty(item, index),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildCompactStepperButton(Icons.remove, () {
-                  if (item.qty > 1) {
-                    _updateCurrentCart(
-                      () => _currentCart.updateQuantity(index, item.qty - 1),
-                    );
-                  }
-                }),
-                const SizedBox(width: 4),
-                _buildCompactStepperButton(
-                  Icons.add,
-                  () => _incrementCartItemQty(item, index),
-                ),
-              ],
-            ),
-            const SizedBox(width: 12),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (item.discountLine > 0)
-                  Text(
-                    '-${CurrencyDisplay.format(item.discountLine, decimalDigits: 2)}',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: scheme.error,
-                      fontWeight: FontWeight.w600,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (item.discountLine > 0)
+                    Text(
+                      '-${CurrencyDisplay.format(item.discountLine, decimalDigits: 2)}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: scheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: salesDetailSurfaceStrongColor,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      CurrencyDisplay.format(subtotal, decimalDigits: 2),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: salesDetailTextColor,
+                      ),
                     ),
                   ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    CurrencyDisplay.format(subtotal, decimalDigits: 2),
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: scheme.primary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 8),
+                ],
+              ),
+              const SizedBox(width: 8),
 
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _updateCurrentCart(() {
-                  if (_inlineEditCartItemIndex == index) {
-                    _inlineEditCartItemIndex = null;
-                  }
-                  if (_selectedCartItemIndex == index) {
-                    _selectedCartItemIndex = null;
-                  }
-                  _currentCart.removeItem(index);
-                }),
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: Center(
-                    child: Icon(
-                      Icons.delete_outline,
-                      size: 20,
-                      color: scheme.error.withOpacity(0.85),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _updateCurrentCart(() {
+                    if (_inlineEditCartItemIndex == index) {
+                      _inlineEditCartItemIndex = null;
+                    }
+                    if (_selectedCartItemIndex == index) {
+                      _selectedCartItemIndex = null;
+                    }
+                    _currentCart.removeItem(index);
+                  }),
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: Center(
+                      child: Icon(
+                        Icons.delete_outline,
+                        size: 20,
+                        color: scheme.error.withOpacity(0.85),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -4964,7 +4980,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withOpacity(0.55),
+          color: salesDetailSurfaceStrongColor,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
@@ -4972,367 +4988,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           size: 14,
           color: salesDetailTextColor.withOpacity(0.86),
         ),
-      ),
-    );
-  }
-
-  void _maybeSyncInlineItemControllers(SaleItemModel item) {
-    if (_inlineEditCartItemIndex == null) return;
-
-    if (!_inlineQtyFocusNode.hasFocus) {
-      final desired = _formatQtyForInlineEditor(item.qty);
-      if (_inlineQtyController.text != desired) {
-        _inlineQtyController.text = desired;
-      }
-    }
-
-    if (!_inlineLineDiscountFocusNode.hasFocus) {
-      final desired = item.discountLine > 0
-          ? item.discountLine.toStringAsFixed(2)
-          : '';
-      if (_inlineLineDiscountController.text != desired) {
-        _inlineLineDiscountController.text = desired;
-      }
-    }
-  }
-
-  Widget _buildInlineQtyStepperEditor(int index, {required bool compact}) {
-    final height = compact ? 28.0 : 30.0;
-    final fieldWidth = compact ? 46.0 : 54.0;
-    final radius = compact ? 8.0 : 10.0;
-    final iconSize = compact ? 16.0 : 18.0;
-    final buttonColor = scheme.surfaceContainerHighest.withOpacity(0.55);
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radius),
-      borderSide: BorderSide(color: scheme.outlineVariant),
-    );
-
-    void setQty(double qty) {
-      final text = _formatQtyForInlineEditor(qty);
-      _inlineQtyController.text = text;
-      _inlineQtyController.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: text.length,
-      );
-      _applyInlineQtyChanged(index, text);
-    }
-
-    return SizedBox(
-      height: height,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () {
-              if (index < 0 || index >= _currentCart.items.length) return;
-              final item = _currentCart.items[index];
-              final next = (item.qty - 1).clamp(1.0, double.infinity);
-              setQty(next);
-            },
-            borderRadius: BorderRadius.circular(radius),
-            child: Container(
-              width: height,
-              height: height,
-              decoration: BoxDecoration(
-                color: buttonColor,
-                borderRadius: BorderRadius.circular(radius),
-              ),
-              child: Icon(
-                Icons.remove,
-                size: iconSize,
-                color: salesDetailTextColor.withOpacity(0.86),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          SizedBox(
-            width: fieldWidth,
-            height: height,
-            child: TextField(
-              controller: _inlineQtyController,
-              focusNode: _inlineQtyFocusNode,
-              textAlign: TextAlign.center,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(
-                  RegExp(r'^\d*\.?\d{0,3}'),
-                ),
-              ],
-              style: TextStyle(
-                fontSize: compact ? 12 : 13,
-                fontWeight: FontWeight.w800,
-                color: salesDetailTextColor,
-                height: 1.0,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: compact ? 8 : 9,
-                ),
-                border: border,
-                enabledBorder: border,
-                focusedBorder: border.copyWith(
-                  borderSide: BorderSide(color: scheme.primary.withOpacity(0.45)),
-                ),
-              ),
-              onChanged: (value) => _applyInlineQtyChanged(index, value),
-              onSubmitted: (value) => _applyInlineQtyChanged(index, value),
-            ),
-          ),
-          const SizedBox(width: 4),
-          InkWell(
-            onTap: () {
-              if (index < 0 || index >= _currentCart.items.length) return;
-              final item = _currentCart.items[index];
-              setQty(item.qty + 1);
-            },
-            borderRadius: BorderRadius.circular(radius),
-            child: Container(
-              width: height,
-              height: height,
-              decoration: BoxDecoration(
-                color: buttonColor,
-                borderRadius: BorderRadius.circular(radius),
-              ),
-              child: Icon(
-                Icons.add,
-                size: iconSize,
-                color: salesDetailTextColor.withOpacity(0.86),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInlineLineDiscountEditor(int index, {required bool compact}) {
-    final height = compact ? 28.0 : 30.0;
-    final fieldWidth = compact ? 82.0 : 96.0;
-    final radius = compact ? 8.0 : 10.0;
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radius),
-      borderSide: BorderSide(color: scheme.outlineVariant),
-    );
-
-    return SizedBox(
-      height: height,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ToggleButtons(
-            isSelected: [
-              _inlineLineDiscountType == DiscountType.percent,
-              _inlineLineDiscountType == DiscountType.amount,
-            ],
-            onPressed: (i) {
-              setState(() {
-                _inlineLineDiscountType =
-                    i == 0 ? DiscountType.percent : DiscountType.amount;
-              });
-              _applyInlineLineDiscountChanged(
-                index,
-                _inlineLineDiscountController.text,
-              );
-            },
-            borderRadius: BorderRadius.circular(radius),
-            constraints: BoxConstraints(minHeight: height, minWidth: 44),
-            borderColor: scheme.outlineVariant,
-            selectedBorderColor: scheme.primary.withOpacity(0.35),
-            color: salesDetailMutedTextColor,
-            selectedColor: scheme.primary,
-            fillColor: scheme.primary.withOpacity(0.10),
-            children: const [
-              Text('%', style: TextStyle(fontWeight: FontWeight.w800)),
-              Text('RD\$', style: TextStyle(fontWeight: FontWeight.w800)),
-            ],
-          ),
-          const SizedBox(width: 6),
-          SizedBox(
-            width: fieldWidth,
-            height: height,
-            child: TextField(
-              controller: _inlineLineDiscountController,
-              focusNode: _inlineLineDiscountFocusNode,
-              textAlign: TextAlign.center,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-              ],
-              style: TextStyle(
-                fontSize: compact ? 11.5 : 12.5,
-                fontWeight: FontWeight.w800,
-                color: salesDetailTextColor,
-                height: 1.0,
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: compact ? 8 : 9,
-                ),
-                border: border,
-                enabledBorder: border,
-                focusedBorder: border.copyWith(
-                  borderSide: BorderSide(color: scheme.primary.withOpacity(0.45)),
-                ),
-              ),
-              onChanged: (value) => _applyInlineLineDiscountChanged(index, value),
-              onSubmitted: (value) =>
-                  _applyInlineLineDiscountChanged(index, value),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInlineTotalDiscountPanel() {
-    final hasCurrentDiscount =
-        (_currentCart.discountTotalValue ?? 0.0) > 0.0;
-    final previewTotal = _computeInlineTotalDiscountPreviewTotal();
-    final radius = 12.0;
-    final height = 30.0;
-
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              ToggleButtons(
-                isSelected: [
-                  _inlineTotalDiscountType == DiscountType.percent,
-                  _inlineTotalDiscountType == DiscountType.amount,
-                ],
-                onPressed: (i) {
-                  setState(() {
-                    _inlineTotalDiscountType =
-                        i == 0 ? DiscountType.percent : DiscountType.amount;
-                  });
-                },
-                borderRadius: BorderRadius.circular(10),
-                constraints: BoxConstraints(minHeight: height, minWidth: 48),
-                borderColor: scheme.outlineVariant,
-                selectedBorderColor: scheme.primary.withOpacity(0.35),
-                color: salesDetailMutedTextColor,
-                selectedColor: scheme.primary,
-                fillColor: scheme.primary.withOpacity(0.10),
-                children: const [
-                  Text('%', style: TextStyle(fontWeight: FontWeight.w800)),
-                  Text('RD\$', style: TextStyle(fontWeight: FontWeight.w800)),
-                ],
-              ),
-              const Spacer(),
-              Text(
-                CurrencyDisplay.format(previewTotal, decimalDigits: 2),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: scheme.primary,
-                ),
-              ),
-              if (hasCurrentDiscount) ...[
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: _removeInlineTotalDiscount,
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 30,
-                    height: 30,
-                    child: Icon(
-                      Icons.close,
-                      size: 18,
-                      color: scheme.error.withOpacity(0.85),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: height,
-                  child: TextField(
-                    controller: _inlineTotalDiscountController,
-                    focusNode: _inlineTotalDiscountFocusNode,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'^\d*\.?\d{0,2}'),
-                      ),
-                    ],
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      color: salesDetailTextColor,
-                      height: 1.0,
-                    ),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 9,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: scheme.outlineVariant),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: scheme.outlineVariant),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: scheme.primary.withOpacity(0.45),
-                        ),
-                      ),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                    onSubmitted: (_) => unawaited(_applyInlineTotalDiscount()),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              InkWell(
-                onTap: () => unawaited(_applyInlineTotalDiscount()),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: height,
-                  height: height,
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: scheme.primary.withOpacity(0.22)),
-                  ),
-                  child: Icon(
-                    Icons.check,
-                    size: 18,
-                    color: scheme.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -5412,12 +5067,12 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                         vertical: 16,
                       ),
                       decoration: BoxDecoration(
-                        color: scheme.primary.withOpacity(
-                          _currentCart.items.isEmpty ? 0.05 : 0.08,
-                        ),
+                        color: _currentCart.items.isEmpty
+                            ? salesDetailSurfaceColor
+                            : salesDetailSurfaceStrongColor,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: scheme.primary.withOpacity(0.14),
+                          color: salesDetailBorderColor,
                         ),
                       ),
                       child: Row(
@@ -5429,7 +5084,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 Icon(
                                   Icons.attach_money,
                                   size: 20,
-                                  color: scheme.primary,
+                                  color: salesDetailTextColor,
                                 ),
                                 const SizedBox(width: 6),
                                 Flexible(
@@ -5439,7 +5094,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                     style: TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w800,
-                                      color: scheme.primary,
+                                      color: salesDetailTextColor,
                                       letterSpacing: 0.3,
                                     ),
                                   ),
@@ -5460,7 +5115,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 style: TextStyle(
                                   fontSize: 30,
                                   fontWeight: FontWeight.w900,
-                                  color: scheme.primary,
+                                  color: salesDetailTextColor,
                                 ),
                               ),
                             ),
@@ -5876,9 +5531,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: _resolveSalesDetailGradient(
-                      Theme.of(context).extension<SalesDetailGradientTheme>(),
-                    ),
+                    color: salesDetailBackgroundColor,
                   ),
                   child: Builder(
                     builder: (context) {
@@ -5928,12 +5581,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ],
                           GestureDetector(
                             onTap: () => _showTotalDiscountDialog(context),
-                            onDoubleTap: () => _showTotalDiscountDialog(context),
-                            child: _buildTotalRow(
-                              'TOTAL:',
-                              totalAmount,
-                              true,
-                            ),
+                            onDoubleTap: () =>
+                                _showTotalDiscountDialog(context),
+                            child: _buildTotalRow('TOTAL:', totalAmount, true),
                           ),
                         ],
                       );
@@ -6039,11 +5689,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         child: InkWell(
           onTap: () => setState(() => _selectedCartItemIndex = index),
           onDoubleTap: () => unawaited(
-            _showItemEditPopover(
-              context,
-              index,
-              focus: _InlineItemFocus.qty,
-            ),
+            _showItemEditPopover(context, index, focus: _InlineItemFocus.qty),
           ),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -6102,10 +5748,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                     _buildMiniButton(Icons.remove, () {
                       if (item.qty > 1) {
                         setState(
-                          () => _currentCart.updateQuantity(
-                            index,
-                            item.qty - 1,
-                          ),
+                          () =>
+                              _currentCart.updateQuantity(index, item.qty - 1),
                         );
                       }
                     }),

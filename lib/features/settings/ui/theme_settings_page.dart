@@ -411,30 +411,14 @@ class ThemeSettingsPage extends ConsumerWidget {
                       child: Column(
                         children: [
                           _ColorRow(
-                            label: 'Gradiente inicio',
-                            color: settings.salesDetailGradientStart,
+                            label: 'Fondo de la columna de detalle',
+                            color: settings.salesDetailBackgroundColor,
                             onPreview: (color) => notifier.previewSettings(
                               settings.copyWith(
-                                salesDetailGradientStart: color,
+                                salesDetailBackgroundColor: color,
                               ),
                             ),
-                            onPick: notifier.updateSalesDetailGradientStart,
-                          ),
-                          _ColorRow(
-                            label: 'Gradiente medio',
-                            color: settings.salesDetailGradientMid,
-                            onPreview: (color) => notifier.previewSettings(
-                              settings.copyWith(salesDetailGradientMid: color),
-                            ),
-                            onPick: notifier.updateSalesDetailGradientMid,
-                          ),
-                          _ColorRow(
-                            label: 'Gradiente final',
-                            color: settings.salesDetailGradientEnd,
-                            onPreview: (color) => notifier.previewSettings(
-                              settings.copyWith(salesDetailGradientEnd: color),
-                            ),
-                            onPick: notifier.updateSalesDetailGradientEnd,
+                            onPick: notifier.updateSalesDetailBackgroundColor,
                           ),
                           _ColorRow(
                             label: 'Texto de la columna de detalle',

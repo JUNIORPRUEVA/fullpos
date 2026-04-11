@@ -223,6 +223,12 @@ class ThemeNotifier extends StateNotifier<ThemeSettings> {
     await _repository.saveThemeSettings(newSettings);
   }
 
+  Future<void> updateSalesDetailBackgroundColor(Color color) async {
+    final newSettings = state.copyWith(salesDetailBackgroundColor: color);
+    state = newSettings;
+    await _repository.saveThemeSettings(newSettings);
+  }
+
   // ======== Accesos rapidos (aplicar a AppBar/Sidebar/Footer) ========
 
   Future<void> updateChromeBackgroundColor(Color color) async {
@@ -623,10 +629,13 @@ ThemeData _buildThemeData(ThemeSettings settings) {
   final chromeDividerColor = settings.appBarColor.computeLuminance() < 0.16
       ? Colors.white.withOpacity(0.08)
       : outlineColor;
-  final salesDetailTextColor = _ensureReadableColor(
-    settings.salesDetailTextColor,
-    settings.salesDetailGradientMid,
-  );
+  final salesDetailBackgroundColor =
+      settings.salesDetailBackgroundColor.opacity == 0
+      ? surfaceColor
+      : settings.salesDetailBackgroundColor;
+  final salesDetailTextColor = settings.salesDetailTextColor.opacity == 0
+      ? effectiveTextColor
+      : settings.salesDetailTextColor;
   final outlineVariant = brightness == Brightness.dark
       ? Colors.white.withOpacity(0.08)
       : PremiumThemeColors.appBarBorder;
@@ -1054,12 +1063,10 @@ ThemeData _buildThemeData(ThemeSettings settings) {
         mid: settings.backgroundGradientMid,
         end: settings.backgroundGradientEnd,
       ),
-      SalesDetailGradientTheme(
-        start: settings.salesDetailGradientStart,
-        mid: settings.salesDetailGradientMid,
-        end: settings.salesDetailGradientEnd,
+      SalesDetailTheme(
+        backgroundColor: salesDetailBackgroundColor,
+        textColor: salesDetailTextColor,
       ),
-      SalesDetailTextTheme(textColor: salesDetailTextColor),
       SalesProductsTheme(
         gridBackgroundColor: settings.salesGridBackgroundColor,
         cardBackgroundColor: settings.salesProductCardBackgroundColor,

@@ -7,6 +7,8 @@ import '../../../core/session/session_manager.dart';
 class AuthRepository {
   AuthRepository._();
 
+  static const String initialAdminPassword = 'admin123';
+
   /// Valida las credenciales del usuario y retorna el usuario si es válido
   static Future<UserModel?> login(String username, String password) async {
     final user = await UsersRepository.verifyCredentials(username, password);
@@ -52,6 +54,7 @@ class AuthRepository {
   static Future<void> changeCurrentUserPassword({
     required String currentPassword,
     required String newPassword,
+    bool allowInitialPassword = false,
   }) async {
     final userId = await SessionManager.userId();
     final username = await SessionManager.username();
@@ -60,9 +63,13 @@ class AuthRepository {
       throw StateError('No hay sesión activa');
     }
 
+    final effectiveCurrentPassword = allowInitialPassword
+        ? initialAdminPassword
+        : currentPassword;
+
     final verified = await UsersRepository.verifyCredentials(
       username,
-      currentPassword,
+      effectiveCurrentPassword,
       companyId: companyId,
     );
     if (verified == null) {

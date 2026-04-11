@@ -1,7 +1,26 @@
 {
-    "cmake.sourceDirectory": "C:/Users/PC/Desktop/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/windows",
+    "cmake.sourceDirectory": "${workspaceFolder}/windows",
+    "dart.flutterSdkPath": "C:/src/flutter",
+    "dart.sdkPath": "C:/src/flutter/bin/cache/dart-sdk",
+    "dart.addSdkToTerminalPath": true,
     "dart.flutterHotReloadOnSave": "allIfDirty",
+    "dart.flutterRunAdditionalArgs": [
+        "-d",
+        "windows"
+    ],
+    "dart.flutterRememberSelectedDevice": false,
+    "dart.flutterSelectDeviceWhenConnected": false,
+    "dart.flutterShowEmulators": "never",
     "dart.hotReloadProgress": "statusBar",
     "dart.openDevTools": "flutter",
-    "dart.previewHotReloadOnSaveWatcher": true
+    "dart.previewHotReloadOnSaveWatcher": true,
+    "dart.env": {
+        "FLUTTER_ROOT": "C:/src/flutter",
+        "Path": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
+        "PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+    },
+    "terminal.integrated.env.windows": {
+        "Path": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
+        "PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+    }
 }

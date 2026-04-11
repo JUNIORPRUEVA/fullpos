@@ -10,6 +10,10 @@
             "type": "dart",
             "program": "lib/main.dart",
             "deviceId": "windows",
+            "toolArgs": [
+                "-d",
+                "windows"
+            ],
             "flutterMode": "debug",
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "Prepare FULLPOS Windows Hot Reload"
@@ -18,19 +22,31 @@
             "name": "FULLPOS",
             "request": "launch",
             "type": "dart",
-            "program": "lib/main.dart"
+            "program": "lib/main.dart",
+            "deviceId": "windows",
+            "toolArgs": [
+                "-d",
+                "windows"
+            ],
+            "flutterMode": "debug",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Prepare FULLPOS Windows Hot Reload"
         },
         {
             "name": "FULLPOS (profile mode)",
             "request": "launch",
             "type": "dart",
-            "flutterMode": "profile"
+            "flutterMode": "profile",
+            "deviceId": "windows",
+            "cwd": "${workspaceFolder}"
         },
         {
             "name": "FULLPOS (release mode)",
             "request": "launch",
             "type": "dart",
-            "flutterMode": "release"
+            "flutterMode": "release",
+            "deviceId": "windows",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

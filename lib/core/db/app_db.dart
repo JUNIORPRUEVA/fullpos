@@ -772,6 +772,7 @@ class AppDb {
     await requireColumn(DbTables.overrideTokens, 'token_hash');
     await requireColumn(DbTables.overrideTokens, 'company_id');
     await requireColumn(DbTables.auditLog, 'company_id');
+    await requireColumn(DbTables.tempCarts, 'electronic_invoice_enabled');
 
     if (userVersion != -1 && userVersion < _dbVersion) {
       warnings.add(
@@ -3113,7 +3114,7 @@ class AppDb {
         discount REAL NOT NULL DEFAULT 0,
         itbis_enabled INTEGER NOT NULL DEFAULT 1,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
-        fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+        electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
         discount_total_type TEXT,
         discount_total_value REAL,
         created_at_ms INTEGER NOT NULL,
@@ -5216,7 +5217,7 @@ class AppDb {
         discount REAL NOT NULL DEFAULT 0,
         itbis_enabled INTEGER NOT NULL DEFAULT 1,
         itbis_rate REAL NOT NULL DEFAULT 0.18,
-        fiscal_enabled INTEGER NOT NULL DEFAULT 0,
+        electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
         discount_total_type TEXT,
         discount_total_value REAL,
         created_at_ms INTEGER NOT NULL,
@@ -5250,6 +5251,30 @@ class AppDb {
       DbTables.tempCartItems,
       'cart_id',
     );
+
+    if (await _tableExists(db, DbTables.tempCarts)) {
+      final tempCartColumns = await _getTableColumns(db, DbTables.tempCarts);
+      final hadElectronicInvoiceEnabled = tempCartColumns.contains(
+        'electronic_invoice_enabled',
+      );
+      final hadLegacyFiscalEnabled = tempCartColumns.contains('fiscal_enabled');
+
+      final addedElectronicInvoiceEnabled = await _addColumnIfMissing(
+        db,
+        DbTables.tempCarts,
+        'electronic_invoice_enabled',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+
+      if (!hadElectronicInvoiceEnabled &&
+          hadLegacyFiscalEnabled &&
+          addedElectronicInvoiceEnabled) {
+        await db.execute('''
+          UPDATE ${DbTables.tempCarts}
+          SET electronic_invoice_enabled = COALESCE(fiscal_enabled, 0)
+        ''');
+      }
+    }
 
     // quotes
     if (await _tableExists(db, DbTables.quotes)) {

@@ -46,7 +46,7 @@ class _CreditsPageState extends State<CreditsPage>
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
-  NumberFormat get _currency => CurrencyDisplay.currency();
+  NumberFormat get _currency => CurrencyDisplay.currency(symbol: r'$');
 
   @override
   void initState() {
@@ -1707,6 +1707,12 @@ class _CreditsPageState extends State<CreditsPage>
   }
 
   Widget _detailRow(String label, String value, {bool isHighlight = false}) {
+    final isTotalRow = label.toLowerCase().contains('total');
+    final valueFontSize = isHighlight ? 24.0 : (isTotalRow ? 22.0 : 14.0);
+    final valueFontWeight = isHighlight || isTotalRow
+        ? FontWeight.w800
+        : FontWeight.w600;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1730,9 +1736,9 @@ class _CreditsPageState extends State<CreditsPage>
               textAlign: TextAlign.right,
               style: TextStyle(
                 color: isHighlight ? AppColors.primaryBlue : _scheme.onSurface,
-                fontWeight: isHighlight ? FontWeight.w700 : FontWeight.w600,
+                fontWeight: valueFontWeight,
                 fontFamily: 'Inter',
-                fontSize: isHighlight ? 23 : 14,
+                fontSize: valueFontSize,
               ),
             ),
           ),

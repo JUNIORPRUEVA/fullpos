@@ -168,7 +168,10 @@ class _ReportsPageState extends State<ReportsPage> {
       lastDate: now,
       initialDateRange: _customStart != null && _customEnd != null
           ? DateTimeRange(start: _customStart!, end: _customEnd!)
-          : DateTimeRange(start: DateTime(now.year, now.month, now.day), end: now),
+          : DateTimeRange(
+              start: DateTime(now.year, now.month, now.day),
+              end: now,
+            ),
     );
 
     if (range == null) return;
@@ -222,9 +225,9 @@ class _ReportsPageState extends State<ReportsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al exportar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
     }
   }
 
@@ -248,7 +251,10 @@ class _ReportsPageState extends State<ReportsPage> {
                 onTap: () => setStateDialog(() => temp[key] = !enabled),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: enabled
                         ? dialogScheme.primary.withOpacity(0.08)
@@ -264,7 +270,8 @@ class _ReportsPageState extends State<ReportsPage> {
                     children: [
                       Checkbox(
                         value: enabled,
-                        onChanged: (v) => setStateDialog(() => temp[key] = v ?? false),
+                        onChanged: (v) =>
+                            setStateDialog(() => temp[key] = v ?? false),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -392,7 +399,9 @@ class _ReportsPageState extends State<ReportsPage> {
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final file = File('${downloadsDir.path}/Reporte_$ts.pdf');
       await file.writeAsBytes(pdfBytes, flush: true);
-      await Share.shareXFiles([XFile(file.path)], text: 'Reporte de Estadísticas');
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Reporte de Estadísticas');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -495,7 +504,10 @@ class _ReportsPageState extends State<ReportsPage> {
                     builder: (context, constraints) {
                       final padding = _contentPadding(constraints);
                       final isNarrow = constraints.maxWidth < 1100;
-                      return _buildContent(padding: padding, isNarrow: isNarrow);
+                      return _buildContent(
+                        padding: padding,
+                        isNarrow: isNarrow,
+                      );
                     },
                   ),
           ),
@@ -524,12 +536,6 @@ class _ReportsPageState extends State<ReportsPage> {
         foregroundColor: scheme.onSurface,
         visualDensity: VisualDensity.compact,
       ),
-    );
-
-    final identity = Row(
-      children: [
-        leading,
-      ],
     );
 
     final actions = Wrap(
@@ -590,11 +596,7 @@ class _ReportsPageState extends State<ReportsPage> {
         child: stacked
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  leading,
-                  const SizedBox(height: 10),
-                  actions,
-                ],
+                children: [leading, const SizedBox(height: 10), actions],
               )
             : Row(
                 children: [
@@ -733,7 +735,9 @@ class _ReportsPageState extends State<ReportsPage> {
     final kpis = _kpis;
     final topClient = _topClients.isNotEmpty ? _topClients.first : null;
     final topPayment = _paymentMethods.isNotEmpty
-        ? (_paymentMethods.toList()..sort((a, b) => b.amount.compareTo(a.amount))).first
+        ? (_paymentMethods.toList()
+                ..sort((a, b) => b.amount.compareTo(a.amount)))
+              .first
         : null;
 
     return SingleChildScrollView(
@@ -922,20 +926,21 @@ class _ReportsPageState extends State<ReportsPage> {
     required TopClient? topClient,
     required PaymentMethodData? topPayment,
   }) {
-    final brandScheme = ColorScheme.fromSeed(
-      seedColor: ui_colors.AppColors.primaryBlue,
-      brightness: Brightness.light,
-    ).copyWith(
-      primary: ui_colors.AppColors.primaryBlue,
-      secondary: const Color(0xFF22C55E),
-      tertiary: const Color(0xFF0EA5E9),
-      surface: Colors.white,
-      surfaceContainerHighest: const Color(0xFFEAF2FF),
-      onSurface: ui_colors.AppColors.textPrimary,
-      onSurfaceVariant: ui_colors.AppColors.textSecondary,
-      outlineVariant: ui_colors.AppColors.borderSoft,
-      error: ui_colors.AppColors.error,
-    );
+    final brandScheme =
+        ColorScheme.fromSeed(
+          seedColor: ui_colors.AppColors.primaryBlue,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: ui_colors.AppColors.primaryBlue,
+          secondary: const Color(0xFF22C55E),
+          tertiary: const Color(0xFF0EA5E9),
+          surface: Colors.white,
+          surfaceContainerHighest: const Color(0xFFEAF2FF),
+          onSurface: ui_colors.AppColors.textPrimary,
+          onSurfaceVariant: ui_colors.AppColors.textSecondary,
+          outlineVariant: ui_colors.AppColors.borderSoft,
+          error: ui_colors.AppColors.error,
+        );
 
     final brandTheme = Theme.of(context).copyWith(
       colorScheme: brandScheme,
@@ -954,9 +959,7 @@ class _ReportsPageState extends State<ReportsPage> {
       required Color accent,
     }) {
       return Container(
-        constraints: BoxConstraints(
-          minWidth: isNarrow ? 120 : 150,
-        ),
+        constraints: BoxConstraints(minWidth: isNarrow ? 120 : 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.82),
@@ -1001,7 +1004,11 @@ class _ReportsPageState extends State<ReportsPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_today_outlined, size: 16, color: brandScheme.primary),
+            Icon(
+              Icons.calendar_today_outlined,
+              size: 16,
+              color: brandScheme.primary,
+            ),
             const SizedBox(width: 8),
             Text(
               _periodLabel(),
@@ -1011,7 +1018,11 @@ class _ReportsPageState extends State<ReportsPage> {
               ),
             ),
             const SizedBox(width: 6),
-            Icon(Icons.keyboard_arrow_down, size: 18, color: brandScheme.onSurfaceVariant),
+            Icon(
+              Icons.keyboard_arrow_down,
+              size: 18,
+              color: brandScheme.onSurfaceVariant,
+            ),
           ],
         ),
       );
@@ -1130,11 +1141,7 @@ class _ReportsPageState extends State<ReportsPage> {
                           ),
                         ),
                         const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            periodBadge(),
-                          ],
-                        ),
+                        Row(children: [periodBadge()]),
                         const SizedBox(height: 18),
                         SizedBox(
                           height: 290,
@@ -1416,7 +1423,9 @@ class _ReportsPageState extends State<ReportsPage> {
               ),
             )
           : Column(
-              children: _topProducts.take(5).toList().asMap().entries.map((entry) {
+              children: _topProducts.take(5).toList().asMap().entries.map((
+                entry,
+              ) {
                 final index = entry.key;
                 final product = entry.value;
                 return Container(

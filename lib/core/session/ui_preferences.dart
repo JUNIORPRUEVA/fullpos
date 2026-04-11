@@ -31,7 +31,7 @@ class UiPreferences {
   /// Verifica si el sidebar está colapsado
   static Future<bool> isSidebarCollapsed() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keySidebarCollapsed) ?? false;
+    return prefs.getBool(_keySidebarCollapsed) ?? true;
   }
 
   /// Guarda el estado del sidebar (colapsado o expandido)

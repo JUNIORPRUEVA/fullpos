@@ -24,7 +24,7 @@
 				"Prepare FULLPOS Windows Hot Reload"
 			],
 			"dependsOrder": "sequence",
-			"command": "flutter",
+			"command": "C:\\src\\flutter\\bin\\flutter.bat",
 			"args": [
 				"run",
 				"-d",
@@ -32,7 +32,10 @@
 				"--debug"
 			],
 			"options": {
-				"cwd": "${workspaceFolder}"
+				"cwd": "${workspaceFolder}",
+				"env": {
+					"PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+				}
 			},
 			"isBackground": false
 		},
@@ -43,7 +46,7 @@
 				"Prepare FULLPOS Windows Hot Reload"
 			],
 			"dependsOrder": "sequence",
-			"command": "flutter",
+			"command": "C:\\src\\flutter\\bin\\flutter.bat",
 			"args": [
 				"run",
 				"-d",
@@ -51,7 +54,10 @@
 				"--debug"
 			],
 			"options": {
-				"cwd": "${workspaceFolder}"
+				"cwd": "${workspaceFolder}",
+				"env": {
+					"PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+				}
 			},
 			"isBackground": false
 		}

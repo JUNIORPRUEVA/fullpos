@@ -9,7 +9,6 @@ import '../../features/auth/data/auth_repository.dart';
 import '../../features/auth/services/logout_flow_service.dart';
 import '../../features/cash/data/operation_flow_service.dart';
 import '../../features/cash/ui/cash_close_dialog.dart';
-import '../../features/cash/ui/cash_open_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
@@ -253,39 +252,6 @@ class _TopbarState extends ConsumerState<Topbar>
       // No bloquear la UI si falla la consulta del estado de caja.
     } finally {
       _loadingOpenCashSessionId = false;
-    }
-  }
-
-  Future<void> _onCashPressed() async {
-    final cachedSessionId = _openCashSessionId;
-
-    if (cachedSessionId != null) {
-      await CashPanelSheet.show(context, sessionId: cachedSessionId);
-      unawaited(_loadOpenCashSessionId());
-      return;
-    }
-
-    final sessionId = (await OperationFlowService.loadActiveSession())?.shiftId;
-    if (!mounted) return;
-
-    if (sessionId != null) {
-      await CashPanelSheet.show(context, sessionId: sessionId);
-      await _loadOpenCashSessionId();
-      return;
-    }
-
-    final opened = await CashOpenDialog.show(context);
-    if (!mounted) return;
-
-    if (opened == true) {
-      final newSessionId =
-          (await OperationFlowService.loadActiveSession())?.shiftId;
-      if (!mounted) return;
-
-      if (newSessionId != null) {
-        await CashPanelSheet.show(context, sessionId: newSessionId);
-      }
-      await _loadOpenCashSessionId();
     }
   }
 

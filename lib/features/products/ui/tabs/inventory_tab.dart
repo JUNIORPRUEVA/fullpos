@@ -43,11 +43,6 @@ class _InventoryTabState extends State<InventoryTab> {
   bool _isLoading = false;
   bool _isAdmin = false;
   UserPermissions _permissions = UserPermissions.cashier();
-  double _totalInventoryValue = 0;
-  double _totalPotentialRevenue = 0;
-  double _totalPotentialProfit = 0;
-  double _totalUnits = 0;
-  int _productCount = 0;
   StockSummary? _stockSummary;
   int _lowStockCount = 0;
   int _outOfStockCount = 0;
@@ -99,32 +94,22 @@ class _InventoryTabState extends State<InventoryTab> {
     setState(() => _isLoading = true);
     try {
       final results = await Future.wait([
-        _productsRepo.calculateTotalInventoryValue(),
-        _productsRepo.calculateTotalPotentialRevenue(),
-        _productsRepo.calculateTotalPotentialProfit(),
         _productsRepo.getAll(filters: const ProductFilters(isActive: true)),
         _productsRepo.getLowStock(),
         _productsRepo.getOutOfStock(),
-        _productsRepo.calculateTotalUnits(),
-        _productsRepo.countActive(),
         _stockRepo.summarize(),
         _stockRepo.getDetailedHistory(limit: 15),
         _productsRepo.getInventoryByCategory(),
         _productsRepo.getInventoryBySupplier(),
       ]);
 
-      _totalInventoryValue = results[0] as double;
-      _totalPotentialRevenue = results[1] as double;
-      _totalPotentialProfit = results[2] as double;
-      _inventoryProducts = results[3] as List<ProductModel>;
-      _lowStockProducts = results[4] as List<ProductModel>;
-      _outOfStockProducts = results[5] as List<ProductModel>;
-      _totalUnits = results[6] as double;
-      _productCount = results[7] as int;
-      _stockSummary = results[8] as StockSummary;
-      _recentMovements = results[9] as List<StockMovementDetail>;
-      _inventoryByCategory = results[10] as List<Map<String, dynamic>>;
-      _inventoryBySupplier = results[11] as List<Map<String, dynamic>>;
+      _inventoryProducts = results[0] as List<ProductModel>;
+      _lowStockProducts = results[1] as List<ProductModel>;
+      _outOfStockProducts = results[2] as List<ProductModel>;
+      _stockSummary = results[3] as StockSummary;
+      _recentMovements = results[4] as List<StockMovementDetail>;
+      _inventoryByCategory = results[5] as List<Map<String, dynamic>>;
+      _inventoryBySupplier = results[6] as List<Map<String, dynamic>>;
       _lowStockCount = _lowStockProducts.length;
       _outOfStockCount = _outOfStockProducts.length;
     } catch (e) {
@@ -333,298 +318,6 @@ class _InventoryTabState extends State<InventoryTab> {
     return product.categoryId == _selectedCategoryId;
   }
 
-  List<ProductModel> _buildFocusedInventoryProducts() {
-    final filteredOutOfStock = _outOfStockProducts
-        .where(_matchesSelectedCategory)
-        .toList();
-    final filteredLowStock = _lowStockProducts
-        .where(_matchesSelectedCategory)
-        .toList();
-
-    final combined = <ProductModel>[];
-    final seenIds = <int?>{};
-
-    for (final product in [...filteredOutOfStock, ...filteredLowStock]) {
-      if (seenIds.add(product.id)) {
-        combined.add(product);
-      }
-    }
-
-    combined.sort((left, right) {
-      final leftRank = left.isOutOfStock ? 0 : (left.hasLowStock ? 1 : 2);
-      final rightRank = right.isOutOfStock ? 0 : (right.hasLowStock ? 1 : 2);
-      if (leftRank != rightRank) return leftRank.compareTo(rightRank);
-
-      final stockCompare = left.stock.compareTo(right.stock);
-      if (stockCompare != 0) return stockCompare;
-
-      return left.name.toLowerCase().compareTo(right.name.toLowerCase());
-    });
-
-    return combined;
-  }
-
-  Widget _buildCompactInventoryChip({
-    required BuildContext context,
-    required String label,
-    required String value,
-    required Color accent,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.16)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              color: accent,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              fontFamily: 'Inter',
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
-              fontFamily: 'Inter',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _inventoryStatusLabel(ProductModel product) {
-    if (product.isOutOfStock) return 'Agotado';
-    if (product.hasLowStock) return 'Stock bajo';
-    return 'Estable';
-  }
-
-  Color _inventoryStatusColor(BuildContext context, ProductModel product) {
-    final scheme = Theme.of(context).colorScheme;
-    if (product.isOutOfStock) return scheme.error;
-    if (product.hasLowStock) return scheme.tertiary;
-    return scheme.primary;
-  }
-
-  Widget _buildFocusedInventoryRow({
-    required BuildContext context,
-    required ProductModel product,
-    required bool showPurchasePrice,
-    required bool showProfit,
-    required bool canAdjustStock,
-    String? categoryName,
-  }) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final currencyFormat = NumberFormat.currency(
-      symbol: r'\$',
-      decimalDigits: 0,
-    );
-    final unitsFormat = NumberFormat.decimalPattern();
-    final statusColor = _inventoryStatusColor(context, product);
-
-    Widget metric(String value, String label, Color color) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              value,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w800,
-                fontFamily: 'Inter',
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'Inter',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface.withOpacity(0.98),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.75)),
-      ),
-      child: InkWell(
-        onTap: () => _showProductDetails(product),
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 4,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ProductThumbnail.fromProduct(
-                    product,
-                    size: 50,
-                    showBorder: false,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              product.name,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                fontFamily: 'Inter',
-                                color: scheme.onSurface,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                _inventoryStatusLabel(product),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w800,
-                                  fontFamily: 'Inter',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                'COD ${product.code}',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: scheme.onSurface,
-                                  fontFamily: 'Inter',
-                                ),
-                              ),
-                            ),
-                            if (categoryName != null && categoryName.isNotEmpty)
-                              Text(
-                                categoryName,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: 'Inter',
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (canAdjustStock)
-                    IconButton.filledTonal(
-                      tooltip: 'Ajustar stock',
-                      onPressed: () => _openAdjustStockDialog(product),
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      style: IconButton.styleFrom(
-                        foregroundColor: AppColors.primaryBlue,
-                        backgroundColor: AppColors.lightBlueHover,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  metric(
-                    unitsFormat.format(product.stock),
-                    'Stock actual',
-                    statusColor,
-                  ),
-                  metric(
-                    unitsFormat.format(product.stockMin),
-                    'Stock mínimo',
-                    scheme.secondary,
-                  ),
-                  if (showPurchasePrice)
-                    metric(
-                      currencyFormat.format(product.inventoryValue),
-                      'Valor inventario',
-                      scheme.primary,
-                    ),
-                  if (showProfit)
-                    metric(
-                      '${product.profitPercentage.toStringAsFixed(0)}%',
-                      'Margen',
-                      product.profit >= 0 ? scheme.tertiary : scheme.error,
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMovementTile(
     StockMovementDetail detail,
     NumberFormat numberFormat,
@@ -810,7 +503,6 @@ class _InventoryTabState extends State<InventoryTab> {
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     final showPurchasePrice = _isAdmin || _permissions.canViewPurchasePrice;
     final showProfit = _isAdmin || _permissions.canViewProfit;
-    final canAdjustStock = _isAdmin || _permissions.canAdjustStock;
     final stockSummary = _stockSummary;
     final filteredInventoryProducts = _inventoryProducts
         .where(_matchesSelectedCategory)
@@ -1006,18 +698,18 @@ class _InventoryTabState extends State<InventoryTab> {
                                       color: scheme.surface,
                                       borderRadius: BorderRadius.circular(14),
                                       border: Border.all(
-                                        color: scheme.outlineVariant.withOpacity(
-                                          0.7,
-                                        ),
+                                        color: scheme.outlineVariant
+                                            .withOpacity(0.7),
                                       ),
                                     ),
                                     child: Text(
                                       '$filteredProductCount visibles',
-                                      style: theme.textTheme.labelLarge?.copyWith(
-                                        color: scheme.onSurface,
-                                        fontWeight: FontWeight.w800,
-                                        fontFamily: 'Inter',
-                                      ),
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            color: scheme.onSurface,
+                                            fontWeight: FontWeight.w800,
+                                            fontFamily: 'Inter',
+                                          ),
                                     ),
                                   ),
                                 ],

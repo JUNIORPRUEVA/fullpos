@@ -30,6 +30,15 @@ class PremiumThemeColors {
   static const Color darkSurfaceAlt = Color(0xFF111827);
   static const Color darkText = Color(0xFFE2E8F0);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
+  static const Color salesSidebarBackground = Color(0x1E1976D2);
+  static const Color salesFooterBackground = Color(0xFFFFFFFF);
+  static const Color salesDetailBackground = Color(0x1E1976D2);
+  static const Color salesDetailLegacyGradientStart = Color(0xFF7B1FA2);
+  static const Color salesDetailLegacyGradientMid = Color(0xFF2E7D32);
+  static const Color salesDetailLegacyGradientEnd = Color(0xFF2E7D32);
+  static const Color salesControlSurface = Color(0xFFFFFFFF);
+  static const Color salesControlText = Color(0xFF1F2937);
+  static const Color salesFooterButtonsBorder = Color(0x1E1976D2);
 }
 
 @immutable
@@ -90,6 +99,7 @@ class ThemeSettings {
   final Color backgroundGradientStart;
   final Color backgroundGradientMid;
   final Color backgroundGradientEnd;
+  final Color salesDetailBackgroundColor;
   final Color salesDetailGradientStart;
   final Color salesDetailGradientMid;
   final Color salesDetailGradientEnd;
@@ -149,6 +159,7 @@ class ThemeSettings {
     required this.backgroundGradientStart,
     required this.backgroundGradientMid,
     required this.backgroundGradientEnd,
+    required this.salesDetailBackgroundColor,
     required this.salesDetailGradientStart,
     required this.salesDetailGradientMid,
     required this.salesDetailGradientEnd,
@@ -198,30 +209,32 @@ class ThemeSettings {
     successColor: PremiumThemeColors.success,
     errorColor: PremiumThemeColors.error,
     warningColor: PremiumThemeColors.warning,
-    sidebarColor: PremiumThemeColors.sidebarBackground,
+    sidebarColor: PremiumThemeColors.salesSidebarBackground,
     sidebarTextColor: PremiumThemeColors.sidebarText,
     sidebarActiveColor: PremiumThemeColors.primary,
-    footerColor: PremiumThemeColors.surface,
+    footerColor: PremiumThemeColors.salesFooterBackground,
     footerTextColor: PremiumThemeColors.textPrimary,
     backgroundGradientStart: PremiumThemeColors.gradientStart,
     backgroundGradientMid: PremiumThemeColors.gradientMid,
     backgroundGradientEnd: PremiumThemeColors.gradientEnd,
-    salesDetailGradientStart: PremiumThemeColors.gradientStart,
-    salesDetailGradientMid: PremiumThemeColors.gradientMid,
-    salesDetailGradientEnd: PremiumThemeColors.gradientEnd,
+    salesDetailBackgroundColor: PremiumThemeColors.salesDetailBackground,
+    salesDetailGradientStart:
+      PremiumThemeColors.salesDetailLegacyGradientStart,
+    salesDetailGradientMid: PremiumThemeColors.salesDetailLegacyGradientMid,
+    salesDetailGradientEnd: PremiumThemeColors.salesDetailLegacyGradientEnd,
     salesDetailTextColor: PremiumThemeColors.textPrimary,
     salesGridBackgroundColor: PremiumThemeColors.background,
-    salesProductCardBackgroundColor: PremiumThemeColors.surface,
-    salesProductCardBorderColor: PremiumThemeColors.appBarBorder,
+    salesProductCardBackgroundColor: PremiumThemeColors.salesControlSurface,
+    salesProductCardBorderColor: PremiumThemeColors.salesControlSurface,
     salesProductCardTextColor: PremiumThemeColors.textPrimary,
     salesProductCardAltBackgroundColor: PremiumThemeColors.surfaceAlt,
     salesProductCardAltBorderColor: PremiumThemeColors.appBarBorder,
     salesProductCardAltTextColor: PremiumThemeColors.textPrimary,
     salesProductPriceColor: PremiumThemeColors.primary,
-    salesControlBarBackgroundColor: PremiumThemeColors.surfaceAlt,
-    salesControlBarContentBackgroundColor: PremiumThemeColors.surface,
+    salesControlBarBackgroundColor: PremiumThemeColors.salesControlSurface,
+    salesControlBarContentBackgroundColor: PremiumThemeColors.salesControlSurface,
     salesControlBarBorderColor: PremiumThemeColors.appBarBorder,
-    salesControlBarTextColor: PremiumThemeColors.textPrimary,
+    salesControlBarTextColor: PremiumThemeColors.salesControlText,
     salesControlBarDropdownBackgroundColor: PremiumThemeColors.surface,
     salesControlBarDropdownBorderColor: PremiumThemeColors.appBarBorder,
     salesControlBarDropdownTextColor: PremiumThemeColors.textPrimary,
@@ -230,9 +243,10 @@ class ThemeSettings {
     salesControlBarPopupSelectedBackgroundColor:
         PremiumThemeColors.selectionSurface,
     salesControlBarPopupSelectedTextColor: PremiumThemeColors.primaryDark,
-    salesFooterButtonsBackgroundColor: PremiumThemeColors.surface,
+    salesFooterButtonsBackgroundColor: PremiumThemeColors.salesControlSurface,
     salesFooterButtonsTextColor: PremiumThemeColors.textPrimary,
-    salesFooterButtonsBorderColor: PremiumThemeColors.appBarBorder,
+    salesFooterButtonsBorderColor:
+      PremiumThemeColors.salesFooterButtonsBorder,
     fontSize: 14.0,
     fontFamily: 'Poppins',
     applyChromeToEntireLayout: true,
@@ -247,7 +261,7 @@ class ThemeSettings {
       footerColor: footerColor,
       cardColor: cardColor,
       gridBackgroundColor: salesGridBackgroundColor,
-      salesDetailColor: salesDetailGradientMid,
+      salesDetailColor: salesDetailBackgroundColor,
       textPrimary: textColor,
       textSecondary: PremiumThemeColors.textSecondary,
       applyChromeToEntireLayout: applyChromeToEntireLayout,
@@ -362,6 +376,13 @@ class ThemeSettings {
       backgroundGradientEnd: _colorFromStoredValue(
         map['backgroundGradientEnd'],
         defaults.backgroundGradientEnd,
+      ),
+      salesDetailBackgroundColor: _colorFromStoredValue(
+        map['salesDetailBackgroundColor'],
+        _colorFromStoredValue(
+          map['salesDetailGradientMid'],
+          defaults.salesDetailBackgroundColor,
+        ),
       ),
       salesDetailGradientStart: _colorFromStoredValue(
         map['salesDetailGradientStart'],
@@ -504,6 +525,7 @@ class ThemeSettings {
       'backgroundGradientStart': backgroundGradientStart.toARGB32(),
       'backgroundGradientMid': backgroundGradientMid.toARGB32(),
       'backgroundGradientEnd': backgroundGradientEnd.toARGB32(),
+      'salesDetailBackgroundColor': salesDetailBackgroundColor.toARGB32(),
       'salesDetailGradientStart': salesDetailGradientStart.toARGB32(),
       'salesDetailGradientMid': salesDetailGradientMid.toARGB32(),
       'salesDetailGradientEnd': salesDetailGradientEnd.toARGB32(),
@@ -574,6 +596,7 @@ class ThemeSettings {
     Color? backgroundGradientStart,
     Color? backgroundGradientMid,
     Color? backgroundGradientEnd,
+    Color? salesDetailBackgroundColor,
     Color? salesDetailGradientStart,
     Color? salesDetailGradientMid,
     Color? salesDetailGradientEnd,
@@ -632,6 +655,8 @@ class ThemeSettings {
           backgroundGradientMid ?? this.backgroundGradientMid,
       backgroundGradientEnd:
           backgroundGradientEnd ?? this.backgroundGradientEnd,
+        salesDetailBackgroundColor:
+          salesDetailBackgroundColor ?? this.salesDetailBackgroundColor,
       salesDetailGradientStart:
           salesDetailGradientStart ?? this.salesDetailGradientStart,
       salesDetailGradientMid:
@@ -728,6 +753,7 @@ class ThemeSettings {
         other.backgroundGradientStart == backgroundGradientStart &&
         other.backgroundGradientMid == backgroundGradientMid &&
         other.backgroundGradientEnd == backgroundGradientEnd &&
+        other.salesDetailBackgroundColor == salesDetailBackgroundColor &&
         other.salesDetailGradientStart == salesDetailGradientStart &&
         other.salesDetailGradientMid == salesDetailGradientMid &&
         other.salesDetailGradientEnd == salesDetailGradientEnd &&
@@ -797,6 +823,7 @@ class ThemeSettings {
     backgroundGradientStart,
     backgroundGradientMid,
     backgroundGradientEnd,
+    salesDetailBackgroundColor,
     salesDetailGradientStart,
     salesDetailGradientMid,
     salesDetailGradientEnd,
