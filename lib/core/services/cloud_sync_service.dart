@@ -21,6 +21,7 @@ import '../../features/sales/data/sales_model.dart';
 import '../config/backend_config.dart';
 import '../config/app_config.dart';
 import '../logging/app_logger.dart';
+import '../session/session_manager.dart';
 import '../storage/prefs_safe.dart';
 import '../theme/app_themes.dart';
 
@@ -69,10 +70,13 @@ class CloudSyncService {
   static const int _chunkSize = 200;
 
   static const Set<CloudSyncTarget> _enabledTargets = {
-    CloudSyncTarget.users,
-    CloudSyncTarget.companyConfig,
     CloudSyncTarget.products,
     CloudSyncTarget.sales,
+  };
+
+  static const Set<String> visibleTargetKeys = {
+    'products',
+    'sales',
   };
 
   void startRealtimeSyncEngine() {
@@ -84,6 +88,13 @@ class CloudSyncService {
       unawaited(_drainOutbox());
     });
     unawaited(_drainOutbox());
+  }
+
+  Future<bool> _hasActiveSyncSession() async {
+    if (!await SessionManager.isLoggedIn()) {
+      return false;
+    }
+    return await SessionManager.companyId() != null;
   }
 
   void scheduleUsersSyncSoon({
@@ -177,7 +188,12 @@ class CloudSyncService {
   }
 
   Future<List<Map<String, dynamic>>> readSyncStatusRows() {
-    return _outbox.listStatusRows();
+    return _outbox.listStatusRows().then(
+      (rows) => rows.where((row) {
+        final target = (row['target'] as String?)?.trim() ?? '';
+        return visibleTargetKeys.contains(target);
+      }).toList(growable: false),
+    );
   }
 
   Future<void> _enqueueTarget(
@@ -188,6 +204,14 @@ class CloudSyncService {
     if (!_enabledTargets.contains(target)) {
       await AppLogger.instance.logInfo(
         'Sync target skipped target=${target.value} reason=$reason',
+        module: 'cloud_sync',
+      );
+      return;
+    }
+
+    if (!await _hasActiveSyncSession()) {
+      await AppLogger.instance.logInfo(
+        'Sync target skipped target=${target.value} reason=$reason session=inactive',
         module: 'cloud_sync',
       );
       return;
@@ -211,6 +235,13 @@ class CloudSyncService {
 
   Future<void> _drainOutbox() async {
     if (_outboxRunning) return;
+    if (!await _hasActiveSyncSession()) {
+      await AppLogger.instance.logInfo(
+        'Cloud sync outbox skipped: no authenticated session or companyId',
+        module: 'cloud_sync',
+      );
+      return;
+    }
     _outboxRunning = true;
     try {
       while (true) {
@@ -268,6 +299,18 @@ class CloudSyncService {
   Future<bool> _runTargetSync(CloudSyncTarget target) {
     if (!_enabledTargets.contains(target)) {
       return Future.value(true);
+    }
+
+    return _runTargetSyncGuarded(target);
+  }
+
+  Future<bool> _runTargetSyncGuarded(CloudSyncTarget target) async {
+    if (!await _hasActiveSyncSession()) {
+      await AppLogger.instance.logInfo(
+        'Sync execution skipped target=${target.value} session=inactive',
+        module: 'cloud_sync',
+      );
+      return true;
     }
 
     switch (target) {

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/bootstrap/bootstrap_recovery_dialog.dart';
-import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
+import '../../settings/providers/business_settings_provider.dart';
 
 /// Pantalla de splash (carga inicial)
 class SplashPage extends ConsumerWidget {
@@ -14,7 +15,12 @@ class SplashPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boot = ref.watch(appBootstrapProvider).snapshot;
-    final brandName = FullposBrandTheme.appName;
+    final businessSettings = ref.watch(businessSettingsProvider);
+    final brandName = businessSettings.businessName.isNotEmpty
+        ? businessSettings.businessName
+        : 'FULLPOS';
+    final logoPath = businessSettings.logoPath;
+    final hasLogo = logoPath != null && File(logoPath).existsSync();
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -47,16 +53,13 @@ class SplashPage extends ConsumerWidget {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(28),
-                      child: Image.asset(
-                        FullposBrandTheme.logoAsset,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Icon(
+                      child: hasLogo
+                          ? Image.file(File(logoPath!), fit: BoxFit.cover)
+                          : Icon(
                               Icons.storefront,
                               size: 72,
                               color: scheme.primary,
                             ),
-                      ),
                     ),
                   ),
                   const SizedBox(height: AppSizes.spaceL),

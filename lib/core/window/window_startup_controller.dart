@@ -71,7 +71,6 @@ class WindowStartupController {
       try {
         await WindowService.init();
         await windowManager.setMinimumSize(const Size(1100, 650));
-        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
         await windowManager.setResizable(true);
         await windowManager.maximize();
 
@@ -84,7 +83,6 @@ class WindowStartupController {
         }
         try {
           await windowManager.setMinimumSize(const Size(1100, 650));
-          await windowManager.setTitleBarStyle(TitleBarStyle.normal);
           await windowManager.setResizable(true);
           await windowManager.maximize();
         } catch (_) {

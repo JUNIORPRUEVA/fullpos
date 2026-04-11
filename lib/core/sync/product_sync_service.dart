@@ -13,6 +13,7 @@ import '../db/app_db.dart';
 import '../db/tables.dart';
 import '../logging/app_logger.dart';
 import '../network/api_client.dart';
+import '../session/session_manager.dart';
 import '../services/cloud_sync_service.dart';
 import 'product_sync_event_bus.dart';
 import 'product_sync_outbox_repository.dart';
@@ -69,6 +70,13 @@ class ProductSyncService {
         message.contains('bad state: this database has already been closed');
   }
 
+  Future<bool> _hasActiveSyncSession() async {
+    if (!await SessionManager.isLoggedIn()) {
+      return false;
+    }
+    return await SessionManager.companyId() != null;
+  }
+
   void start() {
     if (_started) return;
     _started = true;
@@ -81,7 +89,18 @@ class ProductSyncService {
     unawaited(_ensureRealtimeConnection());
   }
 
+  Future<void> flushNow() async {
+    if (!_started) {
+      start();
+    }
+    await _drainOutbox();
+    await _ensureRealtimeConnection();
+  }
+
   void scheduleProcessing({Duration delay = Duration.zero}) {
+    if (!_started) {
+      start();
+    }
     _dispatchDebounce?.cancel();
     _dispatchDebounce = Timer(delay, () {
       _dispatchDebounce = null;
@@ -108,6 +127,13 @@ class ProductSyncService {
 
   Future<void> _drainOutbox() async {
     if (_draining) return;
+    if (!await _hasActiveSyncSession()) {
+      await AppLogger.instance.logInfo(
+        'Product sync skipped: no authenticated session or companyId',
+        module: 'product_sync',
+      );
+      return;
+    }
     _draining = true;
     try {
       while (true) {
@@ -181,6 +207,15 @@ class ProductSyncService {
   }
 
   Future<_PushResult> _pushOperation(Map<String, dynamic> payload) async {
+    final isLoggedIn = await SessionManager.isLoggedIn();
+    final localCompanyId = await SessionManager.companyId();
+    if (!isLoggedIn) {
+      throw StateError('Cannot sync products without authenticated user');
+    }
+    if (localCompanyId == null) {
+      throw StateError('Cannot sync products without companyId');
+    }
+
     final settings = await BusinessSettingsRepository().loadSettings();
     if (!settings.cloudEnabled) {
       throw StateError('Cloud sync disabled');
@@ -201,14 +236,29 @@ class ProductSyncService {
       headers['x-cloud-key'] = cloudKey;
     }
 
+    final requestBody = <String, dynamic>{
+      'companyId': localCompanyId.toString(),
+      if (companyRnc.isNotEmpty) 'companyRnc': companyRnc,
+      if (companyCloudId.isNotEmpty) 'companyCloudId': companyCloudId,
+      'operations': [payload],
+    };
+
+    final operations = requestBody['operations'];
+    if (operations is! List || operations.isEmpty) {
+      throw ArgumentError(
+        'Invalid sync body: operations must be a non-empty list',
+      );
+    }
+
+    await AppLogger.instance.logInfo(
+      'Product sync request body=${jsonEncode(requestBody)}',
+      module: 'product_sync',
+    );
+
     final response = await ApiClient(baseUrl: baseUrl).postJson(
       '/api/products/sync/operations',
       headers: headers,
-      body: {
-        if (companyRnc.isNotEmpty) 'companyRnc': companyRnc,
-        if (companyCloudId.isNotEmpty) 'companyCloudId': companyCloudId,
-        'operations': [payload],
-      },
+      body: requestBody,
       timeout: const Duration(seconds: 12),
     );
 
@@ -437,6 +487,11 @@ class ProductSyncService {
   }
 
   Future<void> _ensureRealtimeConnection() async {
+    if (!await _hasActiveSyncSession()) {
+      _disposeSocket();
+      return;
+    }
+
     final settings = await BusinessSettingsRepository().loadSettings();
     if (!settings.cloudEnabled) {
       _disposeSocket();

@@ -22,10 +22,6 @@ class AppGlobalBackground extends StatelessWidget {
 class _GlobalBackgroundVisual extends StatelessWidget {
   const _GlobalBackgroundVisual();
 
-  static const AssetImage _overlayImage = AssetImage(
-    'assets/backgrounds/bg_wave.webp',
-  );
-
   @override
   Widget build(BuildContext context) {
     return const IgnorePointer(
@@ -44,15 +40,6 @@ class _GlobalBackgroundVisual extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-              ),
-            ),
-            Opacity(
-              opacity: 0.10,
-              child: Image(
-                image: _overlayImage,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.low,
-                alignment: Alignment.center,
               ),
             ),
           ],

@@ -291,10 +291,18 @@ class ApiClient {
       try {
         final req = http.Request(method, uri(path, queryParameters: queryParameters));
 
+        final effectiveHeaders = <String, String>{...?headers};
+        final cloudKey = effectiveHeaders['x-cloud-key']?.trim();
+        if (cloudKey != null &&
+            cloudKey.isNotEmpty &&
+            !effectiveHeaders.containsKey('Authorization')) {
+          effectiveHeaders['Authorization'] = 'Bearer $cloudKey';
+        }
+
         req.headers.addAll({
           'Accept': 'application/json',
           'User-Agent': AppConfig.userAgent,
-          ...?headers,
+          ...effectiveHeaders,
         });
 
         if (body != null) {

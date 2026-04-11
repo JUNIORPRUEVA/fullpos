@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'dart:io';
 
@@ -107,9 +108,9 @@ class ProductsRepository {
     required String operationType,
   }) {
     final deletedAt = product.deletedAtMs != null
-        ? DateTime.fromMillisecondsSinceEpoch(product.deletedAtMs!)
-            .toUtc()
-            .toIso8601String()
+        ? DateTime.fromMillisecondsSinceEpoch(
+            product.deletedAtMs!,
+          ).toUtc().toIso8601String()
         : null;
     return {
       'clientMutationId': _clientMutationId(product.id ?? 0),
@@ -171,6 +172,9 @@ class ProductsRepository {
     ProductSyncService.instance.scheduleProcessing(
       delay: highPriority ? Duration.zero : const Duration(milliseconds: 150),
     );
+    if (highPriority) {
+      unawaited(ProductSyncService.instance.flushNow());
+    }
     CloudSyncService.instance.scheduleProductsSyncSoon(
       delay: highPriority
           ? const Duration(milliseconds: 150)
@@ -566,7 +570,7 @@ class ProductsRepository {
           txn,
           revived,
           operationType: 'upsert',
-          highPriority: false,
+          highPriority: true,
         );
         return revived;
       }
@@ -581,7 +585,7 @@ class ProductsRepository {
         txn,
         created,
         operationType: 'upsert',
-        highPriority: false,
+        highPriority: true,
       );
       return created;
     });
@@ -589,7 +593,7 @@ class ProductsRepository {
     await _notifyLocalProductMutation(
       createdProduct,
       reason: 'upsert',
-      highPriority: false,
+      highPriority: true,
     );
     return createdProduct.id ?? 0;
   }
@@ -601,7 +605,7 @@ class ProductsRepository {
     }
 
     final db = await AppDb.database;
-  final syncContext = await _loadSyncContext();
+    final syncContext = await _loadSyncContext();
     final prepared = _withPlaceholderDefaults(product);
 
     _validateRequiredForSave(prepared);
@@ -650,7 +654,7 @@ class ProductsRepository {
           txn,
           productToUpdate,
           operationType: 'upsert',
-          highPriority: false,
+          highPriority: true,
         );
       }
       return rows;
@@ -674,7 +678,7 @@ class ProductsRepository {
       await _notifyLocalProductMutation(
         productToUpdate,
         reason: 'upsert',
-        highPriority: false,
+        highPriority: true,
       );
     }
     return updatedRows;
@@ -731,7 +735,7 @@ class ProductsRepository {
           txn,
           pendingDelete,
           operationType: 'delete',
-          highPriority: false,
+          highPriority: true,
         );
       }
       return affected;
@@ -745,7 +749,7 @@ class ProductsRepository {
       await _notifyLocalProductMutation(
         pendingDelete,
         reason: 'delete',
-        highPriority: false,
+        highPriority: true,
       );
     }
     return rows;
@@ -809,7 +813,7 @@ class ProductsRepository {
           txn,
           restored,
           operationType: 'upsert',
-          highPriority: false,
+          highPriority: true,
         );
       }
       return affected;
@@ -818,7 +822,7 @@ class ProductsRepository {
       await _notifyLocalProductMutation(
         restored,
         reason: 'upsert',
-        highPriority: false,
+        highPriority: true,
       );
     }
     return rows;
@@ -888,7 +892,7 @@ class ProductsRepository {
           txn,
           toggled,
           operationType: 'status',
-          highPriority: false,
+          highPriority: true,
         );
       }
       return affected;
@@ -897,7 +901,7 @@ class ProductsRepository {
       await _notifyLocalProductMutation(
         toggled,
         reason: 'status',
-        highPriority: false,
+        highPriority: true,
       );
     }
     return rows;

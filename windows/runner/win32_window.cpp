@@ -5,11 +5,24 @@
 #include <vector>
 
 #include <commctrl.h>
+#include <dwmapi.h>
 #include <flutter_windows.h>
 
 #include "resource.h"
 
 namespace {
+
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
@@ -320,7 +333,10 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  UpdateTheme(window_handle_);
+  const bool shown = ShowWindow(window_handle_, SW_SHOWNORMAL);
+  UpdateTheme(window_handle_);
+  return shown;
 }
 
 // static
@@ -388,6 +404,7 @@ Win32Window::MessageHandler(HWND hwnd,
 
     case WM_SHOWWINDOW:
       DebugLogWin32(L"main:WM_SHOWWINDOW", message);
+      UpdateTheme(hwnd);
       InvalidateRect(hwnd, nullptr, FALSE);
       if (child_content_ != nullptr) {
         InvalidateRect(child_content_, nullptr, FALSE);
@@ -423,6 +440,7 @@ Win32Window::MessageHandler(HWND hwnd,
 
     case WM_ACTIVATE:
       DebugLogWin32(L"main:WM_ACTIVATE", message);
+      UpdateTheme(hwnd);
       if (child_content_ != nullptr) {
         SetFocus(child_content_);
         InvalidateRect(child_content_, nullptr, FALSE);
@@ -430,7 +448,14 @@ Win32Window::MessageHandler(HWND hwnd,
       InvalidateRect(hwnd, nullptr, FALSE);
       return 0;
 
+    case WM_NCACTIVATE:
+      DebugLogWin32(L"main:WM_NCACTIVATE", message);
+      UpdateTheme(hwnd);
+      break;
+
     case WM_DWMCOLORIZATIONCOLORCHANGED:
+    case WM_THEMECHANGED:
+    case WM_SETTINGCHANGE:
       UpdateTheme(hwnd);
       return 0;
   }
@@ -502,6 +527,19 @@ bool Win32Window::OnCloseRequested() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  // Let Windows manage the native title bar and caption buttons.
-  (void)window;
+  if (!window) {
+    return;
+  }
+
+  // Force a light native caption so Windows keeps the caption glyphs dark.
+  const BOOL use_dark_mode = FALSE;
+  const COLORREF caption_color = RGB(255, 255, 255);
+  const COLORREF text_color = RGB(0, 0, 0);
+
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &use_dark_mode, sizeof(use_dark_mode));
+  DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption_color,
+                        sizeof(caption_color));
+  DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &text_color,
+                        sizeof(text_color));
 }

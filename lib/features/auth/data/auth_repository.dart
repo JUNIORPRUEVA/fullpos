@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import '../../settings/data/user_model.dart';
 import '../../settings/data/users_repository.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
+import '../../../core/sync/product_sync_service.dart';
 
 /// Repositorio de autenticación
 class AuthRepository {
@@ -39,6 +42,18 @@ class AuthRepository {
       role: user.role,
       permissions: user.permissions,
       companyId: user.companyId,
+    );
+
+    CloudSyncService.instance.startRealtimeSyncEngine();
+    ProductSyncService.instance.start();
+    unawaited(CloudSyncService.instance.syncProductsIfEnabled());
+    CloudSyncService.instance.scheduleProductsSyncSoon(
+      delay: const Duration(milliseconds: 100),
+      reason: 'login_products',
+    );
+    CloudSyncService.instance.scheduleSalesSyncSoon(
+      delay: const Duration(milliseconds: 180),
+      reason: 'login_sales',
     );
   }
 

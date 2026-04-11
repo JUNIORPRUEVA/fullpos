@@ -5113,7 +5113,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                   decimalDigits: 2,
                                 ),
                                 style: TextStyle(
-                                  fontSize: 30,
+                                  fontSize: 36,
                                   fontWeight: FontWeight.w900,
                                   color: salesDetailTextColor,
                                 ),
