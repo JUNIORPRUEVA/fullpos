@@ -244,11 +244,15 @@ class LayawayRepository {
       stage: 'layaway_register_payment',
     );
 
+    CloudSyncService.instance.scheduleSalesSyncSoon(
+      reason: 'layaway_payment_applied',
+    );
+    CloudSyncService.instance.schedulePaymentsSyncSoon(
+      reason: 'layaway_payment_applied',
+    );
+
     if (result.status == 'PAGADO') {
       CloudSyncService.instance.scheduleProductsSyncSoon();
-      CloudSyncService.instance.scheduleSalesSyncSoon(
-        reason: 'layaway_payment_applied',
-      );
     }
 
     return result;

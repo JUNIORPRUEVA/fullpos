@@ -40,6 +40,7 @@ class FacturaPage extends StatefulWidget {
 }
 
 class _FacturaPageState extends State<FacturaPage> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _searchController = TextEditingController();
   Timer? _searchDebounce;
 
@@ -49,6 +50,8 @@ class _FacturaPageState extends State<FacturaPage> {
   List<SaleModel> _completedSales = [];
   List<Map<String, dynamic>> _returns = [];
   Map<int, String> _cashierNameBySessionId = <int, String>{};
+  final Map<int, Future<List<SaleItemModel>>> _saleItemsFutureCache =
+      <int, Future<List<SaleItemModel>>>{};
   bool _isLoading = false;
   String _searchQuery = '';
   int _loadSeq = 0;
@@ -76,6 +79,28 @@ class _FacturaPageState extends State<FacturaPage> {
     setState(fn);
   }
 
+  int get _activeFilterCount {
+    var count = 0;
+    if (_selectedFilter != DateFilter.thisMonth) count++;
+    if (_selectedSessionId != null) count++;
+    if (_statusFilter != _InvoiceStatusFilter.all) count++;
+    return count;
+  }
+
+  List<String> get _activeFilterLabels {
+    final labels = <String>[];
+    if (_statusFilter != _InvoiceStatusFilter.all) {
+      labels.add(_statusFilterLabel(_statusFilter));
+    }
+    if (_selectedFilter != DateFilter.thisMonth) {
+      labels.add(_getFilterLabel(_selectedFilter));
+    }
+    if (_selectedSessionId != null) {
+      labels.add(_cashierLabelForSessionId(_selectedSessionId));
+    }
+    return labels;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -90,6 +115,65 @@ class _FacturaPageState extends State<FacturaPage> {
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openFiltersPanel() {
+    _scaffoldKey.currentState?.openEndDrawer();
+  }
+
+  void _clearFilters() {
+    _searchController.clear();
+    _safeSetState(() {
+      _searchQuery = '';
+      _selectedFilter = DateFilter.thisMonth;
+      _customDateFrom = null;
+      _customDateTo = null;
+      _selectedSessionId = null;
+      _statusFilter = _InvoiceStatusFilter.all;
+      _ensureSelection();
+    });
+    _loadData();
+  }
+
+  void _primeSaleItemsCache(SaleModel? sale) {
+    final saleId = sale?.id;
+    if (saleId == null) return;
+    _saleItemsFutureCache.putIfAbsent(
+      saleId,
+      () => SalesRepository.getItemsBySaleId(saleId),
+    );
+  }
+
+  Future<List<SaleItemModel>> _loadSaleItemsForSale(SaleModel sale) {
+    final saleId = sale.id;
+    if (saleId == null) return Future.value(const <SaleItemModel>[]);
+    return _saleItemsFutureCache.putIfAbsent(
+      saleId,
+      () => SalesRepository.getItemsBySaleId(saleId),
+    );
+  }
+
+  void _updateStatusFilter(_InvoiceStatusFilter value) {
+    _safeSetState(() {
+      _statusFilter = value;
+      _ensureSelection();
+    });
+  }
+
+  void _updateCashierFilter(int? value) {
+    _safeSetState(() {
+      _selectedSessionId = value;
+      _ensureSelection();
+    });
+  }
+
+  Future<void> _updateDateFilter(DateFilter value) async {
+    if (value == DateFilter.custom) {
+      await _selectCustomDateRange();
+      return;
+    }
+    _safeSetState(() => _selectedFilter = value);
+    _loadData();
   }
 
   (DateTime?, DateTime?) _getDateRange() {
@@ -305,6 +389,7 @@ class _FacturaPageState extends State<FacturaPage> {
     );
     _selectedSale = match;
     _selectedSaleId = match.id;
+    _primeSaleItemsCache(match);
   }
 
   void _selectSale(SaleModel sale, {required bool showDetails}) {
@@ -312,6 +397,7 @@ class _FacturaPageState extends State<FacturaPage> {
       _selectedSale = sale;
       _selectedSaleId = sale.id;
     });
+    _primeSaleItemsCache(sale);
     if (showDetails) {
       _showSaleDetails(sale);
     }
@@ -403,7 +489,10 @@ class _FacturaPageState extends State<FacturaPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: scheme.surface,
+      endDrawerEnableOpenDragGesture: false,
+      endDrawer: _buildFiltersDrawer(),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final horizontalPadding = (constraints.maxWidth * 0.018).clamp(
@@ -456,6 +545,8 @@ class _FacturaPageState extends State<FacturaPage> {
   Widget _buildHeader() {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final hasActiveFilters = _activeFilterCount > 0;
+    final filterSummary = _activeFilterLabels;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -464,10 +555,10 @@ class _FacturaPageState extends State<FacturaPage> {
           12.0,
           20.0,
         );
-        final gap = 8.0;
+        final gap = 10.0;
 
         final baseFieldBorder = OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: scheme.outlineVariant),
         );
 
@@ -497,191 +588,103 @@ class _FacturaPageState extends State<FacturaPage> {
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
-              vertical: 12,
+              vertical: 14,
             ),
-          ),
-        );
-
-        final hasActiveFilters =
-            _searchQuery.trim().isNotEmpty ||
-            _selectedFilter != DateFilter.thisMonth ||
-            _selectedSessionId != null ||
-            _statusFilter != _InvoiceStatusFilter.all ||
-            (_selectedFilter == DateFilter.custom &&
-                (_customDateFrom != null || _customDateTo != null));
-
-        final statusDropdown = Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outlineVariant),
-            borderRadius: BorderRadius.circular(10),
-            color: scheme.surface,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: DropdownButton<_InvoiceStatusFilter>(
-            value: _statusFilter,
-            underline: const SizedBox(),
-            isDense: true,
-            items: _InvoiceStatusFilter.values
-                .map(
-                  (filter) => DropdownMenuItem<_InvoiceStatusFilter>(
-                    value: filter,
-                    child: Text(_statusFilterLabel(filter)),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-              _safeSetState(() {
-                _statusFilter = value;
-                _ensureSelection();
-              });
-            },
-          ),
-        );
-
-        final dateDropdown = Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outlineVariant),
-            borderRadius: BorderRadius.circular(10),
-            color: scheme.surface,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: DropdownButton<DateFilter>(
-            value: _selectedFilter,
-            underline: const SizedBox(),
-            isDense: true,
-            items: const [
-              DropdownMenuItem(value: DateFilter.today, child: Text('Hoy')),
-              DropdownMenuItem(
-                value: DateFilter.yesterday,
-                child: Text('Ayer'),
-              ),
-              DropdownMenuItem(
-                value: DateFilter.thisWeek,
-                child: Text('Esta semana'),
-              ),
-              DropdownMenuItem(
-                value: DateFilter.thisMonth,
-                child: Text('Este mes'),
-              ),
-              DropdownMenuItem(value: DateFilter.all, child: Text('Todas')),
-              DropdownMenuItem(
-                value: DateFilter.custom,
-                child: Text('Personalizado'),
-              ),
-            ],
-            onChanged: (value) async {
-              if (value == null) return;
-              if (value == DateFilter.custom) {
-                await _selectCustomDateRange();
-                return;
-              }
-              _safeSetState(() => _selectedFilter = value);
-              _loadData();
-            },
-          ),
-        );
-
-        final rangeButton = OutlinedButton.icon(
-          onPressed: _selectCustomDateRange,
-          icon: const Icon(Icons.date_range, size: 18),
-          label: Text(
-            _selectedFilter == DateFilter.custom
-                ? _getFilterLabel(DateFilter.custom)
-                : 'Rango',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: scheme.outlineVariant),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          ),
-        );
-
-        final cashierDropdown = Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outlineVariant),
-            borderRadius: BorderRadius.circular(10),
-            color: scheme.surface,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: DropdownButton<int?>(
-            value: _selectedSessionId,
-            underline: const SizedBox(),
-            isDense: true,
-            hint: const Text('Cajero'),
-            items: [
-              const DropdownMenuItem<int?>(
-                value: null,
-                child: Text('Todos los cajeros'),
-              ),
-              ..._cashierNameBySessionId.entries.map(
-                (entry) => DropdownMenuItem<int?>(
-                  value: entry.key,
-                  child: Text(entry.value),
-                ),
-              ),
-            ],
-            onChanged: (value) {
-              _safeSetState(() {
-                _selectedSessionId = value;
-                _ensureSelection();
-              });
-            },
           ),
         );
 
         final summary = _buildHeaderSummary();
 
-        final actionsRow = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            statusDropdown,
-            SizedBox(width: gap),
-            dateDropdown,
-            SizedBox(width: gap),
-            rangeButton,
-            SizedBox(width: gap),
-            cashierDropdown,
-            if (hasActiveFilters) ...[
-              SizedBox(width: gap),
-              OutlinedButton.icon(
-                onPressed: () {
-                  _searchController.clear();
-                  _safeSetState(() {
-                    _searchQuery = '';
-                    _selectedFilter = DateFilter.thisMonth;
-                    _customDateFrom = null;
-                    _customDateTo = null;
-                    _selectedSessionId = null;
-                    _statusFilter = _InvoiceStatusFilter.all;
-                  });
-                  _loadData();
-                },
-                icon: const Icon(Icons.clear, size: 18),
-                label: const Text('Limpiar'),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: scheme.outlineVariant),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+        final filterButton = FilledButton.tonalIcon(
+          onPressed: _openFiltersPanel,
+          icon: Icon(
+            hasActiveFilters ? Icons.tune : Icons.filter_alt_outlined,
+            size: 18,
+          ),
+          label: Text(
+            hasActiveFilters ? 'Filtrar ($_activeFilterCount)' : 'Filtrar',
+          ),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        );
+
+        final clearButton = OutlinedButton.icon(
+          onPressed: _clearFilters,
+          icon: const Icon(Icons.clear, size: 18),
+          label: const Text('Limpiar'),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: scheme.outlineVariant),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+          ),
+        );
+
+        final refreshButton = IconButton.filledTonal(
+          tooltip: 'Actualizar',
+          onPressed: _loadData,
+          icon: const Icon(Icons.refresh),
+          style: IconButton.styleFrom(
+            padding: const EdgeInsets.all(14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        );
+
+        final titleBlock = Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.borderSoft),
+          ),
+          padding: const EdgeInsets.fromLTRB(8, 8, 14, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: _handleBack,
+                tooltip: 'Volver',
+                icon: const Icon(Icons.arrow_back),
+              ),
+              const SizedBox(width: 4),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Facturas',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
+                  const SizedBox(height: 2),
+                  Text(
+                    'Consulta y detalle completo en una sola vista',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
-            SizedBox(width: gap),
-            IconButton(
-              tooltip: 'Actualizar',
-              onPressed: _loadData,
-              icon: const Icon(Icons.refresh),
-            ),
-            SizedBox(width: gap),
+          ),
+        );
+
+        final actions = Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            filterButton,
+            if (hasActiveFilters) clearButton,
+            refreshButton,
             summary,
           ],
         );
@@ -699,124 +702,242 @@ class _FacturaPageState extends State<FacturaPage> {
             horizontal: horizontalPadding,
             vertical: 10,
           ),
-          child: isNarrow
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isNarrow) ...[
+                titleBlock,
+                const SizedBox(height: 10),
+                searchField,
+                const SizedBox(height: 10),
+                actions,
+              ] else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: _handleBack,
-                          tooltip: 'Volver',
-                          icon: const Icon(Icons.arrow_back),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Facturas',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Consulta, imprime y procesa devoluciones desde una sola vista.',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        summary,
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    searchField,
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: actionsRow,
-                    ),
-                  ],
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: AppColors.borderSoft),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(8, 8, 14, 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: _handleBack,
-                            tooltip: 'Volver',
-                            icon: const Icon(Icons.arrow_back),
-                          ),
-                          const SizedBox(width: 4),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Facturas',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Vista compacta con devolucion integrada',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+                    titleBlock,
                     SizedBox(width: gap),
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        children: [
-                          searchField,
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: summary,
-                          ),
-                        ],
-                      ),
-                    ),
+                    Expanded(child: searchField),
                     SizedBox(width: gap),
-                    Expanded(
-                      flex: 4,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: actionsRow,
-                      ),
-                    ),
+                    Flexible(child: actions),
                   ],
                 ),
+              ],
+              if (filterSummary.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: filterSummary
+                      .map(
+                        (label) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            label,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ],
+          ),
         );
       },
     );
+  }
+
+  Widget _buildFiltersDrawer() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Drawer(
+      width: 324,
+      shape: const RoundedRectangleBorder(),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 10, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtrar facturas',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ajusta estado, fechas y cajero desde este panel.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cerrar filtros',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.5)),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                children: [
+                  _buildDrawerSectionTitle('Estado'),
+                  ..._InvoiceStatusFilter.values.map(
+                    (filter) => RadioListTile<_InvoiceStatusFilter>(
+                      value: filter,
+                      groupValue: _statusFilter,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(_statusFilterLabel(filter)),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        _updateStatusFilter(value);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildDrawerSectionTitle('Periodo'),
+                  ...const [
+                    DateFilter.today,
+                    DateFilter.yesterday,
+                    DateFilter.thisWeek,
+                    DateFilter.thisMonth,
+                    DateFilter.all,
+                    DateFilter.custom,
+                  ].map(
+                    (filter) => RadioListTile<DateFilter>(
+                      value: filter,
+                      groupValue: _selectedFilter,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(_drawerDateFilterLabel(filter)),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        _updateDateFilter(value);
+                      },
+                    ),
+                  ),
+                  if (_selectedFilter == DateFilter.custom) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _selectCustomDateRange,
+                      icon: const Icon(Icons.date_range, size: 18),
+                      label: Text(
+                        _customDateFrom != null && _customDateTo != null
+                            ? _getFilterLabel(DateFilter.custom)
+                            : 'Seleccionar rango',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  _buildDrawerSectionTitle('Cajero'),
+                  DropdownButtonFormField<int?>(
+                    value: _selectedSessionId,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('Todos los cajeros'),
+                      ),
+                      ..._cashierNameBySessionId.entries.map(
+                        (entry) => DropdownMenuItem<int?>(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                      ),
+                    ],
+                    onChanged: _updateCashierFilter,
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _clearFilters,
+                      child: const Text('Limpiar'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      child: const Text('Cerrar'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerSectionTitle(String title) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: scheme.onSurfaceVariant,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  String _drawerDateFilterLabel(DateFilter filter) {
+    switch (filter) {
+      case DateFilter.today:
+        return 'Hoy';
+      case DateFilter.yesterday:
+        return 'Ayer';
+      case DateFilter.thisWeek:
+        return 'Esta semana';
+      case DateFilter.thisMonth:
+        return 'Este mes';
+      case DateFilter.all:
+        return 'Todas';
+      case DateFilter.custom:
+        return 'Personalizado';
+    }
   }
 
   Widget _buildSalesTab({
@@ -955,6 +1076,7 @@ class _FacturaPageState extends State<FacturaPage> {
                   sale.createdAtMs,
                 );
                 final customer = sale.customerNameSnapshot ?? 'Cliente General';
+                final compactInvoiceCode = _compactInvoiceCode(sale.localCode);
                 final statusStyle = _saleStatusStyle(sale);
                 final canRefund = sale.status.toUpperCase() != 'REFUNDED';
 
@@ -986,7 +1108,7 @@ class _FacturaPageState extends State<FacturaPage> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            sale.localCode,
+                                            compactInvoiceCode,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: theme.textTheme.bodyMedium
@@ -1118,7 +1240,7 @@ class _FacturaPageState extends State<FacturaPage> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      sale.localCode,
+                                      compactInvoiceCode,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: theme.textTheme.bodyMedium
@@ -1302,7 +1424,7 @@ class _FacturaPageState extends State<FacturaPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.borderSoft),
         boxShadow: [
           BoxShadow(
@@ -1313,7 +1435,7 @@ class _FacturaPageState extends State<FacturaPage> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
         child: DefaultTextStyle(
           style: theme.textTheme.bodyMedium ?? const TextStyle(),
           child: _buildSaleDetailsPanel(_selectedSale),
@@ -1387,234 +1509,314 @@ class _FacturaPageState extends State<FacturaPage> {
     }
 
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
-    final customer = sale.customerNameSnapshot ?? 'Cliente General';
+    final rawCustomer = sale.customerNameSnapshot?.trim() ?? '';
+    final hasNamedCustomer =
+        rawCustomer.isNotEmpty &&
+        rawCustomer.toLowerCase() != 'cliente general';
+    final customer = hasNamedCustomer ? rawCustomer : 'Cliente General';
     final statusStyle = _saleStatusStyle(sale);
     final canRefund = sale.status.toUpperCase() != 'REFUNDED';
     final relatedReturns = _returnsForSale(sale);
     final refundedAmount = _refundedAmountForSale(sale);
     final netAmount = (sale.total - refundedAmount).clamp(0, sale.total);
+    final paymentLabel = sale.paymentMethodDisplayLabel;
+    final compactInvoiceCode = _compactInvoiceCode(sale.localCode);
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
+    return FutureBuilder<List<SaleItemModel>>(
+      future: _loadSaleItemsForSale(sale),
+      builder: (context, snapshot) {
+        final items = snapshot.data ?? const <SaleItemModel>[];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        sale.localCode,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hasNamedCustomer ? customer : compactInvoiceCode,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
-                          fontFamily: 'Inter',
-                          fontSize: 22,
+                          letterSpacing: hasNamedCustomer ? -0.1 : 0.2,
                         ),
                       ),
-                    ),
-                    _buildStatusChip(statusStyle),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        hasNamedCustomer
+                            ? compactInvoiceCode
+                            : 'Factura activa',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  customer,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                    fontFamily: 'Inter',
-                    fontSize: 14,
+                const SizedBox(width: 12),
+                _buildStatusChip(statusStyle),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _buildTicketMetaRow('Fecha', dateFormat.format(date)),
+            _buildTicketMetaRow(
+              'Cajero',
+              _cashierLabelForSessionId(sale.sessionId),
+            ),
+            _buildTicketMetaRow('Pago', paymentLabel),
+            if ((sale.customerPhoneSnapshot ?? '').trim().isNotEmpty)
+              _buildTicketMetaRow('Telefono', sale.customerPhoneSnapshot!),
+            if ((sale.customerRncSnapshot ?? '').trim().isNotEmpty)
+              _buildTicketMetaRow('RNC', sale.customerRncSnapshot!),
+            const SizedBox(height: 14),
+            Divider(color: scheme.outlineVariant.withOpacity(0.45), height: 1),
+            const SizedBox(height: 12),
+            Text(
+              'DETALLE',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: snapshot.connectionState == ConnectionState.waiting
+                  ? const Center(child: CircularProgressIndicator())
+                  : items.isEmpty && relatedReturns.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No hay articulos disponibles para esta factura.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : ScrollConfiguration(
+                      behavior: const MaterialScrollBehavior().copyWith(
+                        scrollbars: false,
+                      ),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        children: [
+                          ...items.map((item) => _buildTicketItemRow(item)),
+                          if (relatedReturns.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Divider(
+                              color: scheme.outlineVariant.withOpacity(0.45),
+                              height: 1,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'DEVOLUCIONES',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.0,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...relatedReturns
+                                .take(3)
+                                .map(_buildRefundEntryLine),
+                          ],
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Divider(color: scheme.outlineVariant.withOpacity(0.45), height: 1),
+            const SizedBox(height: 12),
+            _buildTicketAmountRow('Subtotal', sale.subtotal),
+            if (sale.discountTotal > 0.009)
+              _buildTicketAmountRow('Descuento', -sale.discountTotal),
+            if (sale.itbisAmount > 0.009)
+              _buildTicketAmountRow('ITBIS', sale.itbisAmount),
+            _buildTicketAmountRow(
+              'Total factura',
+              sale.total,
+              emphasized: true,
+            ),
+            if (refundedAmount > 0.009)
+              _buildTicketAmountRow('Devuelto', -refundedAmount),
+            _buildTicketAmountRow(
+              'Neto vigente',
+              netAmount.toDouble(),
+              emphasized: refundedAmount > 0.009,
+            ),
+            if (sale.paidAmount > 0.009 &&
+                (sale.paidAmount - sale.total).abs() > 0.009) ...[
+              const SizedBox(height: 8),
+              _buildTicketAmountRow('Recibido', sale.paidAmount),
+              if (sale.changeAmount > 0.009)
+                _buildTicketAmountRow('Cambio', -sale.changeAmount),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                if (canRefund) ...[
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _showRefundDialog(sale),
+                      icon: const Icon(
+                        Icons.assignment_return_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('Devolver'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        snapshot.connectionState == ConnectionState.waiting
+                        ? null
+                        : () => _printTicket(sale, items),
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('Imprimir'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(44),
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildInfoBadge(Icons.person_outline, customer),
-              _buildInfoBadge(
-                Icons.point_of_sale_outlined,
-                _cashierLabelForSessionId(sale.sessionId),
-              ),
-              _buildInfoBadge(Icons.schedule_outlined, dateFormat.format(date)),
-              if (relatedReturns.isNotEmpty)
-                _buildInfoBadge(
-                  Icons.assignment_return_outlined,
-                  '${relatedReturns.length} devolucion${relatedReturns.length == 1 ? '' : 'es'}',
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricTile(
-                  label: 'Total factura',
-                  value: sale.total,
-                  highlight: scheme.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricTile(
-                  label: 'Devuelto',
-                  value: refundedAmount,
-                  highlight: relatedReturns.isEmpty
-                      ? scheme.outline
-                      : status.warning,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricTile(
-                  label: 'Neto vigente',
-                  value: netAmount.toDouble(),
-                  highlight: canRefund ? status.success : status.error,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: statusStyle.background.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(12),
-            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTicketMetaRow(String label, String value) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 62,
             child: Text(
-              canRefund
-                  ? sale.status.toUpperCase() == 'PARTIAL_REFUND'
-                        ? 'Factura con devolucion parcial. Puede registrar otra devolucion si corresponde.'
-                        : 'Factura activa lista para consulta, impresion o devolucion.'
-                  : 'Factura totalmente devuelta. Se mantiene visible para consulta y filtros.',
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
               style: theme.textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w700,
-                fontFamily: 'Inter',
+                height: 1.2,
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          if (relatedReturns.isNotEmpty) ...[
-            Text(
-              'Historial de devoluciones',
-              style: theme.textTheme.titleSmall?.copyWith(
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTicketItemRow(SaleItemModel item) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 6,
+            child: Text(
+              item.productNameSnapshot,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11.2,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 4,
+            child: Text(
+              item.discountLine > 0.009
+                  ? '${_formatQty(item.qty)} x ${CurrencyDisplay.format(item.unitPrice, symbol: 'RD\$')}  Desc ${CurrencyDisplay.format(item.discountLine, symbol: 'RD\$')}'
+                  : '${_formatQty(item.qty)} x ${CurrencyDisplay.format(item.unitPrice, symbol: 'RD\$')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontSize: 10.4,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 78,
+            child: Text(
+              CurrencyDisplay.format(item.totalLine, symbol: 'RD\$'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 11.2,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 10),
-            ...relatedReturns.take(3).map(_buildRefundEntryCard),
-            const SizedBox(height: 16),
-          ],
-          if (canRefund) ...[
-            FilledButton.icon(
-              onPressed: () => _showRefundDialog(sale),
-              icon: const Icon(Icons.assignment_return_outlined, size: 18),
-              label: const Text('Devolver'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(44),
-                textStyle: theme.textTheme.titleSmall?.copyWith(
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          OutlinedButton.icon(
-            onPressed: () => _showSaleDetails(sale),
-            icon: const Icon(Icons.visibility_outlined, size: 18),
-            label: const Text('Ver ticket'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(42),
-            ),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _loadData(),
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Actualizar lista'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(42),
-            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoBadge(IconData icon, String text) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: scheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: scheme.onSurface,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetricTile({
-    required String label,
-    required double value,
-    required Color highlight,
+  Widget _buildTicketAmountRow(
+    String label,
+    double amount, {
+    bool emphasized = false,
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: highlight.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: highlight.withOpacity(0.22)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
         children: [
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: scheme.onSurfaceVariant,
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: emphasized ? 12.4 : 11.4,
+                fontWeight: emphasized ? FontWeight.w900 : FontWeight.w700,
+                color: emphasized ? scheme.onSurface : scheme.onSurfaceVariant,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          _buildMoneyText(
-            amount: value,
-            bigStyle: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              fontFamily: 'Inter',
-            ),
-            smallStyle: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: scheme.onSurfaceVariant,
+          Text(
+            CurrencyDisplay.format(amount, symbol: 'RD\$'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: emphasized ? 12.6 : 11.4,
+              fontWeight: emphasized ? FontWeight.w900 : FontWeight.w800,
+              color: emphasized ? scheme.onSurface : scheme.onSurface,
             ),
           ),
         ],
@@ -1622,69 +1824,68 @@ class _FacturaPageState extends State<FacturaPage> {
     );
   }
 
-  Widget _buildRefundEntryCard(Map<String, dynamic> ret) {
+  Widget _buildRefundEntryLine(Map<String, dynamic> ret) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
     final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
     final total = ((ret['total'] as num?)?.toDouble() ?? 0).abs();
     final createdMs = (ret['created_at_ms'] as int?) ?? 0;
-    final note = (ret['note'] as String?)?.trim();
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.borderSoft),
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
                   code,
-                  style: theme.textTheme.bodyMedium?.copyWith(
+                  style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-              _buildMoneyText(
-                amount: total,
-                bigStyle: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                const SizedBox(height: 2),
+                Text(
+                  dateFormat.format(
+                    DateTime.fromMillisecondsSinceEpoch(createdMs),
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 10.8,
+                  ),
                 ),
-                smallStyle: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(width: 10),
           Text(
-            dateFormat.format(DateTime.fromMillisecondsSinceEpoch(createdMs)),
+            CurrencyDisplay.format(total, symbol: 'RD\$'),
             style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          if (note != null && note.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              note,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface,
-              ),
-            ),
-          ],
         ],
       ),
     );
+  }
+
+  String _formatQty(double qty) {
+    if ((qty - qty.roundToDouble()).abs() < 0.001) {
+      return qty.round().toString();
+    }
+    return qty
+        .toStringAsFixed(2)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  String _compactInvoiceCode(String code) {
+    final trimmed = code.trim();
+    if (trimmed.length <= 16) return trimmed;
+    return 'Factura ${trimmed.substring(trimmed.length - 8)}';
   }
 
   Widget _buildMoneyText({

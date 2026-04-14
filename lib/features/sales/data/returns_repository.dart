@@ -147,6 +147,7 @@ class ReturnsRepository {
       return returnSaleId;
     });
 
+    CloudSyncService.instance.scheduleReturnsSyncSoon(reason: 'return_applied');
     CloudSyncService.instance.scheduleProductsSyncSoon();
     CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'return_applied');
 

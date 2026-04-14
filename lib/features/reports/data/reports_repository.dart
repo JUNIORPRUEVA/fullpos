@@ -4,9 +4,9 @@ import '../../../core/db/tables.dart';
 /// Modelos para los reportes
 class KpisData {
   final double totalSales;
-  // Ganancia bruta operativa basada en ventas - costo - devoluciones.
+  // Ganancia unificada del rango: ventas - costo - salidas de caja.
   final double totalProfit;
-  // Ganancia neta real del rango, descontando gastos/salidas de caja.
+  // Alias conservado por compatibilidad con la UI existente.
   final double netProfit;
   final double totalCost;
   final int salesCount;
@@ -171,6 +171,47 @@ class SaleRecord {
 /// Repositorio para generar reportes y estadísticas
 class ReportsRepository {
   ReportsRepository._();
+
+  static double _calculateProfit({
+    required double revenue,
+    required double cost,
+    required double expenses,
+  }) {
+    return revenue - cost - expenses;
+  }
+
+  static double _allocateExpenseShare({
+    required double totalExpenses,
+    required double revenue,
+    required double revenueBase,
+  }) {
+    if (totalExpenses.abs() <= 0.009 || revenue <= 0 || revenueBase <= 0) {
+      return 0.0;
+    }
+    return totalExpenses * (revenue / revenueBase);
+  }
+
+  static Future<double> _getCashExpenseTotal({
+    required dynamic db,
+    required int startMs,
+    required int endMs,
+  }) async {
+    try {
+      final cashExpenseResult = await db.rawQuery(
+        '''
+          SELECT COALESCE(SUM(amount), 0) as total
+          FROM ${DbTables.cashMovements}
+          WHERE type = 'OUT'
+            AND created_at_ms >= ?
+            AND created_at_ms <= ?
+        ''',
+        [startMs, endMs],
+      );
+      return (cashExpenseResult.first['total'] as num?)?.toDouble() ?? 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
 
   static String _normalizePaymentMethodLabel(String? method) {
     return switch ((method ?? '').trim().toLowerCase()) {
@@ -359,23 +400,43 @@ class ReportsRepository {
       // No bloquear reportes si no se puede backfillear
     }
 
-    // Totales consolidados desde sale_items.
-    // Importante: usar total_line (ya calculado al guardar) para soportar datos legados
-    // donde unit_price/discount pudieron quedar en 0 o inconsistentes.
+    // Ventas reales: usar SIEMPRE sales.total para mantener coherencia con
+    // facturas/listados, impuestos y descuentos de cabecera.
+    final salesFinancialTotalsResult = await db.rawQuery(
+      '''
+        SELECT
+          COALESCE(SUM(CASE WHEN kind IN ('invoice', 'sale') THEN total ELSE 0 END), 0) as invoiced_total,
+          COALESCE(SUM(CASE WHEN kind = 'return' THEN ABS(total) ELSE 0 END), 0) as refunded_total,
+          COALESCE(SUM(CASE WHEN kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) as sales_count
+        FROM ${DbTables.sales}
+        WHERE kind IN ('invoice', 'sale', 'return')
+          AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+          AND deleted_at_ms IS NULL
+          AND created_at_ms >= ?
+          AND created_at_ms <= ?
+      ''',
+      [startMs, endMs],
+    );
+
+    final invoicedTotal =
+        (salesFinancialTotalsResult.first['invoiced_total'] as num?)
+            ?.toDouble() ??
+        0.0;
+    final refundedSalesTotal =
+        (salesFinancialTotalsResult.first['refunded_total'] as num?)
+            ?.toDouble() ??
+        0.0;
+    final salesCount =
+        (salesFinancialTotalsResult.first['sales_count'] as int?) ?? 0;
+
+    // Costos y utilidad: seguir usando sale_items/return_items para preservar
+    // la trazabilidad del costo vendido aun cuando sales.total incluya ITBIS.
     final totalsQuery =
         '''
       SELECT
-        total_sales,
-        total_cost,
-        total_profit,
-        sales_count,
-        CASE WHEN sales_count > 0 THEN (total_sales / sales_count) ELSE 0 END AS avg_ticket
-      FROM (
-        SELECT 
-          COALESCE(SUM(COALESCE(si.total_line, 0)), 0) AS total_sales,
-          COALESCE(SUM(COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)), 0) AS total_cost,
-          COALESCE(SUM(COALESCE(si.total_line, 0) - (COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0))), 0) AS total_profit,
-          COUNT(DISTINCT s.id) AS sales_count
+          COALESCE(SUM(
+            COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
+          ), 0) AS total_cost
         FROM ${DbTables.saleItems} si
         INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
         LEFT JOIN ${DbTables.products} p
@@ -389,19 +450,11 @@ class ReportsRepository {
           AND s.deleted_at_ms IS NULL
           AND s.created_at_ms >= ? 
           AND s.created_at_ms <= ?
-      ) t
     ''';
 
     final totalsResult = await db.rawQuery(totalsQuery, [startMs, endMs]);
-    final totalSales =
-        (totalsResult.first['total_sales'] as num?)?.toDouble() ?? 0.0;
     final totalCost =
         (totalsResult.first['total_cost'] as num?)?.toDouble() ?? 0.0;
-    final totalProfit =
-        (totalsResult.first['total_profit'] as num?)?.toDouble() ?? 0.0;
-    final salesCount = (totalsResult.first['sales_count'] as int?) ?? 0;
-    final avgTicket =
-        (totalsResult.first['avg_ticket'] as num?)?.toDouble() ?? 0.0;
 
     final returnTotalsResult = await db.rawQuery(
       '''
@@ -429,53 +482,44 @@ class ReportsRepository {
     final returnCost =
         (returnTotalsResult.first['return_cost'] as num?)?.toDouble() ?? 0.0;
 
-    final netTotalSales = totalSales - returnTotal;
+    final netTotalSales = invoicedTotal - refundedSalesTotal;
     final netTotalCost = totalCost - returnCost;
-    final netTotalProfit = totalProfit - (returnTotal - returnCost);
+    double cashExpense = 0;
+    double cashIncome = 0;
+    try {
+      final cashIncomeQuery =
+          '''
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM ${DbTables.cashMovements}
+        WHERE type = 'IN'
+          AND created_at_ms >= ?
+          AND created_at_ms <= ?
+      ''';
+      final cashIncomeResult = await db.rawQuery(cashIncomeQuery, [
+        startMs,
+        endMs,
+      ]);
+      cashIncome = (cashIncomeResult.first['total'] as num?)?.toDouble() ?? 0.0;
+      cashExpense = await _getCashExpenseTotal(
+        db: db,
+        startMs: startMs,
+        endMs: endMs,
+      );
+    } catch (_) {
+      // La tabla puede no existir
+    }
+
+    final unifiedProfit = _calculateProfit(
+      revenue: netTotalSales,
+      cost: netTotalCost,
+      expenses: cashExpense,
+    );
 
     double finalTotalSales = netTotalSales;
-    double finalTotalProfit = netTotalProfit;
+    double finalTotalProfit = unifiedProfit;
     double finalTotalCost = netTotalCost;
     int finalSalesCount = salesCount;
-    double finalAvgTicket = salesCount > 0
-        ? (netTotalSales / salesCount)
-        : avgTicket;
-    var usedLegacySalesFallback = false;
-
-    // Fallback: si no hay items (datos legados), usar tabla sales con devoluciones incluidas.
-    if (salesCount == 0 && totalSales == 0) {
-      final salesOnly = await db.rawQuery(
-        '''
-          SELECT 
-            COALESCE(SUM(CASE WHEN kind IN ('invoice','sale') THEN total ELSE 0 END), 0) AS sales_total,
-            COALESCE(SUM(CASE WHEN kind = 'return' THEN total ELSE 0 END), 0) AS returns_total,
-            COALESCE(SUM(CASE WHEN kind IN ('invoice','sale') THEN 1 ELSE 0 END), 0) AS sales_count
-          FROM ${DbTables.sales}
-          WHERE kind IN ('invoice', 'sale', 'return')
-            AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-            AND deleted_at_ms IS NULL
-            AND created_at_ms >= ?
-            AND created_at_ms <= ?
-        ''',
-        [startMs, endMs],
-      );
-
-      final fallbackSales =
-          (salesOnly.first['sales_total'] as num?)?.toDouble() ?? 0.0;
-      final fallbackReturns =
-          (salesOnly.first['returns_total'] as num?)?.toDouble() ?? 0.0;
-      final fallbackSalesCount = (salesOnly.first['sales_count'] as int?) ?? 0;
-
-      finalTotalSales = fallbackSales + fallbackReturns;
-      finalSalesCount = fallbackSalesCount;
-      finalAvgTicket = fallbackSalesCount > 0
-          ? (finalTotalSales / fallbackSalesCount)
-          : 0.0;
-      // Sin sale_items no se puede calcular costo/ganancia real.
-      finalTotalProfit = 0.0;
-      finalTotalCost = 0.0;
-      usedLegacySalesFallback = true;
-    }
+    double finalAvgTicket = salesCount > 0 ? (netTotalSales / salesCount) : 0.0;
     // Cotizaciones
     final quotesQuery =
         '''
@@ -510,45 +554,7 @@ class ReportsRepository {
     final quotesConverted =
         (quotesConvertedResult.first['converted_count'] as int?) ?? 0;
 
-    // ========== DATOS DE CAJA ==========
-    double cashIncome = 0;
-    double cashExpense = 0;
-    try {
-      final cashIncomeQuery =
-          '''
-        SELECT COALESCE(SUM(amount), 0) as total
-        FROM ${DbTables.cashMovements}
-        WHERE type = 'IN'
-          AND created_at_ms >= ?
-          AND created_at_ms <= ?
-      ''';
-      final cashIncomeResult = await db.rawQuery(cashIncomeQuery, [
-        startMs,
-        endMs,
-      ]);
-      cashIncome = (cashIncomeResult.first['total'] as num?)?.toDouble() ?? 0.0;
-
-      final cashExpenseQuery =
-          '''
-        SELECT COALESCE(SUM(amount), 0) as total
-        FROM ${DbTables.cashMovements}
-        WHERE type = 'OUT'
-          AND created_at_ms >= ?
-          AND created_at_ms <= ?
-      ''';
-      final cashExpenseResult = await db.rawQuery(cashExpenseQuery, [
-        startMs,
-        endMs,
-      ]);
-      cashExpense =
-          (cashExpenseResult.first['total'] as num?)?.toDouble() ?? 0.0;
-    } catch (_) {
-      // La tabla puede no existir
-    }
-
-    final netProfit = usedLegacySalesFallback
-        ? finalTotalProfit
-        : (finalTotalProfit - cashExpense);
+    final netProfit = unifiedProfit;
 
     return KpisData(
       totalSales: finalTotalSales,
@@ -604,26 +610,51 @@ class ReportsRepository {
     final db = await AppDb.database;
     final rows = await db.rawQuery(
       '''
+      WITH invoice_item_totals AS (
+        SELECT
+          si.sale_id,
+          COALESCE(SUM(COALESCE(si.total_line, 0)), 0) as items_total
+        FROM ${DbTables.saleItems} si
+        GROUP BY si.sale_id
+      ),
+      return_item_totals AS (
+        SELECT
+          ri.return_id,
+          COALESCE(SUM(COALESCE(ri.total, 0)), 0) as items_total
+        FROM ${DbTables.returnItems} ri
+        GROUP BY ri.return_id
+      )
       SELECT
         category,
         COALESCE(SUM(sales_total), 0) as sales_total,
         COALESCE(SUM(refund_total), 0) as refund_total,
         COALESCE(SUM(items_sold), 0) as items_sold,
         COALESCE(SUM(items_refunded), 0) as items_refunded,
-        COALESCE(SUM(profit_total), 0) as profit_total
+        COALESCE(SUM(profit_before_expenses), 0) as profit_before_expenses
       FROM (
         SELECT
           COALESCE(c.name, 'Sin categoria') as category,
-          COALESCE(SUM(si.total_line), 0) as sales_total,
+          COALESCE(SUM(
+            CASE
+              WHEN COALESCE(it.items_total, 0) > 0
+                THEN COALESCE(s.total, 0) * (COALESCE(si.total_line, 0) / it.items_total)
+              ELSE 0
+            END
+          ), 0) as sales_total,
           0 as refund_total,
           COALESCE(SUM(si.qty), 0) as items_sold,
           0 as items_refunded,
           COALESCE(SUM(
-            COALESCE(si.total_line, 0)
+            CASE
+              WHEN COALESCE(it.items_total, 0) > 0
+                THEN COALESCE(s.total, 0) * (COALESCE(si.total_line, 0) / it.items_total)
+              ELSE 0
+            END
             - (COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0))
-          ), 0) as profit_total
+          ), 0) as profit_before_expenses
         FROM ${DbTables.saleItems} si
         INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
+        LEFT JOIN invoice_item_totals it ON it.sale_id = si.sale_id
         LEFT JOIN ${DbTables.products} p
           ON (si.product_id = p.id)
           OR (
@@ -641,16 +672,27 @@ class ReportsRepository {
         SELECT
           COALESCE(c.name, 'Sin categoria') as category,
           0 as sales_total,
-          COALESCE(SUM(ri.total), 0) as refund_total,
+          COALESCE(SUM(
+            CASE
+              WHEN COALESCE(rt.items_total, 0) > 0
+                THEN ABS(COALESCE(s.total, 0)) * (COALESCE(ri.total, 0) / rt.items_total)
+              ELSE 0
+            END
+          ), 0) as refund_total,
           0 as items_sold,
           COALESCE(SUM(ri.qty), 0) as items_refunded,
           COALESCE(SUM(
             (COALESCE(ri.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0))
-            - COALESCE(ri.total, 0)
-          ), 0) as profit_total
+            - CASE
+              WHEN COALESCE(rt.items_total, 0) > 0
+                THEN ABS(COALESCE(s.total, 0)) * (COALESCE(ri.total, 0) / rt.items_total)
+              ELSE 0
+            END
+          ), 0) as profit_before_expenses
         FROM ${DbTables.returnItems} ri
         INNER JOIN ${DbTables.returns} r ON ri.return_id = r.id
         INNER JOIN ${DbTables.sales} s ON r.return_sale_id = s.id
+        LEFT JOIN return_item_totals rt ON rt.return_id = ri.return_id
         LEFT JOIN ${DbTables.saleItems} si ON ri.sale_item_id = si.id
         LEFT JOIN ${DbTables.products} p ON COALESCE(ri.product_id, si.product_id) = p.id
         LEFT JOIN ${DbTables.categories} c ON p.category_id = c.id
@@ -667,11 +709,30 @@ class ReportsRepository {
       [startMs, endMs, startMs, endMs],
     );
 
+    final cashExpense = await _getCashExpenseTotal(
+      db: db,
+      startMs: startMs,
+      endMs: endMs,
+    );
+    final revenueBase = rows.fold<double>(0.0, (sum, row) {
+      final sales = (row['sales_total'] as num?)?.toDouble() ?? 0.0;
+      final refunds = (row['refund_total'] as num?)?.toDouble() ?? 0.0;
+      final netSales = sales - refunds;
+      return sum + (netSales > 0 ? netSales : 0.0);
+    });
+
     return rows.map((row) {
       final sales = (row['sales_total'] as num?)?.toDouble() ?? 0.0;
       final refunds = (row['refund_total'] as num?)?.toDouble() ?? 0.0;
       final netSales = sales - refunds;
-      final profit = (row['profit_total'] as num?)?.toDouble() ?? 0.0;
+      final profitBeforeExpenses =
+          (row['profit_before_expenses'] as num?)?.toDouble() ?? 0.0;
+      final expenseShare = _allocateExpenseShare(
+        totalExpenses: cashExpense,
+        revenue: netSales,
+        revenueBase: revenueBase,
+      );
+      final profit = profitBeforeExpenses - expenseShare;
       return CategoryPerformanceData(
         category: row['category'] as String? ?? 'Sin categoria',
         sales: sales,
@@ -697,9 +758,30 @@ class ReportsRepository {
         FROM (
           SELECT 
             DATE(datetime(s.created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
-            COALESCE(SUM(
-              COALESCE(si.total_line, 0)
-              - (COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0))
+            COALESCE(SUM(COALESCE(s.total, 0)), 0) as daily_profit
+          FROM ${DbTables.sales} s
+          WHERE s.kind IN ('invoice', 'sale')
+            AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+            AND s.deleted_at_ms IS NULL
+            AND s.created_at_ms >= ?
+            AND s.created_at_ms <= ?
+          GROUP BY date_label
+          UNION ALL
+          SELECT
+            DATE(datetime(s.created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
+            -COALESCE(SUM(ABS(s.total)), 0) as daily_profit
+          FROM ${DbTables.sales} s
+          WHERE s.kind = 'return'
+            AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
+            AND s.deleted_at_ms IS NULL
+            AND s.created_at_ms >= ?
+            AND s.created_at_ms <= ?
+          GROUP BY date_label
+          UNION ALL
+          SELECT 
+            DATE(datetime(s.created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
+            -COALESCE(SUM(
+              COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
             ), 0) as daily_profit
           FROM ${DbTables.saleItems} si
           INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
@@ -719,8 +801,7 @@ class ReportsRepository {
           SELECT
             DATE(datetime(s.created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
             COALESCE(SUM(
-              (ri.qty * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0))
-              - COALESCE(ri.total, 0)
+              ri.qty * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
             ), 0) as daily_profit
           FROM ${DbTables.returnItems} ri
           INNER JOIN ${DbTables.returns} r ON ri.return_id = r.id
@@ -746,7 +827,18 @@ class ReportsRepository {
         GROUP BY date_label
         ORDER BY date_label ASC
       ''',
-      [startMs, endMs, startMs, endMs, startMs, endMs],
+      [
+        startMs,
+        endMs,
+        startMs,
+        endMs,
+        startMs,
+        endMs,
+        startMs,
+        endMs,
+        startMs,
+        endMs,
+      ],
     );
 
     var series = results.map((row) {
@@ -791,6 +883,20 @@ class ReportsRepository {
 
     final query =
         '''
+      WITH sale_item_totals AS (
+        SELECT
+          si.sale_id,
+          COALESCE(SUM(COALESCE(si.total_line, 0)), 0) as items_total
+        FROM ${DbTables.saleItems} si
+        GROUP BY si.sale_id
+      ),
+      return_item_totals AS (
+        SELECT
+          ri.return_id,
+          COALESCE(SUM(COALESCE(ri.total, 0)), 0) as items_total
+        FROM ${DbTables.returnItems} ri
+        GROUP BY ri.return_id
+      )
       SELECT
         product_id,
         COALESCE(
@@ -800,17 +906,32 @@ class ReportsRepository {
         ) as product_name,
         COALESCE(SUM(total_sales), 0) as total_sales,
         COALESCE(SUM(total_qty), 0) as total_qty,
-        COALESCE(SUM(total_profit), 0) as total_profit
+        COALESCE(SUM(profit_before_expenses), 0) as profit_before_expenses
       FROM (
         SELECT 
           COALESCE(si.product_id, p.id) as product_id,
           (CASE WHEN LENGTH(TRIM(COALESCE(si.product_name_snapshot, ''))) > 0 THEN si.product_name_snapshot ELSE COALESCE(p.name, '') END) as snapshot_name,
           COALESCE(p.name, '') as master_name,
-          COALESCE(si.total_line, 0) as total_sales,
+          COALESCE(
+            CASE
+              WHEN COALESCE(st.items_total, 0) > 0
+                THEN COALESCE(s.total, 0) * (COALESCE(si.total_line, 0) / st.items_total)
+              ELSE 0
+            END,
+            0
+          ) as total_sales,
           COALESCE(si.qty, 0) as total_qty,
-          COALESCE(si.total_line, 0) - (COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)) as total_profit
+          COALESCE(
+            CASE
+              WHEN COALESCE(st.items_total, 0) > 0
+                THEN COALESCE(s.total, 0) * (COALESCE(si.total_line, 0) / st.items_total)
+              ELSE 0
+            END,
+            0
+          ) - (COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)) as profit_before_expenses
         FROM ${DbTables.saleItems} si
         INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
+        LEFT JOIN sale_item_totals st ON st.sale_id = si.sale_id
         LEFT JOIN ${DbTables.products} p
           ON (si.product_id = p.id)
           OR (
@@ -831,15 +952,29 @@ class ReportsRepository {
             ELSE COALESCE(ri.description, '')
           END) as snapshot_name,
           COALESCE(p.name, '') as master_name,
-          -COALESCE(ri.total, 0) as total_sales,
+          -COALESCE(
+            CASE
+              WHEN COALESCE(rt.items_total, 0) > 0
+                THEN ABS(COALESCE(s.total, 0)) * (COALESCE(ri.total, 0) / rt.items_total)
+              ELSE 0
+            END,
+            0
+          ) as total_sales,
           -COALESCE(ri.qty, 0) as total_qty,
-          -(
-            COALESCE(ri.total, 0)
-            - (COALESCE(ri.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0))
-          ) as total_profit
+          (
+            COALESCE(ri.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
+          ) - COALESCE(
+            CASE
+              WHEN COALESCE(rt.items_total, 0) > 0
+                THEN ABS(COALESCE(s.total, 0)) * (COALESCE(ri.total, 0) / rt.items_total)
+              ELSE 0
+            END,
+            0
+          ) as profit_before_expenses
         FROM ${DbTables.returnItems} ri
         INNER JOIN ${DbTables.returns} r ON ri.return_id = r.id
         INNER JOIN ${DbTables.sales} s ON r.return_sale_id = s.id
+        LEFT JOIN return_item_totals rt ON rt.return_id = ri.return_id
         LEFT JOIN ${DbTables.saleItems} si ON ri.sale_item_id = si.id
         LEFT JOIN ${DbTables.products} p ON COALESCE(ri.product_id, si.product_id) = p.id
         WHERE s.kind = 'return'
@@ -864,13 +999,31 @@ class ReportsRepository {
       limit,
     ]);
 
+    final cashExpense = await _getCashExpenseTotal(
+      db: db,
+      startMs: startMs,
+      endMs: endMs,
+    );
+    final revenueBase = results.fold<double>(0.0, (sum, row) {
+      final revenue = (row['total_sales'] as num?)?.toDouble() ?? 0.0;
+      return sum + (revenue > 0 ? revenue : 0.0);
+    });
+
     return results.map((row) {
+      final totalSales = (row['total_sales'] as num?)?.toDouble() ?? 0.0;
+      final profitBeforeExpenses =
+          (row['profit_before_expenses'] as num?)?.toDouble() ?? 0.0;
+      final expenseShare = _allocateExpenseShare(
+        totalExpenses: cashExpense,
+        revenue: totalSales,
+        revenueBase: revenueBase,
+      );
       return TopProduct(
         productId: row['product_id'] as int? ?? 0,
         productName: row['product_name'] as String? ?? '',
-        totalSales: (row['total_sales'] as num?)?.toDouble() ?? 0.0,
+        totalSales: totalSales,
         totalQty: (row['total_qty'] as num?)?.toDouble() ?? 0.0,
-        totalProfit: (row['total_profit'] as num?)?.toDouble() ?? 0.0,
+        totalProfit: profitBeforeExpenses - expenseShare,
       );
     }).toList();
   }

@@ -33,6 +33,8 @@ enum CloudSyncTarget {
   suppliers('suppliers'),
   products('products'),
   sales('sales'),
+  payments('payments'),
+  returns('returns'),
   cash('cash'),
   quotes('quotes');
 
@@ -77,6 +79,8 @@ class CloudSyncService {
     CloudSyncTarget.suppliers,
     CloudSyncTarget.products,
     CloudSyncTarget.sales,
+    CloudSyncTarget.payments,
+    CloudSyncTarget.returns,
     CloudSyncTarget.cash,
     CloudSyncTarget.quotes,
   };
@@ -89,6 +93,8 @@ class CloudSyncService {
     'suppliers',
     'products',
     'sales',
+    'payments',
+    'returns',
     'cash',
     'quotes',
   };
@@ -103,15 +109,21 @@ class CloudSyncService {
     });
 
     const startupTargets = <(CloudSyncTarget, int, String)>[
-      (CloudSyncTarget.companyConfig, 120, 'engine_start_initial_company_config'),
+      (
+        CloudSyncTarget.companyConfig,
+        120,
+        'engine_start_initial_company_config',
+      ),
       (CloudSyncTarget.users, 180, 'engine_start_initial_users'),
       (CloudSyncTarget.clients, 240, 'engine_start_initial_clients'),
       (CloudSyncTarget.categories, 300, 'engine_start_initial_categories'),
       (CloudSyncTarget.suppliers, 360, 'engine_start_initial_suppliers'),
       (CloudSyncTarget.products, 420, 'engine_start_initial_products'),
       (CloudSyncTarget.sales, 520, 'engine_start_initial_sales'),
-      (CloudSyncTarget.cash, 620, 'engine_start_initial_cash'),
-      (CloudSyncTarget.quotes, 720, 'engine_start_initial_quotes'),
+      (CloudSyncTarget.payments, 620, 'engine_start_initial_payments'),
+      (CloudSyncTarget.returns, 720, 'engine_start_initial_returns'),
+      (CloudSyncTarget.cash, 820, 'engine_start_initial_cash'),
+      (CloudSyncTarget.quotes, 920, 'engine_start_initial_quotes'),
     ];
     for (final (target, delayMs, reason) in startupTargets) {
       unawaited(
@@ -199,6 +211,24 @@ class CloudSyncService {
     );
   }
 
+  void schedulePaymentsSyncSoon({
+    Duration delay = const Duration(milliseconds: 350),
+    String reason = 'payments_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.payments, delay: delay, reason: reason),
+    );
+  }
+
+  void scheduleReturnsSyncSoon({
+    Duration delay = const Duration(milliseconds: 150),
+    String reason = 'returns_changed',
+  }) {
+    unawaited(
+      _enqueueTarget(CloudSyncTarget.returns, delay: delay, reason: reason),
+    );
+  }
+
   void scheduleCashSyncSoon({
     Duration delay = const Duration(milliseconds: 600),
     String reason = 'cash_changed',
@@ -224,10 +254,12 @@ class CloudSyncService {
 
   Future<List<Map<String, dynamic>>> readSyncStatusRows() {
     return _outbox.listStatusRows().then(
-      (rows) => rows.where((row) {
-        final target = (row['target'] as String?)?.trim() ?? '';
-        return visibleTargetKeys.contains(target);
-      }).toList(growable: false),
+      (rows) => rows
+          .where((row) {
+            final target = (row['target'] as String?)?.trim() ?? '';
+            return visibleTargetKeys.contains(target);
+          })
+          .toList(growable: false),
     );
   }
 
@@ -363,6 +395,10 @@ class CloudSyncService {
         return syncProductsIfEnabled();
       case CloudSyncTarget.sales:
         return syncSalesIfEnabled();
+      case CloudSyncTarget.payments:
+        return syncPaymentsIfEnabled();
+      case CloudSyncTarget.returns:
+        return syncReturnsIfEnabled();
       case CloudSyncTarget.cash:
         return syncCashIfEnabled();
       case CloudSyncTarget.quotes:
@@ -1247,7 +1283,13 @@ class CloudSyncService {
             (saleWithItems['items'] as List<SaleItemModel>?) ?? const [];
 
         // Mantener consistencia con el reporte local (solo ventas finalizadas).
-        const allowedStatuses = {'completed', 'PAID', 'PARTIAL_REFUND'};
+        const allowedStatuses = {
+          'completed',
+          'LAYAWAY',
+          'PAID',
+          'PARTIAL_REFUND',
+          'REFUNDED',
+        };
         final status = (sale.status).toString();
         if (!allowedStatuses.contains(status)) continue;
 
@@ -1267,6 +1309,14 @@ class CloudSyncService {
           'paymentMethod': sale.paymentMethod,
           'paidAmount': sale.paidAmount,
           'changeAmount': sale.changeAmount,
+          'creditInterestRate': sale.creditInterestRate,
+          'creditTermDays': sale.creditTermDays,
+          if (sale.creditDueDateMs != null)
+            'creditDueDate': DateTime.fromMillisecondsSinceEpoch(
+              sale.creditDueDateMs!,
+            ).toUtc().toIso8601String(),
+          'creditInstallments': sale.creditInstallments,
+          'creditNote': sale.creditNote,
           'electronicInvoiceEnabled': sale.electronicInvoiceEnabled == 1,
           'electronicInvoiceCode': sale.electronicInvoiceCode,
           'electronicDocumentType': sale.electronicDocumentType,
@@ -1285,6 +1335,7 @@ class CloudSyncService {
               .map(
                 (i) => {
                   'productCodeSnapshot': i.productCodeSnapshot,
+                  'localId': i.id,
                   'productNameSnapshot': i.productNameSnapshot,
                   'qty': i.qty,
                   'unitPrice': i.unitPrice,
@@ -1340,6 +1391,341 @@ class CloudSyncService {
     } catch (e) {
       await AppLogger.instance.logWarn(
         'Cloud sales sync error: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> syncPaymentsIfEnabled() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return true;
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return false;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final db = await AppDb.database;
+      final now = DateTime.now();
+      final from = now.subtract(const Duration(days: _historyDaysToSync));
+      final fromMs = from.millisecondsSinceEpoch;
+      final toMs = now.millisecondsSinceEpoch;
+
+      final creditRows = await db.rawQuery(
+        '''
+          SELECT
+            cp.id as local_id,
+            cp.amount,
+            cp.method,
+            cp.note,
+            cp.created_at_ms,
+            s.local_code as sale_local_code,
+            s.session_id as session_local_id,
+            s.total as sale_total,
+            s.paid_amount as sale_paid_amount,
+            s.status as sale_status,
+            s.credit_interest_rate as credit_interest_rate
+          FROM ${DbTables.creditPayments} cp
+          INNER JOIN ${DbTables.sales} s ON s.id = cp.sale_id
+          WHERE cp.created_at_ms >= ?
+            AND cp.created_at_ms <= ?
+            AND s.deleted_at_ms IS NULL
+          ORDER BY cp.created_at_ms ASC
+        ''',
+        [fromMs, toMs],
+      );
+
+      final layawayRows = await db.rawQuery(
+        '''
+          SELECT
+            lp.id as local_id,
+            lp.amount,
+            lp.method,
+            lp.note,
+            lp.created_at_ms,
+            s.local_code as sale_local_code,
+            s.session_id as session_local_id,
+            s.total as sale_total,
+            s.paid_amount as sale_paid_amount,
+            s.status as sale_status
+          FROM ${DbTables.layawayPayments} lp
+          INNER JOIN ${DbTables.sales} s ON s.id = lp.sale_id
+          WHERE lp.created_at_ms >= ?
+            AND lp.created_at_ms <= ?
+            AND s.deleted_at_ms IS NULL
+          ORDER BY lp.created_at_ms ASC
+        ''',
+        [fromMs, toMs],
+      );
+
+      final payloadPayments = <Map<String, dynamic>>[];
+
+      for (final row in creditRows) {
+        final saleTotal = (row['sale_total'] as num?)?.toDouble() ?? 0.0;
+        final interestRate =
+            (row['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
+        final totalDue = saleTotal + (saleTotal * interestRate / 100.0);
+        final totalPaid = (row['sale_paid_amount'] as num?)?.toDouble() ?? 0.0;
+        final pendingAmount = max(0.0, totalDue - totalPaid);
+        payloadPayments.add({
+          'localId': row['local_id'],
+          'kind': 'credit',
+          'saleLocalCode': row['sale_local_code'],
+          'sessionLocalId': row['session_local_id'],
+          'amount': (row['amount'] as num?)?.toDouble() ?? 0.0,
+          'method': (row['method'] as String?) ?? 'cash',
+          'note': row['note'] as String?,
+          'createdAt': DateTime.fromMillisecondsSinceEpoch(
+            (row['created_at_ms'] as int?) ?? now.millisecondsSinceEpoch,
+          ).toUtc().toIso8601String(),
+          'totalDueSnapshot': totalDue,
+          'totalPaidSnapshot': totalPaid,
+          'pendingAmountSnapshot': pendingAmount,
+          'statusSnapshot': row['sale_status'],
+        });
+      }
+
+      for (final row in layawayRows) {
+        final totalDue = (row['sale_total'] as num?)?.toDouble() ?? 0.0;
+        final totalPaid = (row['sale_paid_amount'] as num?)?.toDouble() ?? 0.0;
+        final pendingAmount = max(0.0, totalDue - totalPaid);
+        payloadPayments.add({
+          'localId': row['local_id'],
+          'kind': 'layaway',
+          'saleLocalCode': row['sale_local_code'],
+          'sessionLocalId': row['session_local_id'],
+          'amount': (row['amount'] as num?)?.toDouble() ?? 0.0,
+          'method': (row['method'] as String?) ?? 'cash',
+          'note': row['note'] as String?,
+          'createdAt': DateTime.fromMillisecondsSinceEpoch(
+            (row['created_at_ms'] as int?) ?? now.millisecondsSinceEpoch,
+          ).toUtc().toIso8601String(),
+          'totalDueSnapshot': totalDue,
+          'totalPaidSnapshot': totalPaid,
+          'pendingAmountSnapshot': pendingAmount,
+          'statusSnapshot': row['sale_status'],
+        });
+      }
+
+      if (payloadPayments.isEmpty) {
+        return true;
+      }
+
+      payloadPayments.sort((a, b) {
+        final left = DateTime.parse(a['createdAt'] as String);
+        final right = DateTime.parse(b['createdAt'] as String);
+        return left.compareTo(right);
+      });
+
+      for (var i = 0; i < payloadPayments.length; i += _chunkSize) {
+        final chunk = payloadPayments.sublist(
+          i,
+          (i + _chunkSize) > payloadPayments.length
+              ? payloadPayments.length
+              : (i + _chunkSize),
+        );
+
+        final payload = {
+          if (rnc.isNotEmpty) 'companyRnc': rnc,
+          if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+            'companyCloudId': cloudCompanyId,
+          'payments': chunk,
+        };
+
+        final api = ApiClient(baseUrl: baseUrl);
+        final response = await api.postJson(
+          '/api/payments/sync/by-rnc',
+          headers: headers,
+          body: payload,
+          timeout: const Duration(seconds: 20),
+        );
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          await AppLogger.instance.logWarn(
+            'Cloud payments sync failed status=${response.statusCode}',
+            module: 'cloud_sync',
+          );
+          return false;
+        }
+      }
+
+      await AppLogger.instance.logInfo(
+        'Cloud payments sync ok',
+        module: 'cloud_sync',
+      );
+      return true;
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud payments sync error: ${e.toString()}',
+        module: 'cloud_sync',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> syncReturnsIfEnabled() async {
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      if (!settings.cloudEnabled) return true;
+      final rnc = settings.rnc?.trim() ?? '';
+      final cloudCompanyId = await _ensureCloudCompanyId(settings);
+      if (rnc.isEmpty && (cloudCompanyId == null || cloudCompanyId.isEmpty)) {
+        return false;
+      }
+
+      final baseUrl = _resolveBaseUrl(settings);
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final cloudKey = settings.cloudApiKey?.trim();
+      if (cloudKey != null && cloudKey.isNotEmpty) {
+        headers['x-cloud-key'] = cloudKey;
+      }
+
+      final db = await AppDb.database;
+      final now = DateTime.now();
+      final from = now.subtract(const Duration(days: _historyDaysToSync));
+      final fromMs = from.millisecondsSinceEpoch;
+      final toMs = now.millisecondsSinceEpoch;
+
+      final returnRows = await db.rawQuery(
+        '''
+          SELECT
+            r.id as return_id,
+            r.original_sale_id,
+            r.return_sale_id,
+            r.note,
+            r.created_at_ms,
+            os.local_code as original_sale_local_code,
+            rs.local_code as return_sale_local_code,
+            rs.session_id as session_local_id
+          FROM ${DbTables.returns} r
+          INNER JOIN ${DbTables.sales} os ON os.id = r.original_sale_id
+          INNER JOIN ${DbTables.sales} rs ON rs.id = r.return_sale_id
+          WHERE r.created_at_ms >= ?
+            AND r.created_at_ms <= ?
+          ORDER BY r.created_at_ms ASC
+        ''',
+        [fromMs, toMs],
+      );
+
+      if (returnRows.isEmpty) {
+        return true;
+      }
+
+      final returnIds = returnRows
+          .map((row) => row['return_id'] as int)
+          .toList(growable: false);
+      final placeholders = List.filled(returnIds.length, '?').join(',');
+      final returnItemRows = await db.rawQuery('''
+          SELECT
+            ri.id as local_id,
+            ri.return_id,
+            ri.sale_item_id as sale_item_local_id,
+            ri.product_id,
+            ri.description,
+            ri.qty,
+            ri.price,
+            ri.total,
+            COALESCE(p.code, si.product_code_snapshot) as product_code_snapshot
+          FROM ${DbTables.returnItems} ri
+          LEFT JOIN ${DbTables.saleItems} si ON si.id = ri.sale_item_id
+          LEFT JOIN ${DbTables.products} p ON p.id = COALESCE(ri.product_id, si.product_id)
+          WHERE ri.return_id IN ($placeholders)
+          ORDER BY ri.id ASC
+        ''', returnIds);
+
+      final itemsByReturnId = <int, List<Map<String, dynamic>>>{};
+      for (final row in returnItemRows) {
+        final returnId = row['return_id'] as int;
+        itemsByReturnId
+            .putIfAbsent(returnId, () => <Map<String, dynamic>>[])
+            .add({
+              'localId': row['local_id'],
+              'saleItemLocalId': row['sale_item_local_id'],
+              'productCodeSnapshot': row['product_code_snapshot'] as String?,
+              'description': (row['description'] as String?) ?? 'Producto',
+              'qty': (row['qty'] as num).toDouble(),
+              'price': (row['price'] as num).toDouble(),
+              'total': (row['total'] as num).toDouble(),
+            });
+      }
+
+      final payloadReturns = returnRows
+          .map((row) {
+            final returnId = row['return_id'] as int;
+            final originalSaleLocalCode =
+                row['original_sale_local_code'] as String?;
+            final returnSaleLocalCode =
+                row['return_sale_local_code'] as String?;
+            if (originalSaleLocalCode == null || returnSaleLocalCode == null) {
+              return null;
+            }
+
+            return {
+              'localId': returnId,
+              'originalSaleLocalCode': originalSaleLocalCode,
+              'returnSaleLocalCode': returnSaleLocalCode,
+              'sessionLocalId': row['session_local_id'] as int?,
+              'note': row['note'] as String?,
+              'createdAt': DateTime.fromMillisecondsSinceEpoch(
+                row['created_at_ms'] as int,
+              ).toUtc().toIso8601String(),
+              'items':
+                  itemsByReturnId[returnId] ?? const <Map<String, dynamic>>[],
+            };
+          })
+          .whereType<Map<String, dynamic>>()
+          .where((row) => (row['items'] as List).isNotEmpty)
+          .toList(growable: false);
+
+      for (var i = 0; i < payloadReturns.length; i += _chunkSize) {
+        final chunk = payloadReturns.sublist(
+          i,
+          (i + _chunkSize) > payloadReturns.length
+              ? payloadReturns.length
+              : (i + _chunkSize),
+        );
+
+        final payload = {
+          if (rnc.isNotEmpty) 'companyRnc': rnc,
+          if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
+            'companyCloudId': cloudCompanyId,
+          'returns': chunk,
+        };
+
+        final api = ApiClient(baseUrl: baseUrl);
+        final response = await api.postJson(
+          '/api/returns/sync/by-rnc',
+          headers: headers,
+          body: payload,
+          timeout: const Duration(seconds: 20),
+        );
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          await AppLogger.instance.logWarn(
+            'Cloud returns sync failed status=${response.statusCode}',
+            module: 'cloud_sync',
+          );
+          return false;
+        }
+      }
+
+      await AppLogger.instance.logInfo(
+        'Cloud returns sync ok',
+        module: 'cloud_sync',
+      );
+      return true;
+    } catch (e) {
+      await AppLogger.instance.logWarn(
+        'Cloud returns sync error: ${e.toString()}',
         module: 'cloud_sync',
       );
       return false;

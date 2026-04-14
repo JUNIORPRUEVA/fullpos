@@ -1,6 +1,7 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import 'sales_model.dart';
 
 class CreditPaymentResult {
@@ -36,26 +37,27 @@ class CreditsRepository {
       return await db.transaction((txn) async {
         final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Obtener venta para comparar totales y completar cliente si falta
-      final sale = await txn.query(
-        DbTables.sales,
-        where: 'id = ?',
-        whereArgs: [saleId],
-      );
+        // Obtener venta para comparar totales y completar cliente si falta
+        final sale = await txn.query(
+          DbTables.sales,
+          where: 'id = ?',
+          whereArgs: [saleId],
+        );
 
-      final resolvedClientId = clientId != 0
-          ? clientId
-          : (sale.isNotEmpty ? (sale.first['customer_id'] as int? ?? 0) : 0);
-        final resolvedSessionId = sessionId ??
-          (sale.isNotEmpty
-            ? ((sale.first['cash_session_id'] as int?) ??
-              (sale.first['session_id'] as int?))
-            : null);
+        final resolvedClientId = clientId != 0
+            ? clientId
+            : (sale.isNotEmpty ? (sale.first['customer_id'] as int? ?? 0) : 0);
+        final resolvedSessionId =
+            sessionId ??
+            (sale.isNotEmpty
+                ? ((sale.first['cash_session_id'] as int?) ??
+                      (sale.first['session_id'] as int?))
+                : null);
         final saleCode = sale.isNotEmpty
-          ? (sale.first['local_code'] as String?) ?? 'CR-$saleId'
-          : 'CR-$saleId';
+            ? (sale.first['local_code'] as String?) ?? 'CR-$saleId'
+            : 'CR-$saleId';
 
-      // Insertar pago
+        // Insertar pago
         final paymentId = await txn.insert(DbTables.creditPayments, {
           'sale_id': saleId,
           'client_id': resolvedClientId,
@@ -66,23 +68,23 @@ class CreditsRepository {
           'user_id': userId,
         });
 
-      // Verificar si el crédito está completamente pagado
+        // Verificar si el crédito está completamente pagado
         final payments = await txn.rawQuery(
-        '''SELECT SUM(amount) as total FROM ${DbTables.creditPayments} 
+          '''SELECT SUM(amount) as total FROM ${DbTables.creditPayments} 
            WHERE sale_id = ?''',
-        [saleId],
-      );
+          [saleId],
+        );
 
         final totalPaid = (payments.first['total'] as num?)?.toDouble() ?? 0.0;
         double totalDue = 0.0;
 
-      if (sale.isNotEmpty) {
+        if (sale.isNotEmpty) {
           final saleTotal = (sale.first['total'] as num).toDouble();
           final interestRate =
-            (sale.first['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
+              (sale.first['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
           totalDue = saleTotal + (saleTotal * interestRate / 100.0);
 
-        // Actualizar pagado acumulado
+          // Actualizar pagado acumulado
           await txn.update(
             DbTables.sales,
             {'paid_amount': totalPaid, 'updated_at_ms': now},
@@ -90,7 +92,7 @@ class CreditsRepository {
             whereArgs: [saleId],
           );
 
-        // Si pagó todo, marcar como PAID
+          // Si pagó todo, marcar como PAID
           if (totalPaid >= totalDue) {
             await txn.update(
               DbTables.sales,
@@ -143,6 +145,13 @@ class CreditsRepository {
         );
       });
     }, stage: 'credits/register_payment');
+
+    CloudSyncService.instance.scheduleSalesSyncSoon(
+      reason: 'credit_payment_applied',
+    );
+    CloudSyncService.instance.schedulePaymentsSyncSoon(
+      reason: 'credit_payment_applied',
+    );
   }
 
   /// Obtiene todas las ventas a crédito
@@ -165,8 +174,7 @@ class CreditsRepository {
       args.add(status);
     }
 
-    final result = await db.rawQuery(
-      '''SELECT s.*, 
+    final result = await db.rawQuery('''SELECT s.*, 
                 COALESCE(SUM(cp.amount), 0) as amount_paid,
                 (s.total + (s.total * COALESCE(s.credit_interest_rate, 0) / 100.0)) as total_due,
                 ((s.total + (s.total * COALESCE(s.credit_interest_rate, 0) / 100.0)) - COALESCE(SUM(cp.amount), 0)) as amount_pending,
@@ -178,9 +186,7 @@ class CreditsRepository {
          LEFT JOIN ${DbTables.creditPayments} cp ON s.id = cp.sale_id
          WHERE $where
          GROUP BY s.id
-         ORDER BY s.created_at_ms DESC''',
-      args,
-    );
+         ORDER BY s.created_at_ms DESC''', args);
 
     return result;
   }
@@ -189,8 +195,7 @@ class CreditsRepository {
   static Future<List<Map<String, dynamic>>> getCreditSummaryByClient() async {
     final db = await AppDb.database;
 
-    final result = await db.rawQuery(
-      '''SELECT c.id, c.nombre, c.telefono,
+    final result = await db.rawQuery('''SELECT c.id, c.nombre, c.telefono,
                 COUNT(DISTINCT s.id) as total_credits,
                 SUM(s.total + (s.total * COALESCE(s.credit_interest_rate, 0) / 100.0)) as total_amount,
                 COALESCE(SUM(cp.amount), 0) as total_paid,
@@ -200,8 +205,7 @@ class CreditsRepository {
          LEFT JOIN ${DbTables.creditPayments} cp ON s.id = cp.sale_id
          WHERE s.id IS NOT NULL
          GROUP BY c.id, c.nombre, c.telefono
-         ORDER BY total_pending DESC''',
-    );
+         ORDER BY total_pending DESC''');
 
     return result;
   }

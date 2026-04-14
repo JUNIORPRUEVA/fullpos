@@ -183,6 +183,63 @@ void main() {
   );
 
   test(
+    'getKpis uses final invoice totals for sales while keeping item profit basis',
+    () async {
+      final db = await AppDb.database;
+      final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
+      final shiftId = await _insertOpenShift(db, cashboxId: cashboxId);
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await SalesRepository.createSale(
+        localCode: 'V-REPORT-KPI-FINAL-001',
+        kind: 'invoice',
+        items: [
+          {
+            'product_code_snapshot': 'P-REPORT-FINAL-1',
+            'product_name_snapshot': 'Producto A',
+            'qty': 1.0,
+            'unit_price': 420.0,
+            'purchase_price_snapshot': 120.0,
+            'discount_line': 0.0,
+            'total_line': 420.0,
+          },
+          {
+            'product_code_snapshot': 'P-REPORT-FINAL-2',
+            'product_name_snapshot': 'Producto B',
+            'qty': 1.0,
+            'unit_price': 250.0,
+            'purchase_price_snapshot': 70.0,
+            'discount_line': 200.0,
+            'total_line': 50.0,
+          },
+        ],
+        itbisEnabled: true,
+        discountTotal: 400.0,
+        subtotalOverride: 270.0,
+        itbisAmountOverride: 48.6,
+        totalOverride: 318.6,
+        paymentMethod: 'cash',
+        paymentCashAmount: 318.6,
+        paymentCardAmount: 0.0,
+        paymentTransferAmount: 0.0,
+        sessionId: shiftId,
+        paidAmount: 318.6,
+        changeAmount: 0.0,
+      );
+
+      final kpis = await ReportsRepository.getKpis(
+        startMs: now - 60000,
+        endMs: DateTime.now().millisecondsSinceEpoch + 60000,
+      );
+
+      expect(kpis.totalSales, 318.6);
+      expect(kpis.avgTicket, 318.6);
+      expect(kpis.totalProfit, 280.0);
+      expect(kpis.salesCount, 1);
+    },
+  );
+
+  test(
     'profit series discounts daily expenses and keeps expense-only days negative',
     () async {
       final db = await AppDb.database;

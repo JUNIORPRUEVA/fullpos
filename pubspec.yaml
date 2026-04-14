@@ -49,8 +49,7 @@ dependencies:
   
   # Database
   sqflite: ^2.4.1
-  sqflite_common_ffi: ^2.3.3
-  sqlite3: ^3.3.1
+  sqflite_common_ffi: 2.3.3
   http: ^1.2.1
   http_parser: ^4.0.2
   socket_io_client: ^3.1.2
@@ -73,7 +72,6 @@ dependencies:
   flutter_esc_pos_utils: ^1.0.1
   flutter_esc_pos_network: ^1.0.3
   usb_esc_printer_windows: ^0.0.3
-
   # Excel export
   excel: ^4.0.6
 
@@ -111,6 +109,9 @@ dev_dependencies:
   # App icons generator (Android/Windows)
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.1
+
+dependency_overrides:
+  sqlite3: 2.4.7
 
 flutter_launcher_icons:
   android: true
