@@ -2064,7 +2064,7 @@ class _SaleTicketDialog extends StatelessWidget {
                   if (sale.itbisEnabled == 1)
                     _buildTotalRow(
                       context,
-                      'ITBIS (18%)',
+                      'ITBIS (${(sale.itbisRate * 100).toStringAsFixed(0)}%)',
                       currencyFormat.format(sale.itbisAmount),
                     ),
                   if (sale.discountTotal > 0)

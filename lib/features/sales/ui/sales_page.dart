@@ -212,7 +212,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   int? _selectedCartItemIndex;
 
   int? _inlineEditCartItemIndex;
-  DiscountType _inlineLineDiscountType = DiscountType.amount;
   final TextEditingController _inlineQtyController = TextEditingController();
   final TextEditingController _inlineLineDiscountController =
       TextEditingController();
@@ -285,8 +284,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     cart.itbisRate = _normalizeItbisRate(settings.defaultTaxRate);
     if (useDefaultEnabled) {
       cart.itbisEnabled = settings.itbisEnabled;
-    } else if (!settings.itbisEnabled) {
-      cart.itbisEnabled = false;
+    } else if (cart.itbisEnabled != settings.itbisEnabled) {
+      cart.itbisEnabled = settings.itbisEnabled;
     }
 
     if (!settings.itbisEnabled) {
@@ -567,6 +566,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _applyConfiguredTaxSettingsToCart(
           cart,
           ref.read(businessSettingsProvider),
+          useDefaultEnabled: true,
         );
 
         loadedCarts.add(cart);
@@ -613,6 +613,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         _applyConfiguredTaxSettingsToCart(
           cart,
           ref.read(businessSettingsProvider),
+          useDefaultEnabled: true,
         );
 
         final signature = _buildCartPersistenceSignature(cart);
@@ -1267,27 +1268,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
     if (!mounted || result == null) return;
     _updateCurrentCart(() => _currentCart.items.add(result));
-  }
-
-  _SalesDocumentType _deriveSalesDocumentType() {
-    if (_currentCart.electronicInvoiceEnabled) {
-      return _SalesDocumentType.creditoFiscal;
-    }
-    if (!_currentCart.itbisEnabled) {
-      return _SalesDocumentType.cotizacion;
-    }
-    return _SalesDocumentType.consumidorFinal;
-  }
-
-  payment.PaymentDocumentType _paymentDocumentTypeFromCart() {
-    switch (_deriveSalesDocumentType()) {
-      case _SalesDocumentType.consumidorFinal:
-        return payment.PaymentDocumentType.consumidorFinal;
-      case _SalesDocumentType.creditoFiscal:
-        return payment.PaymentDocumentType.creditoFiscal;
-      case _SalesDocumentType.cotizacion:
-        return payment.PaymentDocumentType.cotizacion;
-    }
   }
 
   Future<void> _setSalesDocumentType(_SalesDocumentType type) async {
@@ -2126,21 +2106,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     return value;
   }
 
-  double _computeInlineTotalDiscountPreviewTotal() {
-    final subtotal = _currentCart.calculateSubtotal();
-    final raw = double.tryParse(_inlineTotalDiscountController.text) ?? 0.0;
-    final discountAmount = _computeTotalDiscountAmount(
-      subtotal,
-      _inlineTotalDiscountType,
-      raw,
-    );
-    final after = (subtotal - discountAmount).clamp(0.0, double.infinity);
-    final itbis = _currentCart.itbisEnabled
-        ? after * _currentCart.itbisRate
-        : 0.0;
-    return after + itbis;
-  }
-
   void _removeInlineTotalDiscount() {
     _updateCurrentCart(() {
       _currentCart.discountTotalType = null;
@@ -2152,29 +2117,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         backgroundColor: status.success,
       ),
     );
-  }
-
-  Future<void> _applyInlineTotalDiscount() async {
-    final subtotal = _currentCart.calculateSubtotal();
-    final value = double.tryParse(_inlineTotalDiscountController.text) ?? 0.0;
-    final type = _inlineTotalDiscountType;
-
-    if (!_isValidTotalDiscount(subtotal, type, value)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            type == DiscountType.percent
-                ? 'El porcentaje debe ser entre 0% y 100%'
-                : 'El monto debe ser menor al subtotal',
-          ),
-          backgroundColor: scheme.error,
-        ),
-      );
-      return;
-    }
-
-    await _applyTotalDiscountResult(DiscountResult(type: type, value: value));
-    if (!mounted) return;
   }
 
   Future<void> _applyTotalDiscountResult(DiscountResult result) async {
@@ -2348,45 +2290,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       return base * (pct / 100.0);
     }
     return raw.clamp(0.0, base);
-  }
-
-  void _applyInlineQtyChanged(int index, String text) {
-    if (index < 0 || index >= _currentCart.items.length) return;
-    final parsed = double.tryParse(text);
-    if (parsed == null) return;
-    if (parsed <= 0) return;
-
-    _updateCurrentCart(() {
-      if (index < 0 || index >= _currentCart.items.length) return;
-      final current = _currentCart.items[index];
-      final discountAmount = _computeLineDiscountAmount(
-        qty: parsed,
-        unitPrice: current.unitPrice,
-        type: _inlineLineDiscountType,
-        rawText: _inlineLineDiscountController.text,
-      );
-      _currentCart.items[index] = current.copyWith(
-        qty: parsed,
-        discountLine: discountAmount,
-      );
-    });
-  }
-
-  void _applyInlineLineDiscountChanged(int index, String text) {
-    if (index < 0 || index >= _currentCart.items.length) return;
-    _updateCurrentCart(() {
-      if (index < 0 || index >= _currentCart.items.length) return;
-      final current = _currentCart.items[index];
-      final discountAmount = _computeLineDiscountAmount(
-        qty: current.qty,
-        unitPrice: current.unitPrice,
-        type: _inlineLineDiscountType,
-        rawText: text,
-      );
-      _currentCart.items[index] = current.copyWith(
-        discountLine: discountAmount,
-      );
-    });
   }
 
   Future<List<String>> _missingElectronicInvoiceRequirements({
@@ -3211,9 +3114,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         (settings) => settings.electronicInvoicingEnabled,
       ),
     );
-    final itbisEnabledInSettings = ref.watch(
-      businessSettingsProvider.select((settings) => settings.itbisEnabled),
-    );
     ref.listen<bool>(
       businessSettingsProvider.select(
         (settings) => settings.electronicInvoicingEnabled,
@@ -3241,8 +3141,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           cart.itbisRate = nextRate;
           changed = true;
         }
-        if (!next.itbisEnabled && cart.itbisEnabled) {
-          cart.itbisEnabled = false;
+        if (cart.itbisEnabled != next.itbisEnabled) {
+          cart.itbisEnabled = next.itbisEnabled;
           changed = true;
         }
         if (!next.itbisEnabled && cart.electronicInvoiceEnabled) {
@@ -5130,8 +5030,14 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       color: scheme.error,
                     ),
                   ],
-                  const SizedBox(height: 6),
-                  _buildSummaryRow('ITBIS (18%)', itbisAmount, false),
+                  if (_currentCart.itbisEnabled) ...[
+                    const SizedBox(height: 6),
+                    _buildSummaryRow(
+                      'ITBIS (${(_currentCart.itbisRate * 100).toStringAsFixed(0)}%)',
+                      itbisAmount,
+                      false,
+                    ),
+                  ],
                   if (discountsCombined > 0 || _currentCart.itbisEnabled) ...[
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 10),
@@ -5474,7 +5380,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           children: [
                             Expanded(
                               child: Text(
-                                itbisEnabledInSettings
+                                _isGlobalItbisEnabled
                                     ? 'ITBIS ${(_currentCart.itbisRate * 100).toInt()}%'
                                     : 'ITBIS desactivado',
                                 style: const TextStyle(
@@ -5486,7 +5392,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             Switch(
                               value: _currentCart.itbisEnabled,
                               onChanged:
-                                  !itbisEnabledInSettings ||
+                                  !_isGlobalItbisEnabled ||
                                       _currentCart.electronicInvoiceEnabled
                                   ? null
                                   : (value) => _updateCurrentCart(
@@ -5497,7 +5403,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ],
                         ),
                       ),
-                      if (!itbisEnabledInSettings) ...[
+                      if (!_isGlobalItbisEnabled) ...[
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerLeft,
@@ -5546,7 +5452,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               ),
                               Switch(
                                 value: _currentCart.electronicInvoiceEnabled,
-                                onChanged: !itbisEnabledInSettings
+                                onChanged: !_isGlobalItbisEnabled
                                     ? null
                                     : (value) async {
                                         if (!value) {

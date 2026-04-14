@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
@@ -22,6 +24,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
   bool _loading = true;
   bool _printing = false;
   bool _saving = false;
+  Timer? _autoSaveTimer;
+  Future<void> _saveQueue = Future<void>.value();
 
   static const int _logoSizeSmall = 40;
   static const int _logoSizeNormal = 70;
@@ -68,6 +72,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
+    unawaited(_enqueuePersistSettings());
     _footerCtrl.dispose();
     _headerExtraCtrl.dispose();
     _warrantyPolicyCtrl.dispose();
@@ -125,24 +131,33 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     if (!mounted) return;
     setState(() => _saving = true);
 
+    try {
+      await _enqueuePersistSettings(showFeedback: true);
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _persistSettings({bool showFeedback = false}) async {
     final updatedSettings = _buildSettingsForPersist();
 
     try {
       await PrinterSettingsRepository.updateSettings(updatedSettings);
 
       if (!mounted) return;
-      setState(() {
-        _settings = updatedSettings;
-        _saving = false;
-      });
+      setState(() => _settings = updatedSettings);
+
+      if (!showFeedback) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
               Icon(Icons.check_circle, color: _scheme.onTertiary),
-              SizedBox(width: 8),
-              Text('Configuración guardada correctamente'),
+              const SizedBox(width: 8),
+              const Text('Configuración guardada correctamente'),
             ],
           ),
           backgroundColor: _scheme.tertiary,
@@ -150,14 +165,31 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo guardar la configuración: $e'),
-          backgroundColor: _scheme.error,
-        ),
-      );
+
+      if (showFeedback) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo guardar la configuración: $e'),
+            backgroundColor: _scheme.error,
+          ),
+        );
+      }
     }
+  }
+
+  Future<void> _enqueuePersistSettings({bool showFeedback = false}) {
+    _autoSaveTimer?.cancel();
+    _saveQueue = _saveQueue.then(
+      (_) => _persistSettings(showFeedback: showFeedback),
+    );
+    return _saveQueue;
+  }
+
+  void _scheduleAutoSave({Duration delay = const Duration(milliseconds: 250)}) {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(delay, () {
+      unawaited(_enqueuePersistSettings());
+    });
   }
 
   Future<void> _printTest() async {
@@ -280,6 +312,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     PrinterSettingsModel Function(PrinterSettingsModel) update,
   ) {
     setState(() => _settings = update(_settings));
+    _scheduleAutoSave(delay: Duration.zero);
   }
 
   PrinterSettingsModel _buildSettingsForPersist() {
@@ -335,6 +368,16 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                Expanded(
+                  child: Text(
+                    'Los cambios se aplican automaticamente en todo el sistema.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
                 FilledButton.icon(
                   onPressed: _saving ? null : _saveSettings,
                   icon: _saving
@@ -344,7 +387,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save_outlined, size: 18),
-                  label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
+                  label: Text(_saving ? 'Guardando...' : 'Guardar ahora'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
@@ -384,11 +427,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
       ),
     ];
 
-    final content = Wrap(
-      spacing: gap,
-      runSpacing: gap,
-      children: sections,
-    );
+    final content = Wrap(spacing: gap, runSpacing: gap, children: sections);
 
     if (isTablet || isDesktop) {
       return Align(alignment: Alignment.topCenter, child: content);
@@ -428,8 +467,9 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                       ),
                     )
                     .toList(),
-                onChanged: (value) =>
-                    _updateSetting((s) => s.copyWith(selectedPrinterName: value)),
+                onChanged: (value) => _updateSetting(
+                  (s) => s.copyWith(selectedPrinterName: value),
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -486,7 +526,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: _scheme.primary,
                 foregroundColor: _scheme.onPrimary,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
               ),
             );
 
@@ -643,7 +686,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                       hintText: 'Ej: Gracias por su preferencia',
                       prefixIcon: const Icon(Icons.message_outlined),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => _scheduleAutoSave(),
                   ),
                   const SizedBox(height: 12),
                   _buildWarrantyField(),
@@ -662,7 +705,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                       hintText: 'Ej: Gracias por su preferencia',
                       prefixIcon: const Icon(Icons.message_outlined),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => _scheduleAutoSave(),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -712,10 +755,11 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
             maxLines: 5,
             decoration: const InputDecoration(
               labelText: 'Texto de garantía',
-              hintText: 'Ej:\nCambios solo con factura\nNo aplica en artículos en oferta',
+              hintText:
+                  'Ej:\nCambios solo con factura\nNo aplica en artículos en oferta',
               prefixIcon: Icon(Icons.notes_rounded),
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => _scheduleAutoSave(),
           ),
         ],
       ),
@@ -771,7 +815,6 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
       ),
     );
   }
-
 }
 
 enum _TicketFormat { compact, detailed }

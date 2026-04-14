@@ -431,8 +431,8 @@ class TicketBuilder {
             (math.max(1, trimmed.length) * courierCharWidthFactor) *
             safety;
         final size = math
-          .min(math.min(fontSize * multiplier, maxToFit), 14.0)
-          .clamp(fontSize, 14.0);
+            .min(math.min(fontSize * multiplier, maxToFit), 14.0)
+            .clamp(fontSize, 14.0);
         return pw.TextStyle(
           font: bodyFont,
           fontSize: size,
@@ -695,11 +695,11 @@ class TicketBuilder {
     final totalsFontSize = math.min(baseFontSize + 3.8, 14.2);
     final smallFontSize = math.max(baseFontSize - 1.0, 8.7);
     final compactTableFontSize = is80mm
-      ? math.max(9.6, baseFontSize - 0.1)
-      : math.max(9.6, baseFontSize - 0.1);
+        ? math.max(9.6, baseFontSize - 0.1)
+        : math.max(9.6, baseFontSize - 0.1);
     final compactDescriptionFontSize = is80mm
-      ? math.max(9.8, compactTableFontSize)
-      : math.max(9.7, compactTableFontSize);
+        ? math.max(9.8, compactTableFontSize)
+        : math.max(9.7, compactTableFontSize);
     final compactHeaderFontSize = math.max(baseFontSize - 1.0, 8.6);
     final logoSize = layout.logoSizePx.toDouble().clamp(32.0, 42.0);
     final sectionGap = (5.0 * layout.sectionSpacingFactor).clamp(4.0, 7.0);
@@ -711,8 +711,8 @@ class TicketBuilder {
     final totalColumnWidth = is80mm ? 36.0 : 34.0;
     final detailGapWidth = 2.0;
     final detailNameChars = is80mm
-      ? math.max(22, layout.maxCharsPerLine - 20)
-      : math.max(14, layout.maxCharsPerLine - 22);
+        ? math.max(22, layout.maxCharsPerLine - 20)
+        : math.max(14, layout.maxCharsPerLine - 22);
 
     final headerName = _sanitizePrintText(company.name).toUpperCase();
     final headerMeta = <String>[
@@ -721,7 +721,9 @@ class TicketBuilder {
       if ((company.primaryPhone ?? '').trim().isNotEmpty)
         'TEL: ${_sanitizePrintText(company.primaryPhone!.trim()).toUpperCase()}',
       if ((company.address ?? '').trim().isNotEmpty)
-        _sanitizePrintText(company.address!).replaceAll('\n', ' ').toUpperCase(),
+        _sanitizePrintText(
+          company.address!,
+        ).replaceAll('\n', ' ').toUpperCase(),
     ];
 
     final title = _resolveSalesDocumentTitle(data).toUpperCase();
@@ -732,10 +734,12 @@ class TicketBuilder {
     final clientName = (data.client?.name ?? '').trim().isEmpty
         ? 'GENERAL'
         : _sanitizePrintText(data.client!.name.trim()).toUpperCase();
-    final clientPhone = _sanitizePrintText((data.client?.phone ?? '').trim())
-        .toUpperCase();
-    final clientRnc = _sanitizePrintText((data.client?.rnc ?? '').trim())
-        .toUpperCase();
+    final clientPhone = _sanitizePrintText(
+      (data.client?.phone ?? '').trim(),
+    ).toUpperCase();
+    final clientRnc = _sanitizePrintText(
+      (data.client?.rnc ?? '').trim(),
+    ).toUpperCase();
     final dateText = _formatDate(data.dateTime);
     final timeText = _formatTime(data.dateTime);
     final ecfCode = _sanitizePrintText(
@@ -763,9 +767,9 @@ class TicketBuilder {
     String money(num value) =>
         CurrencyDisplay.formatPlain(value, decimalDigits: 2);
     String compactMoney(num value) =>
-      CurrencyDisplay.formatPlain(value, decimalDigits: 0);
+        CurrencyDisplay.formatPlain(value, decimalDigits: 0);
     String tableMoney(num value) =>
-      CurrencyDisplay.formatPlain(value, decimalDigits: 0);
+        CurrencyDisplay.formatPlain(value, decimalDigits: 0);
     final footerFontSize = math.max(baseFontSize - 0.7, 8.8);
 
     final content = <pw.Widget>[
@@ -1293,59 +1297,6 @@ class TicketBuilder {
     );
   }
 
-  pw.Widget _buildDecorativeSectionDivider({
-    required String title,
-    required pw.Font bodyFont,
-    required pw.Font boldFont,
-    required double titleSize,
-    required PdfColor color,
-    String? trailing,
-  }) {
-    final trailingText = (trailing ?? '').trim();
-    return pw.Column(
-      mainAxisSize: pw.MainAxisSize.min,
-      children: [
-        pw.Container(height: 0.7, color: color),
-        pw.SizedBox(height: 4),
-        pw.SizedBox(
-          height: titleSize + 6,
-          child: pw.Stack(
-            fit: pw.StackFit.expand,
-            children: [
-              pw.Align(
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  _sanitizePrintText(title),
-                  style: pw.TextStyle(
-                    font: boldFont,
-                    fontSize: titleSize,
-                    color: PdfColors.black,
-                  ),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ),
-              if (trailingText.isNotEmpty)
-                pw.Align(
-                  alignment: pw.Alignment.centerRight,
-                  child: pw.Text(
-                    _sanitizePrintText(trailingText),
-                    style: pw.TextStyle(
-                      font: bodyFont,
-                      fontSize: math.max(titleSize - 0.9, 7.0),
-                      color: PdfColors.black,
-                    ),
-                    textAlign: pw.TextAlign.right,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        pw.SizedBox(height: 4),
-        pw.Container(height: 0.45, color: color),
-      ],
-    );
-  }
-
   pw.Widget _buildAmountRow(
     String label,
     String value,
@@ -1419,12 +1370,27 @@ class TicketBuilder {
 
     if (isLayaway || isCredit) {
       if (lastPaymentAmount > 0) {
-        rows.add(MapEntry('ABONO', CurrencyDisplay.formatPlain(lastPaymentAmount, decimalDigits: 2)));
+        rows.add(
+          MapEntry(
+            'ABONO',
+            CurrencyDisplay.formatPlain(lastPaymentAmount, decimalDigits: 2),
+          ),
+        );
       }
       if (paidAmount > 0) {
-        rows.add(MapEntry('PAGADO', CurrencyDisplay.formatPlain(paidAmount, decimalDigits: 2)));
+        rows.add(
+          MapEntry(
+            'PAGADO',
+            CurrencyDisplay.formatPlain(paidAmount, decimalDigits: 2),
+          ),
+        );
       }
-      rows.add(MapEntry('PENDIENTE', CurrencyDisplay.formatPlain(pendingAmount, decimalDigits: 2)));
+      rows.add(
+        MapEntry(
+          'PENDIENTE',
+          CurrencyDisplay.formatPlain(pendingAmount, decimalDigits: 2),
+        ),
+      );
     } else {
       rows.add(
         MapEntry(
@@ -1433,7 +1399,12 @@ class TicketBuilder {
         ),
       );
       if (changeAmount > 0) {
-        rows.add(MapEntry('CAMBIO', CurrencyDisplay.formatPlain(changeAmount, decimalDigits: 2)));
+        rows.add(
+          MapEntry(
+            'CAMBIO',
+            CurrencyDisplay.formatPlain(changeAmount, decimalDigits: 2),
+          ),
+        );
       }
     }
 
@@ -1508,45 +1479,6 @@ class TicketBuilder {
     );
   }
 
-  pw.Widget _buildCompactSectionHeader({
-    required String leading,
-    required String trailing,
-    required pw.Font bodyFont,
-    required pw.Font boldFont,
-    required double fontSize,
-    required PdfColor color,
-  }) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Expanded(
-            child: pw.Text(
-              _sanitizePrintText(leading),
-              style: pw.TextStyle(
-                font: boldFont,
-                fontSize: fontSize,
-                color: PdfColor.fromHex('#212121'),
-              ),
-              textAlign: pw.TextAlign.left,
-            ),
-          ),
-          pw.SizedBox(width: 8),
-          pw.Text(
-            _sanitizePrintText(trailing),
-            style: pw.TextStyle(
-              font: bodyFont,
-              fontSize: fontSize,
-              color: PdfColor.fromHex('#212121'),
-            ),
-            textAlign: pw.TextAlign.right,
-          ),
-        ],
-      ),
-    );
-  }
-
   String _resolveSalesDocumentTitle(TicketData data) {
     final electronicCode = (data.electronicInvoiceCode ?? '').trim();
     final electronicType = (data.electronicDocumentType ?? '')
@@ -1576,9 +1508,9 @@ class TicketBuilder {
 
   String _sanitizePrintText(String input) {
     return input
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .replaceAll(RegExp(r'''[^A-Za-z0-9À-ÿ\s\-_/.:,()#%+*&@'"$<>]+'''), '')
-      .trim();
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'''[^A-Za-z0-9À-ÿ\s\-_/.:,()#%+*&@'"$<>]+'''), '')
+        .trim();
   }
 
   String _formatTableQty(double quantity) {

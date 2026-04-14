@@ -54,7 +54,7 @@ class SplashPage extends ConsumerWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(28),
                       child: hasLogo
-                          ? Image.file(File(logoPath!), fit: BoxFit.cover)
+                          ? Image.file(File(logoPath), fit: BoxFit.cover)
                           : Icon(
                               Icons.storefront,
                               size: 72,

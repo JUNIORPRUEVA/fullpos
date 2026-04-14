@@ -16,7 +16,6 @@ import '../dialogs/product_details_dialog.dart';
 import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/kpi_card.dart';
 import '../widgets/compact_product_card.dart';
-import '../widgets/product_thumbnail.dart';
 import '../widgets/products_surface.dart';
 
 /// Tab de Inventario con KPIs y alertas

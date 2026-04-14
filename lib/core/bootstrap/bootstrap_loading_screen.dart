@@ -23,7 +23,10 @@ class BootstrapLoadingScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final backgroundColor = Colors.white;
-    final accent = ColorUtils.ensureReadableColor(scheme.primary, backgroundColor);
+    final accent = ColorUtils.ensureReadableColor(
+      scheme.primary,
+      backgroundColor,
+    );
     final onBackground = ColorUtils.ensureReadableColor(
       scheme.onSurface,
       backgroundColor,
@@ -53,7 +56,7 @@ class BootstrapLoadingScreen extends ConsumerWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: hasLogo
-                      ? Image.file(File(logoPath!), fit: BoxFit.cover)
+                      ? Image.file(File(logoPath), fit: BoxFit.cover)
                       : Center(
                           child: Icon(
                             Icons.storefront,
