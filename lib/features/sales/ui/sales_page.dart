@@ -44,6 +44,7 @@ import '../../products/data/products_repository.dart';
 import '../../products/models/category_model.dart';
 import '../../products/models/product_model.dart';
 import '../../products/ui/widgets/product_thumbnail.dart';
+import '../../settings/data/business_settings_model.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import '../../settings/providers/business_settings_provider.dart';
@@ -138,9 +139,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   Color get salesDetailSelectedColor => _salesDetailBlend(0.1);
 
-  Color get salesDetailSelectedBorderColor => salesDetailTextColor.withOpacity(
-    0.22,
-  );
+  Color get salesDetailSelectedBorderColor =>
+      salesDetailTextColor.withOpacity(0.22);
 
   final List<_Cart> _carts = [_Cart(name: 'Ticket 1')];
   int _currentCartIndex = 0;
@@ -270,15 +270,43 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     _scheduleCartPersistence();
   }
 
+  double _normalizeItbisRate(double percent) {
+    return (percent / 100).clamp(0.0, 1.0).toDouble();
+  }
+
+  bool get _isGlobalItbisEnabled =>
+      ref.read(businessSettingsProvider).itbisEnabled;
+
+  void _applyConfiguredTaxSettingsToCart(
+    _Cart cart,
+    BusinessSettings settings, {
+    bool useDefaultEnabled = false,
+  }) {
+    cart.itbisRate = _normalizeItbisRate(settings.defaultTaxRate);
+    if (useDefaultEnabled) {
+      cart.itbisEnabled = settings.itbisEnabled;
+    } else if (!settings.itbisEnabled) {
+      cart.itbisEnabled = false;
+    }
+
+    if (!settings.itbisEnabled) {
+      cart.electronicInvoiceEnabled = false;
+    }
+  }
+
   void _applySalesDefaultsToCart(_Cart cart) {
     final settings = _appSettings;
-    if (settings == null) return;
+    final businessSettings = ref.read(businessSettingsProvider);
 
-    cart.itbisRate = settings.itbisRate;
-    cart.itbisEnabled = settings.itbisEnabledDefault;
+    _applyConfiguredTaxSettingsToCart(
+      cart,
+      businessSettings,
+      useDefaultEnabled: true,
+    );
     cart.electronicInvoiceEnabled =
         _isElectronicInvoicingFeatureEnabled &&
-        settings.electronicInvoiceEnabledDefault;
+        (settings?.electronicInvoiceEnabledDefault ?? false) &&
+        businessSettings.itbisEnabled;
     if (cart.electronicInvoiceEnabled) {
       // La emisión electrónica implica ITBIS activo.
       cart.itbisEnabled = true;
@@ -536,6 +564,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           );
         }
 
+        _applyConfiguredTaxSettingsToCart(
+          cart,
+          ref.read(businessSettingsProvider),
+        );
+
         loadedCarts.add(cart);
       }
 
@@ -576,6 +609,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         }
 
         cart.items.addAll(tempCartItemsById[id] ?? const <SaleItemModel>[]);
+
+        _applyConfiguredTaxSettingsToCart(
+          cart,
+          ref.read(businessSettingsProvider),
+        );
 
         final signature = _buildCartPersistenceSignature(cart);
         if (ticketCartSignatures.contains(signature)) {
@@ -820,6 +858,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               pendingAmount: isLayaway ? pendingAfter : 0,
               lastPaymentAmount: isLayaway ? receivedAmount : 0,
               statusLabel: isLayaway ? layawayStatusLabel : sale.status,
+              overrideCopies: sale.kind == 'invoice' ? 1 : null,
             );
           }
         }
@@ -1255,7 +1294,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     if (type == _SalesDocumentType.consumidorFinal) {
       _updateCurrentCart(() {
         _currentCart.electronicInvoiceEnabled = false;
-        _currentCart.itbisEnabled = true;
+        _currentCart.itbisEnabled = _isGlobalItbisEnabled;
       });
       return;
     }
@@ -1292,7 +1331,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       case payment.PaymentDocumentType.cotizacion:
         await _setSalesDocumentType(_SalesDocumentType.cotizacion);
     }
-    return _paymentDocumentTypeFromCart();
+    return type;
   }
 
   void _openFacturaPage() {
@@ -2383,6 +2422,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Future<bool> _canEnableElectronicInvoiceOrNotify() async {
+    if (!_isGlobalItbisEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'No se puede activar e-CF con ITBIS desactivado en Configuración.',
+          ),
+          backgroundColor: scheme.error,
+        ),
+      );
+      return false;
+    }
+
     if (!_isElectronicInvoicingFeatureEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -3160,6 +3211,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         (settings) => settings.electronicInvoicingEnabled,
       ),
     );
+    final itbisEnabledInSettings = ref.watch(
+      businessSettingsProvider.select((settings) => settings.itbisEnabled),
+    );
     ref.listen<bool>(
       businessSettingsProvider.select(
         (settings) => settings.electronicInvoicingEnabled,
@@ -3170,6 +3224,39 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         }
       },
     );
+    ref.listen<BusinessSettings>(businessSettingsProvider, (previous, next) {
+      final rateChanged =
+          previous == null ||
+          (previous.defaultTaxRate - next.defaultTaxRate).abs() > 0.0001;
+      final enabledChanged =
+          previous == null || previous.itbisEnabled != next.itbisEnabled;
+      if (!rateChanged && !enabledChanged) {
+        return;
+      }
+
+      final nextRate = _normalizeItbisRate(next.defaultTaxRate);
+      var changed = false;
+      for (final cart in _carts) {
+        if ((cart.itbisRate - nextRate).abs() > 0.0001) {
+          cart.itbisRate = nextRate;
+          changed = true;
+        }
+        if (!next.itbisEnabled && cart.itbisEnabled) {
+          cart.itbisEnabled = false;
+          changed = true;
+        }
+        if (!next.itbisEnabled && cart.electronicInvoiceEnabled) {
+          cart.electronicInvoiceEnabled = false;
+          changed = true;
+        }
+      }
+
+      if (!changed || !mounted) return;
+
+      setState(() {});
+      unawaited(_saveAllCartsToDatabase());
+      _scheduleCartPersistence();
+    });
     final cashSessionState = ref.watch(activeSessionControllerProvider);
     final currentSessionId = cashSessionState.valueOrNull?.shiftId;
     final isCashSessionResolved = cashSessionState is AsyncData;
@@ -3662,7 +3749,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 decoration: BoxDecoration(
                                   color: salesDetailPanelColor,
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: salesDetailBorderColor),
+                                  border: Border.all(
+                                    color: salesDetailBorderColor,
+                                  ),
                                   boxShadow: [
                                     BoxShadow(
                                       color: theme.shadowColor.withOpacity(
@@ -3808,8 +3897,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     final isHovered = _hoveredProductIndexes.contains(index);
     final stockLabel = isOutOfStock
         ? 'Sin stock'
-      : isCriticalStock
-      ? 'Ultima unidad'
+        : isCriticalStock
+        ? 'Ultima unidad'
         : 'Stock ${effectiveStock.toInt()}';
     final cardColor = isHovered
         ? (salesProducts?.cardAltBackgroundColor.opacity ?? 0) == 0
@@ -4821,15 +4910,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected
-                ? salesDetailSelectedColor
-                : Colors.transparent,
+            color: isSelected ? salesDetailSelectedColor : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: isSelected
-                ? Border.all(
-                    color: salesDetailSelectedBorderColor,
-                    width: 1.2,
-                  )
+                ? Border.all(color: salesDetailSelectedBorderColor, width: 1.2)
                 : Border(bottom: BorderSide(color: rowDividerColor, width: 1)),
           ),
           child: Row(
@@ -5071,9 +5155,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             ? salesDetailSurfaceColor
                             : salesDetailSurfaceStrongColor,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: salesDetailBorderColor,
-                        ),
+                        border: Border.all(color: salesDetailBorderColor),
                       ),
                       child: Row(
                         children: [
@@ -5392,7 +5474,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           children: [
                             Expanded(
                               child: Text(
-                                'ITBIS ${(_currentCart.itbisRate * 100).toInt()}%',
+                                itbisEnabledInSettings
+                                    ? 'ITBIS ${(_currentCart.itbisRate * 100).toInt()}%'
+                                    : 'ITBIS desactivado',
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -5401,7 +5485,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                             ),
                             Switch(
                               value: _currentCart.itbisEnabled,
-                              onChanged: _currentCart.electronicInvoiceEnabled
+                              onChanged:
+                                  !itbisEnabledInSettings ||
+                                      _currentCart.electronicInvoiceEnabled
                                   ? null
                                   : (value) => _updateCurrentCart(
                                       () => _currentCart.itbisEnabled = value,
@@ -5411,6 +5497,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           ],
                         ),
                       ),
+                      if (!itbisEnabledInSettings) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Activalo en Configuración > Impuestos para volver a aplicarlo en la factura.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: scheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (_isElectronicInvoicingFeatureEnabled) ...[
                         const SizedBox(height: 8),
                         Container(
@@ -5447,7 +5546,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                               ),
                               Switch(
                                 value: _currentCart.electronicInvoiceEnabled,
-                                onChanged: (value) async {
+                                onChanged: !itbisEnabledInSettings
+                                    ? null
+                                    : (value) async {
                                   if (!value) {
                                     _updateCurrentCart(() {
                                       _currentCart.electronicInvoiceEnabled =
@@ -5530,9 +5631,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 const Divider(height: 1),
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: salesDetailBackgroundColor,
-                  ),
+                  decoration: BoxDecoration(color: salesDetailBackgroundColor),
                   child: Builder(
                     builder: (context) {
                       final grossSubtotal = _currentCart

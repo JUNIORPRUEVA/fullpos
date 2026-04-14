@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/security/app_actions.dart';
+import '../../../core/security/authorization_guard.dart';
 import '../../../core/security/authz/permission.dart';
 import '../../../core/security/authz/permission_gate.dart';
 import '../data/business_settings_repository.dart';
@@ -586,6 +588,15 @@ class _PermissionsPageState extends State<PermissionsPage> {
   Future<void> _savePermissions() async {
     final userId = _selectedUser?.id;
     if (userId == null) return;
+
+    final authorized = await requireAuthorizationIfNeeded(
+      context: context,
+      action: AppActions.assignPermissions,
+      resourceType: 'user_permissions',
+      resourceId: userId.toString(),
+      reason: 'Actualizar permisos de ${_selectedUser?.displayLabel ?? 'usuario'}',
+    );
+    if (!authorized || !mounted) return;
 
     setState(() => _isSaving = true);
     try {

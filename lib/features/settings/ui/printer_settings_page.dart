@@ -463,8 +463,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               selected: {_settings.paperWidthMm},
               onSelectionChanged: (values) {
                 final width = values.first;
-                final current = _settings.charsPerLine;
-                final chars = width == 58 ? 32 : (current == 48 ? 48 : 42);
+                final chars = width == 58 ? 32 : 48;
                 _updateSetting(
                   (s) => s.copyWith(paperWidthMm: width, charsPerLine: chars),
                 );

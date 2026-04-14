@@ -5,6 +5,10 @@ import 'package:flutter/services.dart';
 
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/security/app_actions.dart';
+import '../../../core/security/authorization_guard.dart';
+import '../../../core/security/authz/permission.dart';
+import '../../../core/security/authz/permission_gate.dart';
 import '../data/user_model.dart';
 import '../data/users_repository.dart';
 import '../data/business_settings_repository.dart';
@@ -79,104 +83,126 @@ class _UsersPageState extends State<UsersPage> {
         .toList();
   }
 
+  Future<bool> _authorizeUserAction({
+    required AppAction action,
+    required String reason,
+    String? resourceId,
+    String resourceType = 'user',
+  }) {
+    return requireAuthorizationIfNeeded(
+      context: context,
+      action: action,
+      resourceType: resourceType,
+      resourceId: resourceId,
+      reason: reason,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
         appBar: AppBar(title: const Text('Usuarios')),
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            return SettingsLayout.pageFrame(
-              constraints,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SettingsLayout.sectionHeading(
-                    context,
-                    title: 'Gestión de usuarios',
-                    subtitle:
-                        'Administra cuentas, credenciales y estado operativo del personal.',
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          onChanged: (v) => setState(() => _searchQuery = v),
-                          decoration: const InputDecoration(
-                            hintText: 'Buscar usuario...',
-                            prefixIcon: Icon(Icons.search, size: 20),
+        body: PermissionGate(
+          permission: Permissions.settingsPermissions,
+          autoPromptOnce: true,
+          reason: 'Acceso a gestion de usuarios',
+          resourceType: 'screen',
+          resourceId: 'settings.users',
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SettingsLayout.pageFrame(
+                constraints,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SettingsLayout.sectionHeading(
+                      context,
+                      title: 'Gestión de usuarios',
+                      subtitle:
+                          'Administra cuentas, credenciales y estado operativo del personal.',
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            onChanged: (v) => setState(() => _searchQuery = v),
+                            decoration: const InputDecoration(
+                              hintText: 'Buscar usuario...',
+                              prefixIcon: Icon(Icons.search, size: 20),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: () => _showUserDialog(),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Nuevo usuario'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 8,
-                    children: [
-                      _buildStatCard(
-                        'Total usuarios',
-                        _users.length.toString(),
-                        Icons.people,
-                        _scheme.primary,
-                      ),
-                      _buildStatCard(
-                        'Administradores',
-                        _users.where((u) => u.isAdmin).length.toString(),
-                        Icons.admin_panel_settings,
-                        _scheme.tertiary,
-                      ),
-                      _buildStatCard(
-                        'Cajeros',
-                        _users.where((u) => u.isCashier).length.toString(),
-                        Icons.point_of_sale,
-                        _scheme.secondary,
-                      ),
-                      _buildStatCard(
-                        'Activos',
-                        _users.where((u) => u.isActiveUser).length.toString(),
-                        Icons.check_circle,
-                        _scheme.tertiary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _filteredUsers.isEmpty
-                        ? Center(
-                            child: Text(
-                              _searchQuery.isEmpty
-                                  ? 'No hay usuarios registrados'
-                                  : 'No se encontraron resultados',
-                              style: TextStyle(
-                                color: _scheme.onSurfaceVariant,
+                        const SizedBox(width: 12),
+                        FilledButton.icon(
+                          onPressed: () => _showUserDialog(),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Nuevo usuario'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 8,
+                      children: [
+                        _buildStatCard(
+                          'Total usuarios',
+                          _users.length.toString(),
+                          Icons.people,
+                          _scheme.primary,
+                        ),
+                        _buildStatCard(
+                          'Administradores',
+                          _users.where((u) => u.isAdmin).length.toString(),
+                          Icons.admin_panel_settings,
+                          _scheme.tertiary,
+                        ),
+                        _buildStatCard(
+                          'Cajeros',
+                          _users.where((u) => u.isCashier).length.toString(),
+                          Icons.point_of_sale,
+                          _scheme.secondary,
+                        ),
+                        _buildStatCard(
+                          'Activos',
+                          _users.where((u) => u.isActiveUser).length.toString(),
+                          Icons.check_circle,
+                          _scheme.tertiary,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _filteredUsers.isEmpty
+                          ? Center(
+                              child: Text(
+                                _searchQuery.isEmpty
+                                    ? 'No hay usuarios registrados'
+                                    : 'No se encontraron resultados',
+                                style: TextStyle(
+                                  color: _scheme.onSurfaceVariant,
+                                ),
                               ),
+                            )
+                          : ListView.separated(
+                              itemCount: _filteredUsers.length,
+                              separatorBuilder: (_, _) => const Divider(),
+                              itemBuilder: (context, index) {
+                                final user = _filteredUsers[index];
+                                return _buildUserCard(user);
+                              },
                             ),
-                          )
-                        : ListView.separated(
-                            itemCount: _filteredUsers.length,
-                            separatorBuilder: (_, _) => const Divider(),
-                            itemBuilder: (context, index) {
-                              final user = _filteredUsers[index];
-                              return _buildUserCard(user);
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -942,9 +968,38 @@ class _UsersPageState extends State<UsersPage> {
       final displayName = displayNameController.text.trim();
       final password = passwordController.text;
       final pin = pinController.text.trim();
+      final nextPin = pin.isEmpty ? null : pin;
 
       try {
         if (isEditing) {
+          final roleChanged = selectedRole != user.role;
+          final pinChanged = (user.pin ?? '') != (nextPin ?? '');
+
+          final authorizedUpdate = await _authorizeUserAction(
+            action: AppActions.updateUser,
+            resourceId: user.id?.toString(),
+            reason: 'Editar usuario ${user.displayLabel}',
+          );
+          if (!authorizedUpdate || !mounted) return;
+
+          if (roleChanged) {
+            final authorizedRoleChange = await _authorizeUserAction(
+              action: AppActions.updateRole,
+              resourceId: user.id?.toString(),
+              reason: 'Cambiar rol de ${user.displayLabel}',
+            );
+            if (!authorizedRoleChange || !mounted) return;
+          }
+
+          if (password.isNotEmpty || pinChanged) {
+            final authorizedCredentials = await _authorizeUserAction(
+              action: AppActions.resetPin,
+              resourceId: user.id?.toString(),
+              reason: 'Actualizar credenciales de ${user.displayLabel}',
+            );
+            if (!authorizedCredentials || !mounted) return;
+          }
+
           await UsersRepository.update(
             user.copyWith(
               username: username,
@@ -952,7 +1007,7 @@ class _UsersPageState extends State<UsersPage> {
                   ? (cloudUsername.isEmpty ? null : cloudUsername)
                   : null,
               displayName: displayName.isEmpty ? null : displayName,
-              pin: pin.isEmpty ? null : pin,
+              pin: nextPin,
               role: selectedRole,
               updatedAtMs: now,
             ),
@@ -970,6 +1025,13 @@ class _UsersPageState extends State<UsersPage> {
             );
           }
         } else {
+          final authorizedCreate = await _authorizeUserAction(
+            action: AppActions.createUser,
+            resourceId: username,
+            reason: 'Crear usuario $username',
+          );
+          if (!authorizedCreate || !mounted) return;
+
           // Crear usuario con contraseña
           final passwordHash = UsersRepository.hashPassword(password);
           await UsersRepository.create(
@@ -1219,6 +1281,13 @@ class _UsersPageState extends State<UsersPage> {
 
     if (result == true) {
       try {
+        final authorized = await _authorizeUserAction(
+          action: AppActions.resetPin,
+          resourceId: user.id?.toString(),
+          reason: 'Cambiar contraseña de ${user.displayLabel}',
+        );
+        if (!authorized || !mounted) return;
+
         await UsersRepository.changePassword(user.id!, passwordController.text);
 
         if (mounted) {
@@ -1327,6 +1396,13 @@ class _UsersPageState extends State<UsersPage> {
 
     if (result != null) {
       try {
+        final authorized = await _authorizeUserAction(
+          action: AppActions.resetPin,
+          resourceId: user.id?.toString(),
+          reason: 'Cambiar PIN de ${user.displayLabel}',
+        );
+        if (!authorized || !mounted) return;
+
         await UsersRepository.changePin(
           user.id!,
           result.isEmpty ? null : result,
@@ -1361,6 +1437,14 @@ class _UsersPageState extends State<UsersPage> {
     final newState = !user.isActiveUser;
 
     try {
+      final authorized = await _authorizeUserAction(
+        action: AppActions.toggleUserStatus,
+        resourceId: user.id?.toString(),
+        reason:
+            '${newState ? 'Activar' : 'Desactivar'} usuario ${user.displayLabel}',
+      );
+      if (!authorized || !mounted) return;
+
       await UsersRepository.toggleActive(user.id!, newState);
       await _loadUsers();
 
@@ -1421,6 +1505,13 @@ class _UsersPageState extends State<UsersPage> {
 
     if (confirmed == true) {
       try {
+        final authorized = await _authorizeUserAction(
+          action: AppActions.deleteUser,
+          resourceId: user.id?.toString(),
+          reason: 'Eliminar usuario ${user.displayLabel}',
+        );
+        if (!authorized || !mounted) return;
+
         await UsersRepository.delete(user.id!);
         await _loadUsers();
 

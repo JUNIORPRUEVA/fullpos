@@ -109,8 +109,8 @@ class ReceiptText {
     required String total,
     required int width,
   }) {
-    final qtyWidth = 4;
-    final totalWidth = width <= 32 ? 8 : 10;
+    final qtyWidth = width >= 48 ? 5 : 4;
+    final totalWidth = width <= 32 ? 8 : (width >= 48 ? 11 : 10);
     final gap = 1;
     final nameWidth = (width - qtyWidth - totalWidth - (gap * 2)).clamp(
       8,

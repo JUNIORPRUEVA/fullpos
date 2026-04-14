@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart' hide LicensePage;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/foundation.dart';
@@ -8,9 +9,15 @@ import '../core/bootstrap/app_bootstrap_controller.dart';
 import '../core/brand/fullpos_brand_theme.dart';
 import '../core/errors/error_handler.dart';
 import '../core/layout/app_shell.dart';
+import '../core/security/module_access.dart';
+import '../core/security/authz/authz_service.dart';
+import '../core/security/authz/authz_user.dart';
 import '../core/security/authz/permission_gate.dart';
 import '../core/security/authz/permission.dart';
+import '../core/security/authz/route_permissions.dart';
+import '../core/ui/no_access_page.dart';
 import '../features/account/ui/account_page.dart';
+import '../features/auth/data/auth_repository.dart';
 import '../features/auth/ui/login_page.dart';
 import '../features/auth/ui/force_change_password_page.dart';
 import '../features/auth/services/first_run_auth_flags.dart';
@@ -50,6 +57,7 @@ import '../features/license/services/license_gate_refresh.dart';
 import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
+import '../features/settings/data/user_model.dart';
 import '../features/registration/services/business_identity_storage.dart';
 
 Future<_LicenseGateDecision>? _licenseGateInFlight;
@@ -122,6 +130,46 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
       final isOnCashGate = path == '/cash-gate';
+      final isOnNoAccess = path == '/no-access';
+
+      bool? isAdminCache;
+      Future<bool> loadIsAdmin() async {
+        isAdminCache ??= await SessionManager.isAdmin();
+        return isAdminCache!;
+      }
+
+      UserPermissions? permissionsCache;
+      Future<UserPermissions> loadPermissions() async {
+        permissionsCache ??= await AuthRepository.getCurrentPermissions();
+        return permissionsCache!;
+      }
+
+      User? authzUserCache;
+      Future<User?> loadAuthzUser() async {
+        authzUserCache ??= await AuthzService.currentUser();
+        return authzUserCache;
+      }
+
+      String noAccessLocation(String requestedPath) => Uri(
+        path: '/no-access',
+        queryParameters: {'from': requestedPath},
+      ).toString();
+
+      Future<bool> canAccessPath(String targetPath) async {
+        final screenPermission = RoutePermissions.forPath(targetPath);
+        if (screenPermission != null) {
+          final user = await loadAuthzUser();
+          return user != null && AuthzService.can(user, screenPermission);
+        }
+
+        final isAdmin = await loadIsAdmin();
+        final permissions = await loadPermissions();
+        return ModuleAccess.canAccessPath(
+          path: targetPath,
+          isAdmin: isAdmin,
+          permissions: permissions,
+        );
+      }
 
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
       if (bootStatus != BootStatus.ready) return null;
@@ -198,13 +246,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (isOnLogin) return await privateLanding();
 
+      if (isOnNoAccess) return null;
+
       final activeSession = await loadActiveSession();
       if (activeSession == null) {
-        return isOnCashGate ? null : '/cash-gate';
+        if (isOnCashGate) {
+          final canAccessCashGate = await canAccessPath('/cash-gate');
+          return canAccessCashGate ? null : noAccessLocation('/cash-gate');
+        }
+        return '/cash-gate';
       }
 
       if (isOnCashGate) {
         return '/sales';
+      }
+
+      final allowed = await canAccessPath(path);
+      if (!allowed) {
+        return noAccessLocation(path);
       }
 
       return null;
@@ -237,6 +296,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
         routes: [
+          GoRoute(
+            path: '/no-access',
+            builder: (context, state) => _NoAccessRoutePage(
+              requestedPath: state.uri.queryParameters['from'] ?? '',
+            ),
+          ),
           GoRoute(
             path: '/sales',
             builder: (context, state) {
@@ -287,7 +352,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) =>
                 const FullposBrandScope(child: LicensePage()),
           ),
-          GoRoute(path: '/electronic-documents', builder: (context, state) => const ElectronicInvoicingPage()),
+          GoRoute(
+            path: '/electronic-documents',
+            builder: (context, state) => const ElectronicInvoicingPage(),
+          ),
           GoRoute(
             path: '/settings',
             builder: (context, state) => PermissionGate(
@@ -482,6 +550,43 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionFast() async {
   _licenseGateCachedAt = DateTime.now();
   _licenseGateCachedEpoch = licenseGateRefreshToken.value;
   return gate;
+}
+
+class _NoAccessRoutePage extends StatelessWidget {
+  final String requestedPath;
+
+  const _NoAccessRoutePage({required this.requestedPath});
+
+  Future<_NoAccessRouteData> _load() async {
+    final isAdmin = await SessionManager.isAdmin();
+    final permissions = await AuthRepository.getCurrentPermissions();
+    return _NoAccessRouteData(isAdmin: isAdmin, permissions: permissions);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_NoAccessRouteData>(
+      future: _load(),
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        if (data == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return NoAccessPage(
+          requestedPath: requestedPath,
+          isAdmin: data.isAdmin,
+          permissions: data.permissions,
+        );
+      },
+    );
+  }
+}
+
+class _NoAccessRouteData {
+  final bool isAdmin;
+  final UserPermissions permissions;
+
+  const _NoAccessRouteData({required this.isAdmin, required this.permissions});
 }
 
 class _RouterHeartbeat extends ChangeNotifier {

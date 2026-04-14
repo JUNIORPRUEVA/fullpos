@@ -74,11 +74,23 @@ class UnifiedTicketPrinter {
     TicketLayoutConfig layout,
     TicketData data,
   ) {
+    final optimizedLayout = layout.paperWidthDots == 576
+        ? layout.copyWith(
+            maxCharsPerLine: 48,
+            lineSpacingLevel: layout.lineSpacingLevel > 4
+                ? 4
+                : layout.lineSpacingLevel,
+            sectionSpacingLevel: layout.sectionSpacingLevel > 4
+                ? 4
+                : layout.sectionSpacingLevel,
+          )
+        : layout;
+
     if (data.type != TicketType.sale) {
-      return layout;
+      return optimizedLayout;
     }
 
-    return layout.copyWith(
+    return optimizedLayout.copyWith(
       showClientInfo: true,
       showPaymentInfo: true,
       showDateTime: true,
@@ -347,7 +359,10 @@ class UnifiedTicketPrinter {
     try {
       final company = await CompanyInfoRepository.getCurrentCompanyInfo();
       final settings = await PrinterSettingsRepository.getOrCreate();
-      final layout = TicketLayoutConfig.fromPrinterSettings(settings);
+      final layout = _layoutForPrintedTicket(
+        TicketLayoutConfig.fromPrinterSettings(settings),
+        TicketData.demo(),
+      );
 
       final builder = TicketBuilder(layout: layout, company: company);
       final w = layout.maxCharsPerLine;
@@ -406,17 +421,24 @@ class UnifiedTicketPrinter {
   static Future<String> generatePreviewText({TicketData? data}) async {
     final company = await CompanyInfoRepository.getCurrentCompanyInfo();
     final settings = await PrinterSettingsRepository.getOrCreate();
-    final layout = TicketLayoutConfig.fromPrinterSettings(settings);
+    final previewData = data ?? TicketData.demo();
+    final layout = _layoutForPrintedTicket(
+      TicketLayoutConfig.fromPrinterSettings(settings),
+      previewData,
+    );
 
     final builder = TicketBuilder(layout: layout, company: company);
-    return builder.buildPlainText(data ?? TicketData.demo());
+    return builder.buildPlainText(previewData);
   }
 
   /// Obtiene configuración actual para la vista previa
   static Future<TicketPreviewConfig> getPreviewConfig() async {
     final company = await CompanyInfoRepository.getCurrentCompanyInfo();
     final settings = await PrinterSettingsRepository.getOrCreate();
-    final layout = TicketLayoutConfig.fromPrinterSettings(settings);
+    final layout = _layoutForPrintedTicket(
+      TicketLayoutConfig.fromPrinterSettings(settings),
+      TicketData.demo(),
+    );
 
     return TicketPreviewConfig(
       company: company,

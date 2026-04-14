@@ -16,11 +16,13 @@
     "dart.previewHotReloadOnSaveWatcher": true,
     "dart.env": {
         "FLUTTER_ROOT": "C:/src/flutter",
-        "Path": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
-        "PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+        "ComSpec": "C:\\Windows\\System32\\cmd.exe",
+        "Path": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
+        "PATH": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
     },
     "terminal.integrated.env.windows": {
-        "Path": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
-        "PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+        "ComSpec": "C:\\Windows\\System32\\cmd.exe",
+        "Path": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
+        "PATH": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
     }
 }

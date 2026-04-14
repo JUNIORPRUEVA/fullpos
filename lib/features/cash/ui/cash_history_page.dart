@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_status_theme.dart';
-import '../../../core/printing/models/receipt_text_utils.dart';
 import '../../../core/printing/models/ticket_layout_config.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/utils/currency_display.dart';
@@ -18,6 +17,7 @@ import '../data/cash_movement_model.dart';
 import '../data/cash_repository.dart';
 import '../data/cash_session_model.dart';
 import '../data/cash_summary_model.dart';
+import '../data/session_close_ticket_composer.dart';
 
 class CashHistoryPage extends StatefulWidget {
   const CashHistoryPage({super.key});
@@ -46,11 +46,7 @@ class _SessionDetailData {
   });
 }
 
-enum _CortesHeaderAction {
-  pickRange,
-  showSessions,
-  showMovements,
-}
+enum _CortesHeaderAction { pickRange, showSessions, showMovements }
 
 class _CashHistoryPageState extends State<CashHistoryPage> {
   static const double _compactMaxContentWidth = 1120;
@@ -107,10 +103,18 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     return sale.paymentMethodCompactLabel;
   }
 
-  EdgeInsets _contentPadding(BoxConstraints constraints, {required bool isWide}) {
+  EdgeInsets _contentPadding(
+    BoxConstraints constraints, {
+    required bool isWide,
+  }) {
     const minSide = 16.0;
-    final maxContentWidth = isWide ? _wideMaxContentWidth : _compactMaxContentWidth;
-    final side = math.max(minSide, (constraints.maxWidth - maxContentWidth) / 2);
+    final maxContentWidth = isWide
+        ? _wideMaxContentWidth
+        : _compactMaxContentWidth;
+    final side = math.max(
+      minSide,
+      (constraints.maxWidth - maxContentWidth) / 2,
+    );
     return EdgeInsets.fromLTRB(side, 12, side, 16);
   }
 
@@ -175,7 +179,10 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           isDense: true,
           filled: true,
           fillColor: scheme.surface,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 14,
+          ),
           border: OutlineInputBorder(
             borderRadius: controlRadius,
             borderSide: BorderSide(color: scheme.outlineVariant),
@@ -265,11 +272,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
 
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        filterButton,
-        const SizedBox(width: 8),
-        refreshButton,
-      ],
+      children: [filterButton, const SizedBox(width: 8), refreshButton],
     );
 
     final row = Row(
@@ -823,9 +826,26 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   }
 
   Future<void> _reprintSession(_SessionDetailData data) async {
-    final settings = await PrinterSettingsRepository.getOrCreate();
+    final sessionId = data.session.id;
+    final results = await Future.wait([
+      PrinterSettingsRepository.getOrCreate(),
+      CompanyInfoRepository.getCurrentCompanyInfo(),
+      sessionId == null
+          ? Future.value(const <CategoryCashSummary>[])
+          : CashRepository.listCategorySummaryForSession(sessionId),
+      sessionId == null
+          ? Future.value(const <SoldProductCashSummary>[])
+          : CashRepository.listSoldProductsForSession(sessionId),
+      sessionId == null
+          ? Future.value(const <RefundItemByCategory>[])
+          : CashRepository.listRefundItemsByCategoryForSession(sessionId),
+    ]);
+    final settings = results[0] as dynamic;
     final layout = TicketLayoutConfig.fromPrinterSettings(settings);
-    final company = await CompanyInfoRepository.getCurrentCompanyInfo();
+    final company = results[1] as CompanyInfo;
+    final categorySummary = results[2] as List<CategoryCashSummary>;
+    final soldProducts = results[3] as List<SoldProductCashSummary>;
+    final refundItems = results[4] as List<RefundItemByCategory>;
 
     final lines = _buildClosingTicketLinesForPrint(
       layout: layout,
@@ -834,16 +854,17 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       summary: data.summary,
       closingAmount: data.closingAmount,
       note: data.note,
-      sales: data.sales,
-      saleItemsBySaleId: data.saleItemsBySaleId,
       movements: data.movements,
+      categorySummary: categorySummary,
+      soldProducts: soldProducts,
+      refundItems: refundItems,
     );
 
     await UnifiedTicketPrinter.printCustomLines(
       lines: lines,
       ticketNumber: 'CASH-${data.session.id ?? ''}',
       includeLogo: true,
-      overrideCopies: settings.copies,
+      overrideCopies: 1,
       layoutOverride: layout,
     );
   }
@@ -855,245 +876,26 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     required CashSummaryModel summary,
     required double closingAmount,
     required String note,
-    required List<SaleModel> sales,
-    required Map<int, List<SaleItemModel>> saleItemsBySaleId,
     required List<CashMovementModel> movements,
+    List<CategoryCashSummary> categorySummary = const <CategoryCashSummary>[],
+    List<SoldProductCashSummary> soldProducts =
+        const <SoldProductCashSummary>[],
+    List<RefundItemByCategory> refundItems = const <RefundItemByCategory>[],
   }) {
-    final w = layout.maxCharsPerLine;
-    final lines = <String>[];
-    final fmt = _dateTimeFormat;
-
-    String sanitize(String text) => _sanitizeTicketText(text);
-    String fit(String text) => ReceiptText.fitText(sanitize(text), w);
-    String line() => ReceiptText.line(width: w);
-
-    String center(String text) {
-      final cleaned = sanitize(text);
-      if (cleaned.length >= w) return cleaned.substring(0, w);
-      final left = ((w - cleaned.length) / 2).floor();
-      final right = w - cleaned.length - left;
-      return ' ' * left + cleaned + ' ' * right;
-    }
-
-    String twoCols(String left, String right) {
-      final rightWidth = 14.clamp(6, w - 2);
-      final leftWidth = (w - rightWidth - 1).clamp(0, w);
-      final leftText = ReceiptText.padRight(sanitize(left), leftWidth);
-      final rightText = ReceiptText.padLeft(sanitize(right), rightWidth);
-      return ReceiptText.fitText('$leftText $rightText', w);
-    }
-
-    String money(double value) => 'RD\$ ${ReceiptText.money(value)}';
-
-    String fmtDuration(Duration d) {
-      final totalMinutes = d.inMinutes;
-      final hours = totalMinutes ~/ 60;
-      final minutes = totalMinutes % 60;
-      if (hours <= 0) return '${minutes}m';
-      return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
-    }
-
-    if (company.name.trim().isNotEmpty) {
-      lines.add('<H2C>${sanitize(company.name.toUpperCase())}');
-    }
-    final headerParts = <String>[];
-    if ((company.rnc ?? '').trim().isNotEmpty) {
-      headerParts.add('RNC: ${company.rnc!.trim()}');
-    }
-    if ((company.primaryPhone ?? '').trim().isNotEmpty) {
-      headerParts.add('TEL: ${company.primaryPhone!.trim()}');
-    }
-    if (headerParts.isNotEmpty) {
-      lines.add(center(headerParts.join('  ')));
-    }
-
-    lines.add(line());
-    lines.add('<H2C>CORTE DE CAJA');
-    lines.add(line());
-    lines.add(twoCols('Sesion', '#${session.id ?? ''}'));
-    lines.add(twoCols('Cajero', session.userName));
-    lines.add(twoCols('Apertura', fmt.format(session.openedAt)));
-    if (session.closedAt != null) {
-      lines.add(twoCols('Cierre', fmt.format(session.closedAt!)));
-    }
-    final end = session.closedAt ?? DateTime.now();
-    final duration = end.difference(session.openedAt);
-    if (duration.inMinutes >= 1) {
-      lines.add(twoCols('Duracion', fmtDuration(duration)));
-    }
-    lines.add(line());
-
-    lines.add(twoCols('Base inicial turno', money(summary.openingAmount)));
-    lines.add(twoCols('Total ventas turno', money(summary.totalSales)));
-    lines.add(twoCols('Ventas efectivo', money(summary.salesCashTotal)));
-    lines.add(twoCols('Ventas tarjeta', money(summary.salesCardTotal)));
-    lines.add(twoCols('Ventas transferencia', money(summary.salesTransferTotal)));
-    lines.add(twoCols('Ventas credito', money(summary.salesCreditTotal)));
-    if (summary.refundsCash > 0) {
-      lines.add(twoCols('Devoluciones', money(summary.refundsCash)));
-    }
-    if (summary.creditAbonos > 0) {
-      lines.add(twoCols('Abonos crédito', money(summary.creditAbonos)));
-    }
-    if (summary.layawayAbonos > 0) {
-      lines.add(twoCols('Abonos apartado', money(summary.layawayAbonos)));
-    }
-    final manualNoAbonos =
-        (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
-            .clamp(0.0, double.infinity);
-    lines.add(twoCols('Entradas manuales', money(manualNoAbonos)));
-    lines.add(twoCols('Retiros manuales', money(summary.cashOutManual)));
-    lines.add(line());
-    lines.add(twoCols('Efectivo esperado en caja', money(summary.expectedCash)));
-    lines.add(twoCols('Efectivo contado', money(closingAmount)));
-    lines.add(twoCols('Diferencia', money(closingAmount - summary.expectedCash)));
-    lines.add(line());
-
-    if (note.trim().isNotEmpty) {
-      lines.add(fit('Nota:'));
-      final wrapped = ReceiptText.wrapText(
-        sanitize(note.trim()),
-        (w - 2).clamp(1, w),
-      );
-      for (final lineText in wrapped) {
-        lines.add(fit('  $lineText'));
-      }
-      lines.add(line());
-    }
-
-    lines.add('<H2C>MOVIMIENTOS DEL TURNO');
-    lines.add(line());
-    if (movements.isEmpty) {
-      lines.add(center('Sin movimientos'));
-    } else {
-      final timeFmt = _timeOnlyFormat;
-      for (final m in movements) {
-        final sign = m.isIn ? '+' : '-';
-        final right = '$sign${money(m.amount)}';
-        final left = '${timeFmt.format(m.createdAt)} ${m.reason}';
-        lines.add(twoCols(left, right));
-      }
-      lines.add(line());
-      lines.add(twoCols('Total entradas', money(summary.cashInManual)));
-      lines.add(twoCols('Total retiros', money(summary.cashOutManual)));
-    }
-
-    String methodAbbr(SaleModel sale) {
-      return sale.paymentMethodCompactLabel;
-    }
-
-    String saleRow({
-      required String time,
-      required String name,
-      required String method,
-      required String total,
-    }) {
-      final timeWidth = 5;
-      final methodWidth = 3;
-      final int totalWidth = (14).clamp(10, w - 10).toInt();
-      final int nameWidth = (w - timeWidth - methodWidth - totalWidth - 3)
-          .clamp(8, w)
-          .toInt();
-
-      final t = ReceiptText.padRight(sanitize(time), timeWidth);
-      final c = ReceiptText.padRight(sanitize(name), nameWidth);
-      final m = ReceiptText.padRight(sanitize(method), methodWidth);
-      final a = ReceiptText.padLeft(sanitize(total), totalWidth);
-      return ReceiptText.fitText('$t $c $m $a', w);
-    }
-
-    lines.add('<H2C>VENTAS DEL TURNO');
-    lines.add(line());
-    if (sales.isEmpty) {
-      lines.add(center('Sin ventas registradas'));
-    } else {
-      final sorted = [...sales]
-        ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
-
-      lines.add(saleRow(time: 'HORA', name: 'PRODUCTO', method: 'MET', total: 'TOTAL'));
-      lines.add(ReceiptText.line(char: '=', width: w));
-
-      final timeFmt = _timeOnlyFormat;
-      for (final sale in sorted) {
-        final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
-        final items = saleItemsBySaleId[sale.id ?? -1];
-        final firstItemName = (items != null && items.isNotEmpty)
-            ? items.first.productNameSnapshot.trim()
-            : '';
-        final customerName = (sale.customerNameSnapshot ?? '').trim();
-        final displayName = firstItemName.isNotEmpty
-            ? firstItemName
-            : customerName;
-        lines.add(
-          saleRow(
-            time: timeFmt.format(when),
-            name: displayName.isNotEmpty ? displayName : 'Venta',
-            method: methodAbbr(sale),
-            total: money(sale.total),
-          ),
-        );
-        if (sale.isMixedPayment && sale.paymentBreakdownLabel.isNotEmpty) {
-          final wrapped = ReceiptText.wrapText(
-            sanitize('  ${sale.paymentBreakdownLabel}'),
-            (w - 2).clamp(8, w),
-          );
-          for (final line in wrapped) {
-            lines.add(ReceiptText.fitText(line, w));
-          }
-        }
-      }
-    }
-    lines.add(line());
-
-    lines.add('<H2C>TOTALES');
-    lines.add(line());
-    lines.add(twoCols('Tickets', summary.totalTickets.toString()));
-    lines.add(twoCols('Total ventas del turno', money(summary.totalSales)));
-    lines.add('');
-    lines.add(twoCols('Ventas del turno', money(summary.totalSales)));
-    lines.add('');
-    lines.add(twoCols('Efectivo esperado en caja', money(summary.expectedCash)));
-    lines.add('');
-    lines.add(twoCols('Efectivo contado', money(closingAmount)));
-    lines.add('');
-    lines.add(twoCols('Diferencia', money(closingAmount - summary.expectedCash)));
-
-    lines.add(line());
-    lines.add(fit('Firma cajero: _______________________'));
-
-    if (layout.autoCut) {
-      lines.add('');
-      lines.add('');
-      lines.add('');
-    }
-
-    return lines;
-  }
-
-  String _sanitizeTicketText(String input) {
-    final s = input
-        .replaceAll('á', 'a')
-        .replaceAll('é', 'e')
-        .replaceAll('í', 'i')
-        .replaceAll('ó', 'o')
-        .replaceAll('ú', 'u')
-        .replaceAll('Á', 'A')
-        .replaceAll('É', 'E')
-        .replaceAll('Í', 'I')
-        .replaceAll('Ó', 'O')
-        .replaceAll('Ú', 'U')
-        .replaceAll('ñ', 'n')
-        .replaceAll('Ñ', 'N')
-        .replaceAll('ü', 'u')
-        .replaceAll('Ü', 'U')
-        .replaceAll('ç', 'c')
-        .replaceAll('Ç', 'C');
-
-    final filtered = s.replaceAll(
-      RegExp(r'''[^A-Za-z0-9\s\-_/.:,()#%+*&@'"'>$<]+'''),
-      '',
+    return SessionCloseTicketComposer.buildLines(
+      layout: layout,
+      companyName: company.name,
+      companyRnc: company.rnc,
+      companyPhone: company.primaryPhone,
+      session: session,
+      summary: summary,
+      closingAmount: closingAmount,
+      note: note,
+      movements: movements,
+      categorySummary: categorySummary,
+      soldProducts: soldProducts,
+      refundItems: refundItems,
     );
-    return filtered.trim();
   }
 
   Future<void> _load() async {
@@ -1122,16 +924,18 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         _sessions = results[0] as List<CashSessionModel>;
         _movements = results[1] as List<CashMovementModel>;
         if (_selectedSession != null &&
-            !_sessions.any((s) => s.id == _selectedSession!.id)) {
+            !_sessions.any((session) => session.id == _selectedSession!.id)) {
           _selectedSession = null;
         }
         if (_selectedMovement != null &&
-            !_movements.any((m) => m.id == _selectedMovement!.id)) {
+            !_movements.any(
+              (movement) => movement.id == _selectedMovement!.id,
+            )) {
           _selectedMovement = null;
         }
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted || seq != _loadSeq) return;
       setState(() {
         _error = 'No se pudieron cargar los cortes y movimientos.';
@@ -1147,8 +951,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       lastDate: DateTime.now().add(const Duration(days: 1)),
       initialDateRange: DateTimeRange(start: _from, end: _to),
     );
-    if (picked == null) return;
-    if (!mounted) return;
+    if (picked == null || !mounted) return;
     setState(() {
       _from = picked.start;
       _to = picked.end;
@@ -1174,7 +977,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           final isWide = constraints.maxWidth >= 1200;
           final padding = _contentPadding(constraints, isWide: isWide);
           final isNarrow = constraints.maxWidth < 720;
-          final contentWidth = constraints.maxWidth - padding.left - padding.right;
+          final contentWidth =
+              constraints.maxWidth - padding.left - padding.right;
           final sideWidth = (contentWidth * 0.32).clamp(320.0, 420.0);
 
           return DefaultTabController(
@@ -1182,12 +986,11 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             child: Column(
               children: [
                 Builder(
-                  builder: (headerContext) =>
-                      _buildTopHeaderLine(
-                        headerContext,
-                        isNarrow: isNarrow,
-                        contentPadding: padding,
-                      ),
+                  builder: (headerContext) => _buildTopHeaderLine(
+                    headerContext,
+                    isNarrow: isNarrow,
+                    contentPadding: padding,
+                  ),
                 ),
                 Expanded(
                   child: Padding(
@@ -1229,33 +1032,28 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final status = theme.extension<AppStatusTheme>();
     final dateTime = _dateTimeShortFormat;
     final money = CurrencyDisplay.currency();
-
+    final status = theme.extension<AppStatusTheme>();
     final sessions = _filteredSessions;
-    if (sessions.isEmpty) {
-      return Center(
-        child: Text(
-          'Sin cortes en el rango seleccionado.',
-          style: theme.textTheme.bodyMedium,
-        ),
-      );
-    }
 
     Widget statusChip({required String text, required Color color}) {
       return Chip(
         label: Text(text),
-        labelStyle: theme.textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w800,
-          color: color,
-        ),
-        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
         padding: EdgeInsets.zero,
         backgroundColor: color.withOpacity(0.12),
         side: BorderSide(color: color.withOpacity(0.35)),
         visualDensity: VisualDensity.compact,
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
+    }
+
+    if (sessions.isEmpty) {
+      return Center(
+        child: Text(
+          'Sin sesiones en el rango seleccionado.',
+          style: theme.textTheme.bodyMedium,
+        ),
       );
     }
 
@@ -1275,19 +1073,19 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         final session = sessions[index];
         final isSelected = _selectedSession?.id == session.id;
         final diff = session.difference ?? 0.0;
-
         final opened = dateTime.format(session.openedAt);
         final closed = session.closedAt != null
             ? dateTime.format(session.closedAt!)
             : null;
-        final dateLabel = closed == null ? '$opened → —' : '$opened → $closed';
-
+        final dateLabel = closed == null
+            ? '$opened -> -'
+            : '$opened -> $closed';
         final idLabel = session.id?.toString() ?? '-';
         final userName = session.userName.trim();
-        final headline = userName.isEmpty ? 'Turno #$idLabel' : 'Turno #$idLabel · $userName';
-
+        final headline = userName.isEmpty
+            ? 'Turno #$idLabel'
+            : 'Turno #$idLabel · $userName';
         final totalLabel = money.format(session.closingAmount ?? 0);
-
         final bool isOpen = session.closedAt == null;
         final bool hasDiff = diff != 0;
         final (statusText, statusColor) = hasDiff
@@ -1297,7 +1095,9 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           child: Material(
-            color: isSelected ? scheme.primary.withOpacity(0.06) : Colors.transparent,
+            color: isSelected
+                ? scheme.primary.withOpacity(0.06)
+                : Colors.transparent,
             child: InkWell(
               onTap: () => _selectSession(session, showDetails: !isWide),
               hoverColor: scheme.surfaceVariant.withOpacity(0.35),
@@ -1379,10 +1179,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       children: [
         Expanded(child: list),
         const SizedBox(width: 12),
-        Container(
-          width: 1,
-          color: scheme.outlineVariant.withOpacity(0.35),
-        ),
+        Container(width: 1, color: scheme.outlineVariant.withOpacity(0.35)),
         const SizedBox(width: 12),
         SizedBox(
           width: sideWidth,
@@ -1429,7 +1226,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       );
     }
 
-    if (session == null || session.id == null) {
+    if (session == null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1527,18 +1324,31 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                 const SizedBox(height: 8),
                 const Divider(height: 24),
                 kvRow(label: 'Cajero', value: session.userName),
-                kvRow(label: 'Apertura', value: dateTime.format(session.openedAt)),
+                kvRow(
+                  label: 'Apertura',
+                  value: dateTime.format(session.openedAt),
+                ),
                 kvRow(
                   label: 'Cierre',
                   value: session.closedAt == null
-                      ? '—'
+                      ? '-'
                       : dateTime.format(session.closedAt!),
                 ),
-                kvRow(label: 'Contado', value: money.format(data.closingAmount)),
-                kvRow(label: 'Esperado', value: money.format(data.summary.expectedCash)),
+                kvRow(
+                  label: 'Contado',
+                  value: money.format(data.closingAmount),
+                ),
+                kvRow(
+                  label: 'Esperado',
+                  value: money.format(data.summary.expectedCash),
+                ),
                 kvRow(label: 'Diferencia', value: money.format(diff)),
-                if (data.note.trim().isNotEmpty)
+                const SizedBox(height: 12),
+                _detailGrid(theme, money, data),
+                if (data.note.trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
                   kvRow(label: 'Nota', value: data.note.trim()),
+                ],
               ],
             ),
           ),
@@ -1582,13 +1392,17 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         final color = isIn ? scheme.primary : scheme.error;
 
         final title = movement.reason;
-        final meta = '${dateTime.format(movement.createdAt)} · Sesión #${movement.sessionId}';
-        final amountLabel = '${isIn ? '+' : '-'}${money.format(movement.amount)}';
+        final meta =
+            '${dateTime.format(movement.createdAt)} · Sesión #${movement.sessionId}';
+        final amountLabel =
+            '${isIn ? '+' : '-'}${money.format(movement.amount)}';
 
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           child: Material(
-            color: isSelected ? scheme.primary.withOpacity(0.06) : Colors.transparent,
+            color: isSelected
+                ? scheme.primary.withOpacity(0.06)
+                : Colors.transparent,
             child: InkWell(
               onTap: () => _selectMovement(movement, showDetails: !isWide),
               hoverColor: scheme.surfaceVariant.withOpacity(0.35),
@@ -1675,10 +1489,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       children: [
         Expanded(child: list),
         const SizedBox(width: 12),
-        Container(
-          width: 1,
-          color: scheme.outlineVariant.withOpacity(0.35),
-        ),
+        Container(width: 1, color: scheme.outlineVariant.withOpacity(0.35)),
         const SizedBox(width: 12),
         SizedBox(
           width: sideWidth,

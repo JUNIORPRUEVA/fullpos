@@ -1740,6 +1740,7 @@ class _FacturaPageState extends State<FacturaPage> {
         sale: sale,
         items: items,
         cashierName: cashierName,
+        overrideCopies: 1,
       );
       if (result.success) {
         _showSuccess('Ticket impreso correctamente');

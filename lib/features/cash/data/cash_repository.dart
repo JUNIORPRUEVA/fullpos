@@ -556,9 +556,10 @@ class CashRepository {
     required String column,
     List<String> fallbackAliases = const <String>[],
   }) {
-    final aliases = <String>[fallbackMethod, ...fallbackAliases]
-        .map((value) => "'${value.toLowerCase()}'")
-        .join(', ');
+    final aliases = <String>[
+      fallbackMethod,
+      ...fallbackAliases,
+    ].map((value) => "'${value.toLowerCase()}'").join(', ');
     return '''
       CASE
         WHEN LOWER(TRIM(COALESCE(payment_method, ''))) = 'mixed'
@@ -1254,6 +1255,54 @@ class CashRepository {
           .toList();
     }, stage: 'cash_category_refunds');
   }
+
+  /// Productos vendidos agrupados por categoria para una sesion de caja.
+  static Future<List<SoldProductCashSummary>> listSoldProductsForSession(
+    int sessionId,
+  ) async {
+    return DbHardening.instance.runDbSafe<List<SoldProductCashSummary>>(
+      () async {
+        final db = await AppDb.database;
+        final rows = await db.rawQuery(
+          '''
+        SELECT
+          COALESCE(c.name, 'Sin categoria') as category,
+          COALESCE(si.product_name_snapshot, p.name, 'Item') as product_name,
+          COALESCE(SUM(si.qty), 0) as qty,
+          COALESCE(SUM(si.total_line), 0) as total
+        FROM ${DbTables.saleItems} si
+        INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
+        LEFT JOIN ${DbTables.products} p
+          ON (si.product_id = p.id)
+          OR (
+            si.product_id IS NULL
+            AND TRIM(si.product_code_snapshot) COLLATE NOCASE = TRIM(p.code) COLLATE NOCASE
+          )
+        LEFT JOIN ${DbTables.categories} c ON p.category_id = c.id
+        WHERE (s.cash_session_id = ? OR s.session_id = ?)
+          AND s.kind IN ('invoice', 'sale')
+          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+          AND s.deleted_at_ms IS NULL
+        GROUP BY category, product_name
+        ORDER BY category ASC, total DESC, product_name ASC
+        ''',
+          [sessionId, sessionId],
+        );
+
+        return rows
+            .map(
+              (row) => SoldProductCashSummary(
+                category: row['category'] as String? ?? 'Sin categoria',
+                productName: row['product_name'] as String? ?? 'Item',
+                qty: (row['qty'] as num?)?.toDouble() ?? 0.0,
+                total: (row['total'] as num?)?.toDouble() ?? 0.0,
+              ),
+            )
+            .toList();
+      },
+      stage: 'cash_sold_products_summary',
+    );
+  }
 }
 
 class CategoryCashSummary {
@@ -1303,6 +1352,20 @@ class TransferItemByCategory {
   final double total;
 
   TransferItemByCategory({
+    required this.category,
+    required this.productName,
+    required this.qty,
+    required this.total,
+  });
+}
+
+class SoldProductCashSummary {
+  final String category;
+  final String productName;
+  final double qty;
+  final double total;
+
+  SoldProductCashSummary({
     required this.category,
     required this.productName,
     required this.qty,

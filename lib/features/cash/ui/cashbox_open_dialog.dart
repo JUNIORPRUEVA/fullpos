@@ -47,7 +47,7 @@ class CashboxOpenDialog extends StatefulWidget {
 }
 
 class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
-  final _amountController = TextEditingController(text: '0');
+  final _amountController = TextEditingController();
   bool _submitting = false;
 
   void _submit() {
@@ -189,7 +189,7 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                               ],
                               decoration: InputDecoration(
                                 labelText: 'Fondo inicial',
-                                hintText: '25,250',
+                                hintText: '0.00',
                                 prefixText: 'RD\$ ',
                                 prefixIcon: Icon(
                                   Icons.payments_outlined,

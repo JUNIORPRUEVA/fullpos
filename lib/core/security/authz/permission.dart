@@ -59,6 +59,34 @@ class Permissions {
   Permissions._();
 
   // Pantallas (módulos)
+  static final salesAccess = Permission.screen(
+    code: 'ventas.ver',
+    title: 'Ventas',
+    description: 'Acceso a la pantalla principal de ventas.',
+    legacyKey: 'can_sell',
+  );
+
+  static final productsView = Permission.screen(
+    code: 'productos.ver',
+    title: 'Productos',
+    description: 'Acceso al catálogo y al historial de productos.',
+    legacyKey: 'can_view_products',
+  );
+
+  static final clientsView = Permission.screen(
+    code: 'clientes.ver',
+    title: 'Clientes',
+    description: 'Acceso al módulo de clientes.',
+    legacyKey: 'can_view_clients',
+  );
+
+  static final purchasesAccess = Permission.screen(
+    code: 'compras.ver',
+    title: 'Compras',
+    description: 'Acceso al módulo de compras y órdenes.',
+    legacyKey: 'can_adjust_stock',
+  );
+
   static final reportsView = Permission.screen(
     code: 'rep.ver',
     title: 'Reportes',
@@ -78,6 +106,13 @@ class Permissions {
     title: 'Permisos',
     description: 'Acceso a la administración de permisos de usuarios.',
     legacyKey: 'can_manage_users',
+  );
+
+  static final toolsAccess = Permission.screen(
+    code: 'tools.ver',
+    title: 'Herramientas',
+    description: 'Acceso al módulo de herramientas.',
+    legacyKey: 'can_access_tools',
   );
 
   static final salesHistoryView = Permission.screen(

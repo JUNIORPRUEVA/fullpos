@@ -1,7 +1,6 @@
 // ignore_for_file: unused_element, unused_field
 
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,7 +8,6 @@ import 'package:intl/intl.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/printing/models/company_info.dart';
-import '../../../core/printing/models/receipt_text_utils.dart';
 import '../../../core/printing/models/ticket_layout_config.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/security/app_actions.dart';
@@ -19,14 +17,13 @@ import '../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../../../core/utils/accounting_amount_formatter.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../auth/services/logout_flow_service.dart';
-import '../../sales/data/sales_repository.dart';
-import '../../sales/data/sales_model.dart' show SaleModel, SaleItemModel;
 import '../../settings/data/printer_settings_repository.dart';
 import '../../settings/providers/theme_provider.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_summary_model.dart';
 import '../data/cash_repository.dart';
 import '../data/cash_session_model.dart';
+import '../data/session_close_ticket_composer.dart';
 import '../data/cashbox_daily_model.dart';
 import '../data/operation_flow_service.dart';
 import '../providers/cash_providers.dart';
@@ -220,8 +217,9 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           }
         } else {
           final current = _selectedRefundIndex;
-          _selectedRefundIndex =
-              (current != null && current < refunds.length) ? current : 0;
+          _selectedRefundIndex = (current != null && current < refunds.length)
+              ? current
+              : 0;
           _selectedKind ??= _SelectionKind.refund;
         }
         _loadingRefunds = false;
@@ -463,39 +461,23 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     required double closingAmount,
     required String note,
   }) async {
-    final sales = await SalesRepository.listSalesBySession(widget.sessionId);
-    final saleItemsBySaleId = <int, List<SaleItemModel>>{};
-    for (final sale in sales) {
-      final saleId = sale.id;
-      if (saleId == null) continue;
-      saleItemsBySaleId[saleId] = await SalesRepository.getItemsBySaleId(
-        saleId,
-      );
-    }
-    final movements = await CashRepository.listMovements(
-      sessionId: widget.sessionId,
-    );
-    final refunds = await CashRepository.listRefundsForSession(
-      widget.sessionId,
-    );
-    final categorySummary = _categorySummary.isNotEmpty
-        ? _categorySummary
-        : await CashRepository.listCategorySummaryForSession(widget.sessionId);
-    final refundItemsByCategory = _refundItemsByCategory.isNotEmpty
-        ? _refundItemsByCategory
-        : await CashRepository.listRefundItemsByCategoryForSession(
-            widget.sessionId,
-          );
-    final transferItemsByCategory = _transferItemsByCategory.isNotEmpty
-        ? _transferItemsByCategory
-        : await CashRepository.listTransferItemsByCategoryForSession(
-            widget.sessionId,
-          );
-    final settings = await PrinterSettingsRepository.getOrCreate();
+    final results = await Future.wait([
+      CashRepository.listMovements(sessionId: widget.sessionId),
+      CashRepository.listCategorySummaryForSession(widget.sessionId),
+      CashRepository.listSoldProductsForSession(widget.sessionId),
+      CashRepository.listRefundItemsByCategoryForSession(widget.sessionId),
+      PrinterSettingsRepository.getOrCreate(),
+      CompanyInfoRepository.getCurrentCompanyInfo(),
+    ]);
+    final movements = results[0] as List<CashMovementModel>;
+    final categorySummary = results[1] as List<CategoryCashSummary>;
+    final soldProducts = results[2] as List<SoldProductCashSummary>;
+    final refundItems = results[3] as List<RefundItemByCategory>;
+    final settings = results[4] as dynamic;
     final layout = TicketLayoutConfig.fromPrinterSettings(settings);
-    final company = await CompanyInfoRepository.getCurrentCompanyInfo();
+    final company = results[5] as CompanyInfo;
 
-    final lines = _buildClosingTicketLines(
+    final lines = SessionCloseTicketComposer.buildLines(
       layout: layout,
       companyName: company.name,
       companyRnc: company.rnc,
@@ -504,539 +486,24 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       summary: summary,
       closingAmount: closingAmount,
       note: note,
-      sales: sales,
-      saleItemsBySaleId: saleItemsBySaleId,
       movements: movements,
-      refunds: refunds,
-      categorySummary: categorySummary,
-      refundItemsByCategory: refundItemsByCategory,
-      transferItemsByCategory: transferItemsByCategory,
       cashboxInitialAmount: _cashboxDaily?.initialAmount,
+      categorySummary: categorySummary,
+      soldProducts: soldProducts,
+      refundItems: refundItems,
     );
 
     final result = await UnifiedTicketPrinter.printCustomLines(
       lines: lines,
       ticketNumber: 'CASH-${widget.sessionId}',
       includeLogo: true,
-      overrideCopies: settings.copies,
+      overrideCopies: 1,
       layoutOverride: layout,
     );
 
     if (!result.success) {
       throw Exception(result.message);
     }
-  }
-
-  List<String> _buildClosingTicketLines({
-    required TicketLayoutConfig layout,
-    required String companyName,
-    required String? companyRnc,
-    required String? companyPhone,
-    required CashSessionModel session,
-    required CashSummaryModel summary,
-    required double closingAmount,
-    required String note,
-    required List<SaleModel> sales,
-    required Map<int, List<SaleItemModel>> saleItemsBySaleId,
-    required List<CashMovementModel> movements,
-    required List<Map<String, dynamic>> refunds,
-    required List<CategoryCashSummary> categorySummary,
-    required List<RefundItemByCategory> refundItemsByCategory,
-    required List<TransferItemByCategory> transferItemsByCategory,
-    double? cashboxInitialAmount,
-  }) {
-    final w = layout.maxCharsPerLine;
-    final lines = <String>[];
-    final fmt = _dateTimeFormat;
-
-    String sanitize(String text) => _sanitizeTicketText(text);
-    String fit(String text) => ReceiptText.fitText(sanitize(text), w);
-    String line() => ReceiptText.line(width: w);
-
-    String center(String text) {
-      final cleaned = sanitize(text);
-      if (cleaned.length >= w) return cleaned.substring(0, w);
-      final left = ((w - cleaned.length) / 2).floor();
-      final right = w - cleaned.length - left;
-      return ' ' * left + cleaned + ' ' * right;
-    }
-
-    String twoCols(String left, String right) {
-      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
-      final leftWidth = (w - rightWidth - 1).clamp(8, w);
-      final leftText = ReceiptText.padRight(sanitize(left), leftWidth);
-      final rightText = ReceiptText.padLeft(sanitize(right), rightWidth);
-      return ReceiptText.fitText('$leftText $rightText', w);
-    }
-
-    void addKeyValue(String left, String right, {String prefix = '<BL>'}) {
-      final cleanLeft = sanitize(left);
-      final cleanRight = sanitize(right);
-      final rightWidth = math.min(math.max(18, (w * 0.38).round()), w - 8);
-      final leftWidth = (w - rightWidth - 1).clamp(8, w).toInt();
-
-      if (cleanLeft.length <= leftWidth && cleanRight.length <= rightWidth) {
-        lines.add('$prefix${twoCols(cleanLeft, cleanRight)}');
-        return;
-      }
-
-      final leftLines = ReceiptText.wrapText(cleanLeft, leftWidth);
-      if (cleanRight.length <= rightWidth) {
-        for (final extraLeft in leftLines.take(
-          math.max(0, leftLines.length - 1),
-        )) {
-          lines.add(fit(extraLeft));
-        }
-        final lastLeft = leftLines.isEmpty ? '' : leftLines.last;
-        final leftText = ReceiptText.padRight(lastLeft, leftWidth);
-        final rightText = ReceiptText.padLeft(cleanRight, rightWidth);
-        lines.add('$prefix$leftText $rightText');
-        return;
-      }
-
-      for (final leftLine in leftLines) {
-        lines.add(fit(leftLine));
-      }
-      final rightLines = ReceiptText.wrapText(cleanRight, w);
-      for (final rightLine in rightLines) {
-        lines.add('$prefix${ReceiptText.padLeft(rightLine, w)}');
-      }
-    }
-
-    String money(double value) => CurrencyDisplay.format(value);
-
-    String qtyText(double qty) {
-      final isWhole = (qty - qty.roundToDouble()).abs() < 0.001;
-      return isWhole ? qty.toInt().toString() : qty.toStringAsFixed(2);
-    }
-
-    bool isTransferMethod(String? method) {
-      final normalized = (method ?? '').trim().toLowerCase();
-      return normalized == 'transfer' || normalized == 'transferencia';
-    }
-
-    double transferAmountOf(SaleModel sale) {
-      if (sale.paymentTransferAmount > 0.009) {
-        return sale.paymentTransferAmount;
-      }
-      return sale.kind != 'return' && isTransferMethod(sale.paymentMethod)
-          ? sale.total
-          : 0.0;
-    }
-
-    String fmtDuration(Duration d) {
-      final totalMinutes = d.inMinutes;
-      final hours = totalMinutes ~/ 60;
-      final minutes = totalMinutes % 60;
-      if (hours <= 0) return '${minutes}m';
-      return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
-    }
-
-    if (companyName.trim().isNotEmpty) {
-      lines.add('<H2C>${sanitize(companyName)}');
-    }
-    final headerParts = <String>[];
-    if ((companyRnc ?? '').trim().isNotEmpty) {
-      headerParts.add('RNC: ${companyRnc!.trim()}');
-    }
-    if ((companyPhone ?? '').trim().isNotEmpty) {
-      headerParts.add('TEL: ${companyPhone!.trim()}');
-    }
-    if (headerParts.isNotEmpty) {
-      lines.add(center(headerParts.join('  ')));
-    }
-
-    lines.add(line());
-    lines.add('<H2C>CIERRE DE SESION Y CAJA');
-    lines.add(line());
-    lines.add('<BL>${twoCols('Sesion', '#${session.id ?? ''}')}');
-    lines.add('<BL>${twoCols('Cajero', session.userName)}');
-    lines.add('<BL>${twoCols('Apertura', fmt.format(session.openedAt))}');
-    if (session.closedAt != null) {
-      lines.add('<BL>${twoCols('Cierre', fmt.format(session.closedAt!))}');
-    }
-    final end = session.closedAt ?? DateTime.now();
-    final duration = end.difference(session.openedAt);
-    if (duration.inMinutes >= 1) {
-      lines.add('<BL>${twoCols('Duracion', fmtDuration(duration))}');
-    }
-    lines.add(line());
-
-    lines.add('<H2C>BASE DE CAJA');
-    lines.add(line());
-    if (cashboxInitialAmount != null) {
-      addKeyValue('Base inicial caja', money(cashboxInitialAmount));
-    }
-    addKeyValue('Base inicial sesion', money(summary.openingAmount));
-    lines.add(line());
-
-    lines.add('<H2C>VENTAS DE LA SESION');
-    lines.add(line());
-    addKeyValue('Total ventas sesion', money(summary.totalSales));
-    addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
-    addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
-    addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
-    addKeyValue('Ventas credito', money(summary.salesCreditTotal));
-    if (summary.refundsCash > 0) {
-      addKeyValue('Devoluciones', money(summary.refundsCash));
-    }
-    if (summary.creditAbonos > 0) {
-      addKeyValue('Abonos credito', money(summary.creditAbonos));
-    }
-    if (summary.layawayAbonos > 0) {
-      addKeyValue('Abonos apartado', money(summary.layawayAbonos));
-    }
-    final manualNoAbonos =
-        (summary.cashInManual - summary.creditAbonos - summary.layawayAbonos)
-            .clamp(0.0, double.infinity);
-    addKeyValue('Entradas manuales', money(manualNoAbonos));
-    addKeyValue('Retiros manuales', money(summary.cashOutManual));
-    lines.add(line());
-    addKeyValue('Efectivo esperado en caja', money(summary.expectedCash));
-    addKeyValue('Efectivo contado', money(closingAmount));
-    addKeyValue('Diferencia', money(closingAmount - summary.expectedCash));
-    lines.add(line());
-
-    if (note.trim().isNotEmpty) {
-      lines.add(fit('Nota:'));
-      final wrapped = ReceiptText.wrapText(
-        sanitize(note.trim()),
-        (w - 2).clamp(1, w),
-      );
-      for (final lineText in wrapped) {
-        lines.add(fit('  $lineText'));
-      }
-      lines.add(line());
-    }
-
-    lines.add('<H2C>MOVIMIENTOS DE LA SESION');
-    lines.add(line());
-    if (movements.isEmpty) {
-      lines.add(center('Sin movimientos'));
-    } else {
-      final timeFmt = _timeOnlyFormat;
-      for (final m in movements) {
-        final sign = m.isIn ? '+' : '-';
-        final right = '$sign${money(m.amount)}';
-        final left = '${timeFmt.format(m.createdAt)} ${m.reason}';
-        addKeyValue(left, right, prefix: '');
-      }
-      lines.add(line());
-      addKeyValue('Total entradas', money(summary.cashInManual));
-      addKeyValue('Total retiros', money(summary.cashOutManual));
-    }
-
-    String methodAbbr(SaleModel sale) {
-      return sale.paymentMethodCompactLabel;
-    }
-
-    String saleRow({
-      required String time,
-      required String name,
-      required String method,
-      required String total,
-    }) {
-      final timeWidth = 5;
-      final methodWidth = 3;
-      final int totalWidth = (18).clamp(12, w - 10).toInt();
-      final int nameWidth = (w - timeWidth - methodWidth - totalWidth - 3)
-          .clamp(8, w)
-          .toInt();
-
-      final t = ReceiptText.padRight(sanitize(time), timeWidth);
-      final c = ReceiptText.padRight(sanitize(name), nameWidth);
-      final m = ReceiptText.padRight(sanitize(method), methodWidth);
-      final a = ReceiptText.padLeft(sanitize(total), totalWidth);
-      return ReceiptText.fitText('$t $c $m $a', w);
-    }
-
-    void addRefundsSection() {
-      if (refunds.isEmpty) return;
-      lines.add('<H2C>DEVOLUCIONES');
-      lines.add(line());
-      final timeFmt = _timeOnlyFormat;
-      for (final refund in refunds) {
-        final when = DateTime.fromMillisecondsSinceEpoch(
-          refund['created_at_ms'] as int,
-        );
-        const previewLimit = 3;
-        final productsPreview =
-            (refund['products_preview'] as String?)?.trim() ?? '';
-        final firstProductName =
-            (refund['first_product_name'] as String?)?.trim() ?? '';
-        final itemCount = (refund['item_count'] as int?) ?? 0;
-        final amount = (refund['total'] as num?)?.toDouble().abs() ?? 0.0;
-        final reason = (refund['note'] as String?)?.trim() ?? '';
-        final customerName = (refund['customer_name'] as String?)?.trim() ?? '';
-        final customerPhone =
-            (refund['customer_phone'] as String?)?.trim() ?? '';
-        final customerRnc = (refund['customer_rnc'] as String?)?.trim() ?? '';
-        final originalElectronicCode =
-            (refund['original_electronic_invoice_code'] as String?)?.trim() ??
-            '';
-
-        final productLabel = productsPreview.isNotEmpty
-            ? productsPreview
-            : (firstProductName.isNotEmpty ? firstProductName : 'Devolución');
-        final remaining = productsPreview.isNotEmpty
-            ? (itemCount - previewLimit)
-            : (itemCount - 1);
-        final suffix = remaining > 0 ? ' (+$remaining)' : '';
-        final left = '${timeFmt.format(when)} $productLabel$suffix';
-        addKeyValue(left, money(amount), prefix: '');
-
-        final customerParts = [
-          if (customerName.isNotEmpty) customerName,
-          if (customerPhone.isNotEmpty) customerPhone,
-          if (customerRnc.isNotEmpty) customerRnc,
-        ];
-        if (customerParts.isNotEmpty) {
-          final wrapped = ReceiptText.wrapText(
-            sanitize('Cliente: ${customerParts.join(' / ')}'),
-            (w - 4).clamp(6, w),
-          );
-          for (final r in wrapped.take(2)) {
-            lines.add(fit('  * $r'));
-          }
-        }
-        if (originalElectronicCode.isNotEmpty) {
-          final wrapped = ReceiptText.wrapText(
-            sanitize('e-CF: $originalElectronicCode'),
-            (w - 4).clamp(6, w),
-          );
-          for (final r in wrapped.take(2)) {
-            lines.add(fit('  * $r'));
-          }
-        }
-
-        if (reason.isNotEmpty) {
-          final wrapped = ReceiptText.wrapText(
-            sanitize(reason),
-            (w - 4).clamp(6, w),
-          );
-          for (final r in wrapped.take(3)) {
-            lines.add(fit('  • $r'));
-          }
-        }
-      }
-      lines.add(line());
-    }
-
-    final sortedSales = [...sales]
-      ..sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
-
-    lines.add('<H2C>VENTAS DE LA SESION');
-    lines.add(line());
-    if (sales.isEmpty) {
-      lines.add(center('Sin ventas registradas'));
-    } else {
-      lines.add(
-        '<BL>${saleRow(time: 'HORA', name: 'PRODUCTO', method: 'MET', total: 'TOTAL')}',
-      );
-      lines.add(ReceiptText.line(char: '=', width: w));
-
-      final timeFmt = _timeOnlyFormat;
-      for (final sale in sortedSales) {
-        final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
-        final items = saleItemsBySaleId[sale.id ?? -1];
-        final firstItemName = (items != null && items.isNotEmpty)
-            ? items.first.productNameSnapshot.trim()
-            : '';
-        final customerName = (sale.customerNameSnapshot ?? '').trim();
-        final displayName = firstItemName.isNotEmpty
-            ? firstItemName
-            : customerName;
-        lines.add(
-          saleRow(
-            time: timeFmt.format(when),
-            name: displayName.isNotEmpty ? displayName : 'Venta',
-            method: methodAbbr(sale),
-            total: money(sale.total),
-          ),
-        );
-        if (sale.isMixedPayment && sale.paymentBreakdownLabel.isNotEmpty) {
-          final wrapped = ReceiptText.wrapText(
-            sanitize('  ${sale.paymentBreakdownLabel}'),
-            (w - 2).clamp(8, w),
-          );
-          for (final line in wrapped) {
-            lines.add(ReceiptText.fitText(line, w));
-          }
-        }
-      }
-    }
-    lines.add(line());
-
-    final transferSales = sortedSales
-        .where(
-          (sale) => sale.kind != 'return' && transferAmountOf(sale) > 0.009,
-        )
-        .toList(growable: false);
-    if (transferSales.isNotEmpty) {
-      lines.add('<H2C>DETALLE TRANSFERENCIAS');
-      lines.add(line());
-      final timeFmt = _timeOnlyFormat;
-      for (final sale in transferSales) {
-        final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
-        addKeyValue(
-          '${timeFmt.format(when)} ${sale.localCode}',
-          money(transferAmountOf(sale)),
-          prefix: '',
-        );
-
-        final customer = (sale.customerNameSnapshot ?? '').trim();
-        if (customer.isNotEmpty) {
-          final customerLines = ReceiptText.wrapText(
-            sanitize('  Cliente: $customer'),
-            (w - 2).clamp(8, w),
-          );
-          for (final customerLine in customerLines) {
-            lines.add(fit(customerLine));
-          }
-        }
-
-        final items =
-            saleItemsBySaleId[sale.id ?? -1] ?? const <SaleItemModel>[];
-        if (items.isEmpty) {
-          lines.add(fit('  Producto: Sin detalle'));
-        } else {
-          for (final item in items) {
-            addKeyValue(
-              '  ${item.productNameSnapshot} x${qtyText(item.qty)}',
-              money(item.totalLine),
-              prefix: '',
-            );
-          }
-        }
-        lines.add(ReceiptText.line(char: '.', width: w));
-      }
-      addKeyValue('Total transferencias', money(summary.salesTransferTotal));
-      lines.add(line());
-    }
-
-    addRefundsSection();
-
-    if (categorySummary.isNotEmpty) {
-      final refundMap = <String, List<RefundItemByCategory>>{};
-      for (final item in refundItemsByCategory) {
-        refundMap.putIfAbsent(item.category, () => []).add(item);
-      }
-      final transferMap = <String, List<TransferItemByCategory>>{};
-      for (final item in transferItemsByCategory) {
-        transferMap.putIfAbsent(item.category, () => []).add(item);
-      }
-
-      lines.add('<H2C>CIERRE POR CATEGORIA');
-      lines.add(line());
-      for (final cat in categorySummary) {
-        lines.add(fit(cat.category));
-        addKeyValue(
-          'Total ventas efectivo',
-          money(cat.cashSalesTotal),
-          prefix: '',
-        );
-        if (cat.cardSalesTotal > 0) {
-          addKeyValue('Total tarjeta', money(cat.cardSalesTotal), prefix: '');
-        }
-        if (cat.transferSalesTotal > 0) {
-          addKeyValue(
-            'Total transferido',
-            money(cat.transferSalesTotal),
-            prefix: '',
-          );
-        }
-        if (cat.creditSalesTotal > 0) {
-          addKeyValue('Total credito', money(cat.creditSalesTotal), prefix: '');
-        }
-        addKeyValue('Items vendidos', qtyText(cat.itemsSold), prefix: '');
-        if (cat.refundTotal > 0) {
-          addKeyValue('Devoluciones', money(cat.refundTotal), prefix: '');
-        }
-        addKeyValue('Total vendido', money(cat.netTotal), prefix: '');
-        if (cat.itemsRefunded > 0) {
-          addKeyValue(
-            'Items devueltos',
-            qtyText(cat.itemsRefunded),
-            prefix: '',
-          );
-        }
-
-        final transferItems = transferMap[cat.category];
-        if (transferItems != null && transferItems.isNotEmpty) {
-          lines.add(fit('Transferencias por producto:'));
-          for (final item in transferItems) {
-            final label = '${item.productName} x${qtyText(item.qty)}';
-            addKeyValue('  $label', money(item.total), prefix: '');
-          }
-        }
-
-        final refundItems = refundMap[cat.category];
-        if (refundItems != null && refundItems.isNotEmpty) {
-          lines.add(fit('Reembolsos:'));
-          for (final item in refundItems) {
-            final label = '${item.productName} x${qtyText(item.qty)}';
-            addKeyValue('  $label', money(item.total.abs()), prefix: '');
-          }
-        }
-        lines.add(line());
-      }
-    }
-
-    final netSalesAfterRefunds = summary.totalSales - summary.refundsCash;
-
-    lines.add('<H2C>RESUMEN DEL TURNO');
-    lines.add(line());
-    addKeyValue('Tickets', summary.totalTickets.toString());
-    addKeyValue('Devoluciones', summary.totalRefunds.toString());
-    addKeyValue('Total ventas del turno', money(summary.totalSales));
-    addKeyValue('Ventas efectivo', money(summary.salesCashTotal));
-    addKeyValue('Ventas tarjeta', money(summary.salesCardTotal));
-    addKeyValue('Ventas transferencia', money(summary.salesTransferTotal));
-    addKeyValue('Ventas credito', money(summary.salesCreditTotal));
-    if (summary.refundsCash > 0) {
-      addKeyValue('Monto devoluciones', money(summary.refundsCash));
-    }
-    if (manualNoAbonos > 0) {
-      addKeyValue('Entradas manuales', money(manualNoAbonos));
-    }
-    if (summary.creditAbonos > 0) {
-      addKeyValue('Abonos credito', money(summary.creditAbonos));
-    }
-    if (summary.layawayAbonos > 0) {
-      addKeyValue('Abonos apartado', money(summary.layawayAbonos));
-    }
-    if (summary.cashOutManual > 0) {
-      addKeyValue('Retiros manuales', money(summary.cashOutManual));
-    }
-    addKeyValue('Ventas netas del turno', money(netSalesAfterRefunds));
-    lines.add('');
-    lines.add('<H2C>VENTAS DEL TURNO');
-    lines.add('<H1C>${money(summary.totalSales)}');
-    lines.add('');
-    lines.add('<H2C>TOTAL TRANSFERENCIAS');
-    lines.add('<H1C>${money(summary.salesTransferTotal)}');
-    lines.add('');
-    lines.add('<H2C>EFECTIVO ESPERADO EN CAJA');
-    lines.add('<H1C>${money(summary.expectedCash)}');
-    lines.add('');
-    lines.add('<H2C>EFECTIVO CONTADO');
-    lines.add('<H1C>${money(closingAmount)}');
-    lines.add('');
-    lines.add('<H2C>DIFERENCIA');
-    lines.add('<H1C>${money(closingAmount - summary.expectedCash)}');
-
-    lines.add(line());
-    lines.add(fit('Firma cajero: _______________________'));
-
-    if (layout.autoCut) {
-      lines.add('');
-      lines.add('');
-      lines.add('');
-    }
-
-    // Importante: no volver a aplicar fitText aquí porque algunas líneas usan tags
-    // como <H1C> / <H2C> (no cuentan como caracteres imprimibles).
-    return lines;
   }
 
   String _sanitizeTicketText(String input) {
@@ -1735,5 +1202,4 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
       },
     );
   }
-
 }

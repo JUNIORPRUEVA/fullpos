@@ -50,7 +50,7 @@ dependencies:
   # Database
   sqflite: ^2.4.1
   sqflite_common_ffi: ^2.3.3
-  sqlite3: ^3.1.5
+  sqlite3: ^3.3.1
   http: ^1.2.1
   http_parser: ^4.0.2
   socket_io_client: ^3.1.2
@@ -70,6 +70,9 @@ dependencies:
   # PDF Generation & Printing
   pdf: ^3.11.1
   printing: ^5.13.4
+  flutter_esc_pos_utils: ^1.0.1
+  flutter_esc_pos_network: ^1.0.3
+  usb_esc_printer_windows: ^0.0.3
 
   # Excel export
   excel: ^4.0.6
@@ -144,7 +147,17 @@ flutter:
 
   # Assets de la aplicación
   assets:
-     - assets/
+    - assets/
+    - assets/fonts/
+    - assets/imagen/
+    - assets/imagen/lonchericon.png
+
+  fonts:
+    - family: ReceiptFont
+      fonts:
+        - asset: assets/fonts/RobotoMono-Regular.ttf
+        - asset: assets/fonts/RobotoMono-Medium.ttf
+          weight: 500
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

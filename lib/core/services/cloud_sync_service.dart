@@ -70,13 +70,27 @@ class CloudSyncService {
   static const int _chunkSize = 200;
 
   static const Set<CloudSyncTarget> _enabledTargets = {
+    CloudSyncTarget.users,
+    CloudSyncTarget.companyConfig,
+    CloudSyncTarget.clients,
+    CloudSyncTarget.categories,
+    CloudSyncTarget.suppliers,
     CloudSyncTarget.products,
     CloudSyncTarget.sales,
+    CloudSyncTarget.cash,
+    CloudSyncTarget.quotes,
   };
 
   static const Set<String> visibleTargetKeys = {
+    'users',
+    'company_config',
+    'clients',
+    'categories',
+    'suppliers',
     'products',
     'sales',
+    'cash',
+    'quotes',
   };
 
   void startRealtimeSyncEngine() {
@@ -87,6 +101,27 @@ class CloudSyncService {
     _outboxPollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       unawaited(_drainOutbox());
     });
+
+    const startupTargets = <(CloudSyncTarget, int, String)>[
+      (CloudSyncTarget.companyConfig, 120, 'engine_start_initial_company_config'),
+      (CloudSyncTarget.users, 180, 'engine_start_initial_users'),
+      (CloudSyncTarget.clients, 240, 'engine_start_initial_clients'),
+      (CloudSyncTarget.categories, 300, 'engine_start_initial_categories'),
+      (CloudSyncTarget.suppliers, 360, 'engine_start_initial_suppliers'),
+      (CloudSyncTarget.products, 420, 'engine_start_initial_products'),
+      (CloudSyncTarget.sales, 520, 'engine_start_initial_sales'),
+      (CloudSyncTarget.cash, 620, 'engine_start_initial_cash'),
+      (CloudSyncTarget.quotes, 720, 'engine_start_initial_quotes'),
+    ];
+    for (final (target, delayMs, reason) in startupTargets) {
+      unawaited(
+        _enqueueTarget(
+          target,
+          delay: Duration(milliseconds: delayMs),
+          reason: reason,
+        ),
+      );
+    }
     unawaited(_drainOutbox());
   }
 
@@ -1333,13 +1368,35 @@ class CloudSyncService {
       final fromMs = from.millisecondsSinceEpoch;
       final db = await AppDb.database;
 
-      final sessionsRows = await db.query(
-        DbTables.cashSessions,
-        where: 'closed_at_ms IS NOT NULL AND closed_at_ms >= ?',
+      final movementsRows = await db.query(
+        DbTables.cashMovements,
+        where: 'created_at_ms >= ?',
         whereArgs: [fromMs],
-        orderBy: 'closed_at_ms DESC',
-        limit: 3000,
+        orderBy: 'created_at_ms DESC',
+        limit: 8000,
       );
+      final movementSessionIds = movementsRows
+          .map((row) => row['session_id'] as int?)
+          .whereType<int>()
+          .toSet()
+          .toList(growable: false);
+
+      final sessionsRows = movementSessionIds.isEmpty
+          ? await db.query(
+              DbTables.cashSessions,
+              where: 'closed_at_ms IS NOT NULL AND closed_at_ms >= ?',
+              whereArgs: [fromMs],
+              orderBy: 'closed_at_ms DESC',
+              limit: 3000,
+            )
+          : await db.query(
+              DbTables.cashSessions,
+              where:
+                  '(closed_at_ms IS NOT NULL AND closed_at_ms >= ?) OR id IN (${List.filled(movementSessionIds.length, '?').join(', ')})',
+              whereArgs: [fromMs, ...movementSessionIds],
+              orderBy: 'opened_at_ms DESC',
+              limit: 3000,
+            );
       final sessions = sessionsRows.map((row) {
         final localId = row['id'] as int;
         final openedAtMs = row['opened_at_ms'] as int;
@@ -1364,13 +1421,6 @@ class CloudSyncService {
         };
       }).toList();
 
-      final movementsRows = await db.query(
-        DbTables.cashMovements,
-        where: 'created_at_ms >= ?',
-        whereArgs: [fromMs],
-        orderBy: 'created_at_ms DESC',
-        limit: 8000,
-      );
       final movements = movementsRows.map((row) {
         final localId = row['id'] as int;
         final sessionLocalId = row['session_id'] as int;

@@ -73,8 +73,8 @@ class PrinterSettingsModel {
     this.id,
     this.selectedPrinterName,
     this.paperWidthMm = 80,
-    // 80mm: por defecto 42 (Seguro) para evitar cortes/desalineación.
-    this.charsPerLine = 42,
+    // 80mm Epson/ESC-POS de 576 dots: por defecto 48 columnas reales.
+    this.charsPerLine = 48,
     this.autoPrintOnPayment = 0,
     this.autoOpenDrawerOnChargeWithoutTicket = 0,
     this.copies = 1,

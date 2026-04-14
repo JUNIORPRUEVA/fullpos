@@ -21,6 +21,7 @@ class BusinessSettings {
 
   // Configuraciones de ventas/impuestos
   final double defaultTaxRate; // Tasa de impuesto por defecto (ITBIS 18%)
+  final bool itbisEnabled; // Si ITBIS esta activo globalmente
   final bool taxIncludedInPrices; // Si los precios ya incluyen impuesto
   final String defaultCurrency; // Moneda por defecto
   final String currencySymbol; // Símbolo de la moneda
@@ -78,6 +79,7 @@ class BusinessSettings {
     this.instagramUrl,
     this.facebookUrl,
     this.defaultTaxRate = 18.0,
+    this.itbisEnabled = true,
     this.taxIncludedInPrices = true,
     this.defaultCurrency = 'DOP',
     this.currencySymbol = 'RD\$',
@@ -147,6 +149,7 @@ class BusinessSettings {
       instagramUrl: map['instagram_url'] as String?,
       facebookUrl: map['facebook_url'] as String?,
       defaultTaxRate: (map['default_tax_rate'] as num?)?.toDouble() ?? 18.0,
+      itbisEnabled: (map['itbis_enabled'] as int? ?? 1) == 1,
       taxIncludedInPrices: (map['tax_included_in_prices'] as int? ?? 1) == 1,
       defaultCurrency: map['default_currency'] as String? ?? 'DOP',
       currencySymbol: map['currency_symbol'] as String? ?? 'RD\$',
@@ -214,6 +217,7 @@ class BusinessSettings {
       'instagram_url': instagramUrl,
       'facebook_url': facebookUrl,
       'default_tax_rate': defaultTaxRate,
+      'itbis_enabled': itbisEnabled ? 1 : 0,
       'tax_included_in_prices': taxIncludedInPrices ? 1 : 0,
       'default_currency': defaultCurrency,
       'currency_symbol': currencySymbol,
@@ -270,6 +274,7 @@ class BusinessSettings {
     String? instagramUrl,
     String? facebookUrl,
     double? defaultTaxRate,
+    bool? itbisEnabled,
     bool? taxIncludedInPrices,
     String? defaultCurrency,
     String? currencySymbol,
@@ -317,6 +322,7 @@ class BusinessSettings {
       instagramUrl: instagramUrl ?? this.instagramUrl,
       facebookUrl: facebookUrl ?? this.facebookUrl,
       defaultTaxRate: defaultTaxRate ?? this.defaultTaxRate,
+      itbisEnabled: itbisEnabled ?? this.itbisEnabled,
       taxIncludedInPrices: taxIncludedInPrices ?? this.taxIncludedInPrices,
       defaultCurrency: defaultCurrency ?? this.defaultCurrency,
       currencySymbol: currencySymbol ?? this.currencySymbol,
@@ -380,6 +386,7 @@ class BusinessSettings {
         other.instagramUrl == instagramUrl &&
         other.facebookUrl == facebookUrl &&
         other.defaultTaxRate == defaultTaxRate &&
+        other.itbisEnabled == itbisEnabled &&
         other.taxIncludedInPrices == taxIncludedInPrices &&
         other.defaultCurrency == defaultCurrency &&
         other.currencySymbol == currencySymbol &&
@@ -426,6 +433,7 @@ class BusinessSettings {
       instagramUrl,
       facebookUrl,
       defaultTaxRate,
+      itbisEnabled,
       taxIncludedInPrices,
       defaultCurrency,
       currencySymbol,

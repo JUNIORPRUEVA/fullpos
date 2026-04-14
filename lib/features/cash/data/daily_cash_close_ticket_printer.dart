@@ -68,7 +68,7 @@ class DailyCashCloseTicketPrinter {
       lines: lines,
       ticketNumber: 'DAILY-${cashbox.id}-$businessDate',
       includeLogo: true,
-      overrideCopies: settings.copies,
+      overrideCopies: 1,
       layoutOverride: layout,
     );
   }
@@ -100,10 +100,7 @@ class DailyCashCloseTicketPrinter {
     final fmt = DateFormat('dd/MM/yyyy hh:mm a');
     final dateFmt = DateFormat('dd/MM/yyyy');
     final totalSales =
-        salesCashTotal +
-        salesCardTotal +
-        salesTransferTotal +
-        salesCreditTotal;
+        salesCashTotal + salesCardTotal + salesTransferTotal + salesCreditTotal;
     final totalExpenses = refundsCash + cashOutManual;
     final finalCash = cashbox.currentAmount;
     final difference = finalCash - expectedCash;
@@ -175,7 +172,8 @@ class DailyCashCloseTicketPrinter {
     lines.add(line());
 
     if (salesCardTotal > 0) addPair('TARJETA:', money(salesCardTotal));
-    if (salesTransferTotal > 0) addPair('TRANSFERENCIA:', money(salesTransferTotal));
+    if (salesTransferTotal > 0)
+      addPair('TRANSFERENCIA:', money(salesTransferTotal));
     if (salesCreditTotal > 0) addPair('CREDITO:', money(salesCreditTotal));
     if (creditAbonos > 0) addPair('ABONOS CREDITO:', money(creditAbonos));
     if (layawayAbonos > 0) addPair('ABONOS APARTADO:', money(layawayAbonos));
@@ -196,7 +194,8 @@ class DailyCashCloseTicketPrinter {
       lines.add(line());
       final timeFmt = DateFormat('hh:mm a');
       for (final movement in movements.take(8)) {
-        final label = '${timeFmt.format(movement.createdAt)} ${movement.reason}';
+        final label =
+            '${timeFmt.format(movement.createdAt)} ${movement.reason}';
         final amount = '${movement.isIn ? '+' : '-'}${money(movement.amount)}';
         addPair(label, amount);
       }

@@ -353,6 +353,7 @@ class TaxSettingsPage extends ConsumerStatefulWidget {
 
 class _TaxSettingsPageState extends ConsumerState<TaxSettingsPage> {
   final _rateController = TextEditingController();
+  bool _itbisEnabled = true;
   bool _includeTaxInPrice = true;
   bool _didLoadInitialValues = false;
   bool _isSaving = false;
@@ -368,6 +369,7 @@ class _TaxSettingsPageState extends ConsumerState<TaxSettingsPage> {
     if (_didLoadInitialValues) return;
     _didLoadInitialValues = true;
     _rateController.text = settings.defaultTaxRate.toStringAsFixed(2);
+    _itbisEnabled = settings.itbisEnabled;
     _includeTaxInPrice = settings.taxIncludedInPrices;
   }
 
@@ -388,6 +390,7 @@ class _TaxSettingsPageState extends ConsumerState<TaxSettingsPage> {
       final current = ref.read(businessSettingsProvider);
       final updated = current.copyWith(
         defaultTaxRate: _rateValue,
+        itbisEnabled: _itbisEnabled,
         taxIncludedInPrices: _includeTaxInPrice,
       );
       await ref.read(businessSettingsProvider.notifier).saveSettings(updated);
@@ -431,6 +434,17 @@ class _TaxSettingsPageState extends ConsumerState<TaxSettingsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _ToggleTile(
+                  title: 'Activar ITBIS',
+                  value: _itbisEnabled,
+                  onChanged: (value) {
+                    setState(() {
+                      _itbisEnabled = value;
+                      _hasChanges = true;
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
                 _ResponsiveFieldWrap(
                   children: [
                     _SettingsTextField(

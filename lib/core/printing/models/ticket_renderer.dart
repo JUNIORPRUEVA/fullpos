@@ -48,6 +48,19 @@ class TicketRenderer {
     final documentType = _documentLabel(data);
     final dateLabel = DateFormat('dd/MM/yyyy').format(data.dateTime);
     final timeLabel = DateFormat('HH:mm').format(data.dateTime);
+    final companyAddress = (company.address ?? '').trim();
+    final ticketNumber = _sanitizeTicketText(data.ticketNumber).toUpperCase();
+    final clientName = (data.client?.name ?? '').trim();
+    final clientDisplay = clientName.isEmpty
+      ? 'GENERAL'
+      : _sanitizeTicketText(clientName).toUpperCase();
+    final cashierName = (data.cashierName ?? '').trim();
+    final cashierDisplay = cashierName.isEmpty
+      ? 'N/A'
+      : _sanitizeTicketText(cashierName).toUpperCase();
+    final ecfCode = _sanitizeTicketText(
+      (data.electronicInvoiceCode ?? '').trim(),
+    ).toUpperCase();
 
     void add(String text) => lines.add(_fitLine(text, width));
     void addCentered(String text) =>
@@ -72,6 +85,16 @@ class TicketRenderer {
       final phone = (company.primaryPhone ?? '').trim();
       if (phone.isNotEmpty) addCentered('TEL: $phone');
 
+      if (companyAddress.isNotEmpty) {
+        final wrappedAddress = ReceiptText.wrapText(
+          _sanitizeTicketText(companyAddress).toUpperCase(),
+          width,
+        );
+        for (final addressLine in wrappedAddress) {
+          addCentered(addressLine);
+        }
+      }
+
       addRule();
     }
 
@@ -82,32 +105,30 @@ class TicketRenderer {
     }
     addRule();
 
-    addPair('FECHA: $dateLabel', timeLabel);
-    if (config.showTicketCode) {
-      addPair('DOC: ${_sanitizeTicketText(data.ticketNumber)}', '');
+    if (config.showDateTime) {
+      addPair('FECHA: $dateLabel', 'HORA: $timeLabel');
     }
-
-    final clientName = (data.client?.name ?? '').trim();
+    if (config.showTicketCode || config.showCashier) {
+      addPair(
+        config.showTicketCode ? 'DOC: $ticketNumber' : '',
+        config.showCashier ? 'CAJA: $cashierDisplay' : '',
+      );
+    }
     if (config.showClientInfo) {
-      addPair('CLIENTE: ${clientName.isEmpty ? 'GENERAL' : clientName}', '');
-    }
-
-    if (config.showCashier) {
-      final cashier = (data.cashierName ?? '').trim();
-      addPair('CAJERO: ${cashier.isEmpty ? 'N/A' : cashier}', '');
+      addPair('CLI: $clientDisplay', '');
     }
 
     if (config.showElectronicInvoiceReference &&
-        (data.electronicInvoiceCode ?? '').trim().isNotEmpty) {
-      addPair('E-CF: ${data.electronicInvoiceCode!.trim()}', '');
+        ecfCode.isNotEmpty) {
+      addPair('E-CF: $ecfCode', '');
     }
 
     addRule();
 
     add(
       ReceiptText.formatProductRow(
-        qty: 'CANT',
-        name: 'DESCRIPCION',
+        qty: width >= 48 ? 'CANT.' : 'CANT',
+        name: 'PRODUCTO',
         total: 'TOTAL',
         width: width,
       ),
@@ -118,7 +139,7 @@ class TicketRenderer {
       add(
         ReceiptText.formatProductRow(
           qty: _formatQty(item.quantity),
-          name: _sanitizeTicketText(item.name),
+          name: _sanitizeTicketText(item.name).toUpperCase(),
           total: ReceiptText.formatMoney(item.total),
           width: width,
         ),
@@ -127,40 +148,48 @@ class TicketRenderer {
 
     addRule();
 
+    String compactMoney(num value) {
+      return ReceiptText.money(value).replaceAll(RegExp(r'\.00$'), '');
+    }
+
     if (config.showTotalsBreakdown) {
-      addPair('SUBTOTAL:', ReceiptText.formatMoney(subtotal));
+      addPair('SUBT.:', compactMoney(subtotal));
       if (discount > 0) {
-        addPair('DESCUENTO:', ReceiptText.formatMoney(discount));
+        addPair('DESC.:', compactMoney(discount));
       }
       if (config.showItbis && itbis > 0) {
         final taxRate = (data.itbisRate * 100).toStringAsFixed(0);
-        addPair('ITBIS ($taxRate%):', ReceiptText.formatMoney(itbis));
+        addPair('ITBIS $taxRate%:', compactMoney(itbis));
       }
     }
+    addRule();
     addPair('TOTAL:', ReceiptText.formatMoney(total));
     addRule();
 
     if (config.showPaymentInfo) {
       if (data.isLayaway) {
-        addPair('APARTADO:', (data.statusLabel ?? 'PENDIENTE').toUpperCase());
+        addPair('TIPO PAGO:', 'APARTADO');
+        addPair('ESTADO:', (data.statusLabel ?? 'PENDIENTE').toUpperCase());
         if (data.lastPaymentAmount > 0) {
           addPair('ABONO:', ReceiptText.formatMoney(data.lastPaymentAmount));
         }
         if (data.paidAmount > 0) {
           addPair('PAGADO:', ReceiptText.formatMoney(data.paidAmount));
         }
-        addPair('PENDIENTE:', ReceiptText.formatMoney(pendingAmount));
+        addPair('PEND.:', ReceiptText.formatMoney(pendingAmount));
       } else if (paymentLabel == 'CREDITO') {
+        addPair('TIPO PAGO:', paymentLabel);
         if (data.lastPaymentAmount > 0) {
           addPair('ABONO:', ReceiptText.formatMoney(data.lastPaymentAmount));
         }
         if (data.paidAmount > 0) {
           addPair('PAGADO:', ReceiptText.formatMoney(data.paidAmount));
         }
-        addPair('PENDIENTE:', ReceiptText.formatMoney(pendingAmount));
+        addPair('PEND.:', ReceiptText.formatMoney(pendingAmount));
       } else {
         final paidAmount = data.paidAmount <= 0 ? total : data.paidAmount;
-        addPair('$paymentLabel:', ReceiptText.formatMoney(paidAmount));
+        addPair('TIPO PAGO:', paymentLabel);
+        addPair('RECIBIDO:', ReceiptText.formatMoney(paidAmount));
         if (data.changeAmount > 0) {
           addPair('CAMBIO:', ReceiptText.formatMoney(data.changeAmount));
         }
@@ -172,22 +201,21 @@ class TicketRenderer {
         config.showFooterMessage && config.footerMessage.trim().isNotEmpty
         ? config.footerMessage.trim()
         : 'Gracias por su preferencia';
-    addCentered(footer);
+    add('');
+    addCentered(footer.toUpperCase());
 
     final warranty = config.warrantyPolicy.trim();
     if (warranty.isNotEmpty) {
       addRule();
-      addCentered('POLITICA DE GARANTIA');
+      add('POLITICA GARANTIA');
       addRule();
-      for (final rawLine in warranty.split('\n')) {
-        final cleanLine = _sanitizeTicketText(rawLine).trim();
-        if (cleanLine.isEmpty) continue;
-        final wrappedLines = ReceiptText.wrapText(cleanLine, width - 2);
-        if (wrappedLines.isEmpty) continue;
-        add(_fitLine('- ${wrappedLines.first}', width));
-        for (final wrapped in wrappedLines.skip(1)) {
-          add(_fitLine('  $wrapped', width));
-        }
+      final warrantyParagraph = warranty
+          .split('\n')
+          .map((rawLine) => _sanitizeTicketText(rawLine).trim())
+          .where((line) => line.isNotEmpty)
+          .join('. ');
+      for (final wrapped in ReceiptText.wrapText(warrantyParagraph, width - 2)) {
+        add(_fitLine(wrapped.toUpperCase(), width));
       }
     }
 
@@ -243,30 +271,9 @@ class TicketRenderer {
   }
 
   String _sanitizeTicketText(String input) {
-    // Evita que aparezcan "cuadritos"/íconos por caracteres no soportados.
-    // Normaliza a ASCII simple (sin tildes) y elimina caracteres raros.
-    final s = input
-        .replaceAll('á', 'a')
-        .replaceAll('é', 'e')
-        .replaceAll('í', 'i')
-        .replaceAll('ó', 'o')
-        .replaceAll('ú', 'u')
-        .replaceAll('Á', 'A')
-        .replaceAll('É', 'E')
-        .replaceAll('Í', 'I')
-        .replaceAll('Ó', 'O')
-        .replaceAll('Ú', 'U')
-        .replaceAll('ñ', 'n')
-        .replaceAll('Ñ', 'N')
-        .replaceAll('ü', 'u')
-        .replaceAll('Ü', 'U')
-        .replaceAll('ç', 'c')
-        .replaceAll('Ç', 'C');
-
-    // Conservar solo caracteres comunes imprimibles.
-    // Usar raw triple-quoted para permitir comillas simples y dobles sin escapes.
-    final filtered = s.replaceAll(
-      RegExp(r'''[^A-Za-z0-9\s\-_/.:,()#%+*&@'"'>$<]+'''),
+    final normalized = input.replaceAll(RegExp(r'\s+'), ' ');
+    final filtered = normalized.replaceAll(
+      RegExp(r'''[^A-Za-z0-9À-ÿ\s\-_/.:,()#%+*&@'"'>$<]+'''),
       '',
     );
     return filtered.trim();

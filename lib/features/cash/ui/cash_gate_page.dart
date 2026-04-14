@@ -15,6 +15,9 @@ const _cashGatePrimaryBlue = Color(0xFF2563EB);
 const _cashGateInputBackground = Color(0xFFFFFFFF);
 const _cashGateInputText = Color(0xFF111827);
 const _cashGateInputHint = Color(0xFF94A3B8);
+const _cashGateInputLabel = Color(0xFFD1D5DB);
+const _cashGateInputBadgeBackground = Color(0xFFEFF4FF);
+const _cashGateInputIdleBorder = Color(0xFFE2E8F0);
 
 class CashGatePage extends ConsumerStatefulWidget {
   const CashGatePage({super.key});
@@ -25,7 +28,7 @@ class CashGatePage extends ConsumerStatefulWidget {
 
 class _CashGatePageState extends ConsumerState<CashGatePage> {
   final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController(text: '0');
+  final _amountController = TextEditingController();
   final _amountFocusNode = FocusNode();
 
   bool _isLoading = false;
@@ -101,6 +104,9 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
     final cardBorder = Colors.white.withOpacity(0.08);
     final inputFill = _cashGateInputBackground;
     final focusedAmountFill = _cashGateInputBackground;
+    final amountBorderColor = _amountHasFocus
+        ? _cashGatePrimaryBlue
+        : _cashGateInputIdleBorder.withOpacity(0.92);
 
     return Scaffold(
       backgroundColor: _cashGatePageBackground,
@@ -196,17 +202,33 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                 ),
                               ),
                               const SizedBox(height: 18),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Fondo inicial',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: _cashGateInputLabel,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 180),
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: amountBorderColor,
+                                    width: _amountHasFocus ? 1.8 : 1.0,
+                                  ),
                                   boxShadow: _amountHasFocus
                                       ? [
                                           BoxShadow(
                                             color: _cashGatePrimaryBlue
-                                                .withOpacity(0.18),
-                                            blurRadius: 20,
-                                            offset: const Offset(0, 8),
+                                                .withOpacity(0.16),
+                                            blurRadius: 22,
+                                            offset: const Offset(0, 10),
                                           ),
                                         ]
                                       : const [],
@@ -216,23 +238,38 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                     color: _amountHasFocus
                                         ? focusedAmountFill
                                         : inputFill,
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(15),
                                   ),
                                   child: Row(
                                     children: [
                                       Padding(
                                         padding: const EdgeInsets.only(
-                                          left: 16,
-                                          right: 10,
+                                          left: 14,
+                                          top: 12,
+                                          bottom: 12,
+                                          right: 12,
                                         ),
-                                        child: Text(
-                                          'RD\$',
-                                          style: theme.textTheme.titleLarge
-                                              ?.copyWith(
-                                                color: _cashGatePrimaryBlue,
-                                                fontWeight: FontWeight.w900,
-                                                height: 1.0,
-                                              ),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                _cashGateInputBadgeBackground,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            r'RD$',
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  color: _cashGatePrimaryBlue,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: -0.2,
+                                                ),
+                                          ),
                                         ),
                                       ),
                                       Expanded(
@@ -245,20 +282,29 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                           inputFormatters: [
                                             AccountingAmountFormatter(),
                                           ],
-                                          style: theme.textTheme.titleLarge
+                                          style: theme.textTheme.headlineSmall
                                               ?.copyWith(
-                                                fontWeight: FontWeight.w900,
+                                                fontWeight: FontWeight.w800,
                                                 color: _cashGateInputText,
+                                                letterSpacing: -0.6,
                                                 height: 1.0,
                                               ),
                                           cursorColor: _cashGatePrimaryBlue,
+                                          textAlignVertical:
+                                              TextAlignVertical.center,
                                           decoration: InputDecoration(
                                             hintText: '0',
-                                            hintStyle: const TextStyle(
-                                              color: _cashGateInputHint,
-                                              fontSize: 13,
-                                            ),
+                                            hintStyle: theme
+                                                .textTheme
+                                                .headlineSmall
+                                                ?.copyWith(
+                                                  color: _cashGateInputHint,
+                                                  fontWeight: FontWeight.w700,
+                                                  letterSpacing: -0.5,
+                                                  height: 1.0,
+                                                ),
                                             filled: false,
+                                            isCollapsed: true,
                                             border: InputBorder.none,
                                             enabledBorder: InputBorder.none,
                                             focusedBorder: InputBorder.none,
@@ -266,9 +312,10 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
                                             focusedErrorBorder:
                                                 InputBorder.none,
                                             contentPadding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 0,
-                                                  vertical: 16,
+                                                const EdgeInsets.only(
+                                                  top: 22,
+                                                  bottom: 22,
+                                                  right: 18,
                                                 ),
                                           ),
                                           validator: (value) {

@@ -261,7 +261,7 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
-                      hintText: '25,250',
+                        hintText: '0.00',
                       filled: true,
                       fillColor: scheme.surfaceContainerHighest,
                       border: OutlineInputBorder(

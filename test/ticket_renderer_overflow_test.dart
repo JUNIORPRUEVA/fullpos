@@ -41,7 +41,7 @@ TicketData _sampleSaleData() {
 
 List<String> _extractItemRows(List<String> lines) {
   final headerIndex = lines.indexWhere(
-    (line) => line.contains('CANT') && line.contains('DESCRIPCION'),
+    (line) => line.contains('CANT') && line.contains('PRODUCTO'),
   );
   expect(headerIndex, greaterThanOrEqualTo(0));
 
@@ -137,6 +137,15 @@ TicketLayoutConfig _configForWidth(int width) {
   );
 }
 
+PrinterSettingsModel _defaultPrinterSettings({int paperWidthMm = 80}) {
+  final now = DateTime(2026, 1, 1).millisecondsSinceEpoch;
+  return PrinterSettingsModel(
+    paperWidthMm: paperWidthMm,
+    createdAtMs: now,
+    updatedAtMs: now,
+  );
+}
+
 void main() {
   test(
     'Ticket POS no desborda y mantiene productos en una linea (32 chars)',
@@ -188,7 +197,7 @@ void main() {
 
       expect(lines.any((line) => line.contains('FACTURA')), isTrue);
       expect(lines.any((line) => line.contains('FECHA: 12/01/2026')), isTrue);
-      expect(lines.any((line) => line.contains('CAJERO: CAJA3')), isTrue);
+      expect(lines.any((line) => line.contains('CAJA: CAJA3')), isTrue);
 
       final itemRows = _extractItemRows(lines);
       expect(itemRows.length, equals(_sampleSaleData().items.length));
@@ -223,7 +232,7 @@ void main() {
 
     // 2) Debe imprimir encabezado de tabla sin romper.
     final headerLine = lines.firstWhere(
-      (l) => l.contains('CANT') && l.contains('DESCRIPCION'),
+      (l) => l.contains('CANT') && l.contains('PRODUCTO'),
       orElse: () => '',
     );
     expect(headerLine, isNot(equals('')));
@@ -240,7 +249,7 @@ void main() {
       expect(_moneyEndIndex(row), equals(width));
     }
 
-    // 3) Debe imprimir TOTAL y EFECTIVO con formato compacto y valores > 0.
+    // 3) Debe imprimir TOTAL y RECIBIDO con formato compacto y valores > 0.
     final totalLine = lines.firstWhere(
       (l) => l.contains('TOTAL:'),
       orElse: () => '',
@@ -250,7 +259,7 @@ void main() {
     expect(_hasTrailingCents(totalLine), isTrue);
 
     final cashLine = lines.firstWhere(
-      (l) => l.contains('EFECTIVO:'),
+      (l) => l.contains('RECIBIDO:'),
       orElse: () => '',
     );
     expect(cashLine, isNot(equals('')));
@@ -276,7 +285,7 @@ void main() {
 
     // 2) Debe imprimir encabezado de tabla con columnas estables.
     final headerLine = lines.firstWhere(
-      (l) => l.contains('CANT') && l.contains('DESCRIPCION'),
+      (l) => l.contains('CANT') && l.contains('PRODUCTO'),
       orElse: () => '',
     );
     expect(headerLine, isNot(equals('')));
@@ -292,7 +301,7 @@ void main() {
     expect(itemRows.every(_hasTrailingCents), isTrue);
     expect(itemRows.every((row) => _moneyEndIndex(row) == width), isTrue);
 
-    // 3) Debe imprimir TOTAL y EFECTIVO con valores distintos de 0.00.
+    // 3) Debe imprimir TOTAL y RECIBIDO con valores distintos de 0.00.
     final totalLine = lines.firstWhere(
       (l) => l.contains('TOTAL:'),
       orElse: () => '',
@@ -302,7 +311,7 @@ void main() {
     expect(_hasTrailingCents(totalLine), isTrue);
 
     final cashLine = lines.firstWhere(
-      (l) => l.contains('EFECTIVO:'),
+      (l) => l.contains('RECIBIDO:'),
       orElse: () => '',
     );
     expect(cashLine, isNot(equals('')));
@@ -310,6 +319,12 @@ void main() {
     expect(_hasTrailingCents(cashLine), isTrue);
     expect(_moneyEndIndex(totalLine), equals(width));
     expect(_moneyEndIndex(cashLine), equals(width));
+  });
+
+  test('PrinterSettingsModel 80mm usa 48 columnas por defecto', () {
+    final settings = _defaultPrinterSettings();
+
+    expect(settings.charsPerLine, equals(48));
   });
 
   test('TicketLayoutConfig respeta anchos estandar para 58mm y 80mm', () {

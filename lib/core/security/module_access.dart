@@ -19,6 +19,12 @@ class ModuleAccess {
     // Pantalla neutral: siempre permitir para que el usuario vea el mensaje.
     if (path == '/no-access') return true;
 
+    if (path == '/cash-gate') {
+      return permissions.canOpenCash ||
+          permissions.canOpenCashbox ||
+          permissions.canOpenShift;
+    }
+
     if (path == '/sales') return permissions.canSell;
     if (path == '/factura') return permissions.canViewSalesHistory;
 
@@ -50,11 +56,12 @@ class ModuleAccess {
     // Cuenta/perfil: por defecto permitir (fallback).
     if (path == '/account') return true;
 
-    // Rutas no contempladas: permitir para no bloquear features nuevas por accidente.
-    return true;
+    // Rutas no contempladas: denegar para no exponer features nuevas por accidente.
+    return false;
   }
 
   static String moduleLabelForPath(String path) {
+    if (path == '/cash-gate') return 'Apertura de caja';
     if (path == '/sales') return 'Ventas';
     if (path == '/factura') return 'Factura';
     if (path == '/quotes' || path == '/quotes-list') return 'Cotizaciones';

@@ -30,6 +30,7 @@ class BusinessSettingsRepository {
     'instagram_url': 'TEXT',
     'facebook_url': 'TEXT',
     'default_tax_rate': 'REAL DEFAULT 18.0',
+    'itbis_enabled': 'INTEGER DEFAULT 1',
     'tax_included_in_prices': 'INTEGER DEFAULT 1',
     'default_currency': "TEXT DEFAULT 'DOP'",
     'currency_symbol': "TEXT DEFAULT 'RD\$'",

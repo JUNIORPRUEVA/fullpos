@@ -4692,6 +4692,12 @@ class AppDb {
       await _addColumnIfMissing(
         db,
         DbTables.printerSettings,
+        'show_electronic_invoice_reference',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.printerSettings,
         'show_cashier',
         'INTEGER NOT NULL DEFAULT 1',
       );

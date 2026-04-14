@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -7,6 +8,7 @@ import '../../../../core/security/app_actions.dart';
 import '../../../../core/security/authorization_guard.dart';
 import '../dialogs/category_form_dialog.dart';
 import '../widgets/products_surface.dart';
+import '../../../../core/sync/product_sync_event_bus.dart';
 import '../../../../theme/app_colors.dart';
 
 /// Tab de Categorías
@@ -21,6 +23,8 @@ class CategoriesTab extends StatefulWidget {
 
 class _CategoriesTabState extends State<CategoriesTab> {
   final CategoriesRepository _categoriesRepo = CategoriesRepository();
+  StreamSubscription<ProductSyncChange>? _syncSubscription;
+  Timer? _syncRefreshDebounce;
 
   List<CategoryModel> _categories = [];
   bool _isLoading = false;
@@ -28,7 +32,21 @@ class _CategoriesTabState extends State<CategoriesTab> {
   @override
   void initState() {
     super.initState();
+    _syncSubscription = ProductSyncEventBus.instance.stream.listen((_) {
+      _syncRefreshDebounce?.cancel();
+      _syncRefreshDebounce = Timer(
+        const Duration(milliseconds: 250),
+        _loadCategories,
+      );
+    });
     _loadCategories();
+  }
+
+  @override
+  void dispose() {
+    _syncRefreshDebounce?.cancel();
+    _syncSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadCategories() async {

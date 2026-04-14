@@ -105,7 +105,7 @@ class TicketLayoutConfig {
 
   const TicketLayoutConfig({
     this.paperWidthDots = 576,
-    this.maxCharsPerLine = 42,
+    this.maxCharsPerLine = 48,
     this.showLogo = true,
     this.logoScale = 0.7,
     this.logoSizePx = 50,
@@ -179,7 +179,7 @@ class TicketLayoutConfig {
   factory TicketLayoutConfig.professional80mm() {
     return const TicketLayoutConfig(
       paperWidthDots: 576,
-      maxCharsPerLine: 42,
+      maxCharsPerLine: 48,
       showLogo: true,
       logoScale: 0.7,
       logoSizePx: 50,
@@ -191,7 +191,7 @@ class TicketLayoutConfig {
       footerMessage: '¡GRACIAS POR LA COMPRA!',
       warrantyPolicy: '',
       fontSize: TicketFontSize.normal,
-      fontFamily: TicketFontFamily.arialBlack,
+      fontFamily: TicketFontFamily.courier,
       showDateTime: true,
       showTicketCode: true,
       showElectronicInvoiceReference: true,
@@ -403,6 +403,7 @@ class TicketLayoutConfig {
     int? fontSizeLevel,
     int? lineSpacingLevel,
     int? sectionSpacingLevel,
+    String? sectionSeparatorStyle,
     String? headerAlignment,
     String? detailsAlignment,
     String? totalsAlignment,
@@ -437,6 +438,8 @@ class TicketLayoutConfig {
       fontSizeLevel: fontSizeLevel ?? this.fontSizeLevel,
       lineSpacingLevel: lineSpacingLevel ?? this.lineSpacingLevel,
       sectionSpacingLevel: sectionSpacingLevel ?? this.sectionSpacingLevel,
+      sectionSeparatorStyle:
+          sectionSeparatorStyle ?? this.sectionSeparatorStyle,
       headerAlignment: headerAlignment ?? this.headerAlignment,
       detailsAlignment: detailsAlignment ?? this.detailsAlignment,
       totalsAlignment: totalsAlignment ?? this.totalsAlignment,

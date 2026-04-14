@@ -266,6 +266,14 @@ class AppActions {
     risk: ActionRisk.high,
     requiresOverrideByDefault: true,
   );
+  static const updateUser = AppAction(
+    code: 'users.update_user',
+    name: 'Editar usuario',
+    description: 'Modificar datos operativos o credenciales de un usuario.',
+    category: AppActionCategory.users,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
   static const updateRole = AppAction(
     code: 'users.update_role',
     name: 'Cambiar rol',
@@ -278,6 +286,22 @@ class AppActions {
     code: 'users.reset_pin',
     name: 'Resetear PIN',
     description: 'Restablecer PIN/credenciales de otro usuario.',
+    category: AppActionCategory.users,
+    risk: ActionRisk.critical,
+    requiresOverrideByDefault: true,
+  );
+  static const toggleUserStatus = AppAction(
+    code: 'users.toggle_status',
+    name: 'Activar o desactivar usuario',
+    description: 'Cambiar el estado operativo de un usuario.',
+    category: AppActionCategory.users,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+  static const deleteUser = AppAction(
+    code: 'users.delete_user',
+    name: 'Eliminar usuario',
+    description: 'Eliminar de forma definitiva un usuario de la empresa.',
     category: AppActionCategory.users,
     risk: ActionRisk.critical,
     requiresOverrideByDefault: true,
@@ -319,8 +343,11 @@ class AppActions {
     toggleSecurityMethods,
     configureScanner,
     createUser,
+    updateUser,
     updateRole,
     resetPin,
+    toggleUserStatus,
+    deleteUser,
     assignPermissions,
   ];
 

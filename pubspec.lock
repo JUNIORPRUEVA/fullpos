@@ -222,6 +222,22 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_esc_pos_network:
+    dependency: "direct main"
+    description:
+      name: flutter_esc_pos_network
+      sha256: "44ca5966c82dd7a2a703a7ff95407c6738fb1d71b7540c137783b374e62a08fd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
+  flutter_esc_pos_utils:
+    dependency: "direct main"
+    description:
+      name: flutter_esc_pos_utils
+      sha256: "2186973896d2dac3d5ebb2e09dac963001d29cd9e683f23afe8dbd5fb4013356"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
   flutter_launcher_icons:
     dependency: "direct dev"
     description:
@@ -277,6 +293,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  gbk_codec:
+    dependency: transitive
+    description:
+      name: gbk_codec
+      sha256: "3af5311fc9393115e3650ae6023862adf998051a804a08fb804f042724999f61"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.0"
   glob:
     dependency: transitive
     description:
@@ -293,6 +317,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "14.8.1"
+  hex:
+    dependency: transitive
+    description:
+      name: hex
+      sha256: "4e7cd54e4b59ba026432a6be2dd9d96e4c5205725194997193bf871703b82c4a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.0"
   hooks:
     dependency: transitive
     description:
@@ -425,10 +457,10 @@ packages:
     dependency: transitive
     description:
       name: native_toolchain_c
-      sha256: "89e83885ba09da5fdf2cdacc8002a712ca238c28b7f717910b34bcd27b0d03ac"
+      sha256: "6ba77bb18063eebe9de401f5e6437e95e1438af0a87a3a39084fbd37c90df572"
       url: "https://pub.dev"
     source: hosted
-    version: "0.17.4"
+    version: "0.17.6"
   path:
     dependency: "direct main"
     description:
@@ -774,10 +806,10 @@ packages:
     dependency: "direct main"
     description:
       name: sqlite3
-      sha256: "45f195ae1714b333530eaa33ce8bfcdc6187cb54156fbf907eb778fe04e8c0e9"
+      sha256: "56da3e13ed7d28a66f930aa2b2b29db6736a233f08283326e96321dd812030f5"
       url: "https://pub.dev"
     source: hosted
-    version: "3.1.5"
+    version: "3.3.1"
   stack_trace:
     dependency: transitive
     description:
@@ -914,6 +946,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.5"
+  usb_esc_printer_windows:
+    dependency: "direct main"
+    description:
+      name: usb_esc_printer_windows
+      sha256: "082c9aa28486532dbaa500d2c373ae784cf9a94cd10d0db366fa3754a0957a8f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.3"
   uuid:
     dependency: transitive
     description:

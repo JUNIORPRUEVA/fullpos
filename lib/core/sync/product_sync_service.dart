@@ -560,6 +560,9 @@ class ProductSyncService {
     socket.on('product.event', (data) {
       unawaited(_handleRealtimePayload(data));
     });
+    socket.on('category.event', (data) {
+      unawaited(_handleCategoryRealtimePayload(data));
+    });
     socket.connect();
     _socket = socket;
     connectionState.value = 'connecting';
@@ -598,6 +601,82 @@ class ProductSyncService {
         module: 'product_sync',
       );
     }
+  }
+
+  Future<void> _handleCategoryRealtimePayload(dynamic data) async {
+    if (data is! Map) return;
+    final payload = Map<String, dynamic>.from(data);
+    final eventId = payload['eventId']?.toString() ?? '';
+    if (eventId.isNotEmpty && !_seenEventIds.add(eventId)) {
+      return;
+    }
+    if (_seenEventIds.length > 200) {
+      _seenEventIds.remove(_seenEventIds.first);
+    }
+
+    final categoryJson = payload['category'];
+    if (categoryJson is! Map) return;
+    await AppLogger.instance.logInfo(
+      'Websocket category event received type=${payload['type']} name=${categoryJson['name']}',
+      module: 'product_sync',
+    );
+    await _applyServerCategory(Map<String, dynamic>.from(categoryJson));
+  }
+
+  Future<void> _applyServerCategory(Map<String, dynamic> json) async {
+    final name = (json['name']?.toString() ?? '').trim();
+    if (name.isEmpty) return;
+
+    final createdAt = DateTime.tryParse(json['createdAt']?.toString() ?? '');
+    final updatedAt =
+        DateTime.tryParse(json['updatedAt']?.toString() ?? '') ?? DateTime.now();
+    final deletedAt = DateTime.tryParse(json['deletedAt']?.toString() ?? '');
+    final isActive = json['isActive'] as bool? ?? true;
+
+    await _withRecoveredDb((db) async {
+      await db.transaction((txn) async {
+        final rows = await txn.query(
+          DbTables.categories,
+          columns: ['id'],
+          where: 'LOWER(TRIM(name)) = LOWER(TRIM(?))',
+          whereArgs: [name],
+          limit: 1,
+        );
+
+        final values = <String, Object?>{
+          'name': name,
+          'is_active': isActive ? 1 : 0,
+          'deleted_at_ms': deletedAt?.millisecondsSinceEpoch,
+          'updated_at_ms': updatedAt.millisecondsSinceEpoch,
+        };
+
+        int? localId;
+        if (rows.isEmpty) {
+          localId = await txn.insert(DbTables.categories, {
+            ...values,
+            'created_at_ms':
+                (createdAt ?? updatedAt).millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        } else {
+          localId = rows.first['id'] as int?;
+          if (localId != null) {
+            await txn.update(
+              DbTables.categories,
+              values,
+              where: 'id = ?',
+              whereArgs: [localId],
+            );
+          }
+        }
+
+        ProductSyncEventBus.instance.emit(
+          ProductSyncChange(
+            localProductId: localId ?? 0,
+            reason: 'server_category_snapshot_applied',
+          ),
+        );
+      });
+    });
   }
 
   void _disposeSocket() {
