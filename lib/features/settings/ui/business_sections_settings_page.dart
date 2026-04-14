@@ -455,9 +455,7 @@ class _TaxSettingsPageState extends ConsumerState<TaxSettingsPage> {
                         decimal: true,
                       ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[0-9.,]'),
-                        ),
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                       ],
                       onChanged: (_) => _markDirty(),
                     ),
@@ -607,7 +605,8 @@ class _CurrencySettingsPageState extends ConsumerState<CurrencySettingsPage> {
             child: _ResponsiveFieldWrap(
               children: [
                 _SettingsDropdownField<String>(
-                  value: _currencies.any((item) => item['code'] == _currencyCode)
+                  value:
+                      _currencies.any((item) => item['code'] == _currencyCode)
                       ? _currencyCode
                       : _currencies.first['code']!,
                   label: 'Código de moneda',
@@ -629,7 +628,8 @@ class _CurrencySettingsPageState extends ConsumerState<CurrencySettingsPage> {
                       _currencyCode = value;
                       if (_symbolController.text.trim().isEmpty ||
                           _currencies.any(
-                            (item) => item['symbol'] == _symbolController.text.trim(),
+                            (item) =>
+                                item['symbol'] == _symbolController.text.trim(),
                           )) {
                         _symbolController.text = matched['symbol'] ?? 'RD\$';
                       }
@@ -658,7 +658,9 @@ class _CurrencySettingsPageState extends ConsumerState<CurrencySettingsPage> {
                 borderRadius: BorderRadius.circular(16),
                 color: Theme.of(context).colorScheme.primary.withOpacity(0.06),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.45),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outlineVariant.withOpacity(0.45),
                 ),
               ),
               child: Column(
@@ -1024,10 +1026,7 @@ class _SettingsDetailScaffold extends StatelessWidget {
 }
 
 class _SettingsSectionCard extends StatelessWidget {
-  const _SettingsSectionCard({
-    required this.title,
-    required this.child,
-  });
+  const _SettingsSectionCard({required this.title, required this.child});
 
   final String title;
   final Widget child;
@@ -1054,9 +1053,9 @@ class _SettingsSectionCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
           child,
@@ -1080,9 +1079,7 @@ class _SettingsSectionGrid extends StatelessWidget {
         final compactHeight = height < 760;
         final spacing = compactHeight ? 10.0 : 14.0;
         final columns = width >= 980 ? 2 : 1;
-        final itemWidth = columns == 1
-            ? width
-            : (width - spacing) / 2;
+        final itemWidth = columns == 1 ? width : (width - spacing) / 2;
 
         return Align(
           alignment: Alignment.topCenter,
@@ -1112,9 +1109,7 @@ class _ResponsiveFieldWrap extends StatelessWidget {
         final maxWidth = constraints.maxWidth;
         final spacing = maxWidth < 720 ? 10.0 : 12.0;
         final singleColumn = maxWidth < 720;
-        final fieldWidth = singleColumn
-            ? maxWidth
-            : (maxWidth - spacing) / 2;
+        final fieldWidth = singleColumn ? maxWidth : (maxWidth - spacing) / 2;
 
         return Wrap(
           spacing: spacing,
@@ -1122,7 +1117,9 @@ class _ResponsiveFieldWrap extends StatelessWidget {
           children: [
             for (final child in children)
               SizedBox(
-                width: child.expandWide && !singleColumn ? maxWidth : fieldWidth,
+                width: child.expandWide && !singleColumn
+                    ? maxWidth
+                    : fieldWidth,
                 child: child,
               ),
           ],
@@ -1234,9 +1231,9 @@ class _ToggleTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ],
             ),

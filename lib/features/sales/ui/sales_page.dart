@@ -5549,26 +5549,28 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                                 onChanged: !itbisEnabledInSettings
                                     ? null
                                     : (value) async {
-                                  if (!value) {
-                                    _updateCurrentCart(() {
-                                      _currentCart.electronicInvoiceEnabled =
-                                          false;
-                                    });
-                                    return;
-                                  }
+                                        if (!value) {
+                                          _updateCurrentCart(() {
+                                            _currentCart
+                                                    .electronicInvoiceEnabled =
+                                                false;
+                                          });
+                                          return;
+                                        }
 
-                                  if (!await _canEnableElectronicInvoiceOrNotify()) {
-                                    return;
-                                  }
+                                        if (!await _canEnableElectronicInvoiceOrNotify()) {
+                                          return;
+                                        }
 
-                                  // Activar emisión electrónica implica ITBIS activo
-                                  _updateCurrentCart(() {
-                                    _currentCart.electronicInvoiceEnabled =
-                                        true;
-                                    _currentCart.itbisEnabled = true;
-                                  });
-                                  await _refreshElectronicCompany();
-                                },
+                                        // Activar emisión electrónica implica ITBIS activo
+                                        _updateCurrentCart(() {
+                                          _currentCart
+                                                  .electronicInvoiceEnabled =
+                                              true;
+                                          _currentCart.itbisEnabled = true;
+                                        });
+                                        await _refreshElectronicCompany();
+                                      },
                                 activeColor: scheme.secondary,
                               ),
                             ],

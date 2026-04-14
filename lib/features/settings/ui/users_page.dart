@@ -233,10 +233,7 @@ class _UsersPageState extends State<UsersPage> {
               ),
               Text(
                 title,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _scheme.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
               ),
             ],
           ),

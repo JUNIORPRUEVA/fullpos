@@ -594,7 +594,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
       action: AppActions.assignPermissions,
       resourceType: 'user_permissions',
       resourceId: userId.toString(),
-      reason: 'Actualizar permisos de ${_selectedUser?.displayLabel ?? 'usuario'}',
+      reason:
+          'Actualizar permisos de ${_selectedUser?.displayLabel ?? 'usuario'}',
     );
     if (!authorized || !mounted) return;
 
