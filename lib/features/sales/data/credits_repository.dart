@@ -31,7 +31,7 @@ class CreditsRepository {
     int? userId,
     int? sessionId,
   }) async {
-    return await DbHardening.instance.runDbSafe<CreditPaymentResult>(() async {
+    final result = await DbHardening.instance.runDbSafe<CreditPaymentResult>(() async {
       final db = await AppDb.database;
 
       return await db.transaction((txn) async {
@@ -152,6 +152,8 @@ class CreditsRepository {
     CloudSyncService.instance.schedulePaymentsSyncSoon(
       reason: 'credit_payment_applied',
     );
+
+    return result;
   }
 
   /// Obtiene todas las ventas a crédito

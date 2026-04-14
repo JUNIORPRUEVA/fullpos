@@ -5,6 +5,7 @@ import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/db_init.dart';
 import 'package:fullpos/core/db/tables.dart';
 import 'package:fullpos/core/session/session_manager.dart';
+import 'package:fullpos/features/cash/data/cash_movement_model.dart';
 import 'package:fullpos/features/cash/data/cash_repository.dart';
 import 'package:fullpos/features/cash/data/cash_summary_model.dart';
 import 'package:fullpos/features/cash/data/operation_flow_service.dart';
@@ -618,6 +619,9 @@ void main() {
 
         final summary = CashSummaryModel(
           openingAmount: 1000.0,
+          totalSales: 4500.0,
+          totalExpenses: 0.0,
+          totalWithdrawals: 0.0,
           cashInManual: 0.0,
           cashOutManual: 0.0,
           creditAbonos: 0.0,
@@ -682,6 +686,9 @@ void main() {
         // Cierra turno sumando ventas en efectivo 1000 (neto)
         final summary = CashSummaryModel(
           openingAmount: 2000.0,
+          totalSales: 1000.0,
+          totalExpenses: 0.0,
+          totalWithdrawals: 0.0,
           cashInManual: 0.0,
           cashOutManual: 0.0,
           creditAbonos: 0.0,
@@ -1047,6 +1054,8 @@ void main() {
           amount: 5.0,
           reason: 'Retiro test',
           userId: 2,
+          movementType: CashMovementAccountingType.ownerDraw,
+          affectsProfit: false,
         );
 
         final summary = await CashRepository.buildDailySummary(
@@ -1059,8 +1068,10 @@ void main() {
         expect(summary.salesCardTotal, 30.0);
         expect(summary.cashInManual, 10.0);
         expect(summary.cashOutManual, 5.0);
+        expect(summary.totalExpenses, 0.0);
+        expect(summary.totalWithdrawals, 5.0);
         expect(summary.totalTickets, 2);
-        expect(summary.expectedCash, 155.0);
+        expect(summary.expectedCash, 145.0);
       },
     );
   });

@@ -42,7 +42,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 33;
+  static const int _dbVersion = 34;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -1179,6 +1179,8 @@ class AppDb {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           session_id INTEGER NOT NULL,
           type TEXT NOT NULL,
+          movement_type TEXT NOT NULL DEFAULT 'expense',
+          affects_profit INTEGER NOT NULL DEFAULT 1,
           amount REAL NOT NULL,
           note TEXT,
           created_at_ms INTEGER NOT NULL,
@@ -2927,6 +2929,8 @@ class AppDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id INTEGER NOT NULL,
         type TEXT NOT NULL,
+        movement_type TEXT NOT NULL DEFAULT 'expense',
+        affects_profit INTEGER NOT NULL DEFAULT 1,
         amount REAL NOT NULL,
         note TEXT,
         created_at_ms INTEGER NOT NULL,
@@ -4214,6 +4218,8 @@ class AppDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id INTEGER NOT NULL,
         type TEXT NOT NULL,
+        movement_type TEXT NOT NULL DEFAULT 'expense',
+        affects_profit INTEGER NOT NULL DEFAULT 1,
         amount REAL NOT NULL,
         note TEXT,
         created_at_ms INTEGER NOT NULL,
@@ -5061,6 +5067,34 @@ class AppDb {
     }
 
     await _ensureProductSyncOutboxTable(db);
+
+    if (await _tableExists(db, DbTables.cashMovements)) {
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashMovements,
+        'movement_type',
+        "TEXT NOT NULL DEFAULT 'expense'",
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.cashMovements,
+        'affects_profit',
+        'INTEGER NOT NULL DEFAULT 1',
+      );
+      await db.execute('''
+        UPDATE ${DbTables.cashMovements}
+        SET movement_type = 'expense'
+        WHERE movement_type IS NULL OR TRIM(movement_type) = ''
+      ''');
+      await db.execute('''
+        UPDATE ${DbTables.cashMovements}
+        SET affects_profit = CASE
+          WHEN type = 'OUT' AND COALESCE(movement_type, 'expense') = 'expense' THEN 1
+          ELSE 0
+        END
+        WHERE affects_profit IS NULL OR affects_profit NOT IN (0, 1)
+      ''');
+    }
 
     // pos_tickets (tickets pendientes)
     if (await _tableExists(db, DbTables.posTickets)) {

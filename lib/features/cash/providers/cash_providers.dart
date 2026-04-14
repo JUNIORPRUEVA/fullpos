@@ -119,6 +119,8 @@ class ActiveSessionController
     required double amount,
     required String reason,
     required int userId,
+    String movementType = CashMovementAccountingType.expense,
+    bool? affectsProfit,
   }) async {
     try {
       final id = await CashRepository.addMovement(
@@ -127,6 +129,8 @@ class ActiveSessionController
         amount: amount,
         reason: reason,
         userId: userId,
+        movementType: movementType,
+        affectsProfit: affectsProfit,
       );
       _ref.invalidate(cashSummaryProvider);
       _ref.invalidate(cashMovementsProvider);

@@ -6,10 +6,13 @@ import '../../../core/db/auto_repair.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/session/session_manager.dart';
+import 'cash_accounting_service.dart';
 import 'cash_session_model.dart';
 import 'cash_movement_model.dart';
 import 'cash_summary_model.dart';
+import 'cash_transaction_model.dart';
 
 /// Repositorio completo de Caja
 class CashRepository {
@@ -117,6 +120,13 @@ class CashRepository {
 
       CloudSyncService.instance.scheduleCashSyncSoon(
         reason: 'cash_session_opened',
+      );
+
+      unawaited(
+        AppLogger.instance.logInfo(
+          'Cash session opened sessionId=$id userId=$userId openingAmount=${openingAmount.toStringAsFixed(2)}',
+          module: 'cash',
+        ),
       );
 
       return id;
@@ -314,6 +324,13 @@ class CashRepository {
       CloudSyncService.instance.scheduleCashSyncSoon(
         reason: 'cash_session_closed',
       );
+
+      unawaited(
+        AppLogger.instance.logInfo(
+          'Cash session closed sessionId=$sessionId closingAmount=${closingAmount.toStringAsFixed(2)} expectedCash=${summary.expectedCash.toStringAsFixed(2)} difference=${difference.toStringAsFixed(2)}',
+          module: 'cash',
+        ),
+      );
     }, stage: 'cash_close_session');
   }
 
@@ -385,16 +402,32 @@ class CashRepository {
     required double amount,
     required String reason,
     required int userId,
+    String movementType = CashMovementAccountingType.expense,
+    bool? affectsProfit,
   }) {
     // FULLPOS DB HARDENING: reforzar el registro de movimientos críticos.
     return DbHardening.instance.runDbSafe<int>(() async {
       final db = await AppDb.database;
       final now = DateTime.now().millisecondsSinceEpoch;
+      final trimmedReason = reason.trim();
 
       // Validar que el tipo sea correcto
       if (type != CashMovementType.income && type != CashMovementType.outcome) {
         throw Exception('Tipo de movimiento inválido: $type');
       }
+      CashAccountingService.validateAmount(amount);
+      if (trimmedReason.isEmpty) {
+        throw Exception('Debe indicar una descripción para el movimiento.');
+      }
+      if (movementType != CashMovementAccountingType.expense &&
+          movementType != CashMovementAccountingType.ownerDraw &&
+          movementType != CashMovementAccountingType.transfer) {
+        throw Exception('Tipo contable inválido: $movementType');
+      }
+      final resolvedAffectsProfit = type == CashMovementType.outcome
+          ? (affectsProfit ??
+                movementType == CashMovementAccountingType.expense)
+          : false;
 
       // Validar que la sesión esté abierta
       final session = await getSessionById(sessionId);
@@ -405,8 +438,10 @@ class CashRepository {
       final movement = CashMovementModel(
         sessionId: sessionId,
         type: type,
+        movementType: movementType,
+        affectsProfit: resolvedAffectsProfit,
         amount: amount,
-        reason: reason,
+        reason: trimmedReason,
         createdAtMs: now,
         userId: userId,
       );
@@ -419,6 +454,16 @@ class CashRepository {
 
       CloudSyncService.instance.scheduleCashSyncSoon(
         reason: 'cash_movement_added',
+      );
+
+      final actionType = movement.type == CashMovementType.income
+          ? 'cash_in'
+          : (movement.isExpense ? 'expense' : 'withdrawal');
+      unawaited(
+        AppLogger.instance.logInfo(
+          'Cash action recorded action=$actionType sessionId=$sessionId movementId=$id userId=$userId amount=${amount.toStringAsFixed(2)} movementType=$movementType',
+          module: 'cash',
+        ),
       );
 
       return id;
@@ -517,6 +562,89 @@ class CashRepository {
     }, stage: 'cash_list_movements_range');
   }
 
+  static Future<List<CashTransactionModel>> listTransactions({
+    required int sessionId,
+  }) {
+    return DbHardening.instance.runDbSafe<List<CashTransactionModel>>(() async {
+      final db = await AppDb.database;
+
+      final saleRows = await db.rawQuery(
+        '''
+        SELECT
+          s.id,
+          s.local_code,
+          s.created_at_ms,
+          COALESCE(cs.opened_by_user_id, 1) AS user_id,
+          COALESCE(s.cash_session_id, s.session_id, ?) AS cash_session_id,
+          CASE
+            WHEN LOWER(TRIM(COALESCE(s.payment_method, ''))) = 'mixed'
+              THEN COALESCE(s.payment_cash_amount, 0)
+            WHEN COALESCE(s.payment_cash_amount, 0) > 0
+              THEN COALESCE(s.payment_cash_amount, 0)
+            WHEN LOWER(TRIM(COALESCE(s.payment_method, ''))) IN ('cash', 'efectivo')
+              THEN COALESCE(s.total, 0)
+            ELSE 0
+          END AS cash_amount
+        FROM ${DbTables.sales} s
+        LEFT JOIN ${DbTables.cashSessions} cs
+          ON cs.id = COALESCE(s.cash_session_id, s.session_id)
+        WHERE COALESCE(s.cash_session_id, s.session_id) = ?
+          AND s.kind = 'invoice'
+          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+          AND s.deleted_at_ms IS NULL
+        ORDER BY s.created_at_ms ASC
+      ''',
+        [sessionId, sessionId],
+      );
+
+      final movementRows = await db.query(
+        DbTables.cashMovements,
+        where: 'session_id = ? AND type = ?',
+        whereArgs: [sessionId, CashMovementType.outcome],
+        orderBy: 'created_at_ms ASC',
+      );
+
+      final transactions = <CashTransactionModel>[];
+      for (final row in saleRows) {
+        final amount = (row['cash_amount'] as num?)?.toDouble() ?? 0.0;
+        if (amount <= 0) continue;
+        transactions.add(
+          CashTransactionModel(
+            id: row['id'] as int,
+            type: CashTransactionType.sale,
+            amount: amount,
+            description: 'Venta ${(row['local_code'] as String?) ?? row['id']}',
+            createdAtMs: row['created_at_ms'] as int,
+            userId: (row['user_id'] as num?)?.toInt() ?? 1,
+            cashSessionId:
+                (row['cash_session_id'] as num?)?.toInt() ?? sessionId,
+          ),
+        );
+      }
+
+      for (final row in movementRows) {
+        final movement = CashMovementModel.fromMap(row);
+        final transactionType =
+            CashAccountingService.resolveTransactionTypeForMovement(movement);
+        if (transactionType == null) continue;
+        transactions.add(
+          CashTransactionModel(
+            id: movement.id ?? 0,
+            type: transactionType,
+            amount: movement.amount,
+            description: movement.reason,
+            createdAtMs: movement.createdAtMs,
+            userId: movement.userId,
+            cashSessionId: movement.sessionId,
+          ),
+        );
+      }
+
+      transactions.sort((a, b) => a.createdAtMs.compareTo(b.createdAtMs));
+      return transactions;
+    }, stage: 'cash_list_transactions');
+  }
+
   // ===================== RESUMEN Y CÁLCULOS =====================
 
   /// Construir resumen completo de la sesión
@@ -525,6 +653,14 @@ class CashRepository {
       () => _buildSummaryUnsafe(sessionId),
       stage: 'cash_build_summary',
     );
+  }
+
+  static Future<Map<String, double>> buildClosingReport({
+    required int sessionId,
+    required double countedCash,
+  }) async {
+    final summary = await buildSummary(sessionId: sessionId);
+    return summary.toClosingSummary(countedCash: countedCash).toMap();
   }
 
   /// Construir resumen consolidado del día (todas las sesiones de la caja diaria).
@@ -544,6 +680,18 @@ class CashRepository {
       ),
       stage: 'cash_build_daily_summary',
     );
+  }
+
+  static Future<Map<String, double>> buildDailyClosingReport({
+    required int cashboxDailyId,
+    required String businessDate,
+    required double countedCash,
+  }) async {
+    final summary = await buildDailySummary(
+      cashboxDailyId: cashboxDailyId,
+      businessDate: businessDate,
+    );
+    return summary.toClosingSummary(countedCash: countedCash).toMap();
   }
 
   static String _placeholders(int count) {
@@ -570,6 +718,41 @@ class CashRepository {
           THEN total
         ELSE 0
       END
+    ''';
+  }
+
+  static String _cashSalesSqlForSession(String sessionPredicate) {
+    return '''
+      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'cash', column: 'payment_cash_amount', fallbackAliases: ['efectivo'])}), 0) as total
+      FROM ${DbTables.sales}
+      WHERE $sessionPredicate
+        AND kind = 'invoice'
+        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+        AND deleted_at_ms IS NULL
+    ''';
+  }
+
+  static String _expenseSqlForSession(String sessionPredicate) {
+    return '''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM ${DbTables.cashMovements}
+      WHERE $sessionPredicate
+        AND type = 'OUT'
+        AND COALESCE(movement_type, 'expense') = 'expense'
+        AND COALESCE(affects_profit, 1) = 1
+    ''';
+  }
+
+  static String _withdrawalSqlForSession(String sessionPredicate) {
+    return '''
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM ${DbTables.cashMovements}
+      WHERE $sessionPredicate
+        AND type = 'OUT'
+        AND (
+          COALESCE(movement_type, 'expense') <> 'expense'
+          OR COALESCE(affects_profit, 1) = 0
+        )
     ''';
   }
 
@@ -611,6 +794,9 @@ class CashRepository {
     if (sessionIds.isEmpty) {
       return CashSummaryModel(
         openingAmount: openingAmount,
+        totalSales: 0.0,
+        totalExpenses: 0.0,
+        totalWithdrawals: 0.0,
         cashInManual: 0,
         cashOutManual: 0,
         creditAbonos: 0,
@@ -661,26 +847,31 @@ class CashRepository {
     final layawayAbonos =
         (layawayAbonoResult.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // Movimientos manuales OUT
-    final outResult = await db.rawQuery('''
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM ${DbTables.cashMovements}
-      WHERE session_id IN $inClause AND type = 'OUT'
-    ''', sessionIds);
-    final cashOutManual = (outResult.first['total'] as num?)?.toDouble() ?? 0.0;
+    final expensesResult = await db.rawQuery(
+      _expenseSqlForSession('session_id IN $inClause'),
+      sessionIds,
+    );
+    final totalExpenses =
+        (expensesResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final withdrawalsResult = await db.rawQuery(
+      _withdrawalSqlForSession('session_id IN $inClause'),
+      sessionIds,
+    );
+    final totalWithdrawals =
+        (withdrawalsResult.first['total'] as num?)?.toDouble() ?? 0.0;
+    final cashOutManual = totalExpenses + totalWithdrawals;
 
     // Ventas en efectivo (usando cash_session_id o session_id)
     // Importante: para caja debemos contar lo VENDIDO (total), no lo RECIBIDO (paid_amount),
     // porque paid_amount puede incluir el efectivo entregado por el cliente antes de devolver
     // el cambio/devuelta.
-    final cashSalesResult = await db.rawQuery('''
-      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'cash', column: 'payment_cash_amount', fallbackAliases: ['efectivo'])}), 0) as total
-      FROM ${DbTables.sales}
-      WHERE (cash_session_id IN $inClause OR session_id IN $inClause)
-        AND kind = 'invoice'
-        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND deleted_at_ms IS NULL
-    ''', doubleSessionArgs);
+    final cashSalesResult = await db.rawQuery(
+      _cashSalesSqlForSession(
+        '(cash_session_id IN $inClause OR session_id IN $inClause)',
+      ),
+      doubleSessionArgs,
+    );
     final salesCashTotal =
         (cashSalesResult.first['total'] as num?)?.toDouble() ?? 0.0;
 
@@ -752,15 +943,19 @@ class CashRepository {
     ''', doubleSessionArgs);
     final totalRefunds = (refundsCountResult.first['count'] as int?) ?? 0;
 
-    final expectedCash =
-        openingAmount +
-        salesCashTotal +
-        cashInManual -
-        cashOutManual -
-        refundsCash;
+    final totalSales = salesCashTotal - refundsCash;
+    final expectedCash = CashAccountingService.calculateExpectedCash(
+      openingAmount: openingAmount,
+      totalSales: totalSales,
+      totalExpenses: totalExpenses,
+      totalWithdrawals: totalWithdrawals,
+    );
 
     return CashSummaryModel(
       openingAmount: openingAmount,
+      totalSales: totalSales,
+      totalExpenses: totalExpenses,
+      totalWithdrawals: totalWithdrawals,
       cashInManual: cashInManual,
       cashOutManual: cashOutManual,
       creditAbonos: creditAbonos,
@@ -826,29 +1021,26 @@ class CashRepository {
     final layawayAbonos =
         (layawayAbonoResult.first['total'] as num?)?.toDouble() ?? 0.0;
 
-    // Calcular movimientos manuales OUT
-    final outResult = await db.rawQuery(
-      '''
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM ${DbTables.cashMovements}
-      WHERE session_id = ? AND type = 'OUT'
-    ''',
+    final expensesResult = await db.rawQuery(
+      _expenseSqlForSession('session_id = ?'),
       [sessionId],
     );
-    final cashOutManual = (outResult.first['total'] as num?)?.toDouble() ?? 0.0;
+    final totalExpenses =
+        (expensesResult.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final withdrawalsResult = await db.rawQuery(
+      _withdrawalSqlForSession('session_id = ?'),
+      [sessionId],
+    );
+    final totalWithdrawals =
+        (withdrawalsResult.first['total'] as num?)?.toDouble() ?? 0.0;
+    final cashOutManual = totalExpenses + totalWithdrawals;
 
     // Ventas en efectivo (usando cash_session_id o session_id)
     // Importante: para caja debemos contar lo VENDIDO (total), no lo RECIBIDO (paid_amount),
     // porque paid_amount puede incluir la devuelta/cambio.
     final cashSalesResult = await db.rawQuery(
-      '''
-      SELECT COALESCE(SUM(${_paymentAmountSql(fallbackMethod: 'cash', column: 'payment_cash_amount', fallbackAliases: ['efectivo'])}), 0) as total
-      FROM ${DbTables.sales}
-      WHERE (cash_session_id = ? OR session_id = ?)
-        AND kind = 'invoice'
-        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
-        AND deleted_at_ms IS NULL
-    ''',
+      _cashSalesSqlForSession('(cash_session_id = ? OR session_id = ?)'),
       [sessionId, sessionId],
     );
     final salesCashTotal =
@@ -946,15 +1138,19 @@ class CashRepository {
     // Calcular efectivo esperado
     // expected = apertura + ventas efectivo + entradas - salidas - devoluciones efectivo
     // Nota: las ventas en efectivo se calculan con `total` para no incluir devuelta/cambio.
-    final expectedCash =
-        openingAmount +
-        salesCashTotal +
-        cashInManual -
-        cashOutManual -
-        refundsCash;
+    final totalSales = salesCashTotal - refundsCash;
+    final expectedCash = CashAccountingService.calculateExpectedCash(
+      openingAmount: openingAmount,
+      totalSales: totalSales,
+      totalExpenses: totalExpenses,
+      totalWithdrawals: totalWithdrawals,
+    );
 
     return CashSummaryModel(
       openingAmount: openingAmount,
+      totalSales: totalSales,
+      totalExpenses: totalExpenses,
+      totalWithdrawals: totalWithdrawals,
       cashInManual: cashInManual,
       cashOutManual: cashOutManual,
       creditAbonos: creditAbonos,

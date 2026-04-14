@@ -1,6 +1,11 @@
+import 'cash_accounting_service.dart';
+
 /// Modelo de Resumen de Caja
 class CashSummaryModel {
   final double openingAmount;
+  final double totalSales;
+  final double totalExpenses;
+  final double totalWithdrawals;
   final double cashInManual;
   final double cashOutManual;
   final double creditAbonos;
@@ -16,6 +21,9 @@ class CashSummaryModel {
 
   CashSummaryModel({
     required this.openingAmount,
+    required this.totalSales,
+    required this.totalExpenses,
+    required this.totalWithdrawals,
     required this.cashInManual,
     required this.cashOutManual,
     required this.creditAbonos,
@@ -31,18 +39,42 @@ class CashSummaryModel {
   });
 
   /// Total de ventas (todos los métodos)
-  double get totalSales =>
+  double get grossSalesTotal =>
       salesCashTotal + salesCardTotal + salesTransferTotal + salesCreditTotal;
+
+  double get profit => CashAccountingService.calculateProfit(
+    totalSales: totalSales,
+    totalExpenses: totalExpenses,
+  );
 
   /// Calcular diferencia con el conteo real
   double calculateDifference(double closingAmount) {
-    return closingAmount - expectedCash;
+    return CashAccountingService.buildClosingSummary(
+      openingAmount: openingAmount,
+      totalSales: totalSales,
+      totalExpenses: totalExpenses,
+      totalWithdrawals: totalWithdrawals,
+      countedCash: closingAmount,
+    ).difference;
+  }
+
+  CashClosingSummary toClosingSummary({required double countedCash}) {
+    return CashAccountingService.buildClosingSummary(
+      openingAmount: openingAmount,
+      totalSales: totalSales,
+      totalExpenses: totalExpenses,
+      totalWithdrawals: totalWithdrawals,
+      countedCash: countedCash,
+    );
   }
 
   /// Factory para crear resumen vacío
   factory CashSummaryModel.empty({double openingAmount = 0.0}) {
     return CashSummaryModel(
       openingAmount: openingAmount,
+      totalSales: 0.0,
+      totalExpenses: 0.0,
+      totalWithdrawals: 0.0,
       cashInManual: 0.0,
       cashOutManual: 0.0,
       creditAbonos: 0.0,
@@ -60,6 +92,9 @@ class CashSummaryModel {
 
   CashSummaryModel copyWith({
     double? openingAmount,
+    double? totalSales,
+    double? totalExpenses,
+    double? totalWithdrawals,
     double? cashInManual,
     double? cashOutManual,
     double? creditAbonos,
@@ -75,6 +110,9 @@ class CashSummaryModel {
   }) {
     return CashSummaryModel(
       openingAmount: openingAmount ?? this.openingAmount,
+      totalSales: totalSales ?? this.totalSales,
+      totalExpenses: totalExpenses ?? this.totalExpenses,
+      totalWithdrawals: totalWithdrawals ?? this.totalWithdrawals,
       cashInManual: cashInManual ?? this.cashInManual,
       cashOutManual: cashOutManual ?? this.cashOutManual,
       creditAbonos: creditAbonos ?? this.creditAbonos,

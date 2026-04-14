@@ -202,6 +202,8 @@ class ReportsRepository {
           SELECT COALESCE(SUM(amount), 0) as total
           FROM ${DbTables.cashMovements}
           WHERE type = 'OUT'
+            AND COALESCE(movement_type, 'expense') = 'expense'
+            AND COALESCE(affects_profit, 1) = 1
             AND created_at_ms >= ?
             AND created_at_ms <= ?
         ''',
@@ -477,8 +479,6 @@ class ReportsRepository {
       [startMs, endMs],
     );
 
-    final returnTotal =
-        (returnTotalsResult.first['return_total'] as num?)?.toDouble() ?? 0.0;
     final returnCost =
         (returnTotalsResult.first['return_cost'] as num?)?.toDouble() ?? 0.0;
 

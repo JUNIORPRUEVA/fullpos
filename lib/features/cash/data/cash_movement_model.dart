@@ -3,6 +3,8 @@ class CashMovementModel {
   final int? id;
   final int sessionId;
   final String type; // IN / OUT
+  final String movementType; // expense | owner_draw | transfer
+  final bool affectsProfit;
   final double amount;
   final String reason;
   final int createdAtMs;
@@ -12,6 +14,8 @@ class CashMovementModel {
     this.id,
     required this.sessionId,
     required this.type,
+    this.movementType = CashMovementAccountingType.expense,
+    this.affectsProfit = true,
     required this.amount,
     required this.reason,
     required this.createdAtMs,
@@ -20,6 +24,11 @@ class CashMovementModel {
 
   bool get isIn => type == CashMovementType.income;
   bool get isOut => type == CashMovementType.outcome;
+  bool get isExpense =>
+      isOut &&
+      movementType == CashMovementAccountingType.expense &&
+      affectsProfit;
+  bool get isWithdrawal => isOut && !isExpense;
 
   DateTime get createdAt => DateTime.fromMillisecondsSinceEpoch(createdAtMs);
 
@@ -28,6 +37,8 @@ class CashMovementModel {
       if (id != null) 'id': id,
       'session_id': sessionId,
       'type': type,
+      'movement_type': movementType,
+      'affects_profit': affectsProfit ? 1 : 0,
       'amount': amount,
       'reason': reason,
       'created_at_ms': createdAtMs,
@@ -40,6 +51,9 @@ class CashMovementModel {
       id: map['id'] as int?,
       sessionId: map['session_id'] as int,
       type: map['type'] as String,
+      movementType:
+          map['movement_type'] as String? ?? CashMovementAccountingType.expense,
+      affectsProfit: ((map['affects_profit'] as num?) ?? 1) == 1,
       amount: (map['amount'] as num).toDouble(),
       reason: map['reason'] as String? ?? map['note'] as String? ?? '',
       createdAtMs: map['created_at_ms'] as int,
@@ -51,6 +65,8 @@ class CashMovementModel {
     int? id,
     int? sessionId,
     String? type,
+    String? movementType,
+    bool? affectsProfit,
     double? amount,
     String? reason,
     int? createdAtMs,
@@ -60,6 +76,8 @@ class CashMovementModel {
       id: id ?? this.id,
       sessionId: sessionId ?? this.sessionId,
       type: type ?? this.type,
+      movementType: movementType ?? this.movementType,
+      affectsProfit: affectsProfit ?? this.affectsProfit,
       amount: amount ?? this.amount,
       reason: reason ?? this.reason,
       createdAtMs: createdAtMs ?? this.createdAtMs,
@@ -73,4 +91,11 @@ class CashMovementType {
   CashMovementType._();
   static const String income = 'IN';
   static const String outcome = 'OUT';
+}
+
+class CashMovementAccountingType {
+  CashMovementAccountingType._();
+  static const String expense = 'expense';
+  static const String ownerDraw = 'owner_draw';
+  static const String transfer = 'transfer';
 }

@@ -1815,6 +1815,8 @@ class CloudSyncService {
           'localId': localId,
           'sessionLocalId': sessionLocalId,
           'type': (row['type'] as String?) ?? 'IN',
+          'movementType': (row['movement_type'] as String?) ?? 'expense',
+          'affectsProfit': ((row['affects_profit'] as num?) ?? 1) == 1,
           'amount': (row['amount'] as num).toDouble(),
           'note': (row['reason'] as String?) ?? (row['note'] as String?),
           'createdAt': DateTime.fromMillisecondsSinceEpoch(

@@ -54,6 +54,9 @@ void main() {
       ),
       summary: CashSummaryModel(
         openingAmount: 1500,
+        totalSales: 5700,
+        totalExpenses: 125,
+        totalWithdrawals: 200,
         cashInManual: 500,
         cashOutManual: 200,
         creditAbonos: 50,

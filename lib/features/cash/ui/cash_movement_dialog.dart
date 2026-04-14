@@ -42,9 +42,43 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _reasonController = TextEditingController();
+  String _movementType = CashMovementAccountingType.expense;
   bool _isLoading = false;
 
   bool get isIncome => widget.type == CashMovementType.income;
+  bool get isWithdrawal =>
+      !isIncome && _movementType != CashMovementAccountingType.expense;
+
+  Future<bool> _confirmWithdrawal({
+    required double amount,
+    required String reason,
+  }) async {
+    if (!isWithdrawal) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar retiro de caja'),
+        content: Text(
+          'Este movimiento se registrará como retiro y no afectará la ganancia.\n\n'
+          'Monto: ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: 'RD\$')}\n'
+          'Descripción: $reason',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar retiro'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed ?? false;
+  }
 
   @override
   void dispose() {
@@ -73,6 +107,16 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
       final amount = AccountingAmountFormatter.parse(_amountController.text);
       final reason = _reasonController.text.trim();
       final userId = await SessionManager.userId() ?? 1;
+
+      final confirmed = await _confirmWithdrawal(
+        amount: amount,
+        reason: reason.isEmpty ? 'Retiro de efectivo' : reason,
+      );
+      if (!mounted) return;
+      if (!confirmed) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       if (!isIncome) {
         final summary = await CashRepository.buildSummary(
@@ -125,6 +169,12 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
             sessionId: widget.sessionId,
             type: widget.type,
             amount: amount,
+            movementType: isIncome
+                ? CashMovementAccountingType.transfer
+                : _movementType,
+            affectsProfit: isIncome
+                ? false
+                : _movementType == CashMovementAccountingType.expense,
             reason: reason.isEmpty
                 ? (isIncome ? 'Entrada de efectivo' : 'Retiro de efectivo')
                 : reason,
@@ -232,6 +282,46 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                   ),
                   const SizedBox(height: 20),
 
+                  if (!isIncome) ...[
+                    Text(
+                      'Tipo contable',
+                      style: TextStyle(
+                        color: scheme.onSurface.withAlpha(179),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _movementType,
+                      items: const [
+                        DropdownMenuItem(
+                          value: CashMovementAccountingType.expense,
+                          child: Text('Gasto'),
+                        ),
+                        DropdownMenuItem(
+                          value: CashMovementAccountingType.ownerDraw,
+                          child: Text('Retiro de dueño'),
+                        ),
+                        DropdownMenuItem(
+                          value: CashMovementAccountingType.transfer,
+                          child: Text('Transferencia'),
+                        ),
+                      ],
+                      onChanged: _isLoading
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setState(() => _movementType = value);
+                            },
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // Campo de monto
                   Text(
                     'Monto',
@@ -261,7 +351,7 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
-                        hintText: '0.00',
+                      hintText: '0.00',
                       filled: true,
                       fillColor: scheme.surfaceContainerHighest,
                       border: OutlineInputBorder(
