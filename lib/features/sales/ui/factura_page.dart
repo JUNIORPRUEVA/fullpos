@@ -18,6 +18,7 @@ import '../../cash/data/cash_movement_model.dart';
 import '../../cash/data/cash_repository.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
 import '../../settings/data/printer_settings_repository.dart';
+import '../../reports/data/report_data_service.dart' as reporting;
 import '../../reports/data/reports_repository.dart';
 import '../data/sales_model.dart';
 import '../data/sales_repository.dart';
@@ -255,10 +256,14 @@ class _FacturaPageState extends State<FacturaPage> {
               List<CategoryPerformanceData>,
             )
           >(() async {
-            final sales = await SalesRepository.listCompletedSales(
-              dateFrom: dateFrom,
-              dateTo: dateTo,
+            final salesFilter = reporting.DateFilter(
+              start: dateFrom ?? DateTime(2020),
+              end: dateTo ?? DateTime.now(),
             );
+            final report = await reporting.ReportDataService.getReportData(
+              salesFilter,
+            );
+            final sales = report.sales;
             final returns = await ReturnsRepository.listReturns(
               dateFrom: dateFrom,
               dateTo: dateTo,

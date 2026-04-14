@@ -1,5 +1,6 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import 'report_data_service.dart';
 
 /// Modelos para los reportes
 class KpisData {
@@ -172,14 +173,6 @@ class SaleRecord {
 class ReportsRepository {
   ReportsRepository._();
 
-  static double _calculateProfit({
-    required double revenue,
-    required double cost,
-    required double expenses,
-  }) {
-    return revenue - cost - expenses;
-  }
-
   static double _allocateExpenseShare({
     required double totalExpenses,
     required double revenue,
@@ -334,6 +327,12 @@ class ReportsRepository {
     int? userId,
   }) async {
     final db = await AppDb.database;
+    final report = await ReportDataService.getReportData(
+      DateFilter(
+        start: DateTime.fromMillisecondsSinceEpoch(startMs),
+        end: DateTime.fromMillisecondsSinceEpoch(endMs),
+      ),
+    );
 
     // Intentar completar snapshots faltantes en el rango solicitado (solo si existen productos).
     // Esto evita que la ganancia quede igual a las ventas por costos en 0.
@@ -402,88 +401,8 @@ class ReportsRepository {
       // No bloquear reportes si no se puede backfillear
     }
 
-    // Ventas reales: usar SIEMPRE sales.total para mantener coherencia con
-    // facturas/listados, impuestos y descuentos de cabecera.
-    final salesFinancialTotalsResult = await db.rawQuery(
-      '''
-        SELECT
-          COALESCE(SUM(CASE WHEN kind IN ('invoice', 'sale') THEN total ELSE 0 END), 0) as invoiced_total,
-          COALESCE(SUM(CASE WHEN kind = 'return' THEN ABS(total) ELSE 0 END), 0) as refunded_total,
-          COALESCE(SUM(CASE WHEN kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) as sales_count
-        FROM ${DbTables.sales}
-        WHERE kind IN ('invoice', 'sale', 'return')
-          AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND deleted_at_ms IS NULL
-          AND created_at_ms >= ?
-          AND created_at_ms <= ?
-      ''',
-      [startMs, endMs],
-    );
-
-    final invoicedTotal =
-        (salesFinancialTotalsResult.first['invoiced_total'] as num?)
-            ?.toDouble() ??
-        0.0;
-    final refundedSalesTotal =
-        (salesFinancialTotalsResult.first['refunded_total'] as num?)
-            ?.toDouble() ??
-        0.0;
-    final salesCount =
-        (salesFinancialTotalsResult.first['sales_count'] as int?) ?? 0;
-
-    // Costos y utilidad: seguir usando sale_items/return_items para preservar
-    // la trazabilidad del costo vendido aun cuando sales.total incluya ITBIS.
-    final totalsQuery =
-        '''
-      SELECT
-          COALESCE(SUM(
-            COALESCE(si.qty, 0) * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
-          ), 0) AS total_cost
-        FROM ${DbTables.saleItems} si
-        INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
-        LEFT JOIN ${DbTables.products} p
-          ON (si.product_id = p.id)
-          OR (
-            si.product_id IS NULL
-            AND TRIM(si.product_code_snapshot) COLLATE NOCASE = TRIM(p.code) COLLATE NOCASE
-          )
-        WHERE s.kind IN ('invoice', 'sale')
-          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
-          AND s.created_at_ms >= ? 
-          AND s.created_at_ms <= ?
-    ''';
-
-    final totalsResult = await db.rawQuery(totalsQuery, [startMs, endMs]);
-    final totalCost =
-        (totalsResult.first['total_cost'] as num?)?.toDouble() ?? 0.0;
-
-    final returnTotalsResult = await db.rawQuery(
-      '''
-        SELECT
-          COALESCE(SUM(ri.total), 0) as return_total,
-          COALESCE(SUM(
-            ri.qty * COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
-          ), 0) as return_cost
-        FROM ${DbTables.returnItems} ri
-        INNER JOIN ${DbTables.returns} r ON ri.return_id = r.id
-        INNER JOIN ${DbTables.sales} s ON r.return_sale_id = s.id
-        LEFT JOIN ${DbTables.saleItems} si ON ri.sale_item_id = si.id
-        LEFT JOIN ${DbTables.products} p ON COALESCE(ri.product_id, si.product_id) = p.id
-        WHERE s.kind = 'return'
-          AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
-          AND s.created_at_ms >= ?
-          AND s.created_at_ms <= ?
-      ''',
-      [startMs, endMs],
-    );
-
-    final returnCost =
-        (returnTotalsResult.first['return_cost'] as num?)?.toDouble() ?? 0.0;
-
-    final netTotalSales = invoicedTotal - refundedSalesTotal;
-    final netTotalCost = totalCost - returnCost;
+    final netTotalSales = report.totalSales;
+    final netTotalCost = 0.0;
     double cashExpense = 0;
     double cashIncome = 0;
     try {
@@ -509,17 +428,15 @@ class ReportsRepository {
       // La tabla puede no existir
     }
 
-    final unifiedProfit = _calculateProfit(
-      revenue: netTotalSales,
-      cost: netTotalCost,
-      expenses: cashExpense,
-    );
+    final unifiedProfit = report.profit;
 
     double finalTotalSales = netTotalSales;
     double finalTotalProfit = unifiedProfit;
     double finalTotalCost = netTotalCost;
-    int finalSalesCount = salesCount;
-    double finalAvgTicket = salesCount > 0 ? (netTotalSales / salesCount) : 0.0;
+    int finalSalesCount = report.sales.length;
+    double finalAvgTicket = finalSalesCount > 0
+        ? (netTotalSales / finalSalesCount)
+        : 0.0;
     // Cotizaciones
     final quotesQuery =
         '''
@@ -1120,42 +1037,27 @@ class ReportsRepository {
     required int endMs,
     int? userId,
   }) async {
-    final db = await AppDb.database;
+    final report = await ReportDataService.getReportData(
+      DateFilter(
+        start: DateTime.fromMillisecondsSinceEpoch(startMs),
+        end: DateTime.fromMillisecondsSinceEpoch(endMs),
+      ),
+    );
 
-    final query =
-        '''
-      SELECT 
-        id,
-        customer_id,
-        local_code,
-        kind,
-        created_at_ms,
-        customer_name_snapshot,
-        total,
-        payment_method
-      FROM ${DbTables.sales}
-      WHERE kind IN ('invoice', 'sale', 'return')
-        AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND deleted_at_ms IS NULL
-        AND created_at_ms >= ?
-        AND created_at_ms <= ?
-      ORDER BY created_at_ms DESC
-    ''';
-
-    final results = await db.rawQuery(query, [startMs, endMs]);
-
-    return results.map((row) {
-      return SaleRecord(
-        id: row['id'] as int,
-        customerId: row['customer_id'] as int?,
-        localCode: row['local_code'] as String,
-        kind: row['kind'] as String,
-        createdAtMs: row['created_at_ms'] as int,
-        customerName: row['customer_name_snapshot'] as String?,
-        total: (row['total'] as num).toDouble(),
-        paymentMethod: row['payment_method'] as String?,
-      );
-    }).toList();
+    return report.sales
+        .map(
+          (sale) => SaleRecord(
+            id: sale.id ?? 0,
+            customerId: sale.customerId,
+            localCode: sale.localCode,
+            kind: sale.kind,
+            createdAtMs: sale.createdAtMs,
+            customerName: sale.customerNameSnapshot,
+            total: sale.total,
+            paymentMethod: sale.paymentMethod,
+          ),
+        )
+        .toList();
   }
 
   static Future<List<ClientSalesSummary>> getClientSalesSummaries({
