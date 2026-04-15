@@ -59,6 +59,8 @@ class CloudSyncService {
   Timer? _outboxPollingTimer;
   bool _outboxRunning = false;
   bool _engineStarted = false;
+  final Set<CloudSyncTarget> _criticalSyncTargetsInFlight =
+      <CloudSyncTarget>{};
   final Map<String, ({bool ok, int checkedAtMs})> _imageHealthCache = {};
 
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
@@ -247,6 +249,22 @@ class CloudSyncService {
     );
   }
 
+  Future<void> syncSalesNow({String reason = 'sales_changed'}) {
+    return _runCriticalTargetNow(
+      CloudSyncTarget.sales,
+      reason: reason,
+      fallbackDelay: const Duration(milliseconds: 150),
+    );
+  }
+
+  Future<void> syncReturnsNow({String reason = 'returns_changed'}) {
+    return _runCriticalTargetNow(
+      CloudSyncTarget.returns,
+      reason: reason,
+      fallbackDelay: const Duration(milliseconds: 150),
+    );
+  }
+
   Future<void> retryAllFailedSyncNow() async {
     await _outbox.retryAllFailedNow();
     _kickOutboxDispatcher();
@@ -261,6 +279,48 @@ class CloudSyncService {
           })
           .toList(growable: false),
     );
+  }
+
+  Future<void> _runCriticalTargetNow(
+    CloudSyncTarget target, {
+    required String reason,
+    required Duration fallbackDelay,
+  }) async {
+    if (!_enabledTargets.contains(target)) return;
+    if (_criticalSyncTargetsInFlight.contains(target)) return;
+
+    _criticalSyncTargetsInFlight.add(target);
+    try {
+      if (!await _hasActiveSyncSession()) {
+        await AppLogger.instance.logInfo(
+          'Critical sync skipped target=${target.value} reason=$reason session=inactive',
+          module: 'cloud_sync',
+        );
+        return;
+      }
+
+      await AppLogger.instance.logInfo(
+        'Critical sync start target=${target.value} reason=$reason',
+        module: 'cloud_sync',
+      );
+
+      final success = await _runTargetSync(target);
+      if (success) {
+        await AppLogger.instance.logInfo(
+          'Critical sync success target=${target.value} reason=$reason',
+          module: 'cloud_sync',
+        );
+        return;
+      }
+
+      await AppLogger.instance.logWarn(
+        'Critical sync failed target=${target.value} reason=$reason fallbackQueued=true',
+        module: 'cloud_sync',
+      );
+      await _enqueueTarget(target, delay: fallbackDelay, reason: reason);
+    } finally {
+      _criticalSyncTargetsInFlight.remove(target);
+    }
   }
 
   Future<void> _enqueueTarget(
@@ -1289,6 +1349,7 @@ class CloudSyncService {
           'PAID',
           'PARTIAL_REFUND',
           'REFUNDED',
+          'cancelled',
         };
         final status = (sale.status).toString();
         if (!allowedStatuses.contains(status)) continue;

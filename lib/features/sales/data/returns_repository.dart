@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:sqflite/sqflite.dart';
+
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/services/cloud_sync_service.dart';
@@ -5,6 +9,65 @@ import 'sales_model.dart';
 
 class ReturnsRepository {
   ReturnsRepository._();
+
+  static Future<({String status, bool isFullyRefunded})> _resolveRefundState(
+    Transaction txn,
+    int originalSaleId,
+  ) async {
+    final saleItems = await txn.query(
+      DbTables.saleItems,
+      columns: ['id', 'qty'],
+      where: 'sale_id = ?',
+      whereArgs: [originalSaleId],
+    );
+
+    if (saleItems.isEmpty) {
+      return (status: 'REFUNDED', isFullyRefunded: true);
+    }
+
+    final returnedRows = await txn.rawQuery(
+      '''
+      SELECT ri.sale_item_id, COALESCE(SUM(ri.qty), 0) AS returned_qty
+      FROM ${DbTables.returnItems} ri
+      JOIN ${DbTables.returns} r ON r.id = ri.return_id
+      WHERE r.original_sale_id = ?
+      GROUP BY ri.sale_item_id
+      ''',
+      [originalSaleId],
+    );
+
+    final returnedQtyBySaleItemId = <int, double>{};
+    for (final row in returnedRows) {
+      final saleItemId = row['sale_item_id'] as int?;
+      if (saleItemId == null) continue;
+      returnedQtyBySaleItemId[saleItemId] =
+          (row['returned_qty'] as num?)?.toDouble() ?? 0.0;
+    }
+
+    var hasReturnedQty = false;
+    var isFullyRefunded = true;
+    for (final saleItem in saleItems) {
+      final saleItemId = saleItem['id'] as int?;
+      final originalQty = (saleItem['qty'] as num?)?.toDouble() ?? 0.0;
+      final returnedQty =
+          saleItemId == null ? 0.0 : (returnedQtyBySaleItemId[saleItemId] ?? 0.0);
+      if (returnedQty > 0.0001) {
+        hasReturnedQty = true;
+      }
+      if (returnedQty + 0.0001 < originalQty) {
+        isFullyRefunded = false;
+      }
+    }
+
+    if (!hasReturnedQty) {
+      isFullyRefunded = false;
+    }
+
+    return (
+      status: isFullyRefunded ? 'REFUNDED' : 'PARTIAL_REFUND',
+      isFullyRefunded: isFullyRefunded,
+    );
+  }
 
   /// Crea una devolución completa con stock restoration
   static Future<int> createReturn({
@@ -127,19 +190,14 @@ class ReturnsRepository {
         }
       }
 
-      // Actualizar estado de venta original
-      final existingReturn = await txn.query(
-        DbTables.returns,
-        where: 'original_sale_id = ?',
-        whereArgs: [originalSaleId],
-      );
-
-      final newStatus = existingReturn.length > 1
-          ? 'PARTIAL_REFUND'
-          : 'REFUNDED';
+      final refundState = await _resolveRefundState(txn, originalSaleId);
       await txn.update(
         DbTables.sales,
-        {'status': newStatus, 'updated_at_ms': now},
+        {
+          'status': refundState.status,
+          'updated_at_ms': now,
+          'deleted_at_ms': refundState.isFullyRefunded ? now : null,
+        },
         where: 'id = ?',
         whereArgs: [originalSaleId],
       );
@@ -147,9 +205,13 @@ class ReturnsRepository {
       return returnSaleId;
     });
 
-    CloudSyncService.instance.scheduleReturnsSyncSoon(reason: 'return_applied');
     CloudSyncService.instance.scheduleProductsSyncSoon();
-    CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'return_applied');
+    unawaited(
+      CloudSyncService.instance.syncReturnsNow(reason: 'return_applied'),
+    );
+    unawaited(
+      CloudSyncService.instance.syncSalesNow(reason: 'return_applied'),
+    );
 
     return returnSaleId;
   }

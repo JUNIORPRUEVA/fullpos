@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -1205,7 +1206,9 @@ class SalesRepository {
 
     if (cancelled) {
       CloudSyncService.instance.scheduleProductsSyncSoon();
-      CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'sale_deleted');
+      unawaited(
+        CloudSyncService.instance.syncSalesNow(reason: 'sale_deleted'),
+      );
     }
 
     return cancelled;
