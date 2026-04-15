@@ -31,120 +31,126 @@ class CreditsRepository {
     int? userId,
     int? sessionId,
   }) async {
-    final result = await DbHardening.instance.runDbSafe<CreditPaymentResult>(() async {
-      final db = await AppDb.database;
+    final result = await DbHardening.instance.runDbSafe<CreditPaymentResult>(
+      () async {
+        final db = await AppDb.database;
 
-      return await db.transaction((txn) async {
-        final now = DateTime.now().millisecondsSinceEpoch;
+        return await db.transaction((txn) async {
+          final now = DateTime.now().millisecondsSinceEpoch;
 
-        // Obtener venta para comparar totales y completar cliente si falta
-        final sale = await txn.query(
-          DbTables.sales,
-          where: 'id = ?',
-          whereArgs: [saleId],
-        );
-
-        final resolvedClientId = clientId != 0
-            ? clientId
-            : (sale.isNotEmpty ? (sale.first['customer_id'] as int? ?? 0) : 0);
-        final resolvedSessionId =
-            sessionId ??
-            (sale.isNotEmpty
-                ? ((sale.first['cash_session_id'] as int?) ??
-                      (sale.first['session_id'] as int?))
-                : null);
-        final saleCode = sale.isNotEmpty
-            ? (sale.first['local_code'] as String?) ?? 'CR-$saleId'
-            : 'CR-$saleId';
-
-        // Insertar pago
-        final paymentId = await txn.insert(DbTables.creditPayments, {
-          'sale_id': saleId,
-          'client_id': resolvedClientId,
-          'amount': amount,
-          'method': method,
-          'note': note,
-          'created_at_ms': now,
-          'user_id': userId,
-        });
-
-        // Verificar si el crédito está completamente pagado
-        final payments = await txn.rawQuery(
-          '''SELECT SUM(amount) as total FROM ${DbTables.creditPayments} 
-           WHERE sale_id = ?''',
-          [saleId],
-        );
-
-        final totalPaid = (payments.first['total'] as num?)?.toDouble() ?? 0.0;
-        double totalDue = 0.0;
-
-        if (sale.isNotEmpty) {
-          final saleTotal = (sale.first['total'] as num).toDouble();
-          final interestRate =
-              (sale.first['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
-          totalDue = saleTotal + (saleTotal * interestRate / 100.0);
-
-          // Actualizar pagado acumulado
-          await txn.update(
+          // Obtener venta para comparar totales y completar cliente si falta
+          final sale = await txn.query(
             DbTables.sales,
-            {'paid_amount': totalPaid, 'updated_at_ms': now},
             where: 'id = ?',
             whereArgs: [saleId],
           );
 
-          // Si pagó todo, marcar como PAID
-          if (totalPaid >= totalDue) {
+          final resolvedClientId = clientId != 0
+              ? clientId
+              : (sale.isNotEmpty
+                    ? (sale.first['customer_id'] as int? ?? 0)
+                    : 0);
+          final resolvedSessionId =
+              sessionId ??
+              (sale.isNotEmpty
+                  ? ((sale.first['cash_session_id'] as int?) ??
+                        (sale.first['session_id'] as int?))
+                  : null);
+          final saleCode = sale.isNotEmpty
+              ? (sale.first['local_code'] as String?) ?? 'CR-$saleId'
+              : 'CR-$saleId';
+
+          // Insertar pago
+          final paymentId = await txn.insert(DbTables.creditPayments, {
+            'sale_id': saleId,
+            'client_id': resolvedClientId,
+            'amount': amount,
+            'method': method,
+            'note': note,
+            'created_at_ms': now,
+            'user_id': userId,
+          });
+
+          // Verificar si el crédito está completamente pagado
+          final payments = await txn.rawQuery(
+              '''SELECT SUM(amount) as total FROM ${DbTables.creditPayments}
+           WHERE sale_id = ?''',
+            [saleId],
+          );
+
+          final totalPaid =
+              (payments.first['total'] as num?)?.toDouble() ?? 0.0;
+          double totalDue = 0.0;
+
+          if (sale.isNotEmpty) {
+            final saleTotal = (sale.first['total'] as num).toDouble();
+            final interestRate =
+                (sale.first['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
+            totalDue = saleTotal + (saleTotal * interestRate / 100.0);
+
+            // Actualizar pagado acumulado
             await txn.update(
               DbTables.sales,
-              {'status': 'PAID', 'updated_at_ms': now},
+              {'paid_amount': totalPaid, 'updated_at_ms': now},
               where: 'id = ?',
               whereArgs: [saleId],
             );
+
+            // Si pagó todo, marcar como PAID
+            if (totalPaid >= totalDue) {
+              await txn.update(
+                DbTables.sales,
+                {'status': 'PAID', 'updated_at_ms': now},
+                where: 'id = ?',
+                whereArgs: [saleId],
+              );
+            }
+          } else {
+            totalDue = totalPaid;
           }
-        } else {
-          totalDue = totalPaid;
-        }
 
-        final pending = (totalDue - totalPaid).clamp(0.0, double.infinity);
+          final pending = (totalDue - totalPaid).clamp(0.0, double.infinity);
 
-        if (resolvedSessionId == null) {
-          throw Exception(
-            'No hay caja abierta para registrar abono de crédito.',
+          if (resolvedSessionId == null) {
+            throw Exception(
+              'No hay caja abierta para registrar abono de crédito.',
+            );
+          }
+
+          final sessionRows = await txn.query(
+            DbTables.cashSessions,
+            columns: ['status'],
+            where: 'id = ?',
+            whereArgs: [resolvedSessionId],
+            limit: 1,
           );
-        }
+          final status = sessionRows.isNotEmpty
+              ? (sessionRows.first['status'] as String?) ?? ''
+              : '';
+          if (status != 'OPEN') {
+            throw Exception('La sesión de caja no está abierta.');
+          }
 
-        final sessionRows = await txn.query(
-          DbTables.cashSessions,
-          columns: ['status'],
-          where: 'id = ?',
-          whereArgs: [resolvedSessionId],
-          limit: 1,
-        );
-        final status = sessionRows.isNotEmpty
-            ? (sessionRows.first['status'] as String?) ?? ''
-            : '';
-        if (status != 'OPEN') {
-          throw Exception('La sesión de caja no está abierta.');
-        }
+          await txn.insert(DbTables.cashMovements, {
+            'session_id': resolvedSessionId,
+            'type': 'IN',
+            'amount': amount,
+            'note': note,
+            'created_at_ms': now,
+            'reason': 'Abono credito #$saleCode',
+            'user_id': userId ?? 1,
+          });
 
-        await txn.insert(DbTables.cashMovements, {
-          'session_id': resolvedSessionId,
-          'type': 'IN',
-          'amount': amount,
-          'note': note,
-          'created_at_ms': now,
-          'reason': 'Abono credito #$saleCode',
-          'user_id': userId ?? 1,
+          return CreditPaymentResult(
+            paymentId: paymentId,
+            totalPaid: totalPaid,
+            pendingAmount: pending,
+            totalDue: totalDue,
+          );
         });
-
-        return CreditPaymentResult(
-          paymentId: paymentId,
-          totalPaid: totalPaid,
-          pendingAmount: pending,
-          totalDue: totalDue,
-        );
-      });
-    }, stage: 'credits/register_payment');
+      },
+      stage: 'credits/register_payment',
+    );
 
     CloudSyncService.instance.scheduleSalesSyncSoon(
       reason: 'credit_payment_applied',
