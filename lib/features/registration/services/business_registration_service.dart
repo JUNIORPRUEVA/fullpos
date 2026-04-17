@@ -1,4 +1,5 @@
 import '../../../features/license/license_config.dart';
+import '../../license/services/license_storage.dart';
 import '../../../core/utils/id_utils.dart';
 import 'business_identity_storage.dart';
 import 'business_registration_api.dart';
@@ -8,14 +9,40 @@ class BusinessRegistrationService {
   final BusinessIdentityStorage identityStorage;
   final PendingRegistrationQueue queue;
   final BusinessRegistrationApi api;
+  final LicenseStorage licenseStorage;
 
   BusinessRegistrationService({
     BusinessIdentityStorage? identityStorage,
     PendingRegistrationQueue? queue,
     BusinessRegistrationApi? api,
+    LicenseStorage? licenseStorage,
   }) : identityStorage = identityStorage ?? BusinessIdentityStorage(),
        queue = queue ?? PendingRegistrationQueue(),
-       api = api ?? BusinessRegistrationApi();
+       api = api ?? BusinessRegistrationApi(),
+       licenseStorage = licenseStorage ?? LicenseStorage();
+
+  Future<String> _resolveCanonicalBusinessId() async {
+    final localBusinessId = (await identityStorage.getBusinessId() ?? '')
+        .trim();
+    final cachedLicenseBusinessId =
+        ((await licenseStorage.getLastInfo())?.businessId ?? '').trim();
+
+    if (cachedLicenseBusinessId.isNotEmpty) {
+      if (localBusinessId != cachedLicenseBusinessId) {
+        await identityStorage.setBusinessId(
+          cachedLicenseBusinessId,
+          overwrite: true,
+        );
+      }
+      return cachedLicenseBusinessId;
+    }
+
+    if (localBusinessId.isNotEmpty) {
+      return localBusinessId;
+    }
+
+    return identityStorage.ensureBusinessId();
+  }
 
   Future<Map<String, dynamic>> buildPayload({
     required String businessName,
@@ -26,7 +53,7 @@ class BusinessRegistrationService {
     required DateTime trialStart,
     required String appVersion,
   }) async {
-    final businessId = await identityStorage.ensureBusinessId();
+    final businessId = await _resolveCanonicalBusinessId();
     return {
       'business_id': businessId,
       'business_name': businessName.trim(),

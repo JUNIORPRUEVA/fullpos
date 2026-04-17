@@ -699,17 +699,6 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                                 height: 1.35,
                                               ),
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Business ID: ${_resolvedBusinessId(info) ?? 'Generando...'}',
-                                          textAlign: TextAlign.center,
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: _licensePanelMutedText,
-                                                fontWeight: FontWeight.w700,
-                                                height: 1.35,
-                                              ),
-                                        ),
                                         const SizedBox(height: 16),
                                         if (uiError != null) ...[
                                           _buildErrorCard(
@@ -1127,15 +1116,6 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  _supportInfoPill(
-                    context,
-                    label: 'Business ID',
-                    value: _businessId ?? 'Generando...',
-                    trailing: _buildBusinessIdCopyIcon(
-                      context,
-                      color: _licensePanelText,
-                    ),
-                  ),
                   if (info?.deviceId.trim().isNotEmpty == true)
                     _supportInfoPill(
                       context,
@@ -1316,30 +1296,35 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     ).showSnackBar(const SnackBar(content: Text('Código copiado.')));
   }
 
-  Future<void> _copyBusinessId(BuildContext context) async {
-    final businessId = (_businessId ?? '').trim();
-    if (businessId.isEmpty) {
+  Future<void> _copyBusinessId(BuildContext context, String? businessId) async {
+    final resolved = (businessId ?? '').trim();
+    if (resolved.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Business ID no disponible todavía.')),
       );
       return;
     }
 
-    await Clipboard.setData(ClipboardData(text: businessId));
+    await Clipboard.setData(ClipboardData(text: resolved));
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Business ID copiado.')));
   }
 
-  Widget _buildBusinessIdCopyIcon(BuildContext context, {Color? color}) {
-    final enabled = (_businessId ?? '').trim().isNotEmpty;
+  Widget _buildBusinessIdCopyIcon(
+    BuildContext context, {
+    required String? businessId,
+    Color? color,
+  }) {
+    final resolved = (businessId ?? '').trim();
+    final enabled = resolved.isNotEmpty;
 
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: enabled
           ? () async {
-              await _copyBusinessId(context);
+              await _copyBusinessId(context, resolved);
             }
           : null,
       child: Padding(
@@ -1420,11 +1405,6 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          _kv(
-            'Business ID',
-            _businessId ?? '—',
-            trailing: _buildBusinessIdCopyIcon(context),
-          ),
           _kv('Tipo', _licenseTypeLabel(info)),
           if (!isTrial) _kv('Device ID', info?.deviceId ?? '-'),
           _kv('Vence', _formatLocalDateTime(info?.fechaFin)),
@@ -1591,9 +1571,12 @@ class _LicensePageState extends ConsumerState<LicensePage> {
               _kv('Proyecto', kFullposProjectCode),
               _kv(
                 'Business ID',
-                (_businessId ?? '').trim().isEmpty
-                    ? 'Generando...'
-                    : _businessId!,
+                _resolvedBusinessId(info) ?? 'Generando...',
+                trailing: _buildBusinessIdCopyIcon(
+                  context,
+                  businessId: _resolvedBusinessId(info),
+                  color: _licensePanelText,
+                ),
               ),
               _kv('Device ID', info?.deviceId ?? '-'),
               if (_licenseFileName != null) _kv('Archivo', _licenseFileName!),
