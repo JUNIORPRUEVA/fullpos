@@ -40,6 +40,9 @@ if (-not $versionLine) { throw 'No se encontró la línea version: en pubspec.ya
 $version = $versionLine.Matches[0].Groups[1].Value.Trim()
 if ([string]::IsNullOrWhiteSpace($version)) { throw 'La versión en pubspec.yaml está vacía.' }
 
+$safeVersion = $version.Replace('+','_')
+$out = Join-Path $projectRoot ("installer\\output\\FULLPOS_Setup_{0}.exe" -f $safeVersion)
+
 Write-Host "Version detectada: $version" -ForegroundColor Cyan
 
 Push-Location $projectRoot
@@ -69,16 +72,20 @@ try {
   $iscc = Find-Iscc
   Write-Host "Compilando instalador con ISCC: $iscc" -ForegroundColor Cyan
 
+  if (Test-Path $out) {
+    Write-Host "Eliminando instalador anterior: $out" -ForegroundColor DarkGray
+    Remove-Item -Force $out
+  }
+
   Push-Location (Join-Path $projectRoot 'installer')
   try {
     & $iscc 'setup.iss' ("/DMyAppVersion=$version") | Out-Host
+    Assert-LastExitCode 'ISCC setup.iss'
   }
   finally {
     Pop-Location
   }
 
-  $safeVersion = $version.Replace('+','_')
-  $out = Join-Path $projectRoot ("installer\\output\\FULLPOS_Setup_{0}.exe" -f $safeVersion)
   if (Test-Path $out) {
     Write-Host "OK: Instalador listo: $out" -ForegroundColor Green
   } else {

@@ -1005,6 +1005,7 @@ class LicenseController extends StateNotifier<LicenseState> {
         return;
       }
 
+      bumpLicenseGateRefresh();
       await load();
     } catch (e) {
       _setUiError(

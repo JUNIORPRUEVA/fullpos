@@ -90,6 +90,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
   bool get _isQuoteMode =>
       _selectedDocumentType == PaymentDocumentType.cotizacion;
 
+  PaymentDocumentType _normalizeDocumentType(PaymentDocumentType type) {
+    if (!widget.allowElectronicInvoiceOption &&
+        type == PaymentDocumentType.creditoFiscal) {
+      return PaymentDocumentType.consumidorFinal;
+    }
+    return type;
+  }
+
   bool _handleKeyEvent(KeyEvent event) {
     // En Windows, algunos Function keys no siempre pasan por Shortcuts cuando
     // hay un TextField enfocado. Capturamos F9 aquí para que siempre confirme.
@@ -208,7 +216,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _paymentAttemptId = _buildPaymentRequestId();
     _outputMode = _resolveInitialOutputMode();
-    _selectedDocumentType = widget.initialDocumentType;
+    _selectedDocumentType = _normalizeDocumentType(widget.initialDocumentType);
     _selectedClient = widget.selectedClient;
     if (_selectedClient != null) {
       _syncLayawayFromClient(_selectedClient!);
@@ -565,9 +573,9 @@ class _PaymentDialogState extends State<PaymentDialog> {
   String _documentTypeLabel(PaymentDocumentType type) {
     switch (type) {
       case PaymentDocumentType.consumidorFinal:
-        return 'Factura cliente final';
+        return 'Consumidor final';
       case PaymentDocumentType.creditoFiscal:
-        return 'Crédito fiscal';
+        return 'Factura electrónica (e-CF)';
       case PaymentDocumentType.cotizacion:
         return 'Cotización';
     }
@@ -860,77 +868,75 @@ class _PaymentDialogState extends State<PaymentDialog> {
                         ),
                       ),
 
-                      if (widget.allowElectronicInvoiceOption) ...[
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Tipo de documento',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Tipo de documento',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 44,
-                          child: DropdownButtonFormField<PaymentDocumentType>(
-                            isExpanded: true,
-                            value: _selectedDocumentType,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              filled: true,
-                              fillColor: scheme.surfaceContainerHighest,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: scheme.primary,
-                                  width: 1.5,
-                                ),
-                              ),
-                              contentPadding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 44,
+                        child: DropdownButtonFormField<PaymentDocumentType>(
+                          isExpanded: true,
+                          value: _selectedDocumentType,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            filled: true,
+                            fillColor: scheme.surfaceContainerHighest,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
                             ),
-                            items: [
-                              DropdownMenuItem(
-                                value: PaymentDocumentType.consumidorFinal,
-                                child: Text(
-                                  _documentTypeLabel(
-                                    PaymentDocumentType.consumidorFinal,
-                                  ),
-                                ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: scheme.primary,
+                                width: 1.5,
                               ),
-                              if (widget.allowElectronicInvoiceOption)
-                                DropdownMenuItem(
-                                  value: PaymentDocumentType.creditoFiscal,
-                                  child: Text(
-                                    _documentTypeLabel(
-                                      PaymentDocumentType.creditoFiscal,
-                                    ),
-                                  ),
-                                ),
-                              DropdownMenuItem(
-                                value: PaymentDocumentType.cotizacion,
-                                child: Text(
-                                  _documentTypeLabel(
-                                    PaymentDocumentType.cotizacion,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value == null) return;
-                              unawaited(_selectDocumentType(value));
-                            },
+                            ),
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 12),
                           ),
+                          items: [
+                            DropdownMenuItem(
+                              value: PaymentDocumentType.consumidorFinal,
+                              child: Text(
+                                _documentTypeLabel(
+                                  PaymentDocumentType.consumidorFinal,
+                                ),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: PaymentDocumentType.cotizacion,
+                              child: Text(
+                                _documentTypeLabel(
+                                  PaymentDocumentType.cotizacion,
+                                ),
+                              ),
+                            ),
+                            if (widget.allowElectronicInvoiceOption)
+                              DropdownMenuItem(
+                                value: PaymentDocumentType.creditoFiscal,
+                                child: Text(
+                                  _documentTypeLabel(
+                                    PaymentDocumentType.creditoFiscal,
+                                  ),
+                                ),
+                              ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            unawaited(_selectDocumentType(value));
+                          },
                         ),
-                      ],
+                      ),
 
                       const SizedBox(height: 16),
 

@@ -63,9 +63,27 @@ class _LicensePageState extends ConsumerState<LicensePage> {
 
   bool _showSupportDetails = false;
   bool _showQuickGuide = false;
+  bool _activationNavigationScheduled = false;
 
   String? _businessId;
   DateTime? _lastBusinessIdFetchAt;
+
+  bool _hasActiveLicense(LicenseInfo? info) {
+    return info?.isActive == true && info?.isExpired == false;
+  }
+
+  void _redirectToAppIfLicenseReady() {
+    if (_activationNavigationScheduled || !mounted) return;
+
+    final path = GoRouterState.of(context).uri.path;
+    if (path != '/license' && path != '/license-blocked') return;
+
+    _activationNavigationScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go('/sales');
+    });
+  }
 
   String _maskKey(String input) {
     final s = input.trim();
@@ -234,12 +252,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         info?.isExpired == false;
     if (isSuccess) {
       unawaited(_refreshBusinessId(force: true, ensureExists: true));
-      // Redirigir de inmediato de forma confiable: navegar en el próximo frame.
-      // Usamos /sales: si no hay sesión, el router enviará a /login.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        context.go('/sales');
-      });
+      _redirectToAppIfLicenseReady();
     }
   }
 
@@ -380,6 +393,18 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           _section = _LicenseSection.support;
         });
       }
+
+      final prevActive = _hasActiveLicense(prev?.info);
+      final nextActive = _hasActiveLicense(next.info);
+      if (!prevActive && nextActive) {
+        unawaited(_refreshBusinessId(force: true, ensureExists: true));
+        if (mounted) {
+          setState(() {
+            _licenseFileStatus = 'Licencia aplicada y activa';
+          });
+        }
+        _redirectToAppIfLicenseReady();
+      }
     });
 
     final theme = Theme.of(context);
@@ -480,7 +505,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         break;
     }
 
-    final licenseActive = info?.isActive == true && info?.isExpired == false;
+    final licenseActive = _hasActiveLicense(info);
 
     final headerTitle = licenseActive
         ? 'Tu acceso está listo para continuar'

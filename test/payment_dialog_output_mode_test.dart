@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/features/sales/ui/dialogs/payment_dialog.dart';
 
+double _lowestTextY(WidgetTester tester, String text) {
+  final finder = find.text(text);
+  expect(finder, findsWidgets);
+  return finder.evaluate().map((element) {
+    final renderBox = element.renderObject! as RenderBox;
+    return renderBox.localToGlobal(Offset.zero).dy;
+  }).reduce((value, element) => value > element ? value : element);
+}
+
 void main() {
   Future<void> pumpDialog(
     WidgetTester tester, {
@@ -81,14 +90,23 @@ void main() {
     );
 
     expect(find.text('Tipo de documento'), findsOneWidget);
-    expect(find.text('Crédito fiscal'), findsOneWidget);
+    expect(find.text('Factura electrónica (e-CF)'), findsOneWidget);
 
     await tester.tap(find.byType(DropdownButtonFormField<PaymentDocumentType>));
     await tester.pumpAndSettle();
 
-    expect(find.text('Factura cliente final'), findsWidgets);
-    expect(find.text('Crédito fiscal'), findsWidgets);
+    final consumidorFinalY = _lowestTextY(tester, 'Consumidor final');
+    final cotizacionY = _lowestTextY(tester, 'Cotización');
+    final facturaElectronicaY = _lowestTextY(
+      tester,
+      'Factura electrónica (e-CF)',
+    );
+
+    expect(find.text('Consumidor final'), findsWidgets);
     expect(find.text('Cotización'), findsWidgets);
+    expect(find.text('Factura electrónica (e-CF)'), findsWidgets);
+    expect(consumidorFinalY, lessThan(cotizacionY));
+    expect(cotizacionY, lessThan(facturaElectronicaY));
   });
 
   testWidgets('ubica tipo de documento entre total y metodo de pago', (
@@ -109,27 +127,37 @@ void main() {
     expect(paymentMethodTop, greaterThan(documentBottom));
   });
 
-  testWidgets('oculta selector de documento cuando facturacion esta desactivada', (
+  testWidgets('mantiene consumidor final y cotizacion cuando facturacion esta desactivada', (
     tester,
   ) async {
     await pumpDialog(tester, allowElectronicInvoiceOption: false);
 
-    expect(find.text('Tipo de documento'), findsNothing);
-    expect(find.byType(DropdownButtonFormField<PaymentDocumentType>), findsNothing);
+    expect(find.text('Tipo de documento'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<PaymentDocumentType>), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButtonFormField<PaymentDocumentType>));
+    await tester.pumpAndSettle();
+
+    final consumidorFinalY = _lowestTextY(tester, 'Consumidor final');
+    final cotizacionY = _lowestTextY(tester, 'Cotización');
+
+    expect(find.text('Consumidor final'), findsWidgets);
+    expect(find.text('Cotización'), findsWidgets);
+    expect(find.text('Factura electrónica (e-CF)'), findsNothing);
+    expect(consumidorFinalY, lessThan(cotizacionY));
   });
 
-  testWidgets('no deja espacio extra al ocultar tipo de documento', (
+  testWidgets('normaliza a consumidor final si credito fiscal llega deshabilitado', (
     tester,
   ) async {
-    await pumpDialog(tester, allowElectronicInvoiceOption: false);
+    await pumpDialog(
+      tester,
+      allowElectronicInvoiceOption: false,
+      initialDocumentType: PaymentDocumentType.creditoFiscal,
+    );
 
-    final totalLabel = find.text('TOTAL A PAGAR:');
-    final receivedLabel = find.text('CLIENTE PAGA CON:');
-
-    final totalBottom = tester.getBottomLeft(totalLabel).dy;
-    final receivedTop = tester.getTopLeft(receivedLabel).dy;
-
-    expect(receivedTop - totalBottom, lessThan(120));
+    expect(find.text('Consumidor final'), findsOneWidget);
+    expect(find.text('Factura electrónica (e-CF)'), findsNothing);
   });
 
   testWidgets('mantiene estilo compacto y minimalista del selector', (
