@@ -103,6 +103,16 @@ class ProductsRepository {
     return 'product-$productId-$now';
   }
 
+  String? _sanitizeSyncImageUrl(String? rawUrl) {
+    final value = rawUrl?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('/uploads/')) return value;
+    final uri = Uri.tryParse(value);
+    if (uri == null) return null;
+    if (uri.scheme == 'http' || uri.scheme == 'https') return value;
+    return null;
+  }
+
   Map<String, dynamic> _buildSyncPayload(
     ProductModel product, {
     required String operationType,
@@ -127,7 +137,7 @@ class ProductsRepository {
         'price': product.salePrice,
         'cost': product.purchasePrice,
         'stock': product.stock,
-        'imageUrl': product.imageUrl,
+        'imageUrl': _sanitizeSyncImageUrl(product.imageUrl),
         'isActive': product.isActive,
         'deletedAt': deletedAt,
       },

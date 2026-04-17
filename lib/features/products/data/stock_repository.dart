@@ -13,6 +13,16 @@ import '../models/stock_movement_model.dart';
 
 /// Repositorio para operaciones de movimientos de stock
 class StockRepository {
+    String? _sanitizeSyncImageUrl(String? rawUrl) {
+      final value = rawUrl?.trim();
+      if (value == null || value.isEmpty) return null;
+      if (value.startsWith('/uploads/')) return value;
+      final uri = Uri.tryParse(value);
+      if (uri == null) return null;
+      if (uri.scheme == 'http' || uri.scheme == 'https') return value;
+      return null;
+    }
+
   final ProductSyncOutboxRepository _productOutbox =
       ProductSyncOutboxRepository();
 
@@ -239,7 +249,7 @@ class StockRepository {
               'price': updatedProduct!.salePrice,
               'cost': updatedProduct!.purchasePrice,
               'stock': updatedProduct!.stock,
-              'imageUrl': updatedProduct!.imageUrl,
+              'imageUrl': _sanitizeSyncImageUrl(updatedProduct!.imageUrl),
               'isActive': updatedProduct!.isActive,
               'deletedAt': updatedProduct!.deletedAt?.toUtc().toIso8601String(),
             },
