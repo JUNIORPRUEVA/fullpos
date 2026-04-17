@@ -187,14 +187,19 @@ class BusinessLicenseSync {
 
     // Business binding (nuevo flujo)
     final payloadBusinessId = (payload['business_id'] ?? '').toString().trim();
+    String? resolvedBusinessId;
     if (payloadBusinessId.isNotEmpty) {
       final local = await _identity.getBusinessId();
       if (local == null || local.trim().isEmpty) {
         await _identity.setBusinessId(payloadBusinessId);
+        resolvedBusinessId = payloadBusinessId;
       } else if (local.trim() != payloadBusinessId) {
         return null;
+      } else {
+        resolvedBusinessId = local.trim();
       }
     }
+    resolvedBusinessId ??= (await _identity.getBusinessId())?.trim();
 
     // Fechas (compat: old/new payload names)
     final expiresAt = DateTime.tryParse(
@@ -220,7 +225,8 @@ class BusinessLicenseSync {
         ? 'VENCIDA'
         : rawEstado;
 
-    final motivoRaw = payload['motivo'] ?? payload['notas'] ?? payload['reason'];
+    final motivoRaw =
+        payload['motivo'] ?? payload['notas'] ?? payload['reason'];
     final motivo = motivoRaw?.toString().trim();
 
     // No bloqueamos por device_id: si viene, se respeta para compat.
@@ -231,6 +237,7 @@ class BusinessLicenseSync {
       licenseKey: licenseKey,
       deviceId: deviceId,
       projectCode: kFullposProjectCode,
+      businessId: resolvedBusinessId,
       ok: !isExpiredByDate && estado != 'VENCIDA' && estado != 'EXPIRED',
       code: isExpiredByDate || estado == 'VENCIDA' || estado == 'EXPIRED'
           ? 'EXPIRED'

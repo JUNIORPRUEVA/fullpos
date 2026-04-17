@@ -6,6 +6,7 @@ class LicenseInfo {
   final String licenseKey;
   final String deviceId;
   final String projectCode;
+  final String? businessId;
 
   final bool ok;
   final String? code;
@@ -23,6 +24,7 @@ class LicenseInfo {
     required this.licenseKey,
     required this.deviceId,
     required this.projectCode,
+    this.businessId,
     required this.ok,
     this.code,
     this.tipo,
@@ -72,6 +74,7 @@ class LicenseInfo {
       'licenseKey': licenseKey,
       'deviceId': deviceId,
       'projectCode': projectCode,
+      'businessId': businessId,
       'ok': ok,
       'code': code,
       'tipo': tipo,
@@ -104,6 +107,7 @@ class LicenseInfo {
       licenseKey: (map['licenseKey'] ?? '').toString(),
       deviceId: (map['deviceId'] ?? '').toString(),
       projectCode: (map['projectCode'] ?? '').toString(),
+      businessId: map['businessId']?.toString(),
       ok: map['ok'] == true,
       code: map['code']?.toString(),
       tipo: map['tipo']?.toString(),

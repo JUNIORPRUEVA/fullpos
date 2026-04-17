@@ -13,9 +13,9 @@ class BusinessRegistrationService {
     BusinessIdentityStorage? identityStorage,
     PendingRegistrationQueue? queue,
     BusinessRegistrationApi? api,
-  })  : identityStorage = identityStorage ?? BusinessIdentityStorage(),
-        queue = queue ?? PendingRegistrationQueue(),
-        api = api ?? BusinessRegistrationApi();
+  }) : identityStorage = identityStorage ?? BusinessIdentityStorage(),
+       queue = queue ?? PendingRegistrationQueue(),
+       api = api ?? BusinessRegistrationApi();
 
   Future<Map<String, dynamic>> buildPayload({
     required String businessName,
@@ -102,16 +102,26 @@ class BusinessRegistrationService {
     Map<String, dynamic> payloadToSend,
   ) async {
     try {
-      await api.register(baseUrl: kLicenseBackendBaseUrl, payload: payloadToSend);
+      await api.register(
+        baseUrl: kLicenseBackendBaseUrl,
+        payload: payloadToSend,
+      );
       return;
     } on BusinessRegistrationException catch (e) {
       final backendCode = (e.code ?? '').trim().toUpperCase();
       final existingBusinessId = (e.existingBusinessId ?? '').trim();
 
-      if (backendCode == 'BUSINESS_ID_CONFLICT' && existingBusinessId.isNotEmpty) {
-        await identityStorage.setBusinessId(existingBusinessId);
+      if (backendCode == 'BUSINESS_ID_CONFLICT' &&
+          existingBusinessId.isNotEmpty) {
+        await identityStorage.setBusinessId(
+          existingBusinessId,
+          overwrite: true,
+        );
         payloadToSend['business_id'] = existingBusinessId;
-        await api.register(baseUrl: kLicenseBackendBaseUrl, payload: payloadToSend);
+        await api.register(
+          baseUrl: kLicenseBackendBaseUrl,
+          payload: payloadToSend,
+        );
         return;
       }
       rethrow;

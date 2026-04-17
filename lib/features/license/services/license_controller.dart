@@ -229,6 +229,14 @@ class LicenseController extends StateNotifier<LicenseState> {
     );
   }
 
+  String? _resolveBusinessIdValue(Object? candidate, [String? fallback]) {
+    final primary = (candidate ?? '').toString().trim();
+    if (primary.isNotEmpty) return primary;
+
+    final secondary = (fallback ?? '').trim();
+    return secondary.isEmpty ? null : secondary;
+  }
+
   Future<void> load() async {
     _ensureCloudAutoSyncStarted();
     unawaited(_ensureCloudRealtimeStarted());
@@ -242,6 +250,15 @@ class LicenseController extends StateNotifier<LicenseState> {
       final licenseKey = await storage.getLicenseKey();
       final deviceId = await _ensureDeviceId();
       final last = await storage.getLastInfo();
+      final identityStorage = BusinessIdentityStorage();
+      var localBusinessId = _resolveBusinessIdValue(
+        await identityStorage.getBusinessId(),
+      );
+      final cachedBusinessId = _resolveBusinessIdValue(last?.businessId);
+      if (localBusinessId == null && cachedBusinessId != null) {
+        await identityStorage.setBusinessId(cachedBusinessId);
+        localBusinessId = cachedBusinessId;
+      }
 
       // Intentar refrescar clave pública de firma (no bloqueante).
       // Si no hay internet, se ignora.
@@ -263,6 +280,10 @@ class LicenseController extends StateNotifier<LicenseState> {
           projectCode: merged.projectCode.isEmpty
               ? kFullposProjectCode
               : merged.projectCode,
+          businessId: _resolveBusinessIdValue(
+            localBusinessId,
+            merged.businessId,
+          ),
           ok: merged.ok,
           code: merged.code,
           tipo: merged.tipo,
@@ -282,6 +303,7 @@ class LicenseController extends StateNotifier<LicenseState> {
             licenseKey: licenseKey,
             deviceId: deviceId,
             projectCode: kFullposProjectCode,
+            businessId: localBusinessId,
             ok: false,
           );
         }
@@ -303,6 +325,7 @@ class LicenseController extends StateNotifier<LicenseState> {
               licenseKey: (licenseKey ?? '').trim(),
               deviceId: deviceId,
               projectCode: kFullposProjectCode,
+              businessId: localBusinessId,
               ok: true,
               code: 'TRIAL',
               tipo: 'TRIAL',
@@ -372,6 +395,9 @@ class LicenseController extends StateNotifier<LicenseState> {
   Future<void> activate() async {
     final licenseKey = await storage.getLicenseKey();
     final deviceId = await _ensureDeviceId();
+    final localBusinessId = _resolveBusinessIdValue(
+      await BusinessIdentityStorage().getBusinessId(),
+    );
     if (licenseKey == null || licenseKey.isEmpty) {
       state = state.copyWith(
         error: 'Ingresa la clave de licencia',
@@ -399,6 +425,10 @@ class LicenseController extends StateNotifier<LicenseState> {
         licenseKey: licenseKey,
         deviceId: deviceId,
         projectCode: kFullposProjectCode,
+        businessId: _resolveBusinessIdValue(
+          map['business_id'],
+          localBusinessId,
+        ),
         ok: map['ok'] == true,
         code: map['code']?.toString(),
         tipo: map['tipo']?.toString(),
@@ -449,6 +479,9 @@ class LicenseController extends StateNotifier<LicenseState> {
   Future<void> check() async {
     final licenseKey = await storage.getLicenseKey();
     final deviceId = await _ensureDeviceId();
+    final localBusinessId = _resolveBusinessIdValue(
+      await BusinessIdentityStorage().getBusinessId(),
+    );
     if (licenseKey == null || licenseKey.isEmpty) {
       state = state.copyWith(
         error: 'Ingresa la clave de licencia',
@@ -476,6 +509,10 @@ class LicenseController extends StateNotifier<LicenseState> {
         licenseKey: licenseKey,
         deviceId: deviceId,
         projectCode: kFullposProjectCode,
+        businessId: _resolveBusinessIdValue(
+          map['business_id'],
+          localBusinessId,
+        ),
         ok: map['ok'] == true,
         code: map['code']?.toString(),
         tipo: map['tipo']?.toString(),
@@ -823,17 +860,24 @@ class LicenseController extends StateNotifier<LicenseState> {
       final payloadBusinessId = (payload['business_id'] ?? '')
           .toString()
           .trim();
+      String? resolvedBusinessId;
       if (payloadBusinessId.isNotEmpty) {
         final identity = BusinessIdentityStorage();
         final local = await identity.getBusinessId();
         if (local == null || local.trim().isEmpty) {
           await identity.setBusinessId(payloadBusinessId);
+          resolvedBusinessId = payloadBusinessId;
         } else if (local.trim() != payloadBusinessId) {
           throw const LicenseApiException(
             message: 'Este archivo no corresponde a este negocio',
           );
+        } else {
+          resolvedBusinessId = local.trim();
         }
       }
+      resolvedBusinessId ??= _resolveBusinessIdValue(
+        await BusinessIdentityStorage().getBusinessId(),
+      );
 
       final payloadDeviceId = (payload['device_id'] ?? '').toString().trim();
       if (payloadDeviceId.isNotEmpty && payloadDeviceId != deviceId) {
@@ -865,6 +909,7 @@ class LicenseController extends StateNotifier<LicenseState> {
         licenseKey: licenseKey,
         deviceId: deviceId,
         projectCode: kFullposProjectCode,
+        businessId: resolvedBusinessId,
         ok: true,
         code: 'OK',
         tipo: (payload['plan'] ?? payload['tipo'] ?? '').toString().trim(),

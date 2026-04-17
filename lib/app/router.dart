@@ -777,9 +777,21 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // ni por licenseKey legacy; eso haría que una licencia eliminada en la nube
   // vuelva a aparecer automáticamente.
   final businessId = await identityStorage.getBusinessId();
-  final hasBusinessId = businessId != null && businessId.trim().isNotEmpty;
-
   final cached = await storage.getLastInfo();
+  var resolvedBusinessId = (businessId ?? '').trim();
+  final cachedBusinessId = (cached?.businessId ?? '').trim();
+  if (resolvedBusinessId.isEmpty && cachedBusinessId.isNotEmpty) {
+    await identityStorage.setBusinessId(cachedBusinessId);
+    resolvedBusinessId = cachedBusinessId;
+  }
+  final hasBusinessId = resolvedBusinessId.isNotEmpty;
+  final canonicalBusinessId = hasBusinessId ? resolvedBusinessId : null;
+
+  String? businessIdFromMap(Map<String, dynamic> map) {
+    final candidate = (map['business_id'] ?? '').toString().trim();
+    if (candidate.isNotEmpty) return candidate;
+    return canonicalBusinessId;
+  }
 
   if (hasBusinessId) {
     if (cached != null) {
@@ -843,6 +855,7 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
                 : (await storage.getLicenseKey()) ?? '',
             deviceId: deviceId,
             projectCode: kFullposProjectCode,
+            businessId: businessIdFromMap(map),
             ok: false,
             code: code,
             estado: 'BLOQUEADA',
@@ -868,6 +881,7 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
             : (await storage.getLicenseKey()) ?? '',
         deviceId: deviceId,
         projectCode: kFullposProjectCode,
+        businessId: businessIdFromMap(map),
         ok: true,
         code: code,
         tipo: map['tipo']?.toString(),
@@ -956,6 +970,7 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
       licenseKey: licenseKey.trim(),
       deviceId: deviceId,
       projectCode: kFullposProjectCode,
+      businessId: businessIdFromMap(map),
       ok: map['ok'] == true,
       code: map['code']?.toString(),
       tipo: map['tipo']?.toString(),
@@ -985,6 +1000,7 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
           licenseKey: licenseKey.trim(),
           deviceId: deviceId,
           projectCode: kFullposProjectCode,
+          businessId: businessIdFromMap(activated),
           ok: activated['ok'] == true,
           code: activated['code']?.toString(),
           tipo: activated['tipo']?.toString(),

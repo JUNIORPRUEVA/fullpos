@@ -69,10 +69,19 @@ class BusinessIdentityStorage {
     return v.isEmpty ? null : v;
   }
 
-  Future<void> setBusinessId(String businessId) async {
+  Future<void> setBusinessId(
+    String businessId, {
+    bool overwrite = false,
+  }) async {
     final sp = await SharedPreferences.getInstance();
     final v = businessId.trim();
     if (v.isEmpty) return;
+
+    final existing = (sp.getString(_kBusinessId) ?? '').trim();
+    if (existing.isNotEmpty && existing != v && !overwrite) {
+      return;
+    }
+
     await sp.setString(_kBusinessId, v);
   }
 

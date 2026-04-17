@@ -72,6 +72,14 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     return info?.isActive == true && info?.isExpired == false;
   }
 
+  String? _resolvedBusinessId(LicenseInfo? info) {
+    final fromInfo = (info?.businessId ?? '').trim();
+    if (fromInfo.isNotEmpty) return fromInfo;
+
+    final fromLocal = (_businessId ?? '').trim();
+    return fromLocal.isEmpty ? null : fromLocal;
+  }
+
   void _redirectToAppIfLicenseReady() {
     if (_activationNavigationScheduled || !mounted) return;
 
@@ -118,6 +126,21 @@ class _LicensePageState extends ConsumerState<LicensePage> {
 
     try {
       final storage = BusinessIdentityStorage();
+      final licenseState = ref.read(licenseControllerProvider);
+      final canonicalBusinessId = (licenseState.info?.businessId ?? '').trim();
+
+      if (canonicalBusinessId.isNotEmpty) {
+        final localBusinessId = (await storage.getBusinessId() ?? '').trim();
+        if (localBusinessId.isEmpty) {
+          await storage.setBusinessId(canonicalBusinessId);
+        }
+        if (!mounted) return;
+        setState(() {
+          _businessId = canonicalBusinessId;
+        });
+        return;
+      }
+
       final id = ensureExists
           ? await storage.ensureBusinessId()
           : await storage.getBusinessId();
@@ -382,8 +405,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final info = state.info;
     final trialDays = kLocalTrialDuration.inDays;
 
-    // Keep business_id updated (best-effort).
-    unawaited(_refreshBusinessId(ensureExists: true));
+    // Keep business_id updated (best-effort) without regenerating it on each rebuild.
+    unawaited(_refreshBusinessId(ensureExists: false));
 
     ref.listen(licenseControllerProvider, (prev, next) {
       // Si ya se consumió la DEMO en este equipo/cliente, llevar a soporte.
@@ -397,7 +420,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       final prevActive = _hasActiveLicense(prev?.info);
       final nextActive = _hasActiveLicense(next.info);
       if (!prevActive && nextActive) {
-        unawaited(_refreshBusinessId(force: true, ensureExists: true));
+        unawaited(_refreshBusinessId(force: true, ensureExists: false));
         if (mounted) {
           setState(() {
             _licenseFileStatus = 'Licencia aplicada y activa';
@@ -673,6 +696,17 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                                               ?.copyWith(
                                                 color: _licensePanelMutedText,
                                                 fontWeight: FontWeight.w600,
+                                                height: 1.35,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Business ID: ${_resolvedBusinessId(info) ?? 'Generando...'}',
+                                          textAlign: TextAlign.center,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: _licensePanelMutedText,
+                                                fontWeight: FontWeight.w700,
                                                 height: 1.35,
                                               ),
                                         ),
@@ -1555,6 +1589,12 @@ class _LicensePageState extends ConsumerState<LicensePage> {
               ),
               const SizedBox(height: 12),
               _kv('Proyecto', kFullposProjectCode),
+              _kv(
+                'Business ID',
+                (_businessId ?? '').trim().isEmpty
+                    ? 'Generando...'
+                    : _businessId!,
+              ),
               _kv('Device ID', info?.deviceId ?? '-'),
               if (_licenseFileName != null) _kv('Archivo', _licenseFileName!),
             ],
