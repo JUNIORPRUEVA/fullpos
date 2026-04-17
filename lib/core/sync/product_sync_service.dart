@@ -206,6 +206,75 @@ class ProductSyncService {
     return Duration(seconds: seconds);
   }
 
+  String? _normalizeRequestImageUrl(dynamic rawUrl) {
+    final value = rawUrl?.toString().trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('/uploads/')) return value;
+    if (value.startsWith('uploads/')) return '/$value';
+
+    final lower = value.toLowerCase();
+    final isLocalOnlyPath =
+        lower.startsWith('file://') ||
+        lower.startsWith('content://') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('data:') ||
+        lower.startsWith('assets/') ||
+        lower.startsWith('asset:/') ||
+        lower.startsWith('/data/') ||
+        lower.startsWith('/storage/') ||
+        lower.startsWith('/var/mobile/') ||
+        lower.startsWith('/private/var/') ||
+        RegExp(r'^[a-zA-Z]:\\').hasMatch(value);
+    if (isLocalOnlyPath) return null;
+
+    final uri = Uri.tryParse(value);
+    if (uri == null) return null;
+    if (uri.scheme == 'http' || uri.scheme == 'https') return value;
+    return null;
+  }
+
+  Map<String, dynamic> _normalizeOperationPayloadForRequest(
+    Map<String, dynamic> payload,
+  ) {
+    final normalized = Map<String, dynamic>.from(payload);
+    final rawProduct = payload['product'];
+    final product = Map<String, dynamic>.from(
+      rawProduct is Map ? rawProduct : const <String, dynamic>{},
+    );
+
+    final normalizedImageUrl = _normalizeRequestImageUrl(product['imageUrl']);
+    if (normalizedImageUrl == null) {
+      product.remove('imageUrl');
+    } else {
+      product['imageUrl'] = normalizedImageUrl;
+    }
+
+    final businessId = product['businessId']?.toString().trim();
+    if (businessId == null || businessId.isEmpty) {
+      product.remove('businessId');
+    } else {
+      product['businessId'] = businessId;
+    }
+
+    normalized['product'] = product;
+
+    final clientMutationId = normalized['clientMutationId']?.toString().trim();
+    if (clientMutationId == null || clientMutationId.isEmpty) {
+      normalized.remove('clientMutationId');
+    } else {
+      normalized['clientMutationId'] = clientMutationId;
+    }
+
+    final lastModifiedBy = normalized['lastModifiedBy']?.toString().trim();
+    if (lastModifiedBy == null || lastModifiedBy.isEmpty) {
+      normalized.remove('lastModifiedBy');
+    } else {
+      normalized['lastModifiedBy'] = lastModifiedBy;
+    }
+
+    return normalized;
+  }
+
   Future<_PushResult> _pushOperation(Map<String, dynamic> payload) async {
     final isLoggedIn = await SessionManager.isLoggedIn();
     final localCompanyId = await SessionManager.companyId();
@@ -236,11 +305,13 @@ class ProductSyncService {
       headers['x-cloud-key'] = cloudKey;
     }
 
+    final normalizedPayload = _normalizeOperationPayloadForRequest(payload);
+
     final requestBody = <String, dynamic>{
-      'companyId': localCompanyId.toString(),
+      'companyId': localCompanyId,
       if (companyRnc.isNotEmpty) 'companyRnc': companyRnc,
       if (companyCloudId.isNotEmpty) 'companyCloudId': companyCloudId,
-      'operations': [payload],
+      'operations': [normalizedPayload],
     };
 
     final operations = requestBody['operations'];
@@ -268,7 +339,7 @@ class ProductSyncService {
         body['serverProduct'] as Map<String, dynamic>,
       );
       throw _ProductSyncConflict(
-        localProductId: (payload['localProductId'] as num).toInt(),
+        localProductId: (normalizedPayload['localProductId'] as num).toInt(),
         serverProduct: conflictProduct,
         message: (body['message'] as String?) ?? 'server_conflict',
       );
@@ -281,7 +352,7 @@ class ProductSyncService {
     if (productBody is! Map<String, dynamic>) {
       return _PushResult(
         eventType: body['eventType'] as String? ?? 'product.deleted',
-        product: _fallbackProductFromPayload(payload),
+        product: _fallbackProductFromPayload(normalizedPayload),
       );
     }
 
