@@ -319,8 +319,9 @@ class ApiClient {
         final res = await http.Response.fromStream(streamed);
 
         if (res.statusCode >= 500 && res.statusCode <= 599) {
+          final backendMessage = _tryExtractServerMessage(res.body);
           lastApiEx = ApiException(
-            message: 'Error del servidor (HTTP ${res.statusCode}).',
+            message: backendMessage ?? 'Error del servidor (HTTP ${res.statusCode}).',
             statusCode: res.statusCode,
           );
           if (retry && idempotent) {
@@ -395,6 +396,19 @@ class ApiClient {
       return 'No se pudo conectar al servidor. Verifica Internet/DNS/Proxy/Firewall.';
     }
     return 'Error de red. Verifica tu conexión.';
+  }
+
+  static String? _tryExtractServerMessage(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        final message = decoded['message']?.toString().trim();
+        if (message != null && message.isNotEmpty) {
+          return message;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 }
 

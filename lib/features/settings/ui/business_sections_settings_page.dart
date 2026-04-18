@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/error_handler.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/window/window_service.dart';
 import '../data/business_settings_model.dart';
 import '../providers/business_settings_provider.dart';
@@ -184,10 +185,18 @@ class _CompanyProfileSettingsPageState
         website: _normalizeOptional(_websiteController.text),
       );
       await ref.read(businessSettingsProvider.notifier).saveSettings(updated);
+      String feedback = 'Información de empresa guardada';
+      try {
+        await CloudSyncService.instance.syncCompanyConfigIfEnabled();
+        feedback = 'Empresa guardada y sincronizada con el backend';
+      } catch (_) {
+        feedback =
+            'Empresa guardada localmente, pero la sincronización backend falló';
+      }
       if (!mounted) return;
       setState(() => _hasChanges = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Información de empresa guardada')),
+        SnackBar(content: Text(feedback)),
       );
     } catch (e, st) {
       if (mounted) {

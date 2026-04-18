@@ -3672,6 +3672,79 @@ class AppDb {
     );
 
     await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${DbTables.electronicSequences} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 0,
+        branch_id INTEGER NOT NULL DEFAULT 0,
+        document_type_code TEXT NOT NULL,
+        prefix TEXT NOT NULL DEFAULT '',
+        start_number INTEGER NOT NULL DEFAULT 1,
+        current_number INTEGER NOT NULL DEFAULT 0,
+        end_number INTEGER,
+        status TEXT NOT NULL DEFAULT '',
+        updated_at_ms INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'company_id',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'branch_id',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'document_type_code',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'prefix',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'start_number',
+      'INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'current_number',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'end_number',
+      'INTEGER',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'status',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicSequences,
+      'updated_at_ms',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_electronic_sequences_doc_type
+      ON ${DbTables.electronicSequences}(branch_id, document_type_code)
+    ''');
+
+    await db.execute('''
       CREATE TABLE IF NOT EXISTS ${DbTables.facturaElectronica} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sale_id INTEGER NOT NULL,

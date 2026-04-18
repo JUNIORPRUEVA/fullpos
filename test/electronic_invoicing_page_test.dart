@@ -1,3 +1,4 @@
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/db_init.dart';
 import 'package:fullpos/features/facturacion_electronica/data/electronic_company_repository.dart';
+import 'package:fullpos/features/facturacion_electronica/data/electronic_sequence_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/models/electronic_company_model.dart';
+import 'package:fullpos/features/facturacion_electronica/data/models/electronic_sequence_model.dart';
 import 'package:fullpos/features/settings/data/business_settings_model.dart';
 import 'package:fullpos/features/settings/data/business_settings_repository.dart';
 import 'package:fullpos/features/tools/ui/electronic_invoicing_page.dart';
@@ -56,7 +59,12 @@ void main() {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: ElectronicInvoicingPage())),
     );
-    await tester.pumpAndSettle();
+    for (var index = 0; index < 40; index++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text('Datos de la empresa').evaluate().isNotEmpty) {
+        break;
+      }
+    }
   }
 
   testWidgets('shows company data as read-only from business settings', (
@@ -83,6 +91,25 @@ void main() {
         automaticEmission: 1,
       ),
     );
+    final sequenceRepository = ElectronicSequenceRepository();
+    await sequenceRepository.saveLocal(
+      ElectronicSequenceModel.defaults('31').copyWith(
+        prefix: 'E31',
+        startNumber: 1,
+        currentNumber: 15,
+        endNumber: 200,
+        status: 'ACTIVE',
+      ),
+    );
+    await sequenceRepository.saveLocal(
+      ElectronicSequenceModel.defaults('32').copyWith(
+        prefix: 'E32',
+        startNumber: 1,
+        currentNumber: 7,
+        endNumber: 200,
+        status: 'ACTIVE',
+      ),
+    );
 
     await pumpPage(tester);
 
@@ -91,17 +118,15 @@ void main() {
     expect(find.text('123456789'), findsOneWidget);
     expect(find.text('Higuey, La Altagracia'), findsOneWidget);
     expect(find.text('Certificado digital'), findsOneWidget);
-    expect(find.text('Alias actual'), findsOneWidget);
     expect(find.text('cert-demo'), findsWidgets);
-    expect(find.text('Vigente'), findsOneWidget);
-    expect(
-      find.text('Complete la información de empresa en configuración'),
-      findsNothing,
-    );
-    expect(find.text('Razon social'), findsNothing);
-    expect(find.text('Nombre comercial'), findsNothing);
-    expect(find.text('Direccion de emision'), findsNothing);
-    expect(find.text('Telefono'), findsNothing);
+    expect(find.text('Vigente'), findsWidgets);
+    expect(find.text('Facturación Electrónica'), findsOneWidget);
+    expect(find.text('🟢 Listo'), findsOneWidget);
+    expect(find.text('Configurar automáticamente'), findsOneWidget);
+    expect(find.text('Secuencias de Comprobantes'), findsOneWidget);
+    expect(find.text('31 - Crédito Fiscal'), findsOneWidget);
+    expect(find.text('32 - Consumo'), findsOneWidget);
+    expect(find.text('Completar'), findsNothing);
   });
 
   testWidgets('shows configuration CTA when company data is incomplete', (
@@ -114,12 +139,51 @@ void main() {
 
     await pumpPage(tester);
 
+    expect(find.text('Datos de la empresa'), findsOneWidget);
+    expect(find.text('Completar'), findsOneWidget);
+    expect(find.text('Sin completar'), findsWidgets);
+    expect(find.text('No cargado'), findsWidgets);
+    expect(find.text('🔴 Incompleto'), findsOneWidget);
+  });
+
+  testWidgets('allows showing the .p12 certificate password', (tester) async {
+    await BusinessSettingsRepository().saveSettings(
+      BusinessSettings(
+        businessName: 'FULLTECH SRL',
+        rnc: '123456789',
+        address: 'Higuey',
+        city: 'La Altagracia',
+      ),
+    );
+
+    await pumpPage(tester);
+
     expect(
-      find.text('Complete la información de empresa en configuración'),
+      find.byKey(const Key('electronic-certificate-password-field')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows automatic configuration action and prefills sequences', (
+    tester,
+  ) async {
+    await pumpPage(tester);
+
+    expect(find.text('Configurar automáticamente'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Prefijo'), findsWidgets);
+    expect(find.widgetWithText(TextFormField, 'Inicial'), findsWidgets);
+    expect(find.widgetWithText(TextFormField, 'Actual'), findsWidgets);
+    expect(find.widgetWithText(TextFormField, 'Límite'), findsWidgets);
+    expect(find.text('E31'), findsWidgets);
+    expect(find.text('E32'), findsWidgets);
+    expect(find.text('0'), findsWidgets);
+    expect(find.text('1'), findsWidgets);
+    expect(
+      find.text(
+        'Cada empresa debe configurar su rango real autorizado por DGII. Sin límite autorizado no se puede facturar.',
+      ),
       findsOneWidget,
     );
-    expect(find.text('Ir a configuración'), findsOneWidget);
-    expect(find.text('Aún no hay un certificado cargado.'), findsOneWidget);
   });
 
   test(
@@ -183,11 +247,13 @@ void main() {
 
     await pumpPage(tester);
 
-    expect(find.text('Disponibilidad en ventas'), findsOneWidget);
-    expect(find.text('Activar facturación electrónica'), findsOneWidget);
+    expect(find.text('Facturación Electrónica'), findsOneWidget);
+    expect(find.text('Facturación electrónica'), findsOneWidget);
+    expect(find.text('Enviar automáticamente a DGII'), findsOneWidget);
 
     await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
     final settings = await BusinessSettingsRepository().loadSettings();
     expect(settings.electronicInvoicingEnabled, isTrue);
