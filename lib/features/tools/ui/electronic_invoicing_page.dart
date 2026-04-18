@@ -1,11 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 
+import '../../../core/errors/error_handler.dart';
 import '../../../core/services/empresa_service.dart';
 import '../../../core/theme/app_status_theme.dart';
+import '../../../core/window/window_service.dart';
 import '../../settings/providers/business_settings_provider.dart';
+import '../../facturacion_electronica/data/electronic_certificate_repository.dart';
 import '../../facturacion_electronica/data/electronic_company_repository.dart';
 import '../../facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
@@ -24,7 +30,10 @@ class ElectronicInvoicingPage extends ConsumerStatefulWidget {
 class _ElectronicInvoicingPageState
     extends ConsumerState<ElectronicInvoicingPage> {
   final _apiTokenController = TextEditingController();
-  final _certificadoController = TextEditingController();
+  final _certificateAliasController = TextEditingController();
+  final _certificatePasswordController = TextEditingController();
+  final ElectronicCertificateRepository _certificateRepository =
+      ElectronicCertificateRepository();
 
   ElectronicCompanyModel? _company;
   EmpresaConfig? _empresaConfig;
@@ -33,6 +42,11 @@ class _ElectronicInvoicingPageState
   bool _loading = true;
   bool _saving = false;
   bool _savingVisibility = false;
+  bool _uploadingCertificate = false;
+  String? _selectedCertificatePath;
+  String? _selectedCertificateName;
+  String? _certificateNotice;
+  bool _certificateNoticeIsError = false;
 
   @override
   void initState() {
@@ -43,7 +57,8 @@ class _ElectronicInvoicingPageState
   @override
   void dispose() {
     _apiTokenController.dispose();
-    _certificadoController.dispose();
+    _certificateAliasController.dispose();
+    _certificatePasswordController.dispose();
     super.dispose();
   }
 
@@ -74,7 +89,7 @@ class _ElectronicInvoicingPageState
 
   void _syncControllers(ElectronicCompanyModel company) {
     _apiTokenController.text = company.apiToken;
-    _certificadoController.text = company.certificateName;
+    _certificateAliasController.text = company.certificateName;
   }
 
   List<String> _missingCompanyFields() {
@@ -101,10 +116,7 @@ class _ElectronicInvoicingPageState
 
     setState(() => _saving = true);
     final saved = await ElectronicCompanyRepository.save(
-      company.copyWith(
-        apiToken: _apiTokenController.text.trim(),
-        certificateName: _certificadoController.text.trim(),
-      ),
+      company.copyWith(apiToken: _apiTokenController.text.trim()),
     );
 
     if (!mounted) return;
@@ -115,6 +127,125 @@ class _ElectronicInvoicingPageState
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Configuracion e-CF actualizada')),
     );
+  }
+
+  Future<void> _pickCertificateFile() async {
+    try {
+      final result = await WindowService.runWithSystemDialog(
+        () => FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['p12'],
+          allowMultiple: false,
+        ),
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      if (file.path == null || file.path!.trim().isEmpty) return;
+
+      setState(() {
+        _selectedCertificatePath = file.path;
+        _selectedCertificateName = file.name;
+        _certificateNotice = null;
+        _certificateNoticeIsError = false;
+      });
+    } catch (error, stackTrace) {
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        module: 'electronic_invoicing/certificate_pick',
+      );
+    }
+  }
+
+  Future<void> _uploadCertificate() async {
+    final company = _company;
+    final filePath = _selectedCertificatePath;
+    final alias = _certificateAliasController.text.trim();
+    final password = _certificatePasswordController.text.trim();
+
+    if (company == null) return;
+    if (filePath == null || filePath.isEmpty) {
+      setState(() {
+        _certificateNotice = 'Seleccione el certificado antes de guardar';
+        _certificateNoticeIsError = true;
+      });
+      return;
+    }
+    if (alias.isEmpty) {
+      setState(() {
+        _certificateNotice =
+            'Escriba un nombre para identificar el certificado';
+        _certificateNoticeIsError = true;
+      });
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() {
+        _certificateNotice = 'Escriba la contraseña del certificado';
+        _certificateNoticeIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _uploadingCertificate = true;
+      _certificateNotice = null;
+      _certificateNoticeIsError = false;
+    });
+
+    try {
+      final result = await _certificateRepository.uploadCertificate(
+        filePath: filePath,
+        alias: alias,
+        password: password,
+      );
+      final refreshed = await ElectronicCompanyRepository.getOrCreate();
+      if (!mounted) return;
+
+      _certificatePasswordController.clear();
+      setState(() {
+        _company = refreshed;
+        _selectedCertificatePath = null;
+        _selectedCertificateName = null;
+        _certificateNotice = result.isExpired
+            ? 'El certificado está vencido'
+            : 'Certificado cargado correctamente';
+        _certificateNoticeIsError = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isExpired
+                ? 'El certificado está vencido'
+                : 'Certificado cargado correctamente',
+          ),
+        ),
+      );
+    } on ElectronicCertificateUploadException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _certificateNotice = error.userMessage;
+        _certificateNoticeIsError = true;
+      });
+    } catch (error, stackTrace) {
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        module: 'electronic_invoicing/certificate_upload',
+      );
+      if (!mounted) return;
+      setState(() {
+        _certificateNotice = 'No se pudo cargar el certificado';
+        _certificateNoticeIsError = true;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _uploadingCertificate = false);
+      }
+    }
   }
 
   Future<void> _updateSalesVisibility(bool enabled) async {
@@ -198,6 +329,8 @@ class _ElectronicInvoicingPageState
                           _buildCompanyDataSection(context),
                           const SizedBox(height: 16),
                           _buildConfigForm(context),
+                          const SizedBox(height: 16),
+                          _buildCertificateSection(context),
                           const SizedBox(height: 16),
                           _buildRecentDocuments(context),
                         ],
@@ -446,13 +579,6 @@ class _ElectronicInvoicingPageState
                   controller: _apiTokenController,
                 ),
               ),
-              _FieldBox(
-                width: 320,
-                child: _LabeledField(
-                  label: 'Certificado / alias',
-                  controller: _certificadoController,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -470,6 +596,193 @@ class _ElectronicInvoicingPageState
                 ),
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCertificateSection(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final company = _company!;
+    final hasCertificate = company.hasCertificateConfigured;
+    final validFrom = company.certificateValidFromMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(company.certificateValidFromMs!);
+    final validTo = company.certificateValidToMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(company.certificateValidToMs!);
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    final statusLabel = switch (company.certificateStatus.trim()) {
+      'active' => 'Vigente',
+      'expired' => 'Vencido',
+      _ => hasCertificate ? 'Cargado' : 'Pendiente',
+    };
+    final statusColor = company.certificateStatus.trim() == 'expired'
+        ? scheme.tertiary
+        : hasCertificate
+        ? scheme.primary
+        : scheme.outline;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Certificado digital',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Seleccione su archivo, escriba la contraseña y guárdelo en un solo paso.',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(label: statusLabel, color: statusColor),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (hasCertificate)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withOpacity(0.28),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: scheme.outlineVariant.withOpacity(0.45),
+                ),
+              ),
+              child: Wrap(
+                spacing: 18,
+                runSpacing: 10,
+                children: [
+                  _CertificateInfoItem(
+                    label: 'Alias actual',
+                    value: company.certificateName,
+                  ),
+                  if (validFrom != null)
+                    _CertificateInfoItem(
+                      label: 'Válido desde',
+                      value: dateFormat.format(validFrom),
+                    ),
+                  if (validTo != null)
+                    _CertificateInfoItem(
+                      label: 'Válido hasta',
+                      value: dateFormat.format(validTo),
+                    ),
+                ],
+              ),
+            ),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _FieldBox(
+                width: 280,
+                child: _LabeledField(
+                  label: 'Nombre del certificado',
+                  controller: _certificateAliasController,
+                ),
+              ),
+              _FieldBox(
+                width: 280,
+                child: TextFormField(
+                  controller: _certificatePasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Contraseña del certificado',
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 320,
+                child: OutlinedButton.icon(
+                  onPressed: _uploadingCertificate
+                      ? null
+                      : _pickCertificateFile,
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: Text(
+                    _selectedCertificateName ??
+                        (hasCertificate
+                            ? 'Reemplazar certificado'
+                            : 'Seleccionar certificado .p12'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_selectedCertificateName != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Archivo seleccionado: $_selectedCertificateName',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: _uploadingCertificate ? null : _uploadCertificate,
+                icon: _uploadingCertificate
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        hasCertificate
+                            ? Icons.sync_alt_outlined
+                            : Icons.save_outlined,
+                      ),
+                label: Text(
+                  hasCertificate
+                      ? 'Reemplazar certificado'
+                      : 'Guardar certificado',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _certificateNotice ??
+                      (hasCertificate
+                          ? 'El certificado actual ya está listo para usar.'
+                          : 'Aún no hay un certificado cargado.'),
+                  style: TextStyle(
+                    color: _certificateNotice == null
+                        ? scheme.onSurfaceVariant
+                        : _certificateNoticeIsError
+                        ? scheme.error
+                        : company.certificateStatus.trim() == 'expired'
+                        ? scheme.tertiary
+                        : scheme.primary,
+                    fontWeight: _certificateNotice == null
+                        ? FontWeight.w500
+                        : FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -789,6 +1102,34 @@ class _ReadOnlyDataItem extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _CertificateInfoItem extends StatelessWidget {
+  const _CertificateInfoItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
       ],
     );
   }

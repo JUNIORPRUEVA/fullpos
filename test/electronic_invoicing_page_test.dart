@@ -77,6 +77,9 @@ void main() {
         environment: 'pruebas',
         apiToken: 'token-demo',
         certificateName: 'cert-demo',
+        certificateValidFromMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
+        certificateValidToMs: DateTime(2027, 1, 1).millisecondsSinceEpoch,
+        certificateStatus: 'active',
         automaticEmission: 1,
       ),
     );
@@ -87,6 +90,10 @@ void main() {
     expect(find.text('FULLTECH SRL'), findsOneWidget);
     expect(find.text('123456789'), findsOneWidget);
     expect(find.text('Higuey, La Altagracia'), findsOneWidget);
+    expect(find.text('Certificado digital'), findsOneWidget);
+    expect(find.text('Alias actual'), findsOneWidget);
+    expect(find.text('cert-demo'), findsWidgets);
+    expect(find.text('Vigente'), findsOneWidget);
     expect(
       find.text('Complete la información de empresa en configuración'),
       findsNothing,
@@ -112,6 +119,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Ir a configuración'), findsOneWidget);
+    expect(find.text('Aún no hay un certificado cargado.'), findsOneWidget);
   });
 
   test(
@@ -151,6 +159,9 @@ void main() {
       expect(row['environment'], 'produccion');
       expect(row['api_token'], 'token-seguro');
       expect(row['certificate_name'], 'certificado');
+      expect(row['certificate_valid_from_ms'], isNull);
+      expect(row['certificate_valid_to_ms'], isNull);
+      expect(row['certificate_status'], '');
       expect(row['automatic_emission'], 0);
     },
   );

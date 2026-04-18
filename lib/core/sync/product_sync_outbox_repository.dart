@@ -168,6 +168,23 @@ class ProductSyncOutboxRepository {
     });
   }
 
+  Future<void> markRejected(int id, {required String error}) async {
+    await _withRecoveredDb((db) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.update(
+        DbTables.productSyncOutbox,
+        {
+          'status': 'rejected',
+          'locked_at_ms': null,
+          'last_error': error,
+          'updated_at_ms': now,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
   Future<List<Map<String, dynamic>>> listStatusRows() async {
     return _withRecoveredDb(
       (db) => db.query(

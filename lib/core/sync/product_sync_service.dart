@@ -30,6 +30,35 @@ class ProductRealtimeEvent {
   final ProductModel product;
 }
 
+@visibleForTesting
+bool isTerminalProductSyncStatus(int? statusCode) => statusCode == 400;
+
+class _ProductSyncRequestFailed implements Exception {
+  const _ProductSyncRequestFailed({
+    required this.statusCode,
+    required this.message,
+    this.errorCode,
+    this.issues,
+  });
+
+  final int statusCode;
+  final String message;
+  final String? errorCode;
+  final List<Map<String, dynamic>>? issues;
+
+  @override
+  String toString() {
+    final parts = <String>['status=$statusCode', 'message=$message'];
+    if (errorCode != null && errorCode!.isNotEmpty) {
+      parts.add('errorCode=$errorCode');
+    }
+    if (issues != null && issues!.isNotEmpty) {
+      parts.add('issues=${jsonEncode(issues)}');
+    }
+    return 'ProductSyncRequestFailed(${parts.join(', ')})';
+  }
+}
+
 class ProductSyncService {
   ProductSyncService._();
 
@@ -176,6 +205,32 @@ class ProductSyncService {
               'Conflict detected localProductId=${conflict.localProductId} serverId=${conflict.serverProduct.serverId} message=${conflict.message}',
               module: 'product_sync',
             );
+          } on _ProductSyncRequestFailed catch (error) {
+            final errorMessage = error.toString();
+            await _markProductFailed(
+              localProductId: item['entity_id'] as int,
+              message: errorMessage,
+            );
+            if (isTerminalProductSyncStatus(error.statusCode)) {
+              await _outbox.markRejected(id, error: errorMessage);
+              await AppLogger.instance.logWarn(
+                'Product sync rejected outboxId=$id status=${error.statusCode} errorCode=${error.errorCode} error=$error',
+                module: 'product_sync',
+              );
+              continue;
+            }
+
+            final nextRetry = _retryDelayForAttempt(retryCount + 1);
+            await _outbox.markFailure(
+              id,
+              error: errorMessage,
+              retryCount: retryCount + 1,
+              retryDelay: nextRetry,
+            );
+            await AppLogger.instance.logWarn(
+              'Product sync failure outboxId=$id retry=${retryCount + 1} status=${error.statusCode} errorCode=${error.errorCode} error=$error',
+              module: 'product_sync',
+            );
           } catch (error) {
             final nextRetry = _retryDelayForAttempt(retryCount + 1);
             await _markProductFailed(
@@ -233,6 +288,15 @@ class ProductSyncService {
     return null;
   }
 
+  int? _normalizePositiveIdentifier(dynamic rawValue) {
+    if (rawValue == null) return null;
+    final parsed = rawValue is num
+        ? rawValue.toInt()
+        : int.tryParse(rawValue.toString().trim());
+    if (parsed == null || parsed <= 0) return null;
+    return parsed;
+  }
+
   Map<String, dynamic> _normalizeOperationPayloadForRequest(
     Map<String, dynamic> payload,
   ) {
@@ -270,6 +334,24 @@ class ProductSyncService {
       normalized.remove('lastModifiedBy');
     } else {
       normalized['lastModifiedBy'] = lastModifiedBy;
+    }
+
+    final localProductId = _normalizePositiveIdentifier(
+      normalized['localProductId'],
+    );
+    if (localProductId == null) {
+      normalized.remove('localProductId');
+    } else {
+      normalized['localProductId'] = localProductId;
+    }
+
+    final serverProductId = _normalizePositiveIdentifier(
+      normalized['serverProductId'],
+    );
+    if (serverProductId == null) {
+      normalized.remove('serverProductId');
+    } else {
+      normalized['serverProductId'] = serverProductId;
     }
 
     return normalized;
@@ -333,7 +415,10 @@ class ProductSyncService {
       timeout: const Duration(seconds: 12),
     );
 
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final decodedBody = jsonDecode(response.body);
+    final body = decodedBody is Map<String, dynamic>
+        ? decodedBody
+        : <String, dynamic>{};
     if (response.statusCode == 409) {
       final conflictProduct = _serverProductFromJson(
         body['serverProduct'] as Map<String, dynamic>,
@@ -345,7 +430,23 @@ class ProductSyncService {
       );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(body['message']?.toString() ?? 'sync_failed');
+      final rawIssues = body['issues'];
+      final issues = rawIssues is List
+          ? rawIssues
+                .whereType<Map>()
+                .map(
+                  (issue) => issue.map(
+                    (key, value) => MapEntry(key.toString(), value),
+                  ),
+                )
+                .toList()
+          : null;
+      throw _ProductSyncRequestFailed(
+        statusCode: response.statusCode,
+        message: body['message']?.toString() ?? 'sync_failed',
+        errorCode: body['errorCode']?.toString(),
+        issues: issues,
+      );
     }
 
     final productBody = body['product'];
@@ -375,7 +476,7 @@ class ProductSyncService {
         ? null
         : DateTime.tryParse(deletedAtRaw);
     return ProductModel(
-      id: 0,
+      id: null,
       businessId: product['businessId']?.toString(),
       serverId: (payload['serverProductId'] as num?)?.toInt(),
       code: product['code']?.toString() ?? '',
@@ -406,7 +507,7 @@ class ProductSyncService {
         ? null
         : DateTime.parse(deletedAtRaw);
     return ProductModel(
-      id: 0,
+      id: null,
       businessId: json['businessId']?.toString(),
       serverId: (json['id'] as num?)?.toInt(),
       code: json['code'] as String? ?? '',
@@ -700,7 +801,8 @@ class ProductSyncService {
 
     final createdAt = DateTime.tryParse(json['createdAt']?.toString() ?? '');
     final updatedAt =
-        DateTime.tryParse(json['updatedAt']?.toString() ?? '') ?? DateTime.now();
+        DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
+        DateTime.now();
     final deletedAt = DateTime.tryParse(json['deletedAt']?.toString() ?? '');
     final isActive = json['isActive'] as bool? ?? true;
 
@@ -725,8 +827,7 @@ class ProductSyncService {
         if (rows.isEmpty) {
           localId = await txn.insert(DbTables.categories, {
             ...values,
-            'created_at_ms':
-                (createdAt ?? updatedAt).millisecondsSinceEpoch,
+            'created_at_ms': (createdAt ?? updatedAt).millisecondsSinceEpoch,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         } else {
           localId = rows.first['id'] as int?;

@@ -9,6 +9,9 @@ class ElectronicCompanyModel {
   final String environment;
   final String apiToken;
   final String certificateName;
+  final int? certificateValidFromMs;
+  final int? certificateValidToMs;
+  final String certificateStatus;
   final int automaticEmission;
   final int updatedAtMs;
 
@@ -23,6 +26,9 @@ class ElectronicCompanyModel {
     required this.environment,
     required this.apiToken,
     required this.certificateName,
+    this.certificateValidFromMs,
+    this.certificateValidToMs,
+    this.certificateStatus = '',
     required this.automaticEmission,
     required this.updatedAtMs,
   });
@@ -39,6 +45,9 @@ class ElectronicCompanyModel {
       environment: 'pruebas',
       apiToken: '',
       certificateName: '',
+      certificateValidFromMs: null,
+      certificateValidToMs: null,
+      certificateStatus: '',
       automaticEmission: 1,
       updatedAtMs: now,
     );
@@ -54,11 +63,16 @@ class ElectronicCompanyModel {
 
   bool get isReadyForEmission => isEnabled && missingRequiredFields().isEmpty;
 
+  bool get hasCertificateConfigured => certificateName.trim().isNotEmpty;
+
   Map<String, dynamic> toMap() => {
     if (id != null) 'id': id,
     'environment': environment,
     'api_token': apiToken,
     'certificate_name': certificateName,
+    'certificate_valid_from_ms': certificateValidFromMs,
+    'certificate_valid_to_ms': certificateValidToMs,
+    'certificate_status': certificateStatus,
     'automatic_emission': automaticEmission,
     'updated_at_ms': updatedAtMs,
   };
@@ -75,6 +89,9 @@ class ElectronicCompanyModel {
       environment: map['environment'] as String? ?? 'pruebas',
       apiToken: map['api_token'] as String? ?? '',
       certificateName: map['certificate_name'] as String? ?? '',
+      certificateValidFromMs: map['certificate_valid_from_ms'] as int?,
+      certificateValidToMs: map['certificate_valid_to_ms'] as int?,
+      certificateStatus: map['certificate_status'] as String? ?? '',
       automaticEmission: map['automatic_emission'] as int? ?? 1,
       updatedAtMs: map['updated_at_ms'] as int? ?? 0,
     );
@@ -91,6 +108,9 @@ class ElectronicCompanyModel {
     String? environment,
     String? apiToken,
     String? certificateName,
+    int? certificateValidFromMs,
+    int? certificateValidToMs,
+    String? certificateStatus,
     int? automaticEmission,
     int? updatedAtMs,
   }) {
@@ -105,6 +125,10 @@ class ElectronicCompanyModel {
       environment: environment ?? this.environment,
       apiToken: apiToken ?? this.apiToken,
       certificateName: certificateName ?? this.certificateName,
+      certificateValidFromMs:
+          certificateValidFromMs ?? this.certificateValidFromMs,
+      certificateValidToMs: certificateValidToMs ?? this.certificateValidToMs,
+      certificateStatus: certificateStatus ?? this.certificateStatus,
       automaticEmission: automaticEmission ?? this.automaticEmission,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
     );

@@ -17,7 +17,9 @@ class ElectronicCompanyRepository {
     return defaults.copyWith(id: id);
   }
 
-  static Future<ElectronicCompanyModel> save(ElectronicCompanyModel model) async {
+  static Future<ElectronicCompanyModel> save(
+    ElectronicCompanyModel model,
+  ) async {
     final db = await AppDb.database;
     final payload = ElectronicCompanyModel(
       id: model.id,
@@ -30,6 +32,9 @@ class ElectronicCompanyRepository {
       environment: model.environment,
       apiToken: model.apiToken,
       certificateName: model.certificateName,
+      certificateValidFromMs: model.certificateValidFromMs,
+      certificateValidToMs: model.certificateValidToMs,
+      certificateStatus: model.certificateStatus,
       automaticEmission: model.automaticEmission,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );

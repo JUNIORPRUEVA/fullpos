@@ -3579,6 +3579,9 @@ class AppDb {
         environment TEXT NOT NULL DEFAULT 'pruebas',
         api_token TEXT NOT NULL DEFAULT '',
         certificate_name TEXT NOT NULL DEFAULT '',
+        certificate_valid_from_ms INTEGER,
+        certificate_valid_to_ms INTEGER,
+        certificate_status TEXT NOT NULL DEFAULT '',
         automatic_emission INTEGER NOT NULL DEFAULT 1,
         updated_at_ms INTEGER NOT NULL DEFAULT 0
       )
@@ -3635,6 +3638,24 @@ class AppDb {
       db,
       DbTables.electronicCompany,
       'certificate_name',
+      "TEXT NOT NULL DEFAULT ''",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'certificate_valid_from_ms',
+      'INTEGER',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'certificate_valid_to_ms',
+      'INTEGER',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.electronicCompany,
+      'certificate_status',
       "TEXT NOT NULL DEFAULT ''",
     );
     await _addColumnIfMissing(
