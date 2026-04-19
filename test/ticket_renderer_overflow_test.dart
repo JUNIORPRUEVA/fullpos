@@ -10,7 +10,11 @@ TicketData _sampleSaleData() {
     ticketNumber: '003740',
     dateTime: DateTime(2026, 1, 12, 16, 5),
     cashierName: 'CAJA3',
-    client: const ClientInfo(name: ''),
+    client: const ClientInfo(
+      name: 'EMPRESA FISCAL DEMO SRL',
+      rnc: '131246796',
+      phone: '(809) 222-3344',
+    ),
     items: const [
       TicketItemData(
         name: 'DESTORNILLADOR EXTRA LARGO INDUSTRIAL',
@@ -35,6 +39,12 @@ TicketData _sampleSaleData() {
     paidAmount: 100.00,
     changeAmount: 30.00,
     electronicInvoiceCode: 'B020000000000058',
+    electronicDocumentType: '31',
+    electronicDgiiStatus: 'aceptada',
+    electronicTrackId: 'DGII-TRK-2026-000058',
+    electronicDgiiCode: '100',
+    electronicDgiiMessage: 'Comprobante aceptado por DGII',
+    electronicEnvironment: 'production',
     type: TicketType.sale,
   );
 }
@@ -215,6 +225,53 @@ void main() {
       expect(_hasTrailingCents(totalLine), isTrue);
     },
   );
+
+  test('Ticket POS imprime bloque fiscal electronico ordenado', () {
+    const width = 48;
+    final renderer = TicketRenderer(
+      config: _configForWidth(width),
+      company: _sampleCompany(),
+    );
+
+    final lines = renderer.buildLines(_sampleSaleData());
+
+    for (final line in lines) {
+      expect(line.length, lessThanOrEqualTo(width));
+    }
+
+    expect(lines.any((line) => line.contains('DOC. FE:')), isTrue);
+    expect(lines.any((line) => line.contains('31 CREDITO FISCAL')), isTrue);
+    expect(lines.any((line) => line.contains('E-CF:')), isTrue);
+    expect(lines.where((line) => line.contains('E-CF:')).length, equals(1));
+    expect(lines.any((line) => line.contains('ESTADO DGII:')), isTrue);
+    expect(lines.any((line) => line.contains('ACEPTADA')), isTrue);
+    expect(lines.any((line) => line.contains('TRACK ID:')), isTrue);
+    expect(lines.any((line) => line.contains('DGII-TRK-2026-000058')), isTrue);
+    expect(lines.any((line) => line.contains('AMBIENTE:')), isTrue);
+    expect(lines.any((line) => line.contains('PRODUCCION')), isTrue);
+    expect(lines.any((line) => line.contains('CODIGO DGII:')), isTrue);
+    expect(lines.any((line) => line.contains('MENSAJE DGII:')), isTrue);
+    expect(lines.any((line) => line.contains('COMPROBANTE ACEPTADO')), isTrue);
+  });
+
+  test('Ticket POS E31 imprime empresa y RNC del cliente', () {
+    const width = 48;
+    final renderer = TicketRenderer(
+      config: _configForWidth(width),
+      company: _sampleCompany(),
+    );
+
+    final lines = renderer.buildLines(_sampleSaleData());
+
+    expect(lines.any((line) => line.contains('CLIENTE FISCAL')), isTrue);
+    expect(lines.any((line) => line.contains('EMPRESA:')), isTrue);
+    expect(
+      lines.any((line) => line.contains('EMPRESA FISCAL DEMO SRL')),
+      isTrue,
+    );
+    expect(lines.any((line) => line.contains('RNC:')), isTrue);
+    expect(lines.any((line) => line.contains('131246796')), isTrue);
+  });
 
   test('Ticket POS 42 chars usa tabla compacta y totales simples', () {
     const width = 42;

@@ -1240,6 +1240,27 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
 
     if (!mounted || result == null) return null;
+    await _applySelectedClient(result);
+    return result;
+  }
+
+  Future<ClientModel?> _showCreateClientFromSales() async {
+    final result = await _presentDialog<ClientModel>(
+      builder: (context) => const ClientFormDialog(),
+    );
+
+    if (!mounted || result == null) return null;
+
+    setState(() {
+      _clients.removeWhere((client) => client.id == result.id);
+      _clients.add(result);
+    });
+
+    await _applySelectedClient(result);
+    return result;
+  }
+
+  Future<void> _applySelectedClient(ClientModel result) async {
     _updateCurrentCart(() {
       _currentCart.selectedClient = result;
       _currentCart.name = result.nombre;
@@ -1257,8 +1278,17 @@ class _SalesPageState extends ConsumerState<SalesPage> {
         module: 'sales/ticket_name',
       );
     }
+  }
 
-    return result;
+  String _clientDescriptor(ClientModel client) {
+    final parts = <String>[];
+    final document = client.documentLabel;
+    final phone = client.normalizedPhone;
+
+    if (document != null) parts.add(document);
+    if (phone != null) parts.add(phone);
+
+    return parts.isEmpty ? client.entityLabel : parts.join('  •  ');
   }
 
   Future<void> _showQuickItemDialog() async {
@@ -2535,7 +2565,11 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       String? electronicInvoiceCode;
       String? electronicDocumentType;
       if (_currentCart.electronicInvoiceEnabled) {
-        electronicDocumentType = 'eCF';
+        electronicDocumentType = switch (selectedDocumentType) {
+          payment.PaymentDocumentType.creditoFiscal => '31',
+          payment.PaymentDocumentType.consumidorFinal => '32',
+          payment.PaymentDocumentType.cotizacion => null,
+        };
       }
 
       final paymentMethodStr = switch (method) {
@@ -2608,6 +2642,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final int? tempCartIdToDelete = _currentCart.tempCartId;
       final int? ticketIdToDelete = _currentCart.ticketId;
       final int cartIndexToRemove = _currentCartIndex;
+      final selectedClientTaxId =
+          (_currentCart.selectedClient?.rnc ?? '').trim().isNotEmpty
+          ? _currentCart.selectedClient?.rnc
+          : _currentCart.selectedClient?.cedula;
       try {
         if (isLayaway) {
           saleId = await LayawayRepository.createLayawaySale(
@@ -2627,6 +2665,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
             customerPhone: _currentCart.selectedClient?.telefono,
+            customerRnc: selectedClientTaxId,
             initialPayment: receivedAmount,
             note: paymentResult['note'] as String?,
             enforceLocalCodeIdempotency:
@@ -2651,6 +2690,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
             customerPhone: _currentCart.selectedClient?.telefono,
+            customerRnc: selectedClientTaxId,
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
             electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
@@ -2710,6 +2750,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             customerId: _currentCart.selectedClient?.id,
             customerName: _currentCart.selectedClient?.nombre,
             customerPhone: _currentCart.selectedClient?.telefono,
+            customerRnc: selectedClientTaxId,
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
             electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
@@ -5911,72 +5952,182 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   }
 
   Widget _buildClientSelector() {
+    final client = _currentCart.selectedClient;
+
     return Container(
+      constraints: const BoxConstraints(minHeight: 86),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.onSurface.withOpacity(0.3)),
+        color: Color.alphaBlend(
+          scheme.primary.withOpacity(0.03),
+          scheme.surface,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _currentCart.selectedClient == null
-                ? TextButton.icon(
-                    onPressed: _showClientPicker,
-                    icon: const Icon(Icons.person_add, size: 20),
-                    label: const Text('Seleccionar Cliente'),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  )
-                : InkWell(
-                    onTap: _showClientPicker,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.person, size: 20, color: scheme.primary),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _showClientPicker,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: client == null
+                        ? scheme.surfaceContainerHighest
+                        : (client.isBusiness
+                              ? scheme.primary.withOpacity(0.1)
+                              : scheme.secondary.withOpacity(0.12)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    client == null
+                        ? Icons.person_search_rounded
+                        : (client.isBusiness
+                              ? Icons.apartment_rounded
+                              : Icons.person_rounded),
+                    color: client == null
+                        ? scheme.onSurfaceVariant
+                        : (client.isBusiness
+                              ? scheme.primary
+                              : scheme.secondary),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: client == null
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Consumidor final',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: scheme.onSurface,
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Elige un cliente o crea una empresa con RNC.',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    height: 1.25,
+                                  ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Text(
-                                  _currentCart.selectedClient!.nombre,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                                Expanded(
+                                  child: Text(
+                                    client.nombre,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          color: scheme.onSurface,
+                                        ),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                if (_currentCart.selectedClient!.telefono !=
-                                    null)
-                                  Text(
-                                    _currentCart.selectedClient!.telefono!,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: scheme.onSurface.withOpacity(0.6),
-                                    ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
                                   ),
+                                  decoration: BoxDecoration(
+                                    color: client.isBusiness
+                                        ? scheme.primary.withOpacity(0.1)
+                                        : scheme.secondary.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    client.entityLabel,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: client.isBusiness
+                                              ? scheme.primary
+                                              : scheme.secondary,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                  ),
+                                ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _clientDescriptor(client),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.25,
+                                  ),
+                            ),
+                            if (client.normalizedAddress != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                client.normalizedAddress!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant
+                                          .withOpacity(0.86),
+                                    ),
+                              ),
+                            ],
+                          ],
+                        ),
+                ),
+                const SizedBox(width: 10),
+                if (client == null) ...[
+                  IconButton(
+                    onPressed: _showCreateClientFromSales,
+                    tooltip: 'Crear cliente',
+                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
                   ),
-          ),
-          if (_currentCart.selectedClient != null)
-            IconButton(
-              icon: const Icon(Icons.close, size: 18),
-              onPressed: _removeClient,
-              tooltip: 'Quitar cliente',
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ] else ...[
+                  IconButton(
+                    onPressed: _removeClient,
+                    tooltip: 'Quitar cliente',
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+                  Icon(
+                    Icons.swap_horiz_rounded,
+                    color: scheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ],
+              ],
             ),
-        ],
+          ),
+        ),
       ),
     );
   }

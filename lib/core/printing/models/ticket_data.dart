@@ -60,6 +60,21 @@ class TicketData {
   /// Tipo de documento electronico/fiscal cuando aplica.
   final String? electronicDocumentType;
 
+  /// Estado actual reportado para el documento electronico.
+  final String? electronicDgiiStatus;
+
+  /// Track id / identificador de seguimiento DGII.
+  final String? electronicTrackId;
+
+  /// Codigo devuelto por DGII cuando exista.
+  final String? electronicDgiiCode;
+
+  /// Mensaje devuelto por DGII cuando exista.
+  final String? electronicDgiiMessage;
+
+  /// Ambiente del documento electronico.
+  final String? electronicEnvironment;
+
   /// Es una copia/reimpresión
   final bool isCopy;
 
@@ -98,6 +113,11 @@ class TicketData {
     this.creditNote,
     this.electronicInvoiceCode,
     this.electronicDocumentType,
+    this.electronicDgiiStatus,
+    this.electronicTrackId,
+    this.electronicDgiiCode,
+    this.electronicDgiiMessage,
+    this.electronicEnvironment,
     this.isCopy = false,
     this.extraLegend,
     this.statusLabel,
@@ -149,6 +169,11 @@ class TicketData {
     required double discountTotal,
     String? electronicInvoiceCode,
     String? electronicDocumentType,
+    String? electronicDgiiStatus,
+    String? electronicTrackId,
+    String? electronicDgiiCode,
+    String? electronicDgiiMessage,
+    String? electronicEnvironment,
     String? customerName,
     String? customerPhone,
     String? customerRnc,
@@ -190,6 +215,11 @@ class TicketData {
       creditNote: creditNote,
       electronicInvoiceCode: electronicInvoiceCode,
       electronicDocumentType: electronicDocumentType,
+      electronicDgiiStatus: electronicDgiiStatus,
+      electronicTrackId: electronicTrackId,
+      electronicDgiiCode: electronicDgiiCode,
+      electronicDgiiMessage: electronicDgiiMessage,
+      electronicEnvironment: electronicEnvironment,
       isCopy: isCopy,
       statusLabel: statusLabel,
       isLayaway: isLayaway,
@@ -239,6 +269,11 @@ class TicketData {
     String? creditNote,
     String? electronicInvoiceCode,
     String? electronicDocumentType,
+    String? electronicDgiiStatus,
+    String? electronicTrackId,
+    String? electronicDgiiCode,
+    String? electronicDgiiMessage,
+    String? electronicEnvironment,
     bool? isCopy,
     String? extraLegend,
     String? statusLabel,
@@ -270,6 +305,13 @@ class TicketData {
           electronicInvoiceCode ?? this.electronicInvoiceCode,
       electronicDocumentType:
           electronicDocumentType ?? this.electronicDocumentType,
+      electronicDgiiStatus: electronicDgiiStatus ?? this.electronicDgiiStatus,
+      electronicTrackId: electronicTrackId ?? this.electronicTrackId,
+      electronicDgiiCode: electronicDgiiCode ?? this.electronicDgiiCode,
+      electronicDgiiMessage:
+          electronicDgiiMessage ?? this.electronicDgiiMessage,
+      electronicEnvironment:
+          electronicEnvironment ?? this.electronicEnvironment,
       isCopy: isCopy ?? this.isCopy,
       extraLegend: extraLegend ?? this.extraLegend,
       statusLabel: statusLabel ?? this.statusLabel,

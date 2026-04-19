@@ -20,6 +20,26 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
   final _listController = ScrollController();
   List<ClientModel> _filteredClients = [];
 
+  bool _isBusinessClient(ClientModel client) => client.isBusiness;
+
+  String _clientTypeLabel(ClientModel client) => client.entityLabel;
+
+  String _clientSupportingLine(ClientModel client) {
+    final parts = <String>[];
+    final document = client.documentLabel;
+    final phone = client.normalizedPhone;
+
+    if (document != null) parts.add(document);
+    if (phone != null) parts.add(phone);
+
+    if (parts.isNotEmpty) return parts.join('  •  ');
+
+    final address = client.normalizedAddress;
+    if (address != null) return address;
+
+    return 'Consumidor final sin datos adicionales';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,7 +63,8 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
         _filteredClients = widget.clients.where((client) {
           return client.nombre.toLowerCase().contains(query) ||
               (client.telefono?.contains(query) ?? false) ||
-              (client.rnc?.toLowerCase().contains(query) ?? false);
+              (client.rnc?.toLowerCase().contains(query) ?? false) ||
+              (client.cedula?.toLowerCase().contains(query) ?? false);
         }).toList();
       }
     });
@@ -61,73 +82,93 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final viewport = MediaQuery.sizeOf(context);
     final listHeight = math.min<double>(
-      viewport.height * 0.62,
-      math.max<double>(260, _filteredClients.length * 64),
+      viewport.height * 0.58,
+      math.max<double>(260, _filteredClients.length * 58),
     );
 
     return DialogKeyboardShortcuts(
       child: AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: scheme.surface,
         insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
         contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        titleTextStyle: const TextStyle(
-          color: Colors.black,
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
+        titleTextStyle: theme.textTheme.titleLarge?.copyWith(
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w800,
         ),
-        contentTextStyle: const TextStyle(color: Colors.black, fontSize: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentTextStyle: theme.textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurface,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.person_search, color: Colors.black),
+            Icon(Icons.person_search_rounded, color: scheme.primary),
             const SizedBox(width: 8),
-            const Text('Clientes'),
+            const Text('Elegir cliente'),
             const Spacer(),
+            FilledButton.tonalIcon(
+              onPressed: _createNewClient,
+              icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+              label: const Text('Nuevo'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const SizedBox(width: 6),
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close, color: Colors.black),
+              icon: Icon(Icons.close_rounded, color: scheme.onSurface),
             ),
           ],
         ),
         content: SizedBox(
-          width: 560,
+          width: 540,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      style: const TextStyle(color: Colors.black),
-                      decoration: InputDecoration(
-                        hintText: 'Buscar cliente...',
-                        hintStyle: TextStyle(color: Colors.black54),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          size: 20,
-                          color: Colors.black,
+              TextField(
+                controller: _searchController,
+                style: TextStyle(color: scheme.onSurface),
+                decoration: InputDecoration(
+                  hintText: 'Buscar por nombre, RNC, cédula o teléfono',
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  suffixIcon: _searchController.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            _filterClients();
+                          },
+                          icon: const Icon(Icons.close_rounded, size: 18),
                         ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
+                  filled: true,
+                  fillColor: scheme.surfaceContainerLowest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: scheme.outlineVariant),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.person_add_alt_1_outlined,
-                      color: Colors.black,
-                    ),
-                    tooltip: 'Agregar cliente',
-                    onPressed: _createNewClient,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: scheme.outlineVariant),
                   ),
-                ],
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: scheme.primary),
+                  ),
+                  isDense: true,
+                ),
               ),
               const SizedBox(height: 14),
               SizedBox(
@@ -138,80 +179,165 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.person_off,
+                              Icons.person_off_outlined,
                               size: 48,
-                              color: Colors.black38,
+                              color: scheme.onSurfaceVariant.withOpacity(0.55),
                             ),
                             const SizedBox(height: 12),
-                            const Text(
+                            Text(
                               'No se encontraron clientes',
-                              style: TextStyle(color: Colors.black54),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
                             ),
                           ],
                         ),
                       )
-                    : Scrollbar(
-                        controller: _listController,
-                        thumbVisibility: true,
-                        child: ListView.builder(
+                    : Container(
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerLowest,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: scheme.outlineVariant),
+                        ),
+                        child: Scrollbar(
                           controller: _listController,
-                          primary: false,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          itemCount: _filteredClients.length,
-                          itemBuilder: (context, index) {
-                            final client = _filteredClients[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              color: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              child: ListTile(
-                                dense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                leading: CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: Colors.grey.shade200,
-                                  child: Text(
-                                    client.nombre[0].toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                title: Text(
-                                  client.nombre,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  client.telefono ?? 'Sin telefono',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                                trailing: const Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 14,
-                                  color: Colors.black54,
-                                ),
+                          thumbVisibility: true,
+                          child: ListView.separated(
+                            controller: _listController,
+                            primary: false,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            itemCount: _filteredClients.length,
+                            separatorBuilder: (context, index) => Divider(
+                              height: 1,
+                              indent: 72,
+                              endIndent: 14,
+                              color: scheme.outlineVariant.withOpacity(0.55),
+                            ),
+                            itemBuilder: (context, index) {
+                              final client = _filteredClients[index];
+                              final isBusiness = _isBusinessClient(client);
+
+                              return InkWell(
                                 onTap: () => Navigator.pop(context, client),
-                              ),
-                            );
-                          },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+                                        decoration: BoxDecoration(
+                                          color: isBusiness
+                                              ? scheme.primary.withOpacity(0.1)
+                                              : scheme.secondary.withOpacity(
+                                                  0.12,
+                                                ),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          isBusiness
+                                              ? Icons.apartment_rounded
+                                              : Icons.person_rounded,
+                                          color: isBusiness
+                                              ? scheme.primary
+                                              : scheme.secondary,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    client.nombre,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: theme
+                                                        .textTheme
+                                                        .titleSmall
+                                                        ?.copyWith(
+                                                          color:
+                                                              scheme.onSurface,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: isBusiness
+                                                        ? scheme.primary
+                                                              .withOpacity(0.1)
+                                                        : scheme.secondary
+                                                              .withOpacity(
+                                                                0.12,
+                                                              ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    _clientTypeLabel(client),
+                                                    style: theme
+                                                        .textTheme
+                                                        .labelSmall
+                                                        ?.copyWith(
+                                                          color: isBusiness
+                                                              ? scheme.primary
+                                                              : scheme
+                                                                    .secondary,
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _clientSupportingLine(client),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color:
+                                                        scheme.onSurfaceVariant,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: 18,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ),
                       ),
               ),

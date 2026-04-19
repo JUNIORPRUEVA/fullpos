@@ -11,15 +11,21 @@ import '../data/models/factura_electronica_model.dart';
 class FacturacionElectronicaService {
   FacturacionElectronicaService._();
 
-  static String get _electronicCodeTag => String.fromCharCodes([
-    101,
-    78,
-    67,
-    70,
-  ]);
+  static String get _electronicCodeTag =>
+      String.fromCharCodes([101, 78, 67, 70]);
 
   static String _xmlNode(String tag, String value) =>
       '<$tag>${_xml(value)}</$tag>';
+
+  static String _resolveDocumentTypeCode(legacy_sales.SaleModel sale) {
+    final rawType = (sale.electronicDocumentType ?? '').trim();
+    if (rawType == '31' || rawType == '32') {
+      return rawType;
+    }
+
+    final fiscalId = (sale.customerRncSnapshot ?? '').trim();
+    return fiscalId.isNotEmpty ? '31' : '32';
+  }
 
   static Future<FacturaElectronicaModel?> procesarVenta(int saleId) async {
     final db = await AppDb.database;
@@ -111,6 +117,7 @@ class FacturacionElectronicaService {
     final company = await ElectronicCompanyRepository.getOrCreate();
     final empresaConfig = await EmpresaService.getEmpresaConfig();
     final now = DateTime.now().millisecondsSinceEpoch;
+    final documentTypeCode = _resolveDocumentTypeCode(sale);
 
     if (sale.electronicInvoiceEnabled != 1) {
       return FacturaElectronicaRepository.upsert(
@@ -136,7 +143,7 @@ class FacturacionElectronicaService {
         FacturaElectronicaModel(
           saleId: sale.id!,
           localCode: sale.localCode,
-          tipoDocumento: 'eCF',
+          tipoDocumento: documentTypeCode,
           estadoDgii: FacturaElectronicaModel.statusConfigPending,
           mensajeDgii: 'Faltan datos del emisor: ${missing.join(', ')}.',
           ambiente: company.environment,
@@ -149,12 +156,31 @@ class FacturacionElectronicaService {
       );
     }
 
-    final ecf = _buildEcfCode(sale);
+    _SequenceAllocation allocation;
+    try {
+      allocation = await _allocateEcfSequence(documentTypeCode);
+    } on StateError catch (error) {
+      return FacturaElectronicaRepository.upsert(
+        FacturaElectronicaModel(
+          saleId: sale.id!,
+          localCode: sale.localCode,
+          tipoDocumento: documentTypeCode,
+          estadoDgii: FacturaElectronicaModel.statusConfigPending,
+          mensajeDgii: error.message,
+          ambiente: company.environment,
+          montoTotal: sale.total,
+          clienteNombre: sale.customerNameSnapshot,
+          clienteRnc: sale.customerRncSnapshot,
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+    }
     final payload = _FacturaPayload(
       saleId: sale.id!,
       localCode: sale.localCode,
-      ecf: ecf,
-      tipoDocumento: 'eCF',
+      ecf: allocation.ecf,
+      tipoDocumento: documentTypeCode,
       ambiente: company.environment,
       razonSocial: empresaConfig.nombreEmpresa,
       rncEmisor: (empresaConfig.rnc ?? '').trim(),
@@ -171,8 +197,8 @@ class FacturacionElectronicaService {
       FacturaElectronicaModel(
         saleId: sale.id!,
         localCode: sale.localCode,
-        ecf: ecf,
-        tipoDocumento: 'eCF',
+        ecf: allocation.ecf,
+        tipoDocumento: documentTypeCode,
         xmlPayload: xml,
         xmlFirmado: xmlFirmado,
         dgiiTrackId: dgii.trackId,
@@ -191,10 +217,87 @@ class FacturacionElectronicaService {
     );
   }
 
-  static String _buildEcfCode(legacy_sales.SaleModel sale) {
-    final year = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs).year;
-    final idPart = sale.id?.toString().padLeft(8, '0') ?? '00000000';
-    return 'E31$year$idPart';
+  static Future<_SequenceAllocation> _allocateEcfSequence(
+    String documentTypeCode,
+  ) async {
+    final db = await AppDb.database;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        DbTables.electronicSequences,
+        where: 'document_type_code = ? AND branch_id = ?',
+        whereArgs: [documentTypeCode, 0],
+        limit: 1,
+      );
+
+      if (rows.isEmpty) {
+        throw StateError(
+          'No existe una secuencia configurada para $documentTypeCode',
+        );
+      }
+
+      final sequence = rows.first;
+      final id = sequence['id'] as int?;
+      final prefix = (sequence['prefix'] as String? ?? 'E$documentTypeCode')
+          .trim()
+          .toUpperCase();
+      final startNumber = (sequence['start_number'] as num?)?.toInt() ?? 1;
+      final currentNumber = (sequence['current_number'] as num?)?.toInt() ?? 0;
+      final endNumber = (sequence['end_number'] as num?)?.toInt();
+      if (id == null || endNumber == null || endNumber < startNumber) {
+        throw StateError(
+          'La secuencia $documentTypeCode no tiene un límite autorizado válido',
+        );
+      }
+
+      var nextNumber = currentNumber < startNumber
+          ? startNumber
+          : currentNumber + 1;
+      while (nextNumber <= endNumber) {
+        final candidate = _buildEcf(prefix, nextNumber);
+        final duplicate = await txn.query(
+          DbTables.facturaElectronica,
+          columns: ['id'],
+          where: 'ecf = ?',
+          whereArgs: [candidate],
+          limit: 1,
+        );
+        if (duplicate.isEmpty) {
+          break;
+        }
+        nextNumber += 1;
+      }
+
+      if (nextNumber > endNumber) {
+        await txn.update(
+          DbTables.electronicSequences,
+          {
+            'current_number': endNumber,
+            'status': 'EXHAUSTED',
+            'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        throw StateError('La secuencia $documentTypeCode está agotada');
+      }
+
+      await txn.update(
+        DbTables.electronicSequences,
+        {
+          'current_number': nextNumber,
+          'status': nextNumber >= endNumber ? 'EXHAUSTED' : 'ACTIVE',
+          'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+
+      return _SequenceAllocation(ecf: _buildEcf(prefix, nextNumber));
+    });
+  }
+
+  static String _buildEcf(String prefix, int number) {
+    return '$prefix${number.toString().padLeft(10, '0')}';
   }
 
   static String _xml(String value) {
@@ -251,4 +354,10 @@ class _DgiiSubmissionResult {
     required this.sentAtMs,
     this.acknowledgedAtMs,
   });
+}
+
+class _SequenceAllocation {
+  final String ecf;
+
+  const _SequenceAllocation({required this.ecf});
 }

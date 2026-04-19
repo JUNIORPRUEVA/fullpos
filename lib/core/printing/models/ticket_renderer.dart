@@ -51,15 +51,31 @@ class TicketRenderer {
     final companyAddress = (company.address ?? '').trim();
     final ticketNumber = _sanitizeTicketText(data.ticketNumber).toUpperCase();
     final clientName = (data.client?.name ?? '').trim();
+    final clientRnc = (data.client?.rnc ?? '').trim();
+    final clientPhone = (data.client?.phone ?? '').trim();
     final clientDisplay = clientName.isEmpty
-      ? 'GENERAL'
-      : _sanitizeTicketText(clientName).toUpperCase();
+        ? 'GENERAL'
+        : _sanitizeTicketText(clientName).toUpperCase();
     final cashierName = (data.cashierName ?? '').trim();
     final cashierDisplay = cashierName.isEmpty
-      ? 'N/A'
-      : _sanitizeTicketText(cashierName).toUpperCase();
+        ? 'N/A'
+        : _sanitizeTicketText(cashierName).toUpperCase();
     final ecfCode = _sanitizeTicketText(
       (data.electronicInvoiceCode ?? '').trim(),
+    ).toUpperCase();
+    final electronicTypeCode = _sanitizeTicketText(
+      (data.electronicDocumentType ?? '').trim(),
+    ).toUpperCase();
+    final electronicTrackId = _sanitizeTicketText(
+      (data.electronicTrackId ?? '').trim(),
+    ).toUpperCase();
+    final electronicStatus = _electronicStatusLabel(data);
+    final electronicEnvironment = _electronicEnvironmentLabel(data);
+    final electronicDgiiCode = _sanitizeTicketText(
+      (data.electronicDgiiCode ?? '').trim(),
+    ).toUpperCase();
+    final electronicDgiiMessage = _sanitizeTicketText(
+      (data.electronicDgiiMessage ?? '').trim(),
     ).toUpperCase();
 
     void add(String text) => lines.add(_fitLine(text, width));
@@ -115,12 +131,57 @@ class TicketRenderer {
       );
     }
     if (config.showClientInfo) {
-      addPair('CLI: $clientDisplay', '');
+      if (_requiresFiscalClientBlock(data)) {
+        add('CLIENTE FISCAL');
+        addPair('EMPRESA:', clientDisplay);
+        addPair(
+          'RNC:',
+          clientRnc.isEmpty
+              ? 'PENDIENTE'
+              : _sanitizeTicketText(clientRnc).toUpperCase(),
+        );
+        if (clientPhone.isNotEmpty) {
+          addPair('TEL:', _sanitizeTicketText(clientPhone).toUpperCase());
+        }
+      } else {
+        addPair('CLI: $clientDisplay', '');
+      }
     }
 
-    if (config.showElectronicInvoiceReference &&
-        ecfCode.isNotEmpty) {
-      addPair('E-CF: $ecfCode', '');
+    final hasElectronicBlock =
+        ecfCode.isNotEmpty ||
+        electronicTypeCode.isNotEmpty ||
+        electronicStatus.isNotEmpty ||
+        electronicTrackId.isNotEmpty ||
+        electronicEnvironment.isNotEmpty ||
+        electronicDgiiCode.isNotEmpty ||
+        electronicDgiiMessage.isNotEmpty;
+    if (hasElectronicBlock) {
+      addPair('DOC. FE:', _electronicDocumentLabel(data));
+      if (ecfCode.isNotEmpty) {
+        addPair('E-CF:', ecfCode);
+      }
+      if (electronicStatus.isNotEmpty) {
+        addPair('ESTADO DGII:', electronicStatus);
+      }
+      if (electronicTrackId.isNotEmpty) {
+        addPair('TRACK ID:', electronicTrackId);
+      }
+      if (electronicEnvironment.isNotEmpty) {
+        addPair('AMBIENTE:', electronicEnvironment);
+      }
+      if (electronicDgiiCode.isNotEmpty) {
+        addPair('CODIGO DGII:', electronicDgiiCode);
+      }
+      if (electronicDgiiMessage.isNotEmpty) {
+        add('MENSAJE DGII:');
+        for (final line in ReceiptText.wrapText(
+          electronicDgiiMessage,
+          width - 2,
+        )) {
+          add(_fitLine(' $line', width));
+        }
+      }
     }
 
     addRule();
@@ -214,7 +275,10 @@ class TicketRenderer {
           .map((rawLine) => _sanitizeTicketText(rawLine).trim())
           .where((line) => line.isNotEmpty)
           .join('. ');
-      for (final wrapped in ReceiptText.wrapText(warrantyParagraph, width - 2)) {
+      for (final wrapped in ReceiptText.wrapText(
+        warrantyParagraph,
+        width - 2,
+      )) {
         add(_fitLine(wrapped.toUpperCase(), width));
       }
     }
@@ -325,8 +389,75 @@ class TicketRenderer {
     return _getDocumentType(data.type);
   }
 
+  bool _requiresFiscalClientBlock(TicketData data) {
+    return (data.electronicDocumentType ?? '').trim() == '31';
+  }
+
   String _formatQty(double quantity) {
     final whole = quantity.truncateToDouble() == quantity;
     return whole ? quantity.toStringAsFixed(0) : quantity.toStringAsFixed(2);
+  }
+
+  String _electronicDocumentLabel(TicketData data) {
+    switch ((data.electronicDocumentType ?? '').trim()) {
+      case '31':
+        return '31 CREDITO FISCAL';
+      case '32':
+        return '32 CONSUMO';
+      case '33':
+        return '33 DEBITO';
+      case '34':
+        return '34 NOTA CREDITO';
+      case '41':
+        return '41 COMPRAS';
+      case '43':
+        return '43 GASTOS MENORES';
+      case '44':
+        return '44 REGIMEN ESPECIAL';
+      case '45':
+        return '45 GUBERNAMENTAL';
+      default:
+        final raw = (data.electronicDocumentType ?? '').trim();
+        return raw.isEmpty ? 'DOCUMENTO ELECTRONICO' : raw.toUpperCase();
+    }
+  }
+
+  String _electronicStatusLabel(TicketData data) {
+    switch ((data.electronicDgiiStatus ?? '').trim().toLowerCase()) {
+      case 'aceptada':
+        return 'ACEPTADA';
+      case 'rechazada':
+        return 'RECHAZADA';
+      case 'pendiente_dgii':
+        return 'PENDIENTE DGII';
+      case 'pendiente_configuracion':
+        return 'PENDIENTE CONFIG';
+      case 'local':
+        return 'LOCAL';
+      case 'draft':
+        return 'BORRADOR';
+      case 'not_sent':
+        return 'NO ENVIADA';
+      default:
+        return _sanitizeTicketText(
+          (data.electronicDgiiStatus ?? '').trim(),
+        ).toUpperCase();
+    }
+  }
+
+  String _electronicEnvironmentLabel(TicketData data) {
+    switch ((data.electronicEnvironment ?? '').trim().toLowerCase()) {
+      case 'production':
+      case 'produccion':
+        return 'PRODUCCION';
+      case 'precertification':
+      case 'pruebas':
+      case 'certificacion':
+        return 'CERTIFICACION';
+      default:
+        return _sanitizeTicketText(
+          (data.electronicEnvironment ?? '').trim(),
+        ).toUpperCase();
+    }
   }
 }

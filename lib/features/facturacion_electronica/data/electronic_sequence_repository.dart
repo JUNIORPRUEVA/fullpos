@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../settings/data/business_settings_repository.dart';
+import 'electronic_company_locator_helper.dart';
 import 'models/electronic_sequence_model.dart';
 
 class ElectronicSequenceException implements Exception {
@@ -128,6 +129,11 @@ class ElectronicSequenceRepository {
     }
 
     final companyId = await SessionManager.companyId();
+    final locators = buildElectronicCompanyLocators(
+      sessionCompanyId: companyId,
+      companyCloudId: settings.cloudCompanyId,
+      companyRnc: settings.rnc,
+    );
     final response = await api.postJson(
       '/api/electronic-invoicing/sequences',
       headers: headers,
@@ -139,11 +145,7 @@ class ElectronicSequenceRepository {
         'currentNumber': currentNumber,
         'endNumber': endNumber,
         'status': status,
-        if (companyId != null) 'companyId': companyId,
-        if ((settings.rnc ?? '').trim().isNotEmpty)
-          'companyRnc': settings.rnc!.trim(),
-        if ((settings.cloudCompanyId ?? '').trim().isNotEmpty)
-          'companyCloudId': settings.cloudCompanyId!.trim(),
+        ...locators,
       },
       retry: false,
     );

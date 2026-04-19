@@ -101,11 +101,22 @@ class ElectronicInvoicingResolvedConfig {
         const <String, dynamic>{};
     final readinessMap = (map['readiness'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
+    final companyName = companyMap['companyName']?.toString().trim() ?? '';
+    final companyRnc = companyMap['rnc']?.toString().trim() ?? '';
+    final companyAddress = companyMap['address']?.toString().trim() ?? '';
+    final companyPhone = companyMap['phone']?.toString().trim() ?? '';
+    final companyEmail = companyMap['email']?.toString().trim() ?? '';
 
     final certificateStatus =
         certificateMap?['status']?.toString().trim().toLowerCase() ?? '';
     final company = ElectronicCompanyModel.defaults().copyWith(
-      id: 1,
+      id: int.tryParse(companyMap['companyId']?.toString() ?? ''),
+      businessName: companyName,
+      tradeName: companyName,
+      rnc: companyRnc,
+      emissionAddress: companyAddress,
+      phone: companyPhone,
+      email: companyEmail,
       environment: (configMap['uiEnvironment']?.toString().trim().isNotEmpty ?? false)
           ? configMap['uiEnvironment'].toString().trim()
           : _uiEnvironmentFromBackend(configMap['environment']?.toString()),

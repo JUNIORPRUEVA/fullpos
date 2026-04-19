@@ -40,13 +40,14 @@ class _ElectronicInvoicingPageState
   final Map<String, TextEditingController> _sequenceEndControllers = {};
   final ElectronicCertificateRepository _certificateRepository =
       ElectronicCertificateRepository();
-    final ElectronicInvoicingConfigRepository _configRepository =
+  final ElectronicInvoicingConfigRepository _configRepository =
       ElectronicInvoicingConfigRepository();
   final ElectronicSequenceRepository _sequenceRepository =
       ElectronicSequenceRepository();
 
   ElectronicCompanyModel? _company;
   EmpresaConfig? _empresaConfig;
+  Map<String, String?> _resolvedCompanySummary = const <String, String?>{};
   List<FacturaElectronicaModel> _recentInvoices = <FacturaElectronicaModel>[];
   List<ElectronicSequenceModel> _sequences = <ElectronicSequenceModel>[];
   ElectronicInvoicingReadiness _readiness =
@@ -104,11 +105,9 @@ class _ElectronicInvoicingPageState
     _syncControllers(resolved.company);
     _syncSequenceControllers(resolved.sequences);
     setState(() {
-      _company = resolved.company;
+      _storeResolvedConfig(resolved);
       _empresaConfig = empresaConfig;
       _recentInvoices = invoices;
-      _sequences = resolved.sequences;
-      _readiness = resolved.readiness;
       _loading = false;
     });
   }
@@ -153,18 +152,218 @@ class _ElectronicInvoicingPageState
     }
   }
 
-  List<String> _missingCompanyFields() {
-    final empresaConfig = _empresaConfig;
-    if (empresaConfig == null) {
-      return const <String>['Empresa', 'RNC', 'Dirección'];
-    }
-    return empresaConfig.missingElectronicInvoicingFields();
+  void _storeResolvedConfig(ElectronicInvoicingResolvedConfig resolved) {
+    _company = resolved.company;
+    _sequences = resolved.sequences;
+    _readiness = resolved.readiness;
+    _resolvedCompanySummary = resolved.companySummary;
   }
 
-  bool _sequenceReadyForEmission(ElectronicSequenceModel sequence) {
-    return sequence.isConfigured &&
-        !sequence.isExhausted &&
-        !sequence.isInactive;
+  String _normalizeSummaryValue(String? value) {
+    return value?.trim() ?? '';
+  }
+
+  bool get _hasBackendCompanySummary {
+    if (!_readiness.backendValidated) {
+      return false;
+    }
+    return _resolvedCompanySummary.values.any(
+      (value) => _normalizeSummaryValue(value).isNotEmpty,
+    );
+  }
+
+  String _resolvedCompanyName() {
+    if (_hasBackendCompanySummary) {
+      final backendName = _normalizeSummaryValue(
+        _resolvedCompanySummary['companyName'],
+      );
+      if (backendName.isNotEmpty) {
+        return backendName;
+      }
+      final companyName = _company?.businessName.trim() ?? '';
+      if (companyName.isNotEmpty) {
+        return companyName;
+      }
+    }
+
+    final empresaConfig = _empresaConfig;
+    if (empresaConfig != null) {
+      final businessName = empresaConfig.nombreEmpresa.trim();
+      if (businessName.isNotEmpty) {
+        return businessName;
+      }
+    }
+
+    return _company?.businessName.trim() ?? '';
+  }
+
+  String _resolvedCompanyRnc() {
+    if (_hasBackendCompanySummary) {
+      final backendRnc = _normalizeSummaryValue(_resolvedCompanySummary['rnc']);
+      if (backendRnc.isNotEmpty) {
+        return backendRnc;
+      }
+      final companyRnc = _company?.rnc.trim() ?? '';
+      if (companyRnc.isNotEmpty) {
+        return companyRnc;
+      }
+    }
+
+    return (_empresaConfig?.rnc ?? '').trim();
+  }
+
+  String _resolvedCompanyAddress() {
+    if (_hasBackendCompanySummary) {
+      final backendAddress = _normalizeSummaryValue(
+        _resolvedCompanySummary['address'],
+      );
+      if (backendAddress.isNotEmpty) {
+        return backendAddress;
+      }
+      final companyAddress = _company?.emissionAddress.trim() ?? '';
+      if (companyAddress.isNotEmpty) {
+        return companyAddress;
+      }
+    }
+
+    return _empresaConfig?.direccionCompleta.trim() ?? '';
+  }
+
+  List<String> _companySummaryMissingFields() {
+    final missing = <String>[];
+    if (_resolvedCompanyName().isEmpty) {
+      missing.add('Empresa');
+    }
+    if (_resolvedCompanyRnc().isEmpty) {
+      missing.add('RNC');
+    }
+    if (_resolvedCompanyAddress().isEmpty) {
+      missing.add('Dirección');
+    }
+    return missing;
+  }
+
+  String? _companySummaryHint() {
+    final empresaConfig = _empresaConfig;
+    if (_hasBackendCompanySummary) {
+      final backendName = _resolvedCompanyName().toLowerCase();
+      final backendRnc = _resolvedCompanyRnc();
+      final backendAddress = _resolvedCompanyAddress().toLowerCase();
+      final localName = empresaConfig?.nombreEmpresa.trim().toLowerCase() ?? '';
+      final localRnc = (empresaConfig?.rnc ?? '').trim();
+      final localAddress =
+          empresaConfig?.direccionCompleta.trim().toLowerCase() ?? '';
+      final differsFromLocal =
+          (localName.isNotEmpty && localName != backendName) ||
+          (localRnc.isNotEmpty && localRnc != backendRnc) ||
+          (localAddress.isNotEmpty && localAddress != backendAddress);
+      if (differsFromLocal) {
+        return 'Mostrando la empresa validada en el backend. Si no coincide con Ajustes de empresa, revise la identidad sincronizada.';
+      }
+      return 'Mostrando la empresa validada en el backend.';
+    }
+
+    if (empresaConfig == null) {
+      return 'Mostrando datos locales incompletos. Todavía no hay validación backend.';
+    }
+    return 'Mostrando datos locales. El estado final se confirma cuando el backend valida la empresa activa.';
+  }
+
+  bool _sequenceDraftHasAnyValue(String documentTypeCode) {
+    final prefix =
+        _sequencePrefixControllers[documentTypeCode]?.text.trim() ?? '';
+    final startRaw =
+        _sequenceStartControllers[documentTypeCode]?.text.trim() ?? '';
+    final currentRaw =
+        _sequenceNumberControllers[documentTypeCode]?.text.trim() ?? '';
+    final endRaw = _sequenceEndControllers[documentTypeCode]?.text.trim() ?? '';
+    return prefix.isNotEmpty ||
+        startRaw.isNotEmpty ||
+        currentRaw.isNotEmpty ||
+        endRaw.isNotEmpty;
+  }
+
+  bool _sequenceDraftMatchesSaved(
+    String documentTypeCode,
+    ElectronicSequenceModel sequence,
+  ) {
+    final prefix =
+        _sequencePrefixControllers[documentTypeCode]?.text
+            .trim()
+            .toUpperCase() ??
+        '';
+    final startNumber = int.tryParse(
+      _sequenceStartControllers[documentTypeCode]?.text.trim() ?? '',
+    );
+    final currentNumber = int.tryParse(
+      _sequenceNumberControllers[documentTypeCode]?.text.trim() ?? '',
+    );
+    final endNumber = int.tryParse(
+      _sequenceEndControllers[documentTypeCode]?.text.trim() ?? '',
+    );
+
+    return prefix == sequence.prefix.trim().toUpperCase() &&
+        startNumber == sequence.startNumber &&
+        currentNumber == sequence.currentNumber &&
+        endNumber == sequence.endNumber;
+  }
+
+  bool _sequenceDraftIsComplete(String documentTypeCode) {
+    final prefix =
+        _sequencePrefixControllers[documentTypeCode]?.text
+            .trim()
+            .toUpperCase() ??
+        '';
+    final startNumber = int.tryParse(
+      _sequenceStartControllers[documentTypeCode]?.text.trim() ?? '',
+    );
+    final currentNumber = int.tryParse(
+      _sequenceNumberControllers[documentTypeCode]?.text.trim() ?? '',
+    );
+    final endNumber = int.tryParse(
+      _sequenceEndControllers[documentTypeCode]?.text.trim() ?? '',
+    );
+
+    if (prefix.isEmpty || startNumber == null || currentNumber == null) {
+      return false;
+    }
+    if (startNumber <= 0 || currentNumber < 0 || endNumber == null) {
+      return false;
+    }
+    return startNumber <= endNumber && endNumber >= currentNumber;
+  }
+
+  String _sequenceDraftStatusLabel(
+    String documentTypeCode,
+    ElectronicSequenceModel sequence,
+  ) {
+    final hasDraft = _sequenceDraftHasAnyValue(documentTypeCode);
+    if (!hasDraft || _sequenceDraftMatchesSaved(documentTypeCode, sequence)) {
+      return sequence.statusLabel;
+    }
+    if (_sequenceDraftIsComplete(documentTypeCode)) {
+      return 'Lista para guardar';
+    }
+    return 'Borrador incompleto';
+  }
+
+  String _sequenceStateHint(
+    String documentTypeCode,
+    ElectronicSequenceModel sequence,
+  ) {
+    final hasDraft = _sequenceDraftHasAnyValue(documentTypeCode);
+    if (!hasDraft || _sequenceDraftMatchesSaved(documentTypeCode, sequence)) {
+      return 'Estado y checklist muestran la secuencia guardada en backend.';
+    }
+    if (_sequenceDraftIsComplete(documentTypeCode)) {
+      return 'Los campos tienen un borrador completo, pero todavia no esta guardado. Hasta guardar, el checklist seguira usando la secuencia persistida.';
+    }
+    return 'Los campos muestran un borrador local incompleto. Hasta completar el limite y guardar, la secuencia seguira figurando como no configurada.';
+  }
+
+  void _refreshSequenceDraftUi() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   ElectronicSequenceModel _sequenceFor(String documentTypeCode) {
@@ -195,23 +394,28 @@ class _ElectronicInvoicingPageState
       await _persistConfiguredSequences();
       final resolved = await _configRepository.saveConfig(
         company: company.copyWith(apiToken: _apiTokenController.text.trim()),
-        electronicInvoicingEnabled:
-            ref.read(businessSettingsProvider).electronicInvoicingEnabled,
+        electronicInvoicingEnabled: ref
+            .read(businessSettingsProvider)
+            .electronicInvoicingEnabled,
       );
 
       if (!mounted) return;
       _syncControllers(resolved.company);
       _syncSequenceControllers(resolved.sequences);
       setState(() {
-        _company = resolved.company;
-        _sequences = resolved.sequences;
-        _readiness = resolved.readiness;
+        _storeResolvedConfig(resolved);
         _saving = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Configuración guardada y validada')),
       );
     } on ElectronicInvoicingConfigException catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } on ElectronicSequenceException catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(
@@ -303,9 +507,7 @@ class _ElectronicInvoicingPageState
 
       _certificatePasswordController.clear();
       setState(() {
-        _company = refreshed.company;
-        _sequences = refreshed.sequences;
-        _readiness = refreshed.readiness;
+        _storeResolvedConfig(refreshed);
         _selectedCertificatePath = null;
         _certificateNotice = result.isExpired
             ? 'Certificado vencido'
@@ -348,7 +550,9 @@ class _ElectronicInvoicingPageState
   Future<void> _updateSalesVisibility(bool enabled) async {
     if (_savingVisibility) return;
 
-    final previousValue = ref.read(businessSettingsProvider).electronicInvoicingEnabled;
+    final previousValue = ref
+        .read(businessSettingsProvider)
+        .electronicInvoicingEnabled;
     setState(() => _savingVisibility = true);
     try {
       await ref
@@ -387,7 +591,9 @@ class _ElectronicInvoicingPageState
     final previousCompany = company;
     setState(() => _savingAutomaticEmission = true);
     try {
-      final updatedCompany = company.copyWith(automaticEmission: enabled ? 1 : 0);
+      final updatedCompany = company.copyWith(
+        automaticEmission: enabled ? 1 : 0,
+      );
       if (!mounted) return;
       setState(() => _company = updatedCompany);
       await _saveCurrentRemoteConfig();
@@ -438,18 +644,19 @@ class _ElectronicInvoicingPageState
       await _configRepository.cacheDraftConfig(savedCompany);
       await _configRepository.cacheDraftSequences([sequence31, sequence32]);
       final resolved = await _configRepository.saveConfig(
-        company: savedCompany.copyWith(apiToken: _apiTokenController.text.trim()),
-        electronicInvoicingEnabled:
-            ref.read(businessSettingsProvider).electronicInvoicingEnabled,
+        company: savedCompany.copyWith(
+          apiToken: _apiTokenController.text.trim(),
+        ),
+        electronicInvoicingEnabled: ref
+            .read(businessSettingsProvider)
+            .electronicInvoicingEnabled,
       );
       if (!mounted) return;
 
-      _syncControllers(savedCompany);
-      _syncSequenceControllers([sequence31, sequence32]);
+      _syncControllers(resolved.company);
+      _syncSequenceControllers(resolved.sequences);
       setState(() {
-        _company = savedCompany;
-        _sequences = [sequence31, sequence32];
-        _readiness = resolved.readiness;
+        _storeResolvedConfig(resolved);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -486,89 +693,109 @@ class _ElectronicInvoicingPageState
   Future<void> _showRecentDocumentsModal() async {
     final scheme = Theme.of(context).colorScheme;
     final dateFormat = DateFormat('dd/MM/yyyy');
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 24,
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1080, maxHeight: 560),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Documentos recientes',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
+    final scrollController = ScrollController();
+    try {
+      final latestSequences = await _sequenceRepository.listLocal();
+      final latestInvoices = await FacturaElectronicaRepository.getRecent(
+        limit: 18,
+      );
+      if (!mounted) return;
+      _syncSequenceControllers(latestSequences);
+      setState(() {
+        _sequences = latestSequences;
+        _recentInvoices = latestInvoices;
+      });
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 24,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1080, maxHeight: 560),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Documentos recientes',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _DocumentTableHeader(colorScheme: scheme),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _recentInvoices.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No hay documentos recientes',
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w600,
+                        IconButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _DocumentTableHeader(colorScheme: scheme),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: _recentInvoices.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No hay documentos recientes',
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            )
+                          : Scrollbar(
+                              controller: scrollController,
+                              child: ListView.separated(
+                                controller: scrollController,
+                                itemCount: _recentInvoices.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final invoice = _recentInvoices[index];
+                                  return _DocumentTableRow(
+                                    number: (invoice.ecf ?? invoice.localCode)
+                                        .trim(),
+                                    type: _documentTypeLabel(
+                                      invoice.tipoDocumento,
+                                    ),
+                                    client:
+                                        invoice.clienteNombre
+                                                ?.trim()
+                                                .isNotEmpty ==
+                                            true
+                                        ? invoice.clienteNombre!.trim()
+                                        : 'Consumidor final',
+                                    status: invoice.statusLabel,
+                                    statusColor: _statusColor(
+                                      invoice.estadoDgii,
+                                    ),
+                                    date: dateFormat.format(
+                                      DateTime.fromMillisecondsSinceEpoch(
+                                        invoice.createdAtMs,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
-                          )
-                        : Scrollbar(
-                            child: ListView.separated(
-                              itemCount: _recentInvoices.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final invoice = _recentInvoices[index];
-                                return _DocumentTableRow(
-                                  number: (invoice.ecf ?? invoice.localCode)
-                                      .trim(),
-                                  type: _documentTypeLabel(
-                                    invoice.tipoDocumento,
-                                  ),
-                                  client:
-                                      invoice.clienteNombre
-                                              ?.trim()
-                                              .isNotEmpty ==
-                                          true
-                                      ? invoice.clienteNombre!.trim()
-                                      : 'Consumidor final',
-                                  status: invoice.statusLabel,
-                                  statusColor: _statusColor(invoice.estadoDgii),
-                                  date: dateFormat.format(
-                                    DateTime.fromMillisecondsSinceEpoch(
-                                      invoice.createdAtMs,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    } finally {
+      scrollController.dispose();
+    }
   }
 
   Future<void> _submitSequence(String documentTypeCode) async {
@@ -641,9 +868,7 @@ class _ElectronicInvoicingPageState
       if (!mounted) return;
       _syncSequenceControllers(refreshed.sequences);
       setState(() {
-        _company = refreshed.company;
-        _sequences = refreshed.sequences;
-        _readiness = refreshed.readiness;
+        _storeResolvedConfig(refreshed);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -917,6 +1142,13 @@ class _ElectronicInvoicingPageState
             color: status.color,
             icon: status.icon,
           ),
+          const SizedBox(height: 8),
+          Text(
+            _readiness.backendValidated
+                ? 'Estado validado con el backend para la empresa activa.'
+                : 'Estado calculado con datos locales mientras se recupera la validación backend.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           if (_readiness.messages.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
@@ -930,12 +1162,7 @@ class _ElectronicInvoicingPageState
               spacing: 8,
               runSpacing: 8,
               children: _readiness.missing
-                  .map(
-                    (item) => _InlineMetaPill(
-                      label: 'Falta',
-                      value: item,
-                    ),
-                  )
+                  .map((item) => _InlineMetaPill(label: 'Falta', value: item))
                   .toList(growable: false),
             ),
           ],
@@ -1071,9 +1298,9 @@ class _ElectronicInvoicingPageState
   }
 
   Widget _buildCompanySummaryCard(BuildContext context) {
-    final empresaConfig = _empresaConfig;
-    final missing = _missingCompanyFields();
-    final hasMissing = empresaConfig == null || missing.isNotEmpty;
+    final missing = _companySummaryMissingFields();
+    final hasMissing = missing.isNotEmpty;
+    final hint = _companySummaryHint();
 
     return _SectionCard(
       title: 'Datos de la empresa',
@@ -1086,25 +1313,27 @@ class _ElectronicInvoicingPageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProfileSummaryRow(
-            label: 'Empresa',
-            value: hasMissing
-                ? 'Sin completar'
-                : empresaConfig.nombreEmpresa.trim(),
-          ),
+          if (hint != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(hint, style: Theme.of(context).textTheme.bodySmall),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _ProfileSummaryRow(label: 'Empresa', value: _resolvedCompanyName()),
           const SizedBox(height: 10),
-          _ProfileSummaryRow(
-            label: 'RNC',
-            value: hasMissing
-                ? 'Sin completar'
-                : (empresaConfig.rnc ?? '').trim(),
-          ),
+          _ProfileSummaryRow(label: 'RNC', value: _resolvedCompanyRnc()),
           const SizedBox(height: 10),
           _ProfileSummaryRow(
             label: 'Dirección',
-            value: hasMissing
-                ? 'Sin completar'
-                : empresaConfig.direccionCompleta.trim(),
+            value: _resolvedCompanyAddress(),
           ),
         ],
       ),
@@ -1320,11 +1549,14 @@ class _ElectronicInvoicingPageState
                 numberController: _sequenceNumberControllers['31']!,
                 endController: _sequenceEndControllers['31']!,
                 sequence: sequence31,
+                statusLabel: _sequenceDraftStatusLabel('31', sequence31),
                 busy: _creatingSequenceCode == '31',
                 color: _sequenceStatusColor(context, sequence31),
                 onPressed: () => _submitSequence('31'),
                 helperMessage: _sequenceHelperMessage(sequence31),
+                stateHint: _sequenceStateHint('31', sequence31),
                 limitLabel: sequence31.endNumber?.toString() ?? 'Pendiente',
+                onDraftChanged: _refreshSequenceDraftUi,
               );
               final second = _SequenceSetupCard(
                 title: '32 - Consumo',
@@ -1333,11 +1565,14 @@ class _ElectronicInvoicingPageState
                 numberController: _sequenceNumberControllers['32']!,
                 endController: _sequenceEndControllers['32']!,
                 sequence: sequence32,
+                statusLabel: _sequenceDraftStatusLabel('32', sequence32),
                 busy: _creatingSequenceCode == '32',
                 color: _sequenceStatusColor(context, sequence32),
                 onPressed: () => _submitSequence('32'),
                 helperMessage: _sequenceHelperMessage(sequence32),
+                stateHint: _sequenceStateHint('32', sequence32),
                 limitLabel: sequence32.endNumber?.toString() ?? 'Pendiente',
+                onDraftChanged: _refreshSequenceDraftUi,
               );
               if (stacked) {
                 return Column(
@@ -1364,16 +1599,15 @@ class _ElectronicInvoicingPageState
 
     final resolved = await _configRepository.saveConfig(
       company: company.copyWith(apiToken: _apiTokenController.text.trim()),
-      electronicInvoicingEnabled:
-          ref.read(businessSettingsProvider).electronicInvoicingEnabled,
+      electronicInvoicingEnabled: ref
+          .read(businessSettingsProvider)
+          .electronicInvoicingEnabled,
     );
     if (!mounted) return;
     _syncControllers(resolved.company);
     _syncSequenceControllers(resolved.sequences);
     setState(() {
-      _company = resolved.company;
-      _sequences = resolved.sequences;
-      _readiness = resolved.readiness;
+      _storeResolvedConfig(resolved);
     });
   }
 
@@ -1403,7 +1637,9 @@ class _ElectronicInvoicingPageState
 
   ElectronicSequenceModel? _buildSequenceDraft(String documentTypeCode) {
     final prefix =
-        _sequencePrefixControllers[documentTypeCode]?.text.trim().toUpperCase() ??
+        _sequencePrefixControllers[documentTypeCode]?.text
+            .trim()
+            .toUpperCase() ??
         '';
     final startNumber = int.tryParse(
       _sequenceStartControllers[documentTypeCode]?.text.trim() ?? '',
@@ -1437,9 +1673,9 @@ class _ElectronicInvoicingPageState
     if (currentNumber == null || currentNumber < 0) {
       throw const ElectronicSequenceException('Escriba una secuencia válida');
     }
-    if (endNumber == null || endNumber <= currentNumber) {
+    if (endNumber == null || endNumber < currentNumber) {
       throw const ElectronicSequenceException(
-        'Escriba un límite autorizado mayor que la secuencia actual',
+        'Escriba un límite autorizado igual o mayor que la secuencia actual',
       );
     }
     if (startNumber > endNumber) {
@@ -1670,11 +1906,14 @@ class _SequenceSetupCard extends StatelessWidget {
     required this.numberController,
     required this.endController,
     required this.sequence,
+    required this.statusLabel,
     required this.busy,
     required this.color,
     required this.onPressed,
     required this.helperMessage,
+    required this.stateHint,
     required this.limitLabel,
+    required this.onDraftChanged,
   });
 
   final String title;
@@ -1683,11 +1922,14 @@ class _SequenceSetupCard extends StatelessWidget {
   final TextEditingController numberController;
   final TextEditingController endController;
   final ElectronicSequenceModel sequence;
+  final String statusLabel;
   final bool busy;
   final Color color;
   final VoidCallback onPressed;
   final String helperMessage;
+  final String stateHint;
   final String limitLabel;
+  final VoidCallback onDraftChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1713,7 +1955,7 @@ class _SequenceSetupCard extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
-                    _StatusChip(label: sequence.statusLabel, color: color),
+                    _StatusChip(label: statusLabel, color: color),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -1729,10 +1971,18 @@ class _SequenceSetupCard extends StatelessWidget {
                     ),
                     _InlineMetaPill(label: 'Límite', value: limitLabel),
                     _InlineMetaPill(
-                      label: 'Estado',
+                      label: 'Guardado',
                       value: sequence.statusLabel,
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  stateHint,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Row(
@@ -1740,6 +1990,7 @@ class _SequenceSetupCard extends StatelessWidget {
                     Expanded(
                       child: TextFormField(
                         controller: prefixController,
+                        onChanged: (_) => onDraftChanged(),
                         decoration: const InputDecoration(labelText: 'Prefijo'),
                       ),
                     ),
@@ -1747,6 +1998,7 @@ class _SequenceSetupCard extends StatelessWidget {
                     Expanded(
                       child: TextFormField(
                         controller: startController,
+                        onChanged: (_) => onDraftChanged(),
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'Inicial'),
                       ),
@@ -1759,6 +2011,7 @@ class _SequenceSetupCard extends StatelessWidget {
                     Expanded(
                       child: TextFormField(
                         controller: numberController,
+                        onChanged: (_) => onDraftChanged(),
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'Actual'),
                       ),
@@ -1767,6 +2020,7 @@ class _SequenceSetupCard extends StatelessWidget {
                     Expanded(
                       child: TextFormField(
                         controller: endController,
+                        onChanged: (_) => onDraftChanged(),
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'Límite'),
                       ),
@@ -1803,7 +2057,7 @@ class _SequenceSetupCard extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
-                  _StatusChip(label: sequence.statusLabel, color: color),
+                  _StatusChip(label: statusLabel, color: color),
                 ],
               ),
               const SizedBox(height: 10),
@@ -1818,8 +2072,19 @@ class _SequenceSetupCard extends StatelessWidget {
                     value: sequence.currentNumber.toString(),
                   ),
                   _InlineMetaPill(label: 'Límite', value: limitLabel),
-                  _InlineMetaPill(label: 'Estado', value: sequence.statusLabel),
+                  _InlineMetaPill(
+                    label: 'Guardado',
+                    value: sequence.statusLabel,
+                  ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                stateHint,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -1827,6 +2092,7 @@ class _SequenceSetupCard extends StatelessWidget {
                   Expanded(
                     child: TextFormField(
                       controller: prefixController,
+                      onChanged: (_) => onDraftChanged(),
                       decoration: const InputDecoration(labelText: 'Prefijo'),
                     ),
                   ),
@@ -1834,6 +2100,7 @@ class _SequenceSetupCard extends StatelessWidget {
                   Expanded(
                     child: TextFormField(
                       controller: startController,
+                      onChanged: (_) => onDraftChanged(),
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(labelText: 'Inicial'),
                     ),
@@ -1842,6 +2109,7 @@ class _SequenceSetupCard extends StatelessWidget {
                   Expanded(
                     child: TextFormField(
                       controller: numberController,
+                      onChanged: (_) => onDraftChanged(),
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(labelText: 'Actual'),
                     ),
@@ -1850,6 +2118,7 @@ class _SequenceSetupCard extends StatelessWidget {
                   Expanded(
                     child: TextFormField(
                       controller: endController,
+                      onChanged: (_) => onDraftChanged(),
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(labelText: 'Límite'),
                     ),

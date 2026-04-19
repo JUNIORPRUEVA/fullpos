@@ -1,10 +1,13 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../settings/data/business_settings_model.dart';
 import '../../settings/data/business_settings_repository.dart';
+import 'electronic_company_locator_helper.dart';
 import 'electronic_company_repository.dart';
 import 'electronic_sequence_repository.dart';
 import 'models/electronic_company_model.dart';
@@ -67,6 +70,14 @@ class ElectronicInvoicingConfigRepository {
       final resolved = ElectronicInvoicingResolvedConfig.fromBackendMap(
         decoded,
         localApiToken: localCompany.apiToken,
+      ).copyWith(
+        sequences: mergeResolvedElectronicSequences(
+          remote: ElectronicInvoicingResolvedConfig.fromBackendMap(
+            decoded,
+            localApiToken: localCompany.apiToken,
+          ).sequences,
+          local: localSequences,
+        ),
       );
       await _cacheResolvedConfig(resolved);
       return resolved;
@@ -126,6 +137,14 @@ class ElectronicInvoicingConfigRepository {
     final resolved = ElectronicInvoicingResolvedConfig.fromBackendMap(
       decoded,
       localApiToken: company.apiToken,
+    ).copyWith(
+      sequences: mergeResolvedElectronicSequences(
+        remote: ElectronicInvoicingResolvedConfig.fromBackendMap(
+          decoded,
+          localApiToken: company.apiToken,
+        ).sequences,
+        local: await _sequenceRepository.listLocal(),
+      ),
     );
     await _cacheResolvedConfig(resolved.copyWithCompany(company));
     return resolved.copyWithCompany(company);
@@ -142,20 +161,11 @@ class ElectronicInvoicingConfigRepository {
   }
 
   Future<Map<String, String>> _locators(BusinessSettings settings) async {
-    final companyId = await SessionManager.companyId();
-    final locators = <String, String>{};
-    if (companyId != null) {
-      locators['companyId'] = companyId.toString();
-    }
-    final companyCloudId = settings.cloudCompanyId?.trim();
-    if (companyCloudId != null && companyCloudId.isNotEmpty) {
-      locators['companyCloudId'] = companyCloudId;
-    }
-    final rnc = settings.rnc?.trim();
-    if (rnc != null && rnc.isNotEmpty) {
-      locators['companyRnc'] = rnc;
-    }
-    return locators;
+    return buildElectronicCompanyLocators(
+      sessionCompanyId: await SessionManager.companyId(),
+      companyCloudId: settings.cloudCompanyId,
+      companyRnc: settings.rnc,
+    );
   }
 
   ApiClient _api(BusinessSettings settings) {
@@ -235,17 +245,32 @@ class ElectronicInvoicingConfigRepository {
 }
 
 extension on ElectronicInvoicingResolvedConfig {
+  ElectronicInvoicingResolvedConfig copyWith({
+    ElectronicCompanyModel? company,
+    List<ElectronicSequenceModel>? sequences,
+    ElectronicInvoicingReadiness? readiness,
+    Map<String, String?>? companySummary,
+    bool? dgiiSubmitConfigured,
+    bool? dgiiTokenConfigured,
+  }) {
+    return ElectronicInvoicingResolvedConfig(
+      company: company ?? this.company,
+      sequences: sequences ?? this.sequences,
+      readiness: readiness ?? this.readiness,
+      companySummary: companySummary ?? this.companySummary,
+      dgiiSubmitConfigured:
+          dgiiSubmitConfigured ?? this.dgiiSubmitConfigured,
+      dgiiTokenConfigured: dgiiTokenConfigured ?? this.dgiiTokenConfigured,
+    );
+  }
+
   ElectronicInvoicingResolvedConfig copyWithCompany(
     ElectronicCompanyModel company,
   ) {
     return ElectronicInvoicingResolvedConfig(
-      company: company.copyWith(
-        environment: this.company.environment,
-        certificateName: this.company.certificateName,
-        certificateValidFromMs: this.company.certificateValidFromMs,
-        certificateValidToMs: this.company.certificateValidToMs,
-        certificateStatus: this.company.certificateStatus,
-        automaticEmission: this.company.automaticEmission,
+      company: this.company.copyWith(
+        apiToken: company.apiToken,
+        updatedAtMs: company.updatedAtMs,
       ),
       sequences: sequences,
       readiness: readiness,
@@ -254,4 +279,50 @@ extension on ElectronicInvoicingResolvedConfig {
       dgiiTokenConfigured: dgiiTokenConfigured,
     );
   }
+}
+
+@visibleForTesting
+List<ElectronicSequenceModel> mergeResolvedElectronicSequences({
+  required List<ElectronicSequenceModel> remote,
+  required List<ElectronicSequenceModel> local,
+}) {
+  final localByType = {
+    for (final sequence in local) sequence.documentTypeCode: sequence,
+  };
+  final merged = <ElectronicSequenceModel>[];
+
+  for (final remoteSequence in remote) {
+    final localSequence = localByType.remove(remoteSequence.documentTypeCode);
+    if (localSequence == null) {
+      merged.add(remoteSequence);
+      continue;
+    }
+
+    final mergedCurrent = remoteSequence.currentNumber >= localSequence.currentNumber
+        ? remoteSequence.currentNumber
+        : localSequence.currentNumber;
+    final mergedEnd = remoteSequence.endNumber ?? localSequence.endNumber;
+    final resolvedStatus =
+        mergedEnd != null && mergedCurrent >= mergedEnd
+        ? 'EXHAUSTED'
+        : (localSequence.currentNumber > remoteSequence.currentNumber &&
+                  localSequence.status.trim().isNotEmpty)
+              ? localSequence.status
+              : remoteSequence.status;
+
+    merged.add(
+      remoteSequence.copyWith(
+        currentNumber: mergedCurrent,
+        endNumber: mergedEnd,
+        status: resolvedStatus,
+        updatedAtMs: remoteSequence.updatedAtMs >= localSequence.updatedAtMs
+            ? remoteSequence.updatedAtMs
+            : localSequence.updatedAtMs,
+      ),
+    );
+  }
+
+  merged.addAll(localByType.values);
+  merged.sort((a, b) => a.documentTypeCode.compareTo(b.documentTypeCode));
+  return merged;
 }

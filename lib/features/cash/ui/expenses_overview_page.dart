@@ -31,14 +31,18 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
 
   int? _selectedMovementId;
 
-  @override
-  void initState() {
-    super.initState();
+  DateTimeRange _defaultRange() {
     final now = DateTime.now();
-    _range = DateTimeRange(
+    return DateTimeRange(
       start: now.subtract(const Duration(days: 30)),
       end: now,
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _range = _defaultRange();
     _loadMovements();
   }
 
@@ -142,19 +146,104 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
         msg.contains('database is closed');
   }
 
-  Future<void> _pickRange() async {
-    final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: now.subtract(const Duration(days: 365)),
-      lastDate: now,
-      initialDateRange: _range,
+  String _movementFilterLabel(MovementFilter filter) {
+    switch (filter) {
+      case MovementFilter.income:
+        return 'Entradas';
+      case MovementFilter.expense:
+        return 'Salidas';
+      case MovementFilter.all:
+        return 'Todos';
+    }
+  }
+
+  String _formatRangeLabel(DateTimeRange range) {
+    final formatter = DateFormat('dd/MM/yyyy');
+    return '${formatter.format(range.start)} - ${formatter.format(range.end)}';
+  }
+
+  void _updateSearchQuery(String value) {
+    if (!mounted) return;
+    setState(() {
+      _searchQuery = value;
+      _syncSelection(currentFiltered: _filteredMovements);
+    });
+  }
+
+  bool _sameRange(DateTimeRange left, DateTimeRange right) {
+    return left.start.millisecondsSinceEpoch ==
+            right.start.millisecondsSinceEpoch &&
+        left.end.millisecondsSinceEpoch == right.end.millisecondsSinceEpoch;
+  }
+
+  Future<void> _showFiltersPanel() async {
+    final result = await _ExpensesFiltersSheet.show(
+      context,
+      initialRange: _range,
+      initialFilter: _filter,
+      defaultRange: _defaultRange(),
     );
 
-    if (picked == null) return;
-    if (!mounted) return;
-    setState(() => _range = picked);
-    await _loadMovements();
+    if (result == null || !mounted) return;
+
+    final rangeChanged = !_sameRange(_range, result.range);
+    final filterChanged = _filter != result.filter;
+
+    if (!rangeChanged && !filterChanged) return;
+
+    setState(() {
+      _range = result.range;
+      _filter = result.filter;
+      _syncSelection(currentFiltered: _filteredMovements);
+    });
+
+    if (rangeChanged) {
+      await _loadMovements();
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _syncSelection(currentFiltered: _filteredMovements);
+      });
+    }
+  }
+
+  Future<void> _showSearchPanel() async {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar búsqueda',
+      barrierColor: Colors.black.withOpacity(0.12),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return _ExpensesSearchSheet(
+          controller: _searchController,
+          initialValue: _searchQuery,
+          onChanged: _updateSearchQuery,
+          onClear: () {
+            _searchController.clear();
+            _updateSearchQuery('');
+          },
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, -0.04),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showMovementDetails(CashMovementModel movement) async {
@@ -300,200 +389,107 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     );
   }
 
-  Widget _buildFilterChipsInline(ColorScheme scheme) {
-    final theme = Theme.of(context);
-    final labels = {
-      MovementFilter.all: 'Todos',
-      MovementFilter.income: 'Entradas',
-      MovementFilter.expense: 'Salidas',
-    };
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: MovementFilter.values.map((filter) {
-        final isSelected = _filter == filter;
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: SizedBox(
-            height: 40,
-            child: ChoiceChip(
-              label: Text(labels[filter]!),
-              selected: isSelected,
-              onSelected: (_) {
-                setState(() {
-                  _filter = filter;
-                  _syncSelection(currentFiltered: _filteredMovements);
-                });
-              },
-              selectedColor: AppColors.brandBlue,
-              backgroundColor: AppColors.surfaceLightVariant,
-              side: BorderSide(
-                color: isSelected
-                    ? AppColors.brandBlue
-                    : AppColors.surfaceLightBorder,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-              labelStyle: theme.textTheme.bodySmall?.copyWith(
-                color: isSelected ? Colors.white : AppColors.textDarkSecondary,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   Widget _buildTopCompactBar({
     required ThemeData theme,
-    required ColorScheme scheme,
     required NumberFormat currencyFormat,
-    required DateFormat dateFormat,
     required int count,
+    required BoxConstraints constraints,
   }) {
+    final rangeLabel = _formatRangeLabel(_range);
+    final filterLabel = _movementFilterLabel(_filter);
+
+    final searchButton = _HeaderActionIconButton(
+      icon: Icons.search_rounded,
+      tooltip: _searchQuery.trim().isEmpty
+          ? 'Buscar movimientos'
+          : 'Editar búsqueda',
+      isActive: _searchQuery.trim().isNotEmpty,
+      onTap: _showSearchPanel,
+    );
+
+    final summaryPanel = _ExpensesHeaderSummary(
+      totalIncome: currencyFormat.format(_totalIncome),
+      totalExpense: currencyFormat.format(_totalExpense),
+      net: currencyFormat.format(_net),
+      count: count.toString(),
+      rangeLabel: rangeLabel,
+      filterLabel: filterLabel,
+    );
+
+    final filterButton = SizedBox(
+      height: 50,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _showFiltersPanel,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F8FE),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFCAD8EE)),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brandBlueDark.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: AppColors.brandBlue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    size: 18,
+                    color: AppColors.brandBlue,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Filtros',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
             color: AppColors.brandBlueDark.withOpacity(0.06),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
         border: Border.all(color: AppColors.surfaceLightBorder),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            SizedBox(
-              height: 42,
-              child: ElevatedButton.icon(
-                onPressed: _pickRange,
-                icon: const Icon(Icons.calendar_month, size: 18),
-                label: Text(
-                  '${dateFormat.format(_range.start)} — ${dateFormat.format(_range.end)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: AppColors.brandBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  textStyle: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12.8,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            _buildFilterChipsInline(scheme),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 280,
-              child: SizedBox(
-                height: 42,
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                      _syncSelection(currentFiltered: _filteredMovements);
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Buscar motivo o sesión (#)',
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    filled: true,
-                    fillColor: AppColors.surfaceLightVariant,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(
-                        color: AppColors.surfaceLightBorder,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(
-                        color: AppColors.surfaceLightBorder,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: const BorderSide(color: AppColors.brandBlue),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            _InlineMetricPill(
-              label: 'Entradas',
-              value: currencyFormat.format(_totalIncome),
-              color: AppColors.success,
-              background: AppColors.successLight,
-            ),
-            const SizedBox(width: 8),
-            _InlineMetricPill(
-              label: 'Salidas',
-              value: currencyFormat.format(_totalExpense),
-              color: AppColors.error,
-              background: AppColors.errorLight,
-            ),
-            const SizedBox(width: 8),
-            _InlineMetricPill(
-              label: 'Neto',
-              value: currencyFormat.format(_net),
-              color: AppColors.brandBlue,
-              background: AppColors.infoLight,
-            ),
-            const SizedBox(width: 8),
-            _InlineMetricPill(
-              label: 'Registros',
-              value: count.toString(),
-              color: scheme.secondary,
-              background: AppColors.surfaceLightVariant,
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              height: 42,
-              child: ElevatedButton.icon(
-                onPressed: _loadMovements,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Actualizar'),
-                style: ElevatedButton.styleFrom(
-                  elevation: 0,
-                  backgroundColor: AppColors.brandBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  textStyle: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      child: Row(
+        children: [
+          searchButton,
+          const SizedBox(width: 14),
+          Expanded(child: summaryPanel),
+          const SizedBox(width: 14),
+          filterButton,
+        ],
       ),
     );
   }
@@ -503,7 +499,6 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currencyFormat = CurrencyDisplay.currency();
-    final dateFormat = DateFormat('dd/MM/yyyy');
 
     final filteredMovements = _filteredMovements;
 
@@ -520,10 +515,9 @@ class _ExpensesOverviewPageState extends State<ExpensesOverviewPage> {
               children: [
                 _buildTopCompactBar(
                   theme: theme,
-                  scheme: scheme,
                   currencyFormat: currencyFormat,
-                  dateFormat: dateFormat,
                   count: filteredMovements.length,
+                  constraints: constraints,
                 ),
                 const SizedBox(height: 12),
                 Expanded(
@@ -818,49 +812,1001 @@ class _CompactMovementRowState extends State<_CompactMovementRow> {
   }
 }
 
-class _InlineMetricPill extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final Color? background;
-
-  const _InlineMetricPill({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.background,
+class _ExpensesHeaderSummary extends StatelessWidget {
+  const _ExpensesHeaderSummary({
+    required this.totalIncome,
+    required this.totalExpense,
+    required this.net,
+    required this.count,
+    required this.rangeLabel,
+    required this.filterLabel,
   });
+
+  final String totalIncome;
+  final String totalExpense;
+  final String net;
+  final String count;
+  final String rangeLabel;
+  final String filterLabel;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: background ?? AppColors.surfaceLightVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.surfaceLightBorder),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF8FAFE), Colors.white],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD9E2F0)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _CompactSummaryBadge(
+                    label: 'Entradas',
+                    value: totalIncome,
+                    icon: Icons.south_west_rounded,
+                    color: AppColors.success,
+                    background: AppColors.successLight,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CompactSummaryBadge(
+                    label: 'Salidas',
+                    value: totalExpense,
+                    icon: Icons.north_east_rounded,
+                    color: AppColors.error,
+                    background: AppColors.errorLight,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CompactSummaryBadge(
+                    label: 'Neto',
+                    value: net,
+                    icon: Icons.account_balance_wallet_outlined,
+                    color: AppColors.brandBlue,
+                    background: AppColors.infoLight,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _CompactSummaryBadge(
+                    label: 'Registros',
+                    value: count,
+                    icon: Icons.receipt_long_outlined,
+                    color: AppColors.textDark,
+                    background: AppColors.surfaceLightVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.72),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFD9E2F0)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.calendar_month_rounded,
+                  size: 15,
+                  color: AppColors.textDarkMuted,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  rangeLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textDarkSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE9F1FF),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    filterLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: AppColors.brandBlue,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactSummaryBadge extends StatelessWidget {
+  const _CompactSummaryBadge({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.background,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 14, color: color),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: AppColors.textDarkMuted,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10.5,
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderActionIconButton extends StatelessWidget {
+  const _HeaderActionIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.isActive = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool isActive;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F8FE),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isActive
+                    ? AppColors.brandBlue.withOpacity(0.55)
+                    : const Color(0xFFCAD8EE),
+              ),
+            ),
+            child: Stack(
+              children: [
+                Center(child: Icon(icon, size: 21, color: AppColors.brandBlue)),
+                if (isActive)
+                  Positioned(
+                    top: 9,
+                    right: 9,
+                    child: Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: AppColors.brandBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpensesSearchSheet extends StatefulWidget {
+  const _ExpensesSearchSheet({
+    required this.controller,
+    required this.initialValue,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  State<_ExpensesSearchSheet> createState() => _ExpensesSearchSheetState();
+}
+
+class _ExpensesSearchSheetState extends State<_ExpensesSearchSheet> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNode.requestFocus();
+      widget.controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.controller.text.length,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+    final width = math.min(size.width - 40, 620.0);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: width,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFDCE3EE)),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.brandBlueDark.withOpacity(0.12),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Buscar movimientos',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Busca por motivo o número de sesión sin ocupar espacio en la cabecera.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textDarkMuted,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    onChanged: widget.onChanged,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar motivo o sesión (#)',
+                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                      suffixIcon: widget.controller.text.trim().isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Limpiar búsqueda',
+                              onPressed: () {
+                                widget.onClear();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close_rounded, size: 18),
+                            ),
+                      filled: true,
+                      fillColor: AppColors.surfaceLightVariant,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 15,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(
+                          color: AppColors.surfaceLightBorder,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(
+                          color: AppColors.surfaceLightBorder,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: const BorderSide(
+                          color: AppColors.brandBlue,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      if (widget.initialValue.trim().isNotEmpty ||
+                          widget.controller.text.trim().isNotEmpty)
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              widget.onClear();
+                              Navigator.of(context).pop();
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text('Limpiar'),
+                          ),
+                        ),
+                      if (widget.initialValue.trim().isNotEmpty ||
+                          widget.controller.text.trim().isNotEmpty)
+                        const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.check_rounded),
+                          label: const Text('Listo'),
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: AppColors.brandBlue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpensesFiltersResult {
+  const _ExpensesFiltersResult({required this.range, required this.filter});
+
+  final DateTimeRange range;
+  final MovementFilter filter;
+}
+
+class _ExpensesFiltersSheet extends StatefulWidget {
+  const _ExpensesFiltersSheet({
+    required this.initialRange,
+    required this.initialFilter,
+    required this.defaultRange,
+  });
+
+  final DateTimeRange initialRange;
+  final MovementFilter initialFilter;
+  final DateTimeRange defaultRange;
+
+  static Future<_ExpensesFiltersResult?> show(
+    BuildContext context, {
+    required DateTimeRange initialRange,
+    required MovementFilter initialFilter,
+    required DateTimeRange defaultRange,
+  }) {
+    return showGeneralDialog<_ExpensesFiltersResult>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar filtros',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return _ExpensesFiltersSheet(
+          initialRange: initialRange,
+          initialFilter: initialFilter,
+          defaultRange: defaultRange,
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.08, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  State<_ExpensesFiltersSheet> createState() => _ExpensesFiltersSheetState();
+}
+
+class _ExpensesFiltersSheetState extends State<_ExpensesFiltersSheet> {
+  late DateTimeRange _range;
+  late MovementFilter _filter;
+
+  @override
+  void initState() {
+    super.initState();
+    _range = widget.initialRange;
+    _filter = widget.initialFilter;
+  }
+
+  String _filterLabel(MovementFilter filter) {
+    switch (filter) {
+      case MovementFilter.income:
+        return 'Entradas';
+      case MovementFilter.expense:
+        return 'Salidas';
+      case MovementFilter.all:
+        return 'Todos';
+    }
+  }
+
+  String _rangeLabel(DateTimeRange range) {
+    final formatter = DateFormat('dd MMM yyyy');
+    return '${formatter.format(range.start)} - ${formatter.format(range.end)}';
+  }
+
+  void _setQuickRange(int days) {
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final start = days <= 1
+        ? startOfToday
+        : startOfToday.subtract(Duration(days: days - 1));
+    setState(() {
+      _range = DateTimeRange(start: start, end: now);
+    });
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now,
+      initialDateRange: _range,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _range = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final width = math.min(
+      (size.width * 0.34).clamp(390.0, 480.0),
+      size.width - 20,
+    );
+    final height = math.min(
+      (size.height - viewInsets.vertical - 8).clamp(620.0, size.height),
+      size.height - 4,
+    );
+
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFF7FAFF), Colors.white, Color(0xFFF3F7FE)],
+                ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: const Color(0xFFD7E1F1), width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.brandBlueDark.withOpacity(0.14),
+                    blurRadius: 34,
+                    offset: const Offset(0, 18),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(22, 20, 16, 18),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF0D5EC3), Color(0xFF1A7FFF)],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Filtros de gastos',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Controla el rango, el tipo y actualiza la vista sin sobrecargar el encabezado.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white.withOpacity(0.9),
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FilterSectionCard(
+                            title: 'Periodo actual',
+                            subtitle:
+                                'Selecciona exactamente qué rango deseas revisar.',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F7FE),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: const Color(0xFFD7E1F1),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.brandBlue
+                                              .withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.calendar_month_rounded,
+                                          color: AppColors.brandBlue,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          _rangeLabel(_range),
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: AppColors.textDark,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _pickRange,
+                                    icon: const Icon(Icons.date_range_rounded),
+                                    label: const Text(
+                                      'Elegir rango personalizado',
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _QuickRangeChip(
+                                      label: 'Hoy',
+                                      onTap: () => _setQuickRange(1),
+                                    ),
+                                    _QuickRangeChip(
+                                      label: '7 días',
+                                      onTap: () => _setQuickRange(7),
+                                    ),
+                                    _QuickRangeChip(
+                                      label: '30 días',
+                                      onTap: () => _setQuickRange(30),
+                                    ),
+                                    _QuickRangeChip(
+                                      label: '90 días',
+                                      onTap: () => _setQuickRange(90),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _FilterSectionCard(
+                            title: 'Tipo de movimiento',
+                            subtitle:
+                                'Reduce el ruido y enfócate solo en lo que quieres analizar.',
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: MovementFilter.values.map((filter) {
+                                final selected = _filter == filter;
+                                return ChoiceChip(
+                                  label: Text(_filterLabel(filter)),
+                                  selected: selected,
+                                  onSelected: (_) {
+                                    setState(() => _filter = filter);
+                                  },
+                                  selectedColor: AppColors.brandBlue,
+                                  backgroundColor: const Color(0xFFF4F7FC),
+                                  side: BorderSide(
+                                    color: selected
+                                        ? AppColors.brandBlue
+                                        : AppColors.surfaceLightBorder,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  labelStyle: theme.textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: selected
+                                            ? Colors.white
+                                            : AppColors.textDarkSecondary,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _FilterSectionCard(
+                            title: 'Resumen de la vista',
+                            subtitle:
+                                'Confirma rápidamente cómo quedará aplicado el filtro.',
+                            child: Column(
+                              children: [
+                                _FilterPreviewRow(
+                                  label: 'Rango',
+                                  value: _rangeLabel(_range),
+                                ),
+                                const SizedBox(height: 10),
+                                _FilterPreviewRow(
+                                  label: 'Movimiento',
+                                  value: _filterLabel(_filter),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF8FAFE),
+                      border: Border(top: BorderSide(color: Color(0xFFDCE3EE))),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setState(() {
+                                _range = widget.defaultRange;
+                                _filter = MovementFilter.all;
+                              });
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Text('Restablecer'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop(
+                                _ExpensesFiltersResult(
+                                  range: _range,
+                                  filter: _filter,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.check_rounded),
+                            label: const Text('Aplicar filtros'),
+                            style: ElevatedButton.styleFrom(
+                              elevation: 0,
+                              backgroundColor: AppColors.brandBlue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterSectionCard extends StatelessWidget {
+  const _FilterSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFDCE3EE)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandBlueDark.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$label: ',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: scheme.onSurface.withOpacity(0.75),
-            ),
-            maxLines: 1,
-          ),
-          Text(
-            value,
-            style: theme.textTheme.bodySmall?.copyWith(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w900,
-              color: color,
+              color: AppColors.textDark,
             ),
-            maxLines: 1,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textDarkMuted,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickRangeChip extends StatelessWidget {
+  const _QuickRangeChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F7FE),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0xFFD7E1F1)),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: AppColors.brandBlue,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterPreviewRow extends StatelessWidget {
+  const _FilterPreviewRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F9FE),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.textDarkMuted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textDark,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ],
       ),

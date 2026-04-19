@@ -37,7 +37,7 @@ class ElectronicSequenceModel {
     );
   }
 
-    bool get hasValidDocumentType =>
+  bool get hasValidDocumentType =>
       RegExp(r'^\d{2}$').hasMatch(documentTypeCode.trim());
 
   bool get hasValidPrefix =>
@@ -48,7 +48,7 @@ class ElectronicSequenceModel {
       startNumber >= 1 &&
       currentNumber >= 0 &&
       endNumber! >= startNumber &&
-      endNumber! > currentNumber;
+      endNumber! >= currentNumber;
 
   bool get hasValidCompany => companyId > 0;
 
@@ -56,8 +56,7 @@ class ElectronicSequenceModel {
       hasValidDocumentType &&
       hasValidPrefix &&
       hasAuthorizedRange &&
-      hasValidCompany &&
-      status.trim().toUpperCase() == 'ACTIVE';
+      hasValidCompany;
 
   int? get remainingCount {
     final limit = endNumber;
@@ -120,16 +119,15 @@ class ElectronicSequenceModel {
       id: asInt(map['id']),
       companyId: asInt(map['company_id'] ?? map['companyId']) ?? 0,
       branchId: asInt(map['branch_id'] ?? map['branchId']) ?? 0,
-      documentTypeCode:
-          asString(map['document_type_code'] ?? map['documentTypeCode']),
+      documentTypeCode: asString(
+        map['document_type_code'] ?? map['documentTypeCode'],
+      ),
       prefix: asString(map['prefix']),
       startNumber: asInt(map['start_number'] ?? map['startNumber']) ?? 1,
-      currentNumber:
-          asInt(map['current_number'] ?? map['currentNumber']) ?? 0,
+      currentNumber: asInt(map['current_number'] ?? map['currentNumber']) ?? 0,
       endNumber: asInt(map['end_number'] ?? map['endNumber']),
       status: asString(map['status']),
-      updatedAtMs:
-          asInt(map['updated_at_ms'] ?? map['updatedAtMs']) ?? 0,
+      updatedAtMs: asInt(map['updated_at_ms'] ?? map['updatedAtMs']) ?? 0,
     );
   }
 

@@ -3,6 +3,8 @@ import 'package:printing/printing.dart';
 import 'models/models.dart';
 import '../../features/settings/data/printer_settings_model.dart';
 import '../../features/settings/data/printer_settings_repository.dart';
+import '../../features/facturacion_electronica/data/factura_electronica_repository.dart';
+import '../../features/facturacion_electronica/data/models/factura_electronica_model.dart';
 import '../../features/sales/data/sales_model.dart';
 import 'thermal_printer_service.dart';
 
@@ -10,6 +12,20 @@ import 'thermal_printer_service.dart';
 /// Este servicio es el punto único para imprimir cualquier tipo de ticket
 class UnifiedTicketPrinter {
   UnifiedTicketPrinter._();
+
+  static Future<FacturaElectronicaModel?> _loadElectronicInvoice(
+    SaleModel sale,
+  ) async {
+    final saleId = sale.id;
+    if (saleId == null || saleId <= 0) {
+      return null;
+    }
+    try {
+      return await FacturaElectronicaRepository.getBySaleId(saleId);
+    } catch (_) {
+      return null;
+    }
+  }
 
   // ============================================================
   // MÉTODO PRINCIPAL: Imprimir cualquier ticket
@@ -155,6 +171,8 @@ class UnifiedTicketPrinter {
     String? statusLabel,
     bool isLayaway = false,
   }) async {
+    final electronicInvoice = await _loadElectronicInvoice(sale);
+
     // Convertir items a TicketItemData
     final ticketItems = items
         .map(
@@ -194,8 +212,15 @@ class UnifiedTicketPrinter {
       isLayaway: isLayaway,
       changeAmount: normalizedChange,
       discountTotal: sale.discountTotal,
-      electronicInvoiceCode: sale.electronicInvoiceCode,
-      electronicDocumentType: sale.electronicDocumentType,
+      electronicInvoiceCode:
+          electronicInvoice?.ecf ?? sale.electronicInvoiceCode,
+      electronicDocumentType:
+          electronicInvoice?.tipoDocumento ?? sale.electronicDocumentType,
+      electronicDgiiStatus: electronicInvoice?.estadoDgii,
+      electronicTrackId: electronicInvoice?.dgiiTrackId,
+      electronicDgiiCode: electronicInvoice?.codigoDgii,
+      electronicDgiiMessage: electronicInvoice?.mensajeDgii,
+      electronicEnvironment: electronicInvoice?.ambiente,
       customerName: sale.customerNameSnapshot,
       customerPhone: sale.customerPhoneSnapshot,
       customerRnc: sale.customerRncSnapshot,
@@ -253,6 +278,8 @@ class UnifiedTicketPrinter {
     String? cashierName,
     int? copies,
   }) async {
+    final electronicInvoice = await _loadElectronicInvoice(sale);
+
     // Convertir items
     final ticketItems = items
         .map(
@@ -278,8 +305,15 @@ class UnifiedTicketPrinter {
       paidAmount: sale.paidAmount,
       changeAmount: sale.changeAmount,
       discountTotal: sale.discountTotal,
-      electronicInvoiceCode: sale.electronicInvoiceCode,
-      electronicDocumentType: sale.electronicDocumentType,
+      electronicInvoiceCode:
+          electronicInvoice?.ecf ?? sale.electronicInvoiceCode,
+      electronicDocumentType:
+          electronicInvoice?.tipoDocumento ?? sale.electronicDocumentType,
+      electronicDgiiStatus: electronicInvoice?.estadoDgii,
+      electronicTrackId: electronicInvoice?.dgiiTrackId,
+      electronicDgiiCode: electronicInvoice?.codigoDgii,
+      electronicDgiiMessage: electronicInvoice?.mensajeDgii,
+      electronicEnvironment: electronicInvoice?.ambiente,
       customerName: sale.customerNameSnapshot,
       customerPhone: sale.customerPhoneSnapshot,
       customerRnc: sale.customerRncSnapshot,

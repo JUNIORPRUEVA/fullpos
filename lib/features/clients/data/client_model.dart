@@ -24,8 +24,12 @@ class ClientModel {
     this.deletedAtMs,
     required int createdAtMs,
     required int updatedAtMs,
-  }) : createdAtMs = createdAtMs > 0 ? createdAtMs : DateTime.now().millisecondsSinceEpoch,
-       updatedAtMs = updatedAtMs > 0 ? updatedAtMs : DateTime.now().millisecondsSinceEpoch;
+  }) : createdAtMs = createdAtMs > 0
+           ? createdAtMs
+           : DateTime.now().millisecondsSinceEpoch,
+       updatedAtMs = updatedAtMs > 0
+           ? updatedAtMs
+           : DateTime.now().millisecondsSinceEpoch;
 
   /// Crea un cliente desde un mapa (base de datos)
   factory ClientModel.fromMap(Map<String, dynamic> map) {
@@ -92,5 +96,30 @@ class ClientModel {
 
   /// Helper: indica si el cliente está eliminado (soft delete)
   bool get isDeleted => deletedAtMs != null;
-}
 
+  String? _normalizedText(String? value) {
+    final text = value?.trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
+
+  String? get normalizedRnc => _normalizedText(rnc);
+
+  String? get normalizedCedula => _normalizedText(cedula);
+
+  String? get normalizedPhone => _normalizedText(telefono);
+
+  String? get normalizedAddress => _normalizedText(direccion);
+
+  bool get isBusiness => normalizedRnc != null;
+
+  String get entityLabel => isBusiness ? 'Empresa' : 'Consumidor final';
+
+  String? get documentLabel {
+    final clientRnc = normalizedRnc;
+    if (clientRnc != null) return 'RNC: $clientRnc';
+    final clientCedula = normalizedCedula;
+    if (clientCedula != null) return 'Cédula: $clientCedula';
+    return null;
+  }
+}

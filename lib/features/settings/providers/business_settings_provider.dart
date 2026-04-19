@@ -13,7 +13,10 @@ class BusinessSettingsNotifier extends StateNotifier<BusinessSettings> {
     : super(initial ?? BusinessSettings.defaultSettings) {
     // Mantener servicio global inicializado desde el primer frame.
     appConfigService.initialize(state);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSettings());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadSettings();
+    });
   }
 
   /// Cargar configuración guardada
@@ -35,6 +38,7 @@ class BusinessSettingsNotifier extends StateNotifier<BusinessSettings> {
 
   Future<void> _loadSettingsImpl() async {
     final settings = await _repository.loadSettings();
+    if (!mounted) return;
     state = settings;
     // Mantener servicio global inicializado/actualizado.
     appConfigService.initialize(settings);

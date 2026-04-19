@@ -9,6 +9,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../settings/data/business_settings_repository.dart';
+import 'electronic_company_locator_helper.dart';
 import 'electronic_company_repository.dart';
 
 class ElectronicCertificateUploadResult {
@@ -89,20 +90,17 @@ class ElectronicCertificateRepository {
     }
 
     final companyId = await SessionManager.companyId();
+    final locators = buildElectronicCompanyLocators(
+      sessionCompanyId: companyId,
+      companyCloudId: settings.cloudCompanyId,
+      companyRnc: settings.rnc,
+    );
     final username = await SessionManager.username();
 
     request.fields['alias'] = alias.trim();
     request.fields['password'] = password;
-    if (companyId != null) {
-      request.fields['companyId'] = companyId.toString();
-    }
-    final companyRnc = settings.rnc?.trim();
-    if (companyRnc != null && companyRnc.isNotEmpty) {
-      request.fields['companyRnc'] = companyRnc;
-    }
-    final cloudCompanyId = settings.cloudCompanyId?.trim();
-    if (cloudCompanyId != null && cloudCompanyId.isNotEmpty) {
-      request.fields['companyCloudId'] = cloudCompanyId;
+    for (final entry in locators.entries) {
+      request.fields[entry.key] = entry.value;
     }
     if (username != null && username.trim().isNotEmpty) {
       request.fields['uploadedBy'] = username.trim();

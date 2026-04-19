@@ -167,18 +167,88 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
               ),
             ],
 
-            // e-CF
-            if (layout.showElectronicInvoiceReference &&
-                previewData.electronicInvoiceCode != null &&
-                previewData.electronicInvoiceCode!.isNotEmpty) ...[
+            if (_hasElectronicBlock(previewData)) ...[
               SizedBox(height: lineSpacing),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'e-CF: ${previewData.electronicInvoiceCode}',
-                  style: TextStyle(fontFamily: fontFamily, fontSize: fontSize),
-                ),
+              _buildElectronicField(
+                'DOC. FE:',
+                _electronicDocumentLabel(previewData),
+                fontFamily,
+                fontSize,
               ),
+              if ((previewData.electronicInvoiceCode ?? '')
+                  .trim()
+                  .isNotEmpty) ...[
+                SizedBox(height: lineSpacing),
+                _buildElectronicField(
+                  'E-CF:',
+                  previewData.electronicInvoiceCode!.trim(),
+                  fontFamily,
+                  fontSize,
+                ),
+              ],
+              if (_electronicStatusLabel(previewData).isNotEmpty) ...[
+                SizedBox(height: lineSpacing),
+                _buildElectronicField(
+                  'ESTADO DGII:',
+                  _electronicStatusLabel(previewData),
+                  fontFamily,
+                  fontSize,
+                ),
+              ],
+              if ((previewData.electronicTrackId ?? '').trim().isNotEmpty) ...[
+                SizedBox(height: lineSpacing),
+                _buildElectronicField(
+                  'TRACK ID:',
+                  previewData.electronicTrackId!.trim(),
+                  fontFamily,
+                  fontSize,
+                ),
+              ],
+              if (_electronicEnvironmentLabel(previewData).isNotEmpty) ...[
+                SizedBox(height: lineSpacing),
+                _buildElectronicField(
+                  'AMBIENTE:',
+                  _electronicEnvironmentLabel(previewData),
+                  fontFamily,
+                  fontSize,
+                ),
+              ],
+              if ((previewData.electronicDgiiCode ?? '').trim().isNotEmpty) ...[
+                SizedBox(height: lineSpacing),
+                _buildElectronicField(
+                  'CODIGO DGII:',
+                  previewData.electronicDgiiCode!.trim(),
+                  fontFamily,
+                  fontSize,
+                ),
+              ],
+              if ((previewData.electronicDgiiMessage ?? '')
+                  .trim()
+                  .isNotEmpty) ...[
+                SizedBox(height: lineSpacing),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'MENSAJE DGII:',
+                    style: TextStyle(
+                      fontFamily: fontFamily,
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                SizedBox(height: lineSpacing / 2),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    previewData.electronicDgiiMessage!.trim(),
+                    style: TextStyle(
+                      fontFamily: fontFamily,
+                      fontSize: fontSize,
+                    ),
+                  ),
+                ),
+              ],
             ],
 
             // Cajero
@@ -201,7 +271,9 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'DATOS DEL CLIENTE:',
+                  _requiresFiscalClientBlock(previewData)
+                      ? 'DATOS FISCALES DEL CLIENTE:'
+                      : 'DATOS DEL CLIENTE:',
                   style: TextStyle(
                     fontFamily: fontFamily,
                     fontSize: fontSize,
@@ -213,16 +285,17 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Nombre: ${previewData.client!.name}',
+                  '${_requiresFiscalClientBlock(previewData) ? 'Empresa' : 'Nombre'}: ${previewData.client!.name}',
                   style: TextStyle(fontFamily: fontFamily, fontSize: fontSize),
                 ),
               ),
-              if (previewData.client!.rnc?.isNotEmpty ?? false) ...[
+              if (_requiresFiscalClientBlock(previewData) ||
+                  (previewData.client!.rnc?.isNotEmpty ?? false)) ...[
                 SizedBox(height: lineSpacing),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'RNC/Cédula: ${previewData.client!.rnc}',
+                    'RNC: ${((previewData.client!.rnc ?? '').trim().isEmpty ? 'PENDIENTE' : previewData.client!.rnc)}',
                     style: TextStyle(
                       fontFamily: fontFamily,
                       fontSize: fontSize,
@@ -451,6 +524,81 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
     return qty.toStringAsFixed(2);
   }
 
+  bool _hasElectronicBlock(TicketData data) {
+    return (data.electronicInvoiceCode ?? '').trim().isNotEmpty ||
+        (data.electronicDocumentType ?? '').trim().isNotEmpty ||
+        _electronicStatusLabel(data).isNotEmpty ||
+        (data.electronicTrackId ?? '').trim().isNotEmpty ||
+        _electronicEnvironmentLabel(data).isNotEmpty ||
+        (data.electronicDgiiCode ?? '').trim().isNotEmpty ||
+        (data.electronicDgiiMessage ?? '').trim().isNotEmpty;
+  }
+
+  bool _requiresFiscalClientBlock(TicketData data) {
+    return (data.electronicDocumentType ?? '').trim() == '31';
+  }
+
+  String _electronicDocumentLabel(TicketData data) {
+    switch ((data.electronicDocumentType ?? '').trim()) {
+      case '31':
+        return '31 CREDITO FISCAL';
+      case '32':
+        return '32 CONSUMO';
+      case '33':
+        return '33 DEBITO';
+      case '34':
+        return '34 CREDITO';
+      case '41':
+        return '41 COMPRAS';
+      case '43':
+        return '43 GASTOS MENORES';
+      case '44':
+        return '44 REGIMENES ESPECIALES';
+      case '45':
+        return '45 GUBERNAMENTAL';
+      case '46':
+        return '46 EXPORTACION';
+      case '47':
+        return '47 PAGOS EXTERIOR';
+      default:
+        final raw = (data.electronicDocumentType ?? '').trim();
+        return raw.isEmpty ? 'ELECTRONICO' : raw;
+    }
+  }
+
+  String _electronicStatusLabel(TicketData data) {
+    switch ((data.electronicDgiiStatus ?? '').trim().toLowerCase()) {
+      case 'accepted':
+      case 'aceptada':
+      case 'aceptado':
+        return 'ACEPTADA';
+      case 'rejected':
+      case 'rechazada':
+      case 'rechazado':
+        return 'RECHAZADA';
+      case 'pending':
+      case 'pendiente':
+        return 'PENDIENTE';
+      default:
+        return (data.electronicDgiiStatus ?? '').trim().toUpperCase();
+    }
+  }
+
+  String _electronicEnvironmentLabel(TicketData data) {
+    switch ((data.electronicEnvironment ?? '').trim().toLowerCase()) {
+      case 'production':
+      case 'produccion':
+      case 'production_env':
+        return 'PRODUCCION';
+      case 'certification':
+      case 'certificacion':
+      case 'staging':
+        return 'CERTIFICACION';
+      default:
+        return (data.electronicEnvironment ?? '').trim().toUpperCase();
+    }
+  }
+
   Widget _buildDoubleDivider(int chars, String fontFamily, double fontSize) {
     return Text(
       '=' * chars,
@@ -462,6 +610,34 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
     return Text(
       '-' * chars,
       style: TextStyle(fontFamily: fontFamily, fontSize: fontSize - 2),
+    );
+  }
+
+  Widget _buildElectronicField(
+    String label,
+    String value,
+    String fontFamily,
+    double fontSize,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontFamily: fontFamily,
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(fontFamily: fontFamily, fontSize: fontSize),
+          ),
+        ),
+      ],
     );
   }
 
@@ -491,25 +667,31 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
     }
 
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontFamily: fontFamily,
-            fontSize: fontSize,
-            fontWeight: (isBold || leftBold)
-                ? FontWeight.bold
-                : FontWeight.normal,
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: fontFamily,
+              fontSize: fontSize,
+              fontWeight: (isBold || leftBold)
+                  ? FontWeight.bold
+                  : FontWeight.normal,
+            ),
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontFamily: fontFamily,
-            fontSize: fontSize,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-            color: valueColor,
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontFamily: fontFamily,
+              fontSize: fontSize,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: valueColor,
+            ),
           ),
         ),
       ],
