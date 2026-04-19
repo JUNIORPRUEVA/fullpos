@@ -5,13 +5,14 @@ import '../../../core/errors/error_handler.dart';
 import '../data/client_model.dart';
 import '../data/clients_repository.dart';
 import '../utils/phone_validator.dart';
+import '../utils/rnc_validator.dart';
 
 /// Diálogo de formulario para crear/editar clientes
 class ClientFormDialog extends StatefulWidget {
   final ClientModel? client;
   final Future<ClientModel?> Function(String phone)? getByPhone;
   final Future<ClientModel> Function(ClientModel client, bool isEditing)?
-      saveClient;
+  saveClient;
 
   const ClientFormDialog({
     super.key,
@@ -69,20 +70,55 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
       final now = DateTime.now().millisecondsSinceEpoch;
 
       final rawPhone = _telefonoController.text.trim();
-      final normalizedPhone = PhoneValidator.normalizeRDPhone(rawPhone);
-      if (normalizedPhone == null) {
+      final normalizedPhone = rawPhone.isEmpty
+          ? null
+          : PhoneValidator.normalizeRDPhone(rawPhone);
+      final rawRnc = _rncController.text.trim();
+      final normalizedRnc = rawRnc.isEmpty
+          ? null
+          : RncValidator.normalize(rawRnc);
+
+      if (normalizedPhone == null && normalizedRnc == null) {
+        throw ArgumentError(
+          'Debe indicar al menos un teléfono o un RNC válido',
+        );
+      }
+
+      if (rawPhone.isNotEmpty && normalizedPhone == null) {
         throw ArgumentError(
           'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)',
         );
       }
 
+      if (rawRnc.isNotEmpty && normalizedRnc == null) {
+        throw ArgumentError('RNC inválido. Debe contener 9 dígitos');
+      }
+
       // Si estamos CREANDO (no editando), verificar duplicados ANTES de intentar guardar
       if (widget.client == null) {
         final getByPhone = widget.getByPhone ?? ClientsRepository.getByPhone;
-        final existingClient = await getByPhone(normalizedPhone);
+        final existingClient = normalizedPhone == null
+            ? null
+            : await getByPhone(normalizedPhone);
+        final existingBusiness = normalizedRnc == null
+            ? null
+            : await ClientsRepository.getByRnc(normalizedRnc);
 
-        if (existingClient != null && existingClient.isActive) {
-          // Cliente activo con este teléfono ya existe
+        if (existingClient != null &&
+            existingBusiness != null &&
+            existingClient.id != existingBusiness.id) {
+          throw ArgumentError(
+            'El teléfono y el RNC pertenecen a clientes distintos. Revise los datos.',
+          );
+        }
+
+        final duplicatedClient = existingClient ?? existingBusiness;
+
+        if (duplicatedClient != null && duplicatedClient.isActive) {
+          final duplicateMessage = existingClient != null
+              ? 'Ya existe un cliente con este teléfono:'
+              : 'Ya existe un cliente con estos datos:';
+
           if (!mounted) return;
           setState(() => _isLoading = false);
 
@@ -104,8 +140,8 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Ya existe un cliente con este teléfono:',
+                  Text(
+                    duplicateMessage,
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
@@ -120,18 +156,30 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Nombre: ${existingClient.nombre}',
+                          'Nombre: ${duplicatedClient.nombre}',
                           style: const TextStyle(fontSize: 15),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Teléfono: ${PhoneValidator.formatRDPhone(existingClient.telefono ?? "") ?? existingClient.telefono}',
-                          style: const TextStyle(fontSize: 15),
-                        ),
-                        if (existingClient.direccion?.isNotEmpty ?? false) ...[
+                        if ((duplicatedClient.telefono ?? '')
+                            .trim()
+                            .isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(
-                            'Dirección: ${existingClient.direccion}',
+                            'Teléfono: ${PhoneValidator.formatRDPhone(duplicatedClient.telefono ?? "") ?? duplicatedClient.telefono}',
+                            style: const TextStyle(fontSize: 15),
+                          ),
+                        ],
+                        if ((duplicatedClient.rnc ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'RNC: ${duplicatedClient.rnc}',
+                            style: const TextStyle(fontSize: 15),
+                          ),
+                        ],
+                        if (duplicatedClient.direccion?.isNotEmpty ??
+                            false) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Dirección: ${duplicatedClient.direccion}',
                             style: const TextStyle(fontSize: 15),
                           ),
                         ],
@@ -167,9 +215,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
         direccion: _direccionController.text.trim().isEmpty
             ? null
             : _direccionController.text.trim(),
-        rnc: _rncController.text.trim().isEmpty
-            ? null
-            : _rncController.text.trim(),
+        rnc: normalizedRnc,
         cedula: _cedulaController.text.trim().isEmpty
             ? null
             : _cedulaController.text.trim(),
@@ -193,7 +239,9 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
         final createdClient = await ClientsRepository.getById(clientId);
 
         if (mounted) {
-          Navigator.of(context).pop(createdClient ?? client.copyWith(id: clientId));
+          Navigator.of(
+            context,
+          ).pop(createdClient ?? client.copyWith(id: clientId));
         }
       } else {
         // Actualizar cliente existente
@@ -276,20 +324,22 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                   TextFormField(
                     controller: _telefonoController,
                     decoration: InputDecoration(
-                      labelText: 'Teléfono *',
+                      labelText: 'Teléfono',
                       hintText: 'Ej: 8095551234, 809-555-1234, +1 809 555 1234',
-                      helperText: 'Puedes escribirlo con espacios o guiones',
+                      helperText: 'Opcional si registrarás la empresa con RNC',
                       prefixIcon: const Icon(Icons.phone),
                     ),
                     keyboardType: TextInputType.phone,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'El teléfono es obligatorio';
+                      final rawPhone = value?.trim() ?? '';
+                      final rawRnc = _rncController.text.trim();
+                      if (rawPhone.isEmpty && rawRnc.isEmpty) {
+                        return 'Indique teléfono o RNC';
                       }
 
                       // Debe poder normalizarse a +1XXXXXXXXXX (10 dígitos RD)
-                      if (PhoneValidator.normalizeRDPhone(value.trim()) ==
-                          null) {
+                      if (rawPhone.isNotEmpty &&
+                          PhoneValidator.normalizeRDPhone(rawPhone) == null) {
                         return 'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)';
                       }
 
@@ -316,8 +366,22 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                     controller: _rncController,
                     decoration: const InputDecoration(
                       labelText: 'RNC',
+                      helperText: 'Obligatorio para empresa / factura E31',
                       prefixIcon: Icon(Icons.business),
                     ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      final rawRnc = value?.trim() ?? '';
+                      final rawPhone = _telefonoController.text.trim();
+                      if (rawRnc.isEmpty && rawPhone.isEmpty) {
+                        return 'Indique RNC o teléfono';
+                      }
+                      if (rawRnc.isNotEmpty &&
+                          !RncValidator.isValidBasic(rawRnc)) {
+                        return 'RNC inválido. Debe contener 9 dígitos';
+                      }
+                      return null;
+                    },
                     enabled: !_isLoading,
                   ),
                   const SizedBox(height: AppSizes.spaceM),

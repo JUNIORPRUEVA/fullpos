@@ -20,6 +20,9 @@ class FacturaElectronicaModel {
   final double montoTotal;
   final String? clienteNombre;
   final String? clienteRnc;
+  final String? tipoDescriptivo;
+  final String? referenciaDocumento;
+  final String? estadoInterno;
   final int createdAtMs;
   final int updatedAtMs;
   final int? sentAtMs;
@@ -41,6 +44,9 @@ class FacturaElectronicaModel {
     required this.montoTotal,
     this.clienteNombre,
     this.clienteRnc,
+    this.tipoDescriptivo,
+    this.referenciaDocumento,
+    this.estadoInterno,
     required this.createdAtMs,
     required this.updatedAtMs,
     this.sentAtMs,
@@ -58,8 +64,33 @@ class FacturaElectronicaModel {
       case statusConfigPending:
         return 'Configurar';
       default:
-        return 'Local';
+        switch ((estadoInterno ?? '').trim().toUpperCase()) {
+          case 'SUBMITTED':
+            return 'Enviada';
+          case 'SIGNED':
+            return 'Firmada';
+          case 'GENERATED':
+            return 'Generada';
+          case 'CACHE_ONLY':
+            return 'Cache local';
+          default:
+            return 'Local';
+        }
     }
+  }
+
+  String get numeroDocumento {
+    final code = (ecf ?? '').trim();
+    if (code.isNotEmpty) return code;
+    return localCode;
+  }
+
+  bool get isCreditNote => tipoDocumento.trim() == '34';
+
+  String get tipoDescriptivoResuelto {
+    final explicit = tipoDescriptivo?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    return isCreditNote ? 'Nota de crédito' : 'Factura';
   }
 
   Map<String, dynamic> toMap() => {
@@ -78,6 +109,9 @@ class FacturaElectronicaModel {
     'monto_total': montoTotal,
     'cliente_nombre': clienteNombre,
     'cliente_rnc': clienteRnc,
+    'tipo_descriptivo': tipoDescriptivo,
+    'referencia_documento': referenciaDocumento,
+    'estado_interno': estadoInterno,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
     'sent_at_ms': sentAtMs,
@@ -101,6 +135,9 @@ class FacturaElectronicaModel {
       montoTotal: (map['monto_total'] as num?)?.toDouble() ?? 0.0,
       clienteNombre: map['cliente_nombre'] as String?,
       clienteRnc: map['cliente_rnc'] as String?,
+      tipoDescriptivo: map['tipo_descriptivo'] as String?,
+      referenciaDocumento: map['referencia_documento'] as String?,
+      estadoInterno: map['estado_interno'] as String?,
       createdAtMs: map['created_at_ms'] as int,
       updatedAtMs: map['updated_at_ms'] as int,
       sentAtMs: map['sent_at_ms'] as int?,
@@ -124,6 +161,9 @@ class FacturaElectronicaModel {
     double? montoTotal,
     String? clienteNombre,
     String? clienteRnc,
+    String? tipoDescriptivo,
+    String? referenciaDocumento,
+    String? estadoInterno,
     int? createdAtMs,
     int? updatedAtMs,
     int? sentAtMs,
@@ -145,6 +185,9 @@ class FacturaElectronicaModel {
       montoTotal: montoTotal ?? this.montoTotal,
       clienteNombre: clienteNombre ?? this.clienteNombre,
       clienteRnc: clienteRnc ?? this.clienteRnc,
+      tipoDescriptivo: tipoDescriptivo ?? this.tipoDescriptivo,
+      referenciaDocumento: referenciaDocumento ?? this.referenciaDocumento,
+      estadoInterno: estadoInterno ?? this.estadoInterno,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
       sentAtMs: sentAtMs ?? this.sentAtMs,

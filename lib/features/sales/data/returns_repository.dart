@@ -10,6 +10,29 @@ import 'sales_model.dart';
 class ReturnsRepository {
   ReturnsRepository._();
 
+  static double _roundMoney(double value) =>
+      (value * 100).roundToDouble() / 100.0;
+
+  static String _normalizeElectronicDocumentType(SaleModel sale) {
+    final explicitType = (sale.electronicDocumentType ?? '').trim().toUpperCase();
+    if (explicitType.isNotEmpty) return explicitType;
+
+    final code = (sale.electronicInvoiceCode ?? '').trim().toUpperCase();
+    if (code.startsWith('E31')) return '31';
+    if (code.startsWith('E32')) return '32';
+    return '';
+  }
+
+  static bool _supportsElectronicCreditNote(SaleModel sale) {
+    final hasElectronicReference =
+        sale.electronicInvoiceEnabled == 1 ||
+        (sale.electronicInvoiceCode ?? '').trim().isNotEmpty;
+    if (!hasElectronicReference) return false;
+
+    final documentType = _normalizeElectronicDocumentType(sale);
+    return documentType == '31' || documentType == '32';
+  }
+
   static Future<({String status, bool isFullyRefunded})> _resolveRefundState(
     Transaction txn,
     int originalSaleId,
@@ -49,8 +72,9 @@ class ReturnsRepository {
     for (final saleItem in saleItems) {
       final saleItemId = saleItem['id'] as int?;
       final originalQty = (saleItem['qty'] as num?)?.toDouble() ?? 0.0;
-      final returnedQty =
-          saleItemId == null ? 0.0 : (returnedQtyBySaleItemId[saleItemId] ?? 0.0);
+      final returnedQty = saleItemId == null
+          ? 0.0
+          : (returnedQtyBySaleItemId[saleItemId] ?? 0.0);
       if (returnedQty > 0.0001) {
         hasReturnedQty = true;
       }
@@ -69,12 +93,81 @@ class ReturnsRepository {
     );
   }
 
+  static Future<void> _validateReturnItemsAgainstOriginalSale(
+    Transaction txn,
+    int originalSaleId,
+    List<Map<String, dynamic>> returnItems,
+  ) async {
+    if (returnItems.isEmpty) {
+      throw Exception('La devolución no puede quedar vacía');
+    }
+
+    final originalItemRows = await txn.query(
+      DbTables.saleItems,
+      columns: ['id', 'qty'],
+      where: 'sale_id = ?',
+      whereArgs: [originalSaleId],
+    );
+    final originalQtyBySaleItemId = <int, double>{
+      for (final row in originalItemRows)
+        if (row['id'] is int)
+          row['id'] as int: (row['qty'] as num?)?.toDouble() ?? 0.0,
+    };
+
+    final returnedRows = await txn.rawQuery(
+      '''
+      SELECT ri.sale_item_id, COALESCE(SUM(ri.qty), 0) AS returned_qty
+      FROM ${DbTables.returnItems} ri
+      JOIN ${DbTables.returns} r ON r.id = ri.return_id
+      WHERE r.original_sale_id = ?
+      GROUP BY ri.sale_item_id
+      ''',
+      [originalSaleId],
+    );
+    final alreadyReturnedBySaleItemId = <int, double>{
+      for (final row in returnedRows)
+        if (row['sale_item_id'] is int)
+          row['sale_item_id'] as int:
+              (row['returned_qty'] as num?)?.toDouble() ?? 0.0,
+    };
+
+    final requestedQtyBySaleItemId = <int, double>{};
+    for (final item in returnItems) {
+      final saleItemId = item['sale_item_id'] as int?;
+      if (saleItemId == null) {
+        throw Exception(
+          'Cada devolución debe referenciar la línea original vendida',
+        );
+      }
+
+      final originalQty = originalQtyBySaleItemId[saleItemId];
+      if (originalQty == null) {
+        throw Exception('sale_item_id no pertenece a la venta original');
+      }
+
+      final qty = (item['qty'] as num?)?.toDouble() ?? 0.0;
+      if (qty <= 0) {
+        throw Exception('La cantidad devuelta debe ser mayor que cero');
+      }
+
+      final alreadyReturned = alreadyReturnedBySaleItemId[saleItemId] ?? 0.0;
+      final requestedSoFar = requestedQtyBySaleItemId[saleItemId] ?? 0.0;
+      final remainingQty = originalQty - alreadyReturned - requestedSoFar;
+      if (qty - remainingQty > 0.0001) {
+        throw Exception('No se puede devolver más cantidad que la vendida');
+      }
+
+      requestedQtyBySaleItemId[saleItemId] = requestedSoFar + qty;
+    }
+  }
+
   /// Crea una devolución completa con stock restoration
   static Future<int> createReturn({
     required int originalSaleId,
     required List<Map<String, dynamic>> returnItems,
     int? cashSessionId,
     String? note,
+    bool? electronicCreditNoteRequested,
   }) async {
     final db = await AppDb.database;
 
@@ -96,6 +189,12 @@ class ReturnsRepository {
     final returnSaleId = await db.transaction((txn) async {
       final now = DateTime.now().millisecondsSinceEpoch;
 
+      await _validateReturnItemsAgainstOriginalSale(
+        txn,
+        originalSaleId,
+        returnItems,
+      );
+
       // Calcular totales de devolución
       double returnSubtotal = 0.0;
       for (final item in returnItems) {
@@ -104,6 +203,47 @@ class ReturnsRepository {
         final lineTotal = qty * price;
         returnSubtotal += lineTotal;
       }
+      returnSubtotal = _roundMoney(returnSubtotal);
+      final returnTax = original.itbisEnabled == 1
+          ? _roundMoney(returnSubtotal * original.itbisRate)
+          : 0.0;
+      final returnTotal = _roundMoney(returnSubtotal + returnTax);
+      final canGenerateElectronicCreditNote = _supportsElectronicCreditNote(
+        original,
+      );
+      final originalElectronicDocumentType = _normalizeElectronicDocumentType(
+        original,
+      );
+      final originalElectronicEcf =
+          (original.electronicInvoiceCode ?? '').trim().isNotEmpty
+          ? original.electronicInvoiceCode!.trim()
+          : null;
+      final shouldRequestElectronicCreditNote =
+          (electronicCreditNoteRequested ?? canGenerateElectronicCreditNote) &&
+          canGenerateElectronicCreditNote;
+
+      final originalItemRows = await txn.query(
+        DbTables.saleItems,
+        columns: ['id', 'qty'],
+        where: 'sale_id = ?',
+        whereArgs: [originalSaleId],
+      );
+      final originalQtyBySaleItemId = <int, double>{
+        for (final row in originalItemRows)
+          if (row['id'] is int)
+            row['id'] as int: (row['qty'] as num?)?.toDouble() ?? 0.0,
+      };
+      final isTotalReturn =
+          returnItems.isNotEmpty &&
+          returnItems.length == originalQtyBySaleItemId.length &&
+          returnItems.every((item) {
+            final saleItemId = item['sale_item_id'] as int?;
+            if (saleItemId == null) return false;
+            final originalQty = originalQtyBySaleItemId[saleItemId];
+            if (originalQty == null) return false;
+            final returnQty = (item['qty'] as num?)?.toDouble() ?? 0.0;
+            return returnQty + 0.0001 >= originalQty;
+          });
 
       // Generar código de devolución
       final returnCode =
@@ -148,7 +288,24 @@ class ReturnsRepository {
       final returnId = await txn.insert(DbTables.returns, {
         'original_sale_id': originalSaleId,
         'return_sale_id': returnSaleId,
+        'refund_type': isTotalReturn ? 'TOTAL' : 'PARTIAL',
+        'reason': note,
         'note': note,
+        'subtotal_amount': returnSubtotal,
+        'tax_amount': returnTax,
+        'total_amount': returnTotal,
+        'requested_by': 'local-pos',
+        'original_electronic_ecf': originalElectronicEcf,
+        'original_electronic_document_type':
+          originalElectronicDocumentType.isEmpty
+          ? null
+          : originalElectronicDocumentType,
+        'electronic_credit_note_requested': shouldRequestElectronicCreditNote
+            ? 1
+            : 0,
+        'electronic_credit_note_status': shouldRequestElectronicCreditNote
+            ? 'PENDING_SYNC'
+            : null,
         'created_at_ms': now,
       });
 
@@ -209,9 +366,7 @@ class ReturnsRepository {
     unawaited(
       CloudSyncService.instance.syncReturnsNow(reason: 'return_applied'),
     );
-    unawaited(
-      CloudSyncService.instance.syncSalesNow(reason: 'return_applied'),
-    );
+    unawaited(CloudSyncService.instance.syncSalesNow(reason: 'return_applied'));
 
     return returnSaleId;
   }
@@ -245,7 +400,8 @@ class ReturnsRepository {
     }
 
     final result = await db.rawQuery(
-      '''SELECT r.*, s.local_code, s.customer_name_snapshot, s.total, s.created_at_ms, s.session_id
+      '''SELECT r.*, s.local_code, s.customer_name_snapshot, s.total, s.created_at_ms, s.session_id,
+             s.electronic_invoice_enabled, s.electronic_invoice_code, s.electronic_document_type
          FROM ${DbTables.returns} r
          JOIN ${DbTables.sales} s ON r.return_sale_id = s.id
          WHERE $where

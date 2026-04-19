@@ -1,6 +1,7 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/services/empresa_service.dart';
+import '../../../core/session/session_manager.dart';
 import '../../sales/data/sale_item_model.dart';
 import '../../sales/data/sales_model.dart' as legacy_sales;
 import '../data/electronic_company_repository.dart';
@@ -125,7 +126,9 @@ class FacturacionElectronicaService {
           saleId: sale.id!,
           localCode: sale.localCode,
           tipoDocumento: 'venta_local',
+          tipoDescriptivo: 'Factura',
           estadoDgii: FacturaElectronicaModel.statusLocal,
+          estadoInterno: 'LOCAL_ONLY',
           mensajeDgii: 'Venta registrada sin emisión electrónica.',
           ambiente: company.environment,
           montoTotal: sale.total,
@@ -144,7 +147,9 @@ class FacturacionElectronicaService {
           saleId: sale.id!,
           localCode: sale.localCode,
           tipoDocumento: documentTypeCode,
+          tipoDescriptivo: 'Factura',
           estadoDgii: FacturaElectronicaModel.statusConfigPending,
+          estadoInterno: 'CONFIG_PENDING',
           mensajeDgii: 'Faltan datos del emisor: ${missing.join(', ')}.',
           ambiente: company.environment,
           montoTotal: sale.total,
@@ -165,7 +170,9 @@ class FacturacionElectronicaService {
           saleId: sale.id!,
           localCode: sale.localCode,
           tipoDocumento: documentTypeCode,
+          tipoDescriptivo: 'Factura',
           estadoDgii: FacturaElectronicaModel.statusConfigPending,
+          estadoInterno: 'CONFIG_PENDING',
           mensajeDgii: error.message,
           ambiente: company.environment,
           montoTotal: sale.total,
@@ -199,10 +206,14 @@ class FacturacionElectronicaService {
         localCode: sale.localCode,
         ecf: allocation.ecf,
         tipoDocumento: documentTypeCode,
+        tipoDescriptivo: 'Factura',
         xmlPayload: xml,
         xmlFirmado: xmlFirmado,
         dgiiTrackId: dgii.trackId,
         estadoDgii: dgii.estado,
+        estadoInterno: dgii.estado == FacturaElectronicaModel.statusAccepted
+            ? 'ACCEPTED'
+            : 'SUBMITTED',
         codigoDgii: dgii.codigo,
         mensajeDgii: dgii.mensaje,
         ambiente: company.environment,
@@ -221,11 +232,12 @@ class FacturacionElectronicaService {
     String documentTypeCode,
   ) async {
     final db = await AppDb.database;
+    final companyId = await SessionManager.companyId() ?? 0;
     return db.transaction((txn) async {
       final rows = await txn.query(
         DbTables.electronicSequences,
-        where: 'document_type_code = ? AND branch_id = ?',
-        whereArgs: [documentTypeCode, 0],
+        where: 'company_id = ? AND document_type_code = ? AND branch_id = ?',
+        whereArgs: [companyId, documentTypeCode, 0],
         limit: 1,
       );
 

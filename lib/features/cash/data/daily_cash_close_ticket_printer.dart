@@ -172,8 +172,9 @@ class DailyCashCloseTicketPrinter {
     lines.add(line());
 
     if (salesCardTotal > 0) addPair('TARJETA:', money(salesCardTotal));
-    if (salesTransferTotal > 0)
+    if (salesTransferTotal > 0) {
       addPair('TRANSFERENCIA:', money(salesTransferTotal));
+    }
     if (salesCreditTotal > 0) addPair('CREDITO:', money(salesCreditTotal));
     if (creditAbonos > 0) addPair('ABONOS CREDITO:', money(creditAbonos));
     if (layawayAbonos > 0) addPair('ABONOS APARTADO:', money(layawayAbonos));

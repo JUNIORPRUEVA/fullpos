@@ -62,5 +62,51 @@ void main() {
     expect(fetched!.nombre, 'Juan Perez');
     expect(fetched.telefono, '+18295887858');
   });
+
+  test('ClientsRepository.create permite cliente empresarial con RNC sin telefono', () async {
+    await AppDb.resetForTests();
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final client = ClientModel(
+      nombre: 'EMPRESA FISCAL DEMO SRL',
+      rnc: '131246796',
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+
+    final id = await ClientsRepository.create(client);
+    final fetched = await ClientsRepository.getById(id);
+
+    expect(fetched, isNotNull);
+    expect(fetched!.nombre, 'EMPRESA FISCAL DEMO SRL');
+    expect(fetched.rnc, '131246796');
+    expect(fetched.telefono, isNull);
+  });
+
+  test('ClientsRepository evita duplicados por RNC', () async {
+    await AppDb.resetForTests();
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await ClientsRepository.create(
+      ClientModel(
+        nombre: 'EMPRESA A',
+        rnc: '131246796',
+        createdAtMs: now,
+        updatedAtMs: now,
+      ),
+    );
+
+    expect(
+      () => ClientsRepository.create(
+        ClientModel(
+          nombre: 'EMPRESA DUPLICADA',
+          rnc: '131246796',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
 }
 

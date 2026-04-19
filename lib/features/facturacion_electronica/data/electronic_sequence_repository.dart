@@ -56,12 +56,15 @@ class ElectronicSequenceRepository {
 
   final ApiClient? _apiClient;
 
-  static const List<String> _defaultTypes = ['31', '32'];
+  static const List<String> _defaultTypes = ['31', '32', '34'];
 
   Future<List<ElectronicSequenceModel>> listLocal() async {
     final db = await AppDb.database;
+    final companyId = await SessionManager.companyId() ?? 0;
     final rows = await db.query(
       DbTables.electronicSequences,
+      where: 'company_id = ?',
+      whereArgs: [companyId],
       orderBy: 'document_type_code ASC',
     );
 
@@ -84,14 +87,16 @@ class ElectronicSequenceRepository {
     ElectronicSequenceModel sequence,
   ) async {
     final db = await AppDb.database;
+    final companyId = await SessionManager.companyId() ?? sequence.companyId;
+    final payload = sequence.copyWith(
+      companyId: companyId,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
     final existing = await db.query(
       DbTables.electronicSequences,
-      where: 'branch_id = ? AND document_type_code = ?',
-      whereArgs: [sequence.branchId, sequence.documentTypeCode],
+      where: 'company_id = ? AND branch_id = ? AND document_type_code = ?',
+      whereArgs: [companyId, payload.branchId, payload.documentTypeCode],
       limit: 1,
-    );
-    final payload = sequence.copyWith(
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     if (existing.isEmpty) {
       final id = await db.insert(DbTables.electronicSequences, payload.toMap());

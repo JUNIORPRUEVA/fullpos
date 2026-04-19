@@ -32,9 +32,9 @@ class DbInit {
     final programFilesX86 =
         Platform.environment['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
     final candidates = <String>[
-      '${programFiles}${Platform.pathSeparator}FullTech${Platform.pathSeparator}sqlite3.dll',
-      '${programFiles}${Platform.pathSeparator}LibreOffice${Platform.pathSeparator}program${Platform.pathSeparator}sqlite3.dll',
-      '${programFilesX86}${Platform.pathSeparator}sqlite3.dll',
+      '$programFiles${Platform.pathSeparator}FullTech${Platform.pathSeparator}sqlite3.dll',
+      '$programFiles${Platform.pathSeparator}LibreOffice${Platform.pathSeparator}program${Platform.pathSeparator}sqlite3.dll',
+      '$programFilesX86${Platform.pathSeparator}sqlite3.dll',
     ];
 
     for (final candidatePath in candidates) {

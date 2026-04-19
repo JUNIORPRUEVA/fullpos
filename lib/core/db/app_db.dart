@@ -42,7 +42,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 34;
+  static const int _dbVersion = 35;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -1286,7 +1286,21 @@ class AppDb {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           original_sale_id INTEGER NOT NULL,
           return_sale_id INTEGER NOT NULL,
+          refund_type TEXT NOT NULL DEFAULT 'PARTIAL',
+          reason TEXT,
           note TEXT,
+          subtotal_amount REAL NOT NULL DEFAULT 0,
+          tax_amount REAL NOT NULL DEFAULT 0,
+          total_amount REAL NOT NULL DEFAULT 0,
+          requested_by TEXT,
+          original_electronic_invoice_id INTEGER,
+          original_electronic_ecf TEXT,
+          original_electronic_document_type TEXT,
+          electronic_credit_note_requested INTEGER NOT NULL DEFAULT 0,
+          electronic_credit_note_invoice_id INTEGER,
+          electronic_credit_note_ecf TEXT,
+          electronic_credit_note_status TEXT,
+          electronic_credit_note_track_id TEXT,
           created_at_ms INTEGER NOT NULL,
           FOREIGN KEY (original_sale_id) REFERENCES ${DbTables.sales}(id),
           FOREIGN KEY (return_sale_id) REFERENCES ${DbTables.sales}(id)
@@ -1324,7 +1338,6 @@ class AppDb {
         ON ${DbTables.posTickets}(user_id)
       ''');
 
-      // === Items de Tickets POS ===
       await db.execute('''
         CREATE TABLE ${DbTables.posTicketItems} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1348,7 +1361,50 @@ class AppDb {
         ON ${DbTables.posTicketItems}(ticket_id)
       ''');
 
-      // === Cotizaciones ===
+      // Carritos temporales
+      await db.execute('''
+        CREATE TABLE ${DbTables.tempCarts} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          user_id INTEGER,
+          client_id INTEGER,
+          discount REAL NOT NULL DEFAULT 0,
+          itbis_enabled INTEGER NOT NULL DEFAULT 1,
+          itbis_rate REAL NOT NULL DEFAULT 0.18,
+          electronic_invoice_enabled INTEGER NOT NULL DEFAULT 0,
+          discount_total_type TEXT,
+          discount_total_value REAL,
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (client_id) REFERENCES ${DbTables.clients}(id),
+          FOREIGN KEY (user_id) REFERENCES ${DbTables.users}(id)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE ${DbTables.tempCartItems} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          cart_id INTEGER NOT NULL,
+          product_id INTEGER,
+          product_code_snapshot TEXT NOT NULL,
+          product_name_snapshot TEXT NOT NULL,
+          qty REAL NOT NULL,
+          unit_price REAL NOT NULL,
+          purchase_price_snapshot REAL NOT NULL DEFAULT 0,
+          discount_line REAL NOT NULL DEFAULT 0,
+          total_line REAL NOT NULL,
+          created_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (cart_id) REFERENCES ${DbTables.tempCarts}(id) ON DELETE CASCADE,
+          FOREIGN KEY (product_id) REFERENCES ${DbTables.products}(id)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_temp_cart_items_cart
+        ON ${DbTables.tempCartItems}(cart_id)
+      ''');
+
+      // Cotizaciones
       await db.execute('''
         CREATE TABLE ${DbTables.quotes} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1385,7 +1441,6 @@ class AppDb {
         ON ${DbTables.quotes}(created_at_ms)
       ''');
 
-      // === Items de Cotizaciones ===
       await db.execute('''
         CREATE TABLE ${DbTables.quoteItems} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2077,6 +2132,83 @@ class AppDb {
       );
       await _ensureProductSyncOutboxTable(db);
     }
+
+    if (oldVersion < 35) {
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'refund_type',
+        "TEXT NOT NULL DEFAULT 'PARTIAL'",
+      );
+      await _addColumnIfMissing(db, DbTables.returns, 'reason', 'TEXT');
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'subtotal_amount',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'tax_amount',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'total_amount',
+        'REAL NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(db, DbTables.returns, 'requested_by', 'TEXT');
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'original_electronic_invoice_id',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'original_electronic_ecf',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'original_electronic_document_type',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'electronic_credit_note_requested',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'electronic_credit_note_invoice_id',
+        'INTEGER',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'electronic_credit_note_ecf',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'electronic_credit_note_status',
+        'TEXT',
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.returns,
+        'electronic_credit_note_track_id',
+        'TEXT',
+      );
+    }
   }
 
   static Future<void> _migratePurchaseOrderItemsToSnapshots(
@@ -2179,6 +2311,11 @@ class AppDb {
   /// - Borra demos cuando existan categorías o productos reales.
   /// - Si se eliminan todos los reales, reaparecen los demos.
   static Future<void> _syncDemoCatalog(DatabaseExecutor db) async {
+    if (!await _tableExists(db, DbTables.categories) ||
+        !await _tableExists(db, DbTables.products)) {
+      return;
+    }
+
     final demoCats = (await db.query(
       DbTables.categories,
       columns: ['id', 'name'],
@@ -3054,7 +3191,21 @@ class AppDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         original_sale_id INTEGER NOT NULL,
         return_sale_id INTEGER NOT NULL,
+        refund_type TEXT NOT NULL DEFAULT 'PARTIAL',
+        reason TEXT,
         note TEXT,
+        subtotal_amount REAL NOT NULL DEFAULT 0,
+        tax_amount REAL NOT NULL DEFAULT 0,
+        total_amount REAL NOT NULL DEFAULT 0,
+        requested_by TEXT,
+        original_electronic_invoice_id INTEGER,
+        original_electronic_ecf TEXT,
+        original_electronic_document_type TEXT,
+        electronic_credit_note_requested INTEGER NOT NULL DEFAULT 0,
+        electronic_credit_note_invoice_id INTEGER,
+        electronic_credit_note_ecf TEXT,
+        electronic_credit_note_status TEXT,
+        electronic_credit_note_track_id TEXT,
         created_at_ms INTEGER NOT NULL,
         FOREIGN KEY (original_sale_id) REFERENCES ${DbTables.sales}(id),
         FOREIGN KEY (return_sale_id) REFERENCES ${DbTables.sales}(id)
@@ -3739,9 +3890,10 @@ class AppDb {
       'updated_at_ms',
       'INTEGER NOT NULL DEFAULT 0',
     );
+    await db.execute('DROP INDEX IF EXISTS idx_electronic_sequences_doc_type');
     await db.execute('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_electronic_sequences_doc_type
-      ON ${DbTables.electronicSequences}(branch_id, document_type_code)
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_electronic_sequences_company_branch_doc_type
+      ON ${DbTables.electronicSequences}(company_id, branch_id, document_type_code)
     ''');
 
     await db.execute('''
@@ -3751,10 +3903,13 @@ class AppDb {
         local_code TEXT NOT NULL,
         ecf TEXT,
         tipo_documento TEXT NOT NULL DEFAULT 'venta',
+        tipo_descriptivo TEXT,
+        referencia_documento TEXT,
         xml_payload TEXT,
         xml_firmado TEXT,
         dgii_track_id TEXT,
         estado_dgii TEXT NOT NULL DEFAULT 'local',
+        estado_interno TEXT,
         codigo_dgii TEXT,
         mensaje_dgii TEXT,
         ambiente TEXT,
@@ -3790,6 +3945,18 @@ class AppDb {
     await _addColumnIfMissing(
       db,
       DbTables.facturaElectronica,
+      'tipo_descriptivo',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'referencia_documento',
+      'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
       'xml_payload',
       'TEXT',
     );
@@ -3810,6 +3977,12 @@ class AppDb {
       DbTables.facturaElectronica,
       'estado_dgii',
       "TEXT NOT NULL DEFAULT 'local'",
+    );
+    await _addColumnIfMissing(
+      db,
+      DbTables.facturaElectronica,
+      'estado_interno',
+      'TEXT',
     );
     await _addColumnIfMissing(
       db,
@@ -3886,6 +4059,7 @@ class AppDb {
   }
 
   static Future<void> _ensureProductCodeIndex(DatabaseExecutor db) async {
+    if (!await _tableExists(db, DbTables.products)) return;
     try {
       await db.execute('DROP INDEX IF EXISTS idx_products_code');
     } catch (_) {

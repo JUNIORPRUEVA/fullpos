@@ -3,6 +3,7 @@ import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../utils/phone_validator.dart';
+import '../utils/rnc_validator.dart';
 import 'client_model.dart';
 
 /// Repositorio para manejar operaciones CRUD de clientes
@@ -12,22 +13,64 @@ class ClientsRepository {
   static void _validateRequired(ClientModel client) {
     final nombre = client.nombre.trim();
     final telefono = client.telefono?.trim();
+    final rnc = client.rnc?.trim();
 
     if (nombre.isEmpty) {
       throw ArgumentError('El nombre del cliente es obligatorio');
     }
-    if (telefono == null || telefono.isEmpty) {
-      throw ArgumentError('El teléfono del cliente es obligatorio');
+
+    final hasPhone = telefono != null && telefono.isNotEmpty;
+    final hasRnc = rnc != null && rnc.isNotEmpty;
+
+    if (!hasPhone && !hasRnc) {
+      throw ArgumentError('Debe indicar al menos un teléfono o un RNC válido');
     }
 
-    // Validación consistente: debe poder normalizarse a +1XXXXXXXXXX.
-    // (Acepta espacios/guiones/paréntesis, pero requiere 10 dígitos RD.)
-    final normalized = PhoneValidator.normalizeRDPhone(telefono);
-    if (normalized == null) {
-      throw ArgumentError(
-        'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)',
-      );
+    if (hasPhone) {
+      final normalized = PhoneValidator.normalizeRDPhone(telefono);
+      if (normalized == null) {
+        throw ArgumentError(
+          'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)',
+        );
+      }
     }
+
+    if (hasRnc && !RncValidator.isValidBasic(rnc)) {
+      throw ArgumentError('RNC inválido. Debe contener 9 dígitos');
+    }
+  }
+
+  static Future<ClientModel> _restoreExistingClient(
+    ClientModel existingClient,
+    ClientModel incomingClient, {
+    String? normalizedPhone,
+    String? normalizedRnc,
+  }) async {
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final updated = existingClient.copyWith(
+      nombre: incomingClient.nombre.trim(),
+      direccion: incomingClient.direccion,
+      rnc: normalizedRnc,
+      cedula: incomingClient.cedula,
+      isActive: true,
+      hasCredit: existingClient.hasCredit,
+      telefono: normalizedPhone,
+      updatedAtMs: now,
+    );
+
+    await db.update(
+      DbTables.clients,
+      updated.toMap(),
+      where: 'id = ?',
+      whereArgs: [existingClient.id],
+    );
+
+    CloudSyncService.instance.scheduleClientsSyncSoon(
+      reason: 'client_restored_on_create',
+    );
+
+    return updated;
   }
 
   /// Verifica si ya existe un cliente con el teléfono dado
@@ -54,64 +97,71 @@ class ClientsRepository {
     return count > 0;
   }
 
+  static Future<bool> existsByRnc(String rnc, {int? excludeId}) async {
+    final normalized = RncValidator.normalize(rnc);
+    if (normalized == null) return false;
+
+    final db = await AppDb.database;
+    final query = StringBuffer(
+      'SELECT COUNT(*) as count FROM ${DbTables.clients} '
+      'WHERE rnc = ? AND deleted_at_ms IS NULL',
+    );
+
+    final args = <dynamic>[normalized];
+    if (excludeId != null) {
+      query.write(' AND id != ?');
+      args.add(excludeId);
+    }
+
+    final result = await db.rawQuery(query.toString(), args);
+    final count = (result.first['count'] as int?) ?? 0;
+    return count > 0;
+  }
+
   /// Crea un nuevo cliente
   static Future<int> create(ClientModel client) async {
     _validateRequired(client);
 
-    final rawPhone = client.telefono!.trim();
-    final normalizedPhone = PhoneValidator.normalizeRDPhone(rawPhone);
-    if (normalizedPhone == null) {
+    final rawPhone = client.telefono?.trim() ?? '';
+    final normalizedPhone = rawPhone.isEmpty
+        ? null
+        : PhoneValidator.normalizeRDPhone(rawPhone);
+    final rawRnc = client.rnc?.trim() ?? '';
+    final normalizedRnc = rawRnc.isEmpty ? null : RncValidator.normalize(rawRnc);
+
+    final existingByPhone = normalizedPhone == null
+        ? null
+        : await getByPhone(normalizedPhone);
+    final existingByRnc = normalizedRnc == null
+        ? null
+        : await getByRnc(normalizedRnc);
+
+    if (existingByPhone != null &&
+        existingByRnc != null &&
+        existingByPhone.id != existingByRnc.id) {
       throw ArgumentError(
-        'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)',
+        'El teléfono y el RNC ya pertenecen a clientes distintos. Revise los datos antes de guardar.',
       );
     }
 
-    // Verificar que no exista cliente con el mismo teléfono
-    final existente = await existsByPhone(rawPhone);
-    if (existente) {
-      final existingClient = await getByPhone(rawPhone);
-      if (existingClient != null) {
-        // Caso típico: el cliente existe pero está inactivo (no sale en listas filtradas).
-        // Reactivar y actualizar datos en vez de bloquear.
-        if (!existingClient.isActive) {
-          final db = await AppDb.database;
-          final now = DateTime.now().millisecondsSinceEpoch;
-
-          final updated = existingClient.copyWith(
-            nombre: client.nombre.trim(),
-            direccion: client.direccion,
-            rnc: client.rnc,
-            cedula: client.cedula,
-            isActive: true,
-            // Mantener hasCredit existente para no perder configuración.
-            hasCredit: existingClient.hasCredit,
-            telefono: normalizedPhone,
-            updatedAtMs: now,
-          );
-
-          await db.update(
-            DbTables.clients,
-            updated.toMap(),
-            where: 'id = ?',
-            whereArgs: [existingClient.id],
-          );
-
-          CloudSyncService.instance.scheduleClientsSyncSoon(
-            reason: 'client_restored_on_create',
-          );
-
-          return existingClient.id!;
-        }
-
-        // Cliente activo existe - este error solo debería verse si se llama desde código
-        // (no desde el formulario, que ya verifica antes)
-        throw ArgumentError(
-          'Ya existe un cliente activo: ${existingClient.nombre}',
+    final existingClient = existingByPhone ?? existingByRnc;
+    if (existingClient != null) {
+      if (!existingClient.isActive) {
+        final restored = await _restoreExistingClient(
+          existingClient,
+          client,
+          normalizedPhone: normalizedPhone,
+          normalizedRnc: normalizedRnc,
         );
+        return restored.id!;
       }
 
-      // Esto no debería pasar (existsByPhone encontró algo pero getByPhone no)
-      throw ArgumentError('Ya existe un cliente con este teléfono');
+      final duplicateLabel = normalizedRnc != null
+          ? 'RNC ${RncValidator.format(normalizedRnc) ?? normalizedRnc}'
+          : 'teléfono ${PhoneValidator.formatRDPhone(normalizedPhone ?? '') ?? normalizedPhone ?? ''}';
+      throw ArgumentError(
+        'Ya existe un cliente activo con $duplicateLabel: ${existingClient.nombre}',
+      );
     }
 
     final db = await AppDb.database;
@@ -120,7 +170,8 @@ class ClientsRepository {
     final updatedAt = (client.updatedAtMs > 0) ? client.updatedAtMs : now;
 
     final clientData = client.copyWith(
-      telefono: normalizedPhone, // Guardar teléfono normalizado
+      telefono: normalizedPhone,
+      rnc: normalizedRnc,
       createdAtMs: createdAt,
       updatedAtMs: updatedAt,
     );
@@ -142,25 +193,38 @@ class ClientsRepository {
 
     _validateRequired(client);
 
-    // Verificar que no exista otro cliente con el mismo teléfono
-    final existe = await existsByPhone(client.telefono!, excludeId: client.id);
-    if (existe) {
-      throw ArgumentError(
-        'Ya existe otro cliente con el número de teléfono '
-        '${PhoneValidator.formatRDPhone(client.telefono!) ?? client.telefono}',
-      );
+    final normalizedPhone = (client.telefono?.trim().isNotEmpty ?? false)
+        ? PhoneValidator.normalizeRDPhone(client.telefono!.trim())
+        : null;
+    final normalizedRnc = (client.rnc?.trim().isNotEmpty ?? false)
+        ? RncValidator.normalize(client.rnc!.trim())
+        : null;
+
+    if (normalizedPhone != null) {
+      final existsPhone = await existsByPhone(normalizedPhone, excludeId: client.id);
+      if (existsPhone) {
+        throw ArgumentError(
+          'Ya existe otro cliente con el número de teléfono '
+          '${PhoneValidator.formatRDPhone(normalizedPhone) ?? normalizedPhone}',
+        );
+      }
     }
 
-    // Normalizar el teléfono
-    final telefonoNormalizado = PhoneValidator.normalizeRDPhone(
-      client.telefono!,
-    );
+    if (normalizedRnc != null) {
+      final existsRnc = await existsByRnc(normalizedRnc, excludeId: client.id);
+      if (existsRnc) {
+        throw ArgumentError(
+          'Ya existe otro cliente con el RNC ${RncValidator.format(normalizedRnc) ?? normalizedRnc}',
+        );
+      }
+    }
 
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final clientData = client.copyWith(
-      telefono: telefonoNormalizado, // Guardar teléfono normalizado
+      telefono: normalizedPhone,
+      rnc: normalizedRnc,
       updatedAtMs: now,
     );
 
@@ -362,6 +426,22 @@ class ClientsRepository {
     final maps = await db.query(
       DbTables.clients,
       where: 'telefono = ? AND deleted_at_ms IS NULL',
+      whereArgs: [normalized],
+      limit: 1,
+    );
+
+    if (maps.isEmpty) return null;
+    return ClientModel.fromMap(maps.first);
+  }
+
+  static Future<ClientModel?> getByRnc(String rnc) async {
+    final normalized = RncValidator.normalize(rnc);
+    if (normalized == null) return null;
+
+    final db = await AppDb.database;
+    final maps = await db.query(
+      DbTables.clients,
+      where: 'rnc = ? AND deleted_at_ms IS NULL',
       whereArgs: [normalized],
       limit: 1,
     );

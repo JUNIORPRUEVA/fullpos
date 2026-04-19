@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/services/empresa_service.dart';
 import '../../../core/theme/app_status_theme.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/window/window_service.dart';
 import '../../facturacion_electronica/data/electronic_certificate_repository.dart';
 import '../../facturacion_electronica/data/electronic_invoicing_config_repository.dart';
@@ -98,7 +99,9 @@ class _ElectronicInvoicingPageState
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final resolved = await _configRepository.loadResolvedConfig();
-    final invoices = await FacturaElectronicaRepository.getRecent(limit: 18);
+    final invoices = await FacturaElectronicaRepository.loadRecentResolved(
+      limit: 18,
+    );
     final empresaConfig = await EmpresaService.getEmpresaConfig();
     if (!mounted) return;
 
@@ -126,6 +129,8 @@ class _ElectronicInvoicingPageState
         ElectronicSequenceModel.defaults('31'),
       if (!sequences.any((sequence) => sequence.documentTypeCode == '32'))
         ElectronicSequenceModel.defaults('32'),
+      if (!sequences.any((sequence) => sequence.documentTypeCode == '34'))
+        ElectronicSequenceModel.defaults('34'),
     ];
 
     for (final sequence in seeded) {
@@ -620,6 +625,56 @@ class _ElectronicInvoicingPageState
     }
   }
 
+  Future<void> _saveCurrentRemoteConfig() async {
+    final company = _company;
+    if (company == null) return;
+
+    final resolved = await _configRepository.saveConfig(
+      company: company.copyWith(apiToken: _apiTokenController.text.trim()),
+      electronicInvoicingEnabled: ref
+          .read(businessSettingsProvider)
+          .electronicInvoicingEnabled,
+    );
+    if (!mounted) return;
+
+    _syncControllers(resolved.company);
+    _syncSequenceControllers(resolved.sequences);
+    setState(() {
+      _storeResolvedConfig(resolved);
+    });
+  }
+
+  Future<void> _persistConfiguredSequences() async {
+    final savedSequences = <ElectronicSequenceModel>[];
+    for (final documentTypeCode in const ['31', '32', '34']) {
+      final draft = _buildSequenceDraft(documentTypeCode);
+      if (draft == null) {
+        continue;
+      }
+      if (_sequenceDraftMatchesSaved(
+        documentTypeCode,
+        _sequenceFor(documentTypeCode),
+      )) {
+        continue;
+      }
+
+      final saved = await _sequenceRepository.createSequence(
+        documentTypeCode: draft.documentTypeCode,
+        prefix: draft.prefix,
+        startNumber: draft.startNumber,
+        currentNumber: draft.currentNumber,
+        endNumber: draft.endNumber!,
+        status: draft.status,
+      );
+      savedSequences.add(saved);
+    }
+
+    if (!mounted || savedSequences.isEmpty) return;
+    for (final saved in savedSequences) {
+      _replaceSequence(saved);
+    }
+  }
+
   Future<void> _autoConfigure() async {
     final company = _company;
     if (company == null || _autoConfiguring) return;
@@ -641,8 +696,19 @@ class _ElectronicInvoicingPageState
         endNumber: null,
         status: '',
       );
+      final sequence34 = ElectronicSequenceModel.defaults('34').copyWith(
+        prefix: 'E34',
+        startNumber: 1,
+        currentNumber: 0,
+        endNumber: null,
+        status: '',
+      );
       await _configRepository.cacheDraftConfig(savedCompany);
-      await _configRepository.cacheDraftSequences([sequence31, sequence32]);
+      await _configRepository.cacheDraftSequences([
+        sequence31,
+        sequence32,
+        sequence34,
+      ]);
       final resolved = await _configRepository.saveConfig(
         company: savedCompany.copyWith(
           apiToken: _apiTokenController.text.trim(),
@@ -661,7 +727,7 @@ class _ElectronicInvoicingPageState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Secuencias sugeridas creadas. Complete el límite autorizado para facturar.',
+            'Secuencias sugeridas E31, E32 y E34 creadas. Complete el límite autorizado para facturar.',
           ),
         ),
       );
@@ -696,7 +762,7 @@ class _ElectronicInvoicingPageState
     final scrollController = ScrollController();
     try {
       final latestSequences = await _sequenceRepository.listLocal();
-      final latestInvoices = await FacturaElectronicaRepository.getRecent(
+      final latestInvoices = await FacturaElectronicaRepository.loadRecentResolved(
         limit: 18,
       );
       if (!mounted) return;
@@ -760,9 +826,9 @@ class _ElectronicInvoicingPageState
                                 itemBuilder: (context, index) {
                                   final invoice = _recentInvoices[index];
                                   return _DocumentTableRow(
-                                    number: (invoice.ecf ?? invoice.localCode)
-                                        .trim(),
-                                    type: _documentTypeLabel(
+                                    number: invoice.numeroDocumento.trim(),
+                                    type: invoice.tipoDescriptivoResuelto,
+                                    secondaryType: _documentTypeLabel(
                                       invoice.tipoDocumento,
                                     ),
                                     client:
@@ -776,6 +842,21 @@ class _ElectronicInvoicingPageState
                                     statusColor: _statusColor(
                                       invoice.estadoDgii,
                                     ),
+                                    accentColor: _documentAccentColor(
+                                      context,
+                                      invoice,
+                                    ),
+                                    amount: CurrencyDisplay.format(
+                                      invoice.montoTotal,
+                                      symbol: 'RD\$',
+                                    ),
+                                    reference:
+                                        invoice.referenciaDocumento
+                                            ?.trim()
+                                            .isNotEmpty ==
+                                        true
+                                    ? invoice.referenciaDocumento!.trim()
+                                    : null,
                                     date: dateFormat.format(
                                       DateTime.fromMillisecondsSinceEpoch(
                                         invoice.createdAtMs,
@@ -924,15 +1005,15 @@ class _ElectronicInvoicingPageState
     switch (type.trim().toLowerCase()) {
       case '31':
       case 'credito_fiscal':
-        return 'Crédito Fiscal';
+        return 'E31';
       case '32':
       case 'venta':
       case 'consumo':
-        return 'Consumo';
+        return 'E32';
       case '33':
         return 'Débito';
       case '34':
-        return 'Nota de crédito';
+        return 'E34';
       default:
         return type.trim().isEmpty ? 'Documento' : type.trim();
     }
@@ -944,9 +1025,22 @@ class _ElectronicInvoicingPageState
         return '31 - Crédito Fiscal';
       case '32':
         return '32 - Consumo';
+      case '34':
+        return '34 - Nota de crédito';
       default:
         return '$documentTypeCode - Secuencia';
     }
+  }
+
+  Color _documentAccentColor(
+    BuildContext context,
+    FacturaElectronicaModel invoice,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    if (invoice.isCreditNote) {
+      return scheme.tertiary;
+    }
+    return scheme.primary;
   }
 
   Color _statusColor(String status) {
@@ -1101,13 +1195,7 @@ class _ElectronicInvoicingPageState
       children: [
         _buildHeroSection(context, businessSettings: businessSettings),
         const SizedBox(height: 10),
-        _buildCertificateSection(context),
-        const SizedBox(height: 10),
         _buildSequencesSection(context),
-        const SizedBox(height: 10),
-        _buildConfigSection(context),
-        const SizedBox(height: 10),
-        _buildCompanySummaryCard(context),
       ],
     );
   }
@@ -1119,6 +1207,7 @@ class _ElectronicInvoicingPageState
     final company = _company!;
     final status = _systemStatus(context);
     final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1130,13 +1219,6 @@ class _ElectronicInvoicingPageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Facturación Electrónica',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 8),
           _StatusBanner(
             label: status.label,
             color: status.color,
@@ -1167,60 +1249,62 @@ class _ElectronicInvoicingPageState
             ),
           ],
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest.withOpacity(0.22),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth < 620) {
-                  return Column(
-                    children: [
-                      _PrimarySwitchTile(
-                        label: 'Facturación electrónica',
-                        value: businessSettings.electronicInvoicingEnabled,
-                        onChanged: _savingVisibility
-                            ? null
-                            : _updateSalesVisibility,
-                      ),
-                      const SizedBox(height: 10),
-                      _PrimarySwitchTile(
-                        label: 'Enviar automáticamente a DGII',
-                        value: company.automaticEmission == 1,
-                        onChanged: _savingAutomaticEmission
-                            ? null
-                            : _updateAutomaticEmission,
-                      ),
-                    ],
-                  );
-                }
-                return Row(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 860;
+              final switchesColumn = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Controles',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _PrimarySwitchTile(
+                    label: 'Facturación electrónica',
+                    value: businessSettings.electronicInvoicingEnabled,
+                    dense: true,
+                    onChanged: _savingVisibility
+                        ? null
+                        : _updateSalesVisibility,
+                  ),
+                  const SizedBox(height: 8),
+                  _PrimarySwitchTile(
+                    label: 'Enviar a DGII',
+                    value: company.automaticEmission == 1,
+                    dense: true,
+                    onChanged: _savingAutomaticEmission
+                        ? null
+                        : _updateAutomaticEmission,
+                  ),
+                ],
+              );
+
+              final companyPanel = _buildInlineCompanySummary(context);
+
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: _PrimarySwitchTile(
-                        label: 'Facturación electrónica',
-                        value: businessSettings.electronicInvoicingEnabled,
-                        onChanged: _savingVisibility
-                            ? null
-                            : _updateSalesVisibility,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _PrimarySwitchTile(
-                        label: 'Enviar automáticamente a DGII',
-                        value: company.automaticEmission == 1,
-                        onChanged: _savingAutomaticEmission
-                            ? null
-                            : _updateAutomaticEmission,
-                      ),
-                    ),
+                    switchesColumn,
+                    const SizedBox(height: 12),
+                    companyPanel,
                   ],
                 );
-              },
-            ),
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 270, child: switchesColumn),
+                  const SizedBox(width: 14),
+                  Expanded(child: companyPanel),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
           LayoutBuilder(
@@ -1228,7 +1312,6 @@ class _ElectronicInvoicingPageState
               final stacked = constraints.maxWidth < 620;
               if (stacked) {
                 return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     FilledButton.icon(
                       onPressed: _autoConfiguring ? null : _autoConfigure,
@@ -1243,7 +1326,7 @@ class _ElectronicInvoicingPageState
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Se crean las sugerencias E31 y E32 con inicio en 1. Debe completar el límite autorizado para producción.',
+                        'Se crean las sugerencias E31, E32 y E34 con inicio en 1. Debe completar el límite autorizado para producción.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
@@ -1276,7 +1359,7 @@ class _ElectronicInvoicingPageState
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Se crean las sugerencias E31 y E32 con inicio en 1. Debe completar el límite autorizado para producción.',
+                          'Se crean las sugerencias E31, E32 y E34 con inicio en 1. Debe completar el límite autorizado para producción.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -1292,131 +1375,111 @@ class _ElectronicInvoicingPageState
               );
             },
           ),
+          const SizedBox(height: 12),
+          _buildCertificateSection(context),
         ],
       ),
     );
   }
 
-  Widget _buildCompanySummaryCard(BuildContext context) {
+  Widget _buildInlineCompanySummary(BuildContext context) {
     final missing = _companySummaryMissingFields();
     final hasMissing = missing.isNotEmpty;
     final hint = _companySummaryHint();
+    final scheme = Theme.of(context).colorScheme;
 
-    return _SectionCard(
-      title: 'Datos de la empresa',
-      trailing: hasMissing
-          ? TextButton(
-              onPressed: _openCompanySettings,
-              child: const Text('Completar'),
-            )
-          : null,
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.28)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (hint != null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.surfaceContainerHighest.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(hint, style: Theme.of(context).textTheme.bodySmall),
-            ),
-            const SizedBox(height: 12),
-          ],
-          _ProfileSummaryRow(label: 'Empresa', value: _resolvedCompanyName()),
-          const SizedBox(height: 10),
-          _ProfileSummaryRow(label: 'RNC', value: _resolvedCompanyRnc()),
-          const SizedBox(height: 10),
-          _ProfileSummaryRow(
-            label: 'Dirección',
-            value: _resolvedCompanyAddress(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConfigSection(BuildContext context) {
-    final company = _company!;
-
-    return _SectionCard(
-      title: 'Configuración DGII',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final stacked = constraints.maxWidth < 540;
-          if (stacked) {
-            return Column(
-              children: [
-                DropdownButtonFormField<String>(
-                  key: const Key('electronic-invoicing-environment-field'),
-                  value: company.environment,
-                  decoration: const InputDecoration(labelText: 'Ambiente'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'produccion',
-                      child: Text('Producción'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'pruebas',
-                      child: Text('Certificación'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() {
-                      _company = company.copyWith(environment: value);
-                    });
-                  },
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: _apiTokenController,
-                  decoration: const InputDecoration(labelText: 'Token DGII'),
-                ),
-              ],
-            );
-          }
-          return Row(
+          Row(
             children: [
               Expanded(
-                flex: 3,
-                child: DropdownButtonFormField<String>(
-                  key: const Key('electronic-invoicing-environment-field'),
-                  value: company.environment,
-                  decoration: const InputDecoration(labelText: 'Ambiente'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'produccion',
-                      child: Text('Producción'),
+                child: Text(
+                  'Empresa cargada',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (hasMissing)
+                TextButton(
+                  onPressed: _openCompanySettings,
+                  child: const Text('Completar'),
+                ),
+            ],
+          ),
+          if (hint != null) ...[
+            Text(
+              hint,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 520;
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ProfileSummaryRow(
+                      label: 'Empresa',
+                      value: _resolvedCompanyName(),
                     ),
-                    DropdownMenuItem(
-                      value: 'pruebas',
-                      child: Text('Certificación'),
+                    const SizedBox(height: 8),
+                    _ProfileSummaryRow(
+                      label: 'RNC',
+                      value: _resolvedCompanyRnc(),
+                    ),
+                    const SizedBox(height: 8),
+                    _ProfileSummaryRow(
+                      label: 'Dirección',
+                      value: _resolvedCompanyAddress(),
                     ),
                   ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() {
-                      _company = company.copyWith(environment: value);
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 4,
-                child: TextFormField(
-                  controller: _apiTokenController,
-                  decoration: const InputDecoration(labelText: 'Token DGII'),
-                ),
-              ),
-            ],
-          );
-        },
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _ProfileSummaryRow(
+                      label: 'Empresa',
+                      value: _resolvedCompanyName(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: _ProfileSummaryRow(
+                      label: 'RNC',
+                      value: _resolvedCompanyRnc(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 3,
+                    child: _ProfileSummaryRow(
+                      label: 'Dirección',
+                      value: _resolvedCompanyAddress(),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1430,38 +1493,75 @@ class _ElectronicInvoicingPageState
     final isUploadingNewCertificate = _selectedCertificatePath != null;
 
     return _SectionCard(
-      title: 'Certificado digital',
-      trailing: _StatusChip(
-        label: company.certificateStatus.trim() == 'active'
-            ? 'Vigente'
-            : 'No cargado',
-        color: company.certificateStatus.trim() == 'active'
-            ? scheme.primary
-            : scheme.outline,
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (company.certificateName.trim().isNotEmpty)
-            _InlineMetaPill(
-              label: 'Alias',
-              value: company.certificateName.trim(),
+          Text(
+            'Certificado digital y DGII',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
-          if (validTo != null) ...[
-            const SizedBox(height: 10),
-            _InlineMetaPill(
-              label: 'Vence',
-              value: DateFormat('dd/MM/yyyy').format(validTo),
-            ),
-          ],
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _uploadingCertificate ? null : _pickCertificateFile,
-              icon: const Icon(Icons.upload_file_outlined),
-              label: const Text('Subir / Reemplazar certificado'),
-            ),
+          ),
+          const SizedBox(height: 6),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 860;
+              final certificateInfo = Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _StatusChip(
+                    label: company.certificateStatus.trim() == 'active'
+                        ? 'Vigente'
+                        : 'No cargado',
+                    color: company.certificateStatus.trim() == 'active'
+                        ? scheme.primary
+                        : scheme.outline,
+                  ),
+                  if (company.certificateName.trim().isNotEmpty)
+                    _InlineMetaPill(
+                      label: 'Alias',
+                      value: company.certificateName.trim(),
+                    ),
+                  if (validTo != null)
+                    _InlineMetaPill(
+                      label: 'Vence',
+                      value: DateFormat('dd/MM/yyyy').format(validTo),
+                    ),
+                ],
+              );
+
+              final uploadButton = FilledButton.icon(
+                onPressed: _uploadingCertificate ? null : _pickCertificateFile,
+                icon: const Icon(Icons.upload_file_outlined),
+                label: Text(
+                  company.certificateStatus.trim() == 'active'
+                      ? 'Cambiar'
+                      : 'Subir',
+                ),
+              );
+
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    uploadButton,
+                    const SizedBox(height: 10),
+                    certificateInfo,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  uploadButton,
+                  const SizedBox(width: 12),
+                  Expanded(child: certificateInfo),
+                ],
+              );
+            },
           ),
           if (isUploadingNewCertificate) ...[
             const SizedBox(height: 10),
@@ -1490,21 +1590,104 @@ class _ElectronicInvoicingPageState
               ),
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _uploadingCertificate ? null : _uploadCertificate,
-                icon: _uploadingCertificate
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_circle_outline),
-                label: const Text('Confirmar certificado'),
-              ),
+            FilledButton.icon(
+              onPressed: _uploadingCertificate ? null : _uploadCertificate,
+              icon: _uploadingCertificate
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check_circle_outline),
+              label: const Text('Confirmar certificado'),
             ),
           ],
+          const SizedBox(height: 12),
+          Text(
+            'Configuración DGII',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 720;
+              if (stacked) {
+                return Column(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      key: const Key('electronic-invoicing-environment-field'),
+                      value: company.environment,
+                      decoration: const InputDecoration(labelText: 'Ambiente'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'produccion',
+                          child: Text('Producción'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'pruebas',
+                          child: Text('Certificación'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() {
+                          _company = company.copyWith(environment: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _apiTokenController,
+                      decoration: const InputDecoration(
+                        labelText: 'Token DGII',
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: DropdownButtonFormField<String>(
+                      key: const Key('electronic-invoicing-environment-field'),
+                      value: company.environment,
+                      decoration: const InputDecoration(labelText: 'Ambiente'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'produccion',
+                          child: Text('Producción'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'pruebas',
+                          child: Text('Certificación'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setState(() {
+                          _company = company.copyWith(environment: value);
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: _apiTokenController,
+                      decoration: const InputDecoration(
+                        labelText: 'Token DGII',
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
           if (_certificateNotice != null) ...[
             const SizedBox(height: 10),
             Align(
@@ -1516,6 +1699,7 @@ class _ElectronicInvoicingPageState
                       ? scheme.error
                       : scheme.primary,
                   fontWeight: FontWeight.w700,
+                  fontSize: 12,
                 ),
               ),
             ),
@@ -1528,9 +1712,10 @@ class _ElectronicInvoicingPageState
   Widget _buildSequencesSection(BuildContext context) {
     final sequence31 = _sequenceFor('31');
     final sequence32 = _sequenceFor('32');
+    final sequence34 = _sequenceFor('34');
 
     return _SectionCard(
-      title: 'Secuencias de Comprobantes',
+      title: 'Comprobantes fiscales',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1574,16 +1759,46 @@ class _ElectronicInvoicingPageState
                 limitLabel: sequence32.endNumber?.toString() ?? 'Pendiente',
                 onDraftChanged: _refreshSequenceDraftUi,
               );
+              final third = _SequenceSetupCard(
+                title: '34 - Nota de crédito',
+                prefixController: _sequencePrefixControllers['34']!,
+                startController: _sequenceStartControllers['34']!,
+                numberController: _sequenceNumberControllers['34']!,
+                endController: _sequenceEndControllers['34']!,
+                sequence: sequence34,
+                statusLabel: _sequenceDraftStatusLabel('34', sequence34),
+                busy: _creatingSequenceCode == '34',
+                color: _sequenceStatusColor(context, sequence34),
+                onPressed: () => _submitSequence('34'),
+                helperMessage: _sequenceHelperMessage(sequence34),
+                stateHint: _sequenceStateHint('34', sequence34),
+                limitLabel: sequence34.endNumber?.toString() ?? 'Pendiente',
+                onDraftChanged: _refreshSequenceDraftUi,
+              );
+
               if (stacked) {
                 return Column(
-                  children: [first, const SizedBox(height: 10), second],
+                  children: [
+                    first,
+                    const SizedBox(height: 10),
+                    second,
+                    const SizedBox(height: 10),
+                    third,
+                  ],
                 );
               }
-              return Row(
+
+              return Column(
                 children: [
-                  Expanded(child: first),
-                  const SizedBox(width: 10),
-                  Expanded(child: second),
+                  Row(
+                    children: [
+                      Expanded(child: first),
+                      const SizedBox(width: 10),
+                      Expanded(child: second),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  third,
                 ],
               );
             },
@@ -1591,48 +1806,6 @@ class _ElectronicInvoicingPageState
         ],
       ),
     );
-  }
-
-  Future<void> _saveCurrentRemoteConfig() async {
-    final company = _company;
-    if (company == null) return;
-
-    final resolved = await _configRepository.saveConfig(
-      company: company.copyWith(apiToken: _apiTokenController.text.trim()),
-      electronicInvoicingEnabled: ref
-          .read(businessSettingsProvider)
-          .electronicInvoicingEnabled,
-    );
-    if (!mounted) return;
-    _syncControllers(resolved.company);
-    _syncSequenceControllers(resolved.sequences);
-    setState(() {
-      _storeResolvedConfig(resolved);
-    });
-  }
-
-  Future<void> _persistConfiguredSequences() async {
-    final savedSequences = <ElectronicSequenceModel>[];
-    for (final documentTypeCode in const ['31', '32']) {
-      final draft = _buildSequenceDraft(documentTypeCode);
-      if (draft == null) {
-        continue;
-      }
-      final saved = await _sequenceRepository.createSequence(
-        documentTypeCode: draft.documentTypeCode,
-        prefix: draft.prefix,
-        startNumber: draft.startNumber,
-        currentNumber: draft.currentNumber,
-        endNumber: draft.endNumber!,
-        status: draft.status,
-      );
-      savedSequences.add(saved);
-    }
-
-    if (!mounted || savedSequences.isEmpty) return;
-    for (final saved in savedSequences) {
-      _replaceSequence(saved);
-    }
   }
 
   ElectronicSequenceModel? _buildSequenceDraft(String documentTypeCode) {
@@ -1707,10 +1880,9 @@ class _SystemStatusData {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({this.title, this.trailing, required this.child});
+  const _SectionCard({this.title, required this.child});
 
   final String? title;
-  final Widget? trailing;
   final Widget child;
 
   @override
@@ -1726,23 +1898,12 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (title != null || trailing != null) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (title != null)
-                  Expanded(
-                    child: Text(
-                      title!,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  )
-                else
-                  const Spacer(),
-                if (trailing != null) trailing!,
-              ],
+          if (title != null) ...[
+            Text(
+              title!,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
           ],
@@ -1758,17 +1919,22 @@ class _PrimarySwitchTile extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onChanged,
+    this.dense = false,
   });
 
   final String label;
   final bool value;
   final ValueChanged<bool>? onChanged;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? 12 : 16,
+        vertical: dense ? 8 : 16,
+      ),
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -1779,10 +1945,16 @@ class _PrimarySwitchTile extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: dense ? 12.5 : 15,
+              ),
             ),
           ),
-          Switch.adaptive(value: value, onChanged: onChanged),
+          Transform.scale(
+            scale: dense ? 0.72 : 1,
+            child: Switch.adaptive(value: value, onChanged: onChanged),
+          ),
         ],
       ),
     );
@@ -1935,7 +2107,7 @@ class _SequenceSetupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.35)),
@@ -1952,16 +2124,19 @@ class _SequenceSetupCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         title,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                     _StatusChip(label: statusLabel, color: color),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
                     _InlineMetaPill(label: 'Tipo', value: title),
                     _InlineMetaPill(label: 'Prefijo', value: sequence.prefix),
@@ -1982,9 +2157,10 @@ class _SequenceSetupCard extends StatelessWidget {
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
+                    fontSize: 11.5,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
@@ -2005,7 +2181,7 @@ class _SequenceSetupCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
@@ -2030,9 +2206,13 @@ class _SequenceSetupCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   helperMessage,
-                  style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
+                  ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 FilledButton(
                   onPressed: busy ? null : onPressed,
                   child: busy
@@ -2054,16 +2234,19 @@ class _SequenceSetupCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   _StatusChip(label: statusLabel, color: color),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   _InlineMetaPill(label: 'Tipo', value: title),
                   _InlineMetaPill(label: 'Prefijo', value: sequence.prefix),
@@ -2084,9 +2267,10 @@ class _SequenceSetupCard extends StatelessWidget {
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
+                  fontSize: 11.5,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
@@ -2134,6 +2318,7 @@ class _SequenceSetupCard extends StatelessWidget {
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
                       ),
                     ),
                   ),
@@ -2174,8 +2359,9 @@ class _DocumentTableHeader extends StatelessWidget {
       child: const Row(
         children: [
           _HeaderCell(flex: 3, text: 'Número'),
-          _HeaderCell(flex: 2, text: 'Tipo'),
+          _HeaderCell(flex: 3, text: 'Tipo'),
           _HeaderCell(flex: 3, text: 'Cliente'),
+          _HeaderCell(flex: 2, text: 'Monto', alignEnd: true),
           _HeaderCell(flex: 2, text: 'Estado'),
           _HeaderCell(flex: 2, text: 'Fecha', alignEnd: true),
         ],
@@ -2188,18 +2374,26 @@ class _DocumentTableRow extends StatelessWidget {
   const _DocumentTableRow({
     required this.number,
     required this.type,
+    required this.secondaryType,
     required this.client,
+    required this.amount,
     required this.status,
     required this.statusColor,
+    required this.accentColor,
     required this.date,
+    this.reference,
   });
 
   final String number;
   final String type;
+  final String secondaryType;
   final String client;
+  final String amount;
   final String status;
   final Color statusColor;
+  final Color accentColor;
   final String date;
+  final String? reference;
 
   @override
   Widget build(BuildContext context) {
@@ -2211,10 +2405,67 @@ class _DocumentTableRow extends StatelessWidget {
         border: Border.all(color: scheme.outlineVariant.withOpacity(0.25)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _BodyCell(flex: 3, text: number, weight: FontWeight.w800),
-          _BodyCell(flex: 2, text: type),
+          Expanded(
+            flex: 3,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(top: 4, right: 8),
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    number,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(type, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  secondaryType,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (reference?.trim().isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Ref. ${reference!.trim()}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: accentColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           _BodyCell(flex: 3, text: client),
+          _BodyCell(
+            flex: 2,
+            text: amount,
+            alignEnd: true,
+            color: scheme.onSurface,
+          ),
           Expanded(
             flex: 2,
             child: Align(
@@ -2267,14 +2518,12 @@ class _BodyCell extends StatelessWidget {
   const _BodyCell({
     required this.flex,
     required this.text,
-    this.weight = FontWeight.w600,
     this.alignEnd = false,
     this.color,
   });
 
   final int flex;
   final String text;
-  final FontWeight weight;
   final bool alignEnd;
   final Color? color;
 
@@ -2287,7 +2536,7 @@ class _BodyCell extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         textAlign: alignEnd ? TextAlign.right : TextAlign.left,
-        style: TextStyle(fontWeight: weight, color: color),
+        style: TextStyle(fontWeight: FontWeight.w600, color: color),
       ),
     );
   }

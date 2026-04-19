@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../constants/app_sizes.dart';
 import '../errors/app_exception.dart';
+import '../errors/error_handler.dart';
 import '../theme/app_status_theme.dart';
 
 class AppErrorDialog extends StatefulWidget {
@@ -43,7 +44,15 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
     if (text.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+
+    final feedbackContext =
+        ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+        ErrorHandler.navigatorKey.currentContext;
+    if (feedbackContext == null) {
+      return;
+    }
+
+    ScaffoldMessenger.maybeOf(feedbackContext)?.showSnackBar(
       const SnackBar(
         content: Text('Detalles copiados al portapapeles'),
         duration: Duration(milliseconds: 900),
@@ -60,7 +69,8 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
     final status = theme.extension<AppStatusTheme>();
     final errorColor = status?.error ?? scheme.error;
     final linkColor = scheme.primary;
-    final hasDevDetails = ex.messageDev.trim().isNotEmpty || ex.stackTrace != null;
+    final hasDevDetails =
+        ex.messageDev.trim().isNotEmpty || ex.stackTrace != null;
 
     return AlertDialog(
       shape: RoundedRectangleBorder(

@@ -32,6 +32,26 @@ enum _SalesRowAction { view, refund }
 
 enum _InvoiceStatusFilter { all, active, withRefund, partialRefund, refunded }
 
+String _normalizeElectronicDocumentType(SaleModel sale) {
+  final explicitType = (sale.electronicDocumentType ?? '').trim().toUpperCase();
+  if (explicitType.isNotEmpty) return explicitType;
+
+  final code = (sale.electronicInvoiceCode ?? '').trim().toUpperCase();
+  if (code.startsWith('E31')) return '31';
+  if (code.startsWith('E32')) return '32';
+  return '';
+}
+
+bool _supportsElectronicCreditNote(SaleModel sale) {
+  final hasElectronicReference =
+      sale.electronicInvoiceEnabled == 1 ||
+      (sale.electronicInvoiceCode ?? '').trim().isNotEmpty;
+  if (!hasElectronicReference) return false;
+
+  final documentType = _normalizeElectronicDocumentType(sale);
+  return documentType == '31' || documentType == '32';
+}
+
 /// Pantalla de facturas con devolucion integrada por factura.
 class FacturaPage extends StatefulWidget {
   const FacturaPage({super.key});
@@ -1082,292 +1102,375 @@ class _FacturaPageState extends State<FacturaPage> {
                 );
                 final customer = sale.customerNameSnapshot ?? 'Cliente General';
                 final compactInvoiceCode = _compactInvoiceCode(sale.localCode);
+                final isFiscal = _isFiscalSale(sale);
+                final fiscalStyle = _fiscalStyle(sale);
                 final statusStyle = _saleStatusStyle(sale);
                 final canRefund = sale.status.toUpperCase() != 'REFUNDED';
 
                 return Material(
-                  color: isSelected
-                      ? AppColors.lightBlueHover.withOpacity(0.30)
-                      : Colors.transparent,
-                  child: InkWell(
-                    onTap: () => _selectSale(sale, showDetails: !isWide),
-                    hoverColor: AppColors.lightBlueHover.withOpacity(0.22),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      child: LayoutBuilder(
-                        builder: (context, rowConstraints) {
-                          final compact = rowConstraints.maxWidth < 860;
-                          if (compact) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            compactInvoiceCode,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w800,
-                                                  fontFamily: 'Inter',
+                  color: Colors.transparent,
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.lightBlueHover.withOpacity(0.30)
+                          : isFiscal
+                          ? fiscalStyle.rowBackground
+                          : Colors.transparent,
+                      border: isFiscal
+                          ? Border(
+                              left: BorderSide(
+                                color: fiscalStyle.accent,
+                                width: 4,
+                              ),
+                            )
+                          : null,
+                    ),
+                    child: InkWell(
+                      onTap: () => _selectSale(sale, showDetails: !isWide),
+                      hoverColor: AppColors.lightBlueHover.withOpacity(0.22),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 14,
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, rowConstraints) {
+                            final compact = rowConstraints.maxWidth < 860;
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    compactInvoiceCode,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          fontFamily: 'Inter',
+                                                        ),
+                                                  ),
                                                 ),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            customer,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: scheme.onSurface,
-                                                  fontWeight: FontWeight.w600,
-                                                  fontFamily: 'Inter',
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    _buildStatusChip(statusStyle),
-                                    PopupMenuButton<_SalesRowAction>(
-                                      tooltip: 'Acciones',
-                                      icon: Icon(
-                                        Icons.more_horiz,
-                                        size: 18,
-                                        color: scheme.onSurface.withOpacity(
-                                          0.7,
+                                                if (isFiscal) ...[
+                                                  const SizedBox(width: 8),
+                                                  _buildFiscalChip(
+                                                    sale,
+                                                    compact: true,
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              customer,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: scheme.onSurface,
+                                                    fontWeight: FontWeight.w600,
+                                                    fontFamily: 'Inter',
+                                                  ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      onSelected: (action) {
-                                        switch (action) {
-                                          case _SalesRowAction.view:
-                                            _showSaleDetails(sale);
-                                            break;
-                                          case _SalesRowAction.refund:
-                                            _showRefundDialog(sale);
-                                            break;
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        const PopupMenuItem(
-                                          value: _SalesRowAction.view,
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.visibility_outlined,
-                                                size: 18,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('Ver factura'),
-                                            ],
+                                      const SizedBox(width: 10),
+                                      _buildStatusChip(statusStyle),
+                                      PopupMenuButton<_SalesRowAction>(
+                                        tooltip: 'Acciones',
+                                        icon: Icon(
+                                          Icons.more_horiz,
+                                          size: 18,
+                                          color: scheme.onSurface.withOpacity(
+                                            0.7,
                                           ),
                                         ),
-                                        if (canRefund)
+                                        onSelected: (action) {
+                                          switch (action) {
+                                            case _SalesRowAction.view:
+                                              _showSaleDetails(sale);
+                                              break;
+                                            case _SalesRowAction.refund:
+                                              _showRefundDialog(sale);
+                                              break;
+                                          }
+                                        },
+                                        itemBuilder: (context) => [
                                           const PopupMenuItem(
-                                            value: _SalesRowAction.refund,
+                                            value: _SalesRowAction.view,
                                             child: Row(
                                               children: [
                                                 Icon(
-                                                  Icons
-                                                      .assignment_return_outlined,
+                                                  Icons.visibility_outlined,
                                                   size: 18,
                                                 ),
                                                 SizedBox(width: 8),
-                                                Text('Devolver'),
+                                                Text('Ver factura'),
                                               ],
                                             ),
                                           ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      dateFormat.format(date),
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: AppColors.textSecondary,
-                                            fontFamily: 'Inter',
-                                          ),
-                                    ),
-                                    Text(
-                                      _cashierLabelForSessionId(sale.sessionId),
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: AppColors.textSecondary,
-                                            fontFamily: 'Inter',
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: _buildMoneyText(
-                                    amount: sale.total,
-                                    bigStyle: theme.textTheme.bodyLarge
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          fontFamily: 'Inter',
-                                        ),
-                                    smallStyle: theme.textTheme.bodySmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          fontFamily: 'Inter',
-                                          color: AppColors.textSecondary,
-                                        ),
+                                          if (canRefund)
+                                            const PopupMenuItem(
+                                              value: _SalesRowAction.refund,
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons
+                                                        .assignment_return_outlined,
+                                                    size: 18,
+                                                  ),
+                                                  SizedBox(width: 8),
+                                                  Text('Devolver'),
+                                                ],
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          return Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      compactInvoiceCode,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 6,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        dateFormat.format(date),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: AppColors.textSecondary,
+                                              fontFamily: 'Inter',
+                                            ),
+                                      ),
+                                      Text(
+                                        _cashierLabelForSessionId(
+                                          sale.sessionId,
+                                        ),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: AppColors.textSecondary,
+                                              fontFamily: 'Inter',
+                                            ),
+                                      ),
+                                      if (isFiscal)
+                                        _buildFiscalMetaText(
+                                          sale,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: fiscalStyle.accent,
+                                                fontWeight: FontWeight.w700,
+                                                fontFamily: 'Inter',
+                                              ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: _buildMoneyText(
+                                      amount: sale.total,
+                                      bigStyle: theme.textTheme.bodyLarge
                                           ?.copyWith(
                                             fontWeight: FontWeight.w800,
                                             fontFamily: 'Inter',
                                           ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      _cashierLabelForSessionId(sale.sessionId),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
+                                      smallStyle: theme.textTheme.bodySmall
                                           ?.copyWith(
-                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w600,
                                             fontFamily: 'Inter',
+                                            color: AppColors.textSecondary,
                                           ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                flex: 5,
-                                child: Text(
-                                  customer,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: 'Inter',
+                                  ),
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              compactInvoiceCode,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodyMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontFamily: 'Inter',
+                                                  ),
+                                            ),
+                                          ),
+                                          if (isFiscal) ...[
+                                            const SizedBox(width: 8),
+                                            _buildFiscalChip(
+                                              sale,
+                                              compact: true,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        _cashierLabelForSessionId(
+                                          sale.sessionId,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: AppColors.textSecondary,
+                                              fontFamily: 'Inter',
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                flex: 3,
-                                child: Text(
-                                  dateFormat.format(date),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: AppColors.textSecondary,
-                                    fontFamily: 'Inter',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              _buildStatusChip(statusStyle),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                flex: 2,
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: _buildMoneyText(
-                                    amount: sale.total,
-                                    bigStyle: theme.textTheme.bodyLarge
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          fontFamily: 'Inter',
-                                        ),
-                                    smallStyle: theme.textTheme.bodySmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          fontFamily: 'Inter',
-                                          color: AppColors.textSecondary,
-                                        ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              PopupMenuButton<_SalesRowAction>(
-                                tooltip: 'Acciones',
-                                icon: Icon(
-                                  Icons.more_horiz,
-                                  size: 18,
-                                  color: scheme.onSurface.withOpacity(0.7),
-                                ),
-                                onSelected: (action) {
-                                  switch (action) {
-                                    case _SalesRowAction.view:
-                                      _showSaleDetails(sale);
-                                      break;
-                                    case _SalesRowAction.refund:
-                                      _showRefundDialog(sale);
-                                      break;
-                                  }
-                                },
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: _SalesRowAction.view,
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.visibility_outlined,
-                                          size: 18,
-                                        ),
-                                        SizedBox(width: 8),
-                                        Text('Ver factura'),
-                                      ],
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  flex: 5,
+                                  child: Text(
+                                    customer,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'Inter',
                                     ),
                                   ),
-                                  if (canRefund)
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  flex: 3,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        dateFormat.format(date),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: AppColors.textSecondary,
+                                              fontFamily: 'Inter',
+                                            ),
+                                      ),
+                                      if (isFiscal) ...[
+                                        const SizedBox(height: 4),
+                                        _buildFiscalMetaText(
+                                          sale,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: fiscalStyle.accent,
+                                                fontWeight: FontWeight.w800,
+                                                fontFamily: 'Inter',
+                                              ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                _buildStatusChip(statusStyle),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  flex: 2,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: _buildMoneyText(
+                                      amount: sale.total,
+                                      bigStyle: theme.textTheme.bodyLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            fontFamily: 'Inter',
+                                          ),
+                                      smallStyle: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            fontFamily: 'Inter',
+                                            color: AppColors.textSecondary,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                PopupMenuButton<_SalesRowAction>(
+                                  tooltip: 'Acciones',
+                                  icon: Icon(
+                                    Icons.more_horiz,
+                                    size: 18,
+                                    color: scheme.onSurface.withOpacity(0.7),
+                                  ),
+                                  onSelected: (action) {
+                                    switch (action) {
+                                      case _SalesRowAction.view:
+                                        _showSaleDetails(sale);
+                                        break;
+                                      case _SalesRowAction.refund:
+                                        _showRefundDialog(sale);
+                                        break;
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
                                     const PopupMenuItem(
-                                      value: _SalesRowAction.refund,
+                                      value: _SalesRowAction.view,
                                       child: Row(
                                         children: [
                                           Icon(
-                                            Icons.assignment_return_outlined,
+                                            Icons.visibility_outlined,
                                             size: 18,
                                           ),
                                           SizedBox(width: 8),
-                                          Text('Devolver'),
+                                          Text('Ver factura'),
                                         ],
                                       ),
                                     ),
-                                ],
-                              ),
-                            ],
-                          );
-                        },
+                                    if (canRefund)
+                                      const PopupMenuItem(
+                                        value: _SalesRowAction.refund,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.assignment_return_outlined,
+                                              size: 18,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Devolver'),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -1474,6 +1577,40 @@ class _FacturaPageState extends State<FacturaPage> {
     }
   }
 
+  bool _isFiscalSale(SaleModel sale) {
+    if (sale.electronicInvoiceEnabled == 1) return true;
+    if ((sale.electronicInvoiceCode ?? '').trim().isNotEmpty) return true;
+    if ((sale.electronicDocumentType ?? '').trim().isNotEmpty) return true;
+    return false;
+  }
+
+  ({
+    String label,
+    String meta,
+    Color accent,
+    Color background,
+    Color rowBackground,
+  })
+  _fiscalStyle(SaleModel sale) {
+    final rawType = (sale.electronicDocumentType ?? '').trim().toUpperCase();
+    final rawCode = (sale.electronicInvoiceCode ?? '').trim().toUpperCase();
+    final type = rawType.isNotEmpty
+        ? rawType
+        : rawCode.startsWith('E31')
+        ? 'E31'
+        : rawCode.startsWith('E32')
+        ? 'E32'
+        : 'eCF';
+    final meta = rawCode.isNotEmpty ? rawCode : type;
+    return (
+      label: 'FISCAL $type',
+      meta: meta,
+      accent: const Color(0xFFB45309),
+      background: const Color(0xFFFFF3D6),
+      rowBackground: const Color(0xFFFFFBF2),
+    );
+  }
+
   Widget _buildStatusChip(
     ({String label, Color background, Color foreground}) style,
   ) {
@@ -1492,6 +1629,53 @@ class _FacturaPageState extends State<FacturaPage> {
           letterSpacing: 0.2,
         ),
       ),
+    );
+  }
+
+  Widget _buildFiscalChip(SaleModel sale, {bool compact = false}) {
+    final style = _fiscalStyle(sale);
+    final theme = Theme.of(context);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 5 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: style.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: style.accent.withOpacity(0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.receipt_long_rounded,
+            size: compact ? 13 : 14,
+            color: style.accent,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            compact ? style.label.replaceFirst('FISCAL ', '') : style.label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: style.accent,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFiscalMetaText(SaleModel sale, {required TextStyle? style}) {
+    final fiscalStyle = _fiscalStyle(sale);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.verified_outlined, size: 13, color: fiscalStyle.accent),
+        const SizedBox(width: 4),
+        Text(fiscalStyle.meta, style: style),
+      ],
     );
   }
 
@@ -1526,6 +1710,8 @@ class _FacturaPageState extends State<FacturaPage> {
     final netAmount = (sale.total - refundedAmount).clamp(0, sale.total);
     final paymentLabel = sale.paymentMethodDisplayLabel;
     final compactInvoiceCode = _compactInvoiceCode(sale.localCode);
+    final isFiscal = _isFiscalSale(sale);
+    final fiscalStyle = _fiscalStyle(sale);
 
     return FutureBuilder<List<SaleItemModel>>(
       future: _loadSaleItemsForSale(sale),
@@ -1567,7 +1753,16 @@ class _FacturaPageState extends State<FacturaPage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                _buildStatusChip(statusStyle),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _buildStatusChip(statusStyle),
+                    if (isFiscal) ...[
+                      const SizedBox(height: 8),
+                      _buildFiscalChip(sale),
+                    ],
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -1576,6 +1771,8 @@ class _FacturaPageState extends State<FacturaPage> {
               'Cajero',
               _cashierLabelForSessionId(sale.sessionId),
             ),
+            if (isFiscal)
+              _buildTicketMetaRow('Comprobante fiscal', fiscalStyle.meta),
             _buildTicketMetaRow('Pago', paymentLabel),
             if ((sale.customerPhoneSnapshot ?? '').trim().isNotEmpty)
               _buildTicketMetaRow('Telefono', sale.customerPhoneSnapshot!),
@@ -1836,6 +2033,57 @@ class _FacturaPageState extends State<FacturaPage> {
     final code = (ret['local_code'] as String?) ?? 'DEV-${ret['id']}';
     final total = ((ret['total'] as num?)?.toDouble() ?? 0).abs();
     final createdMs = (ret['created_at_ms'] as int?) ?? 0;
+    final creditNoteEcf =
+        (ret['electronic_credit_note_ecf'] as String?)?.trim() ?? '';
+    final originalEcf = (ret['original_electronic_ecf'] as String?)?.trim() ?? '';
+    final originalDocumentType =
+      (ret['original_electronic_document_type'] as String?)?.trim() ?? '';
+    final creditNoteStatusRaw =
+        (ret['electronic_credit_note_status'] as String?)?.trim() ?? '';
+    final creditNoteRequested =
+        ((ret['electronic_credit_note_requested'] as int?) ?? 0) == 1;
+    final originalRelationLabel = originalEcf.isNotEmpty
+      ? 'Sobre $originalEcf'
+      : switch (originalDocumentType.toUpperCase()) {
+        '31' => 'Sobre factura fiscal E31',
+        '32' => 'Sobre factura fiscal E32',
+        _ => '',
+        };
+
+    String creditNoteStatusLabel() {
+      switch (creditNoteStatusRaw.toUpperCase()) {
+        case 'ACCEPTED':
+        case 'ACEPTADA':
+          return 'Aceptada';
+        case 'REJECTED':
+        case 'RECHAZADA':
+          return 'Rechazada';
+        case 'IN_PROCESS':
+        case 'SUBMITTED':
+          return 'Enviada';
+        case 'PENDING_SYNC':
+          return 'Pendiente sync';
+        default:
+          return creditNoteRequested ? 'Pendiente' : 'Local';
+      }
+    }
+
+    Color creditNoteStatusColor() {
+      switch (creditNoteStatusRaw.toUpperCase()) {
+        case 'ACCEPTED':
+        case 'ACEPTADA':
+          return status.success;
+        case 'REJECTED':
+        case 'RECHAZADA':
+          return status.error;
+        case 'IN_PROCESS':
+        case 'SUBMITTED':
+        case 'PENDING_SYNC':
+          return status.warning;
+        default:
+          return scheme.onSurfaceVariant;
+      }
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1862,9 +2110,64 @@ class _FacturaPageState extends State<FacturaPage> {
                     fontSize: 10.8,
                   ),
                 ),
+                if (creditNoteEcf.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      'E34 $creditNoteEcf',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: status.info,
+                        fontSize: 10.8,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  )
+                else if (creditNoteRequested)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      'E34 pendiente de emisión',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: status.warning,
+                        fontSize: 10.8,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                if (originalRelationLabel.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      originalRelationLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 10.4,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
+          if (creditNoteRequested)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: creditNoteStatusColor().withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  creditNoteStatusLabel(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: creditNoteStatusColor(),
+                    fontSize: 10.2,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(width: 10),
           Text(
             CurrencyDisplay.format(total, symbol: 'RD\$'),
@@ -2024,6 +2327,8 @@ class _SaleTicketDialog extends StatelessWidget {
     required this.onRefund,
   });
 
+  bool get _supportsE34 => _supportsElectronicCreditNote(sale);
+
   @override
   Widget build(BuildContext context) {
     final currencyFormat = CurrencyDisplay.currency();
@@ -2181,6 +2486,38 @@ class _SaleTicketDialog extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (_supportsE34) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: headerText.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: headerText.withOpacity(0.18)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.verified_outlined,
+                            color: headerText,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Comprobante electronico ${sale.electronicInvoiceCode ?? ''}. La devolución se emitirá como nota de credito E34.',
+                              style: TextStyle(
+                                color: headerText,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -2330,7 +2667,9 @@ class _SaleTicketDialog extends StatelessWidget {
                     child: ElevatedButton.icon(
                       onPressed: onRefund,
                       icon: const Icon(Icons.keyboard_return, size: 20),
-                      label: const Text('Devolver'),
+                      label: Text(
+                        _supportsE34 ? 'Nota de credito E34' : 'Devolver',
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: scheme.primary,
                         foregroundColor: scheme.onPrimary,
@@ -2389,6 +2728,22 @@ class _RefundDialogState extends State<_RefundDialog> {
   final _noteController = TextEditingController();
   bool _isProcessing = false;
   bool _refundAll = false;
+
+    bool get _supportsE34 => _supportsElectronicCreditNote(widget.sale);
+
+  String get _refundActionLabel =>
+      _supportsE34 ? 'Generar nota de credito E34' : 'Procesar';
+
+  String get _refundDialogTitle =>
+      _supportsE34 ? 'Generar Nota de Crédito E34' : 'Procesar Devolución';
+
+    String get _refundDialogSubtitle => _supportsE34
+      ? '${widget.sale.localCode} · ${widget.sale.electronicInvoiceCode ?? 'e-CF original'}'
+      : widget.sale.localCode;
+
+    String get _refundSelectionHint => _supportsE34
+      ? 'Selecciona los productos a acreditar. La DGII recibirá una E34 enlazada al comprobante original.'
+      : 'Selecciona los productos que deseas devolver.';
 
   @override
   void initState() {
@@ -2584,6 +2939,7 @@ class _RefundDialogState extends State<_RefundDialog> {
         returnItems: returnItems,
         cashSessionId: await CashRepository.getCurrentSessionId(),
         note: _noteController.text.isEmpty ? null : _noteController.text,
+        electronicCreditNoteRequested: _supportsE34,
       );
 
       if (mounted) Navigator.pop(context, _RefundDialogResult.refunded);
@@ -2731,7 +3087,7 @@ class _RefundDialogState extends State<_RefundDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Procesar Devolución',
+                          _refundDialogTitle,
                           style: TextStyle(
                             color: headerText,
                             fontSize: 18,
@@ -2739,7 +3095,7 @@ class _RefundDialogState extends State<_RefundDialog> {
                           ),
                         ),
                         Text(
-                          widget.sale.localCode,
+                          _refundDialogSubtitle,
                           style: TextStyle(
                             color: headerText.withOpacity(0.8),
                             fontSize: 13,
@@ -2761,29 +3117,42 @@ class _RefundDialogState extends State<_RefundDialog> {
             // Seleccionar todo
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Productos',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurfaceVariant,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        'Productos',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: _toggleRefundAll,
+                        icon: Icon(
+                          _refundAll
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _refundAll ? 'Deseleccionar' : 'Seleccionar todo',
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: scheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: _toggleRefundAll,
-                    icon: Icon(
-                      _refundAll
-                          ? Icons.check_box
-                          : Icons.check_box_outline_blank,
-                      size: 18,
-                    ),
-                    label: Text(
-                      _refundAll ? 'Deseleccionar' : 'Seleccionar todo',
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: scheme.primary,
+                  const SizedBox(height: 6),
+                  Text(
+                    _refundSelectionHint,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -3001,7 +3370,9 @@ class _RefundDialogState extends State<_RefundDialog> {
                                 )
                               : const Icon(Icons.check_circle, size: 18),
                           label: Text(
-                            _isProcessing ? 'Procesando...' : 'Procesar',
+                            _isProcessing
+                                ? 'Procesando...'
+                                : _refundActionLabel,
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: scheme.primary,

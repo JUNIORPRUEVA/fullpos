@@ -1236,7 +1236,10 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   Future<ClientModel?> _showClientPicker() async {
     final result = await _presentDialog<ClientModel>(
-      builder: (context) => ClientPickerDialog(clients: _clients),
+      builder: (context) => ClientPickerDialog(
+        clients: _clients,
+        onCreateClient: _showCreateClientFromSales,
+      ),
     );
 
     if (!mounted || result == null) return null;
@@ -1335,13 +1338,34 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   ) async {
     switch (type) {
       case payment.PaymentDocumentType.consumidorFinal:
+        return payment.PaymentDocumentType.consumidorFinal;
+      case payment.PaymentDocumentType.creditoFiscal:
+        if (!_isElectronicInvoicingFeatureEnabled) {
+          return payment.PaymentDocumentType.consumidorFinal;
+        }
+        if (!await _canEnableElectronicInvoiceOrNotify()) {
+          return payment.PaymentDocumentType.consumidorFinal;
+        }
+        return payment.PaymentDocumentType.creditoFiscal;
+      case payment.PaymentDocumentType.cotizacion:
+        return payment.PaymentDocumentType.cotizacion;
+    }
+  }
+
+  Future<void> _applyPaymentDocumentType(
+    payment.PaymentDocumentType type,
+  ) async {
+    switch (type) {
+      case payment.PaymentDocumentType.consumidorFinal:
         await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
+        return;
       case payment.PaymentDocumentType.creditoFiscal:
         await _setSalesDocumentType(_SalesDocumentType.creditoFiscal);
+        return;
       case payment.PaymentDocumentType.cotizacion:
         await _setSalesDocumentType(_SalesDocumentType.cotizacion);
+        return;
     }
-    return type;
   }
 
   void _openFacturaPage() {
@@ -2326,14 +2350,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     required bool includeItbis,
   }) async {
     final missing = <String>[];
-    final client = _currentCart.selectedClient;
-
-    if (client == null) {
-      missing.add('Cliente');
-    } else {
-      final rnc = (client.rnc ?? '').trim();
-      if (rnc.isEmpty) missing.add('RNC del cliente');
-    }
 
     if (includeItbis && !_currentCart.itbisEnabled) {
       missing.add('ITBIS');
@@ -2446,9 +2462,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       );
       if (!canCharge) return;
 
-      await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
-      if (!mounted) return;
-
       final totalDiscount = _currentCart.calculateTotalDiscountsCombined();
       final subtotalAfterDiscount = _currentCart
           .calculateSubtotalAfterDiscount();
@@ -2470,6 +2483,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           allowElectronicInvoiceOption: _isElectronicInvoicingFeatureEnabled,
           onDocumentTypeChanged: _setPaymentDocumentType,
           onSelectClient: _showClientPicker,
+          onCreateClient: _showCreateClientFromSales,
         ),
       );
 
@@ -2510,6 +2524,25 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final selectedDocumentType =
           paymentResult['documentType'] as payment.PaymentDocumentType? ??
           payment.PaymentDocumentType.consumidorFinal;
+      final electronicInvoiceRequested =
+          paymentResult['electronicInvoiceRequested'] == true;
+      final effectiveClient = paymentResult['selectedClient'] as ClientModel?;
+
+      await _applyPaymentDocumentType(selectedDocumentType);
+      if (!mounted) return;
+
+      if (effectiveClient != null) {
+        _updateCurrentCart(() {
+          _currentCart.selectedClient = effectiveClient;
+        });
+        if (effectiveClient.id != null) {
+          _clients.removeWhere((client) => client.id == effectiveClient.id);
+          _clients.add(effectiveClient);
+        }
+      } else if (!electronicInvoiceRequested) {
+        _updateCurrentCart(() {});
+      }
+
       if (selectedDocumentType == payment.PaymentDocumentType.cotizacion) {
         await _saveAsQuote(paymentResult: paymentResult);
         return;
@@ -2564,7 +2597,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           : await SalesRepository.generateNextLocalCode(resolvedKind);
       String? electronicInvoiceCode;
       String? electronicDocumentType;
-      if (_currentCart.electronicInvoiceEnabled) {
+      if (electronicInvoiceRequested) {
         electronicDocumentType = switch (selectedDocumentType) {
           payment.PaymentDocumentType.creditoFiscal => '31',
           payment.PaymentDocumentType.consumidorFinal => '32',
@@ -2642,10 +2675,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       final int? tempCartIdToDelete = _currentCart.tempCartId;
       final int? ticketIdToDelete = _currentCart.ticketId;
       final int cartIndexToRemove = _currentCartIndex;
-      final selectedClientTaxId =
-          (_currentCart.selectedClient?.rnc ?? '').trim().isNotEmpty
-          ? _currentCart.selectedClient?.rnc
-          : _currentCart.selectedClient?.cedula;
+      final selectedClientTaxId = (effectiveClient?.rnc ?? '').trim().isNotEmpty
+          ? effectiveClient?.rnc
+          : effectiveClient?.cedula;
+      final resolvedCustomerName =
+          effectiveClient?.nombre ??
+          (electronicInvoiceRequested &&
+                  selectedDocumentType ==
+                      payment.PaymentDocumentType.consumidorFinal
+              ? 'Consumidor final'
+              : _currentCart.selectedClient?.nombre);
+      final resolvedCustomerPhone = effectiveClient?.telefono;
+      final resolvedCustomerId = effectiveClient?.id;
       try {
         if (isLayaway) {
           saleId = await LayawayRepository.createLayawaySale(
@@ -2658,13 +2699,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             subtotalOverride: subtotalAfterDiscount,
             itbisAmountOverride: itbisAmount,
             totalOverride: total,
-            electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
+            electronicInvoiceEnabled: electronicInvoiceRequested,
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
             sessionId: activeShiftIdAfterDialog,
-            customerId: _currentCart.selectedClient?.id,
-            customerName: _currentCart.selectedClient?.nombre,
-            customerPhone: _currentCart.selectedClient?.telefono,
+            customerId: resolvedCustomerId,
+            customerName: resolvedCustomerName,
+            customerPhone: resolvedCustomerPhone,
             customerRnc: selectedClientTaxId,
             initialPayment: receivedAmount,
             note: paymentResult['note'] as String?,
@@ -2687,13 +2728,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             paymentCardAmount: paymentCardAmount,
             paymentTransferAmount: paymentTransferAmount,
             sessionId: activeShiftIdAfterDialog,
-            customerId: _currentCart.selectedClient?.id,
-            customerName: _currentCart.selectedClient?.nombre,
-            customerPhone: _currentCart.selectedClient?.telefono,
+            customerId: resolvedCustomerId,
+            customerName: resolvedCustomerName,
+            customerPhone: resolvedCustomerPhone,
             customerRnc: selectedClientTaxId,
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
-            electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
+            electronicInvoiceEnabled: electronicInvoiceRequested,
             paidAmount: receivedAmount,
             changeAmount: changeAmount > 0 ? changeAmount : 0,
             enforceLocalCodeIdempotency:
@@ -2747,13 +2788,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
             paymentCardAmount: paymentCardAmount,
             paymentTransferAmount: paymentTransferAmount,
             sessionId: activeShiftIdAfterDialog,
-            customerId: _currentCart.selectedClient?.id,
-            customerName: _currentCart.selectedClient?.nombre,
-            customerPhone: _currentCart.selectedClient?.telefono,
+            customerId: resolvedCustomerId,
+            customerName: resolvedCustomerName,
+            customerPhone: resolvedCustomerPhone,
             customerRnc: selectedClientTaxId,
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
-            electronicInvoiceEnabled: _currentCart.electronicInvoiceEnabled,
+            electronicInvoiceEnabled: electronicInvoiceRequested,
             paidAmount: receivedAmount,
             changeAmount: changeAmount > 0 ? changeAmount : 0,
             enforceLocalCodeIdempotency:
@@ -5966,166 +6007,189 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ),
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          onTap: _showClientPicker,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: client == null
-                        ? scheme.surfaceContainerHighest
-                        : (client.isBusiness
-                              ? scheme.primary.withOpacity(0.1)
-                              : scheme.secondary.withOpacity(0.12)),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    client == null
-                        ? Icons.person_search_rounded
-                        : (client.isBusiness
-                              ? Icons.apartment_rounded
-                              : Icons.person_rounded),
-                    color: client == null
-                        ? scheme.onSurfaceVariant
-                        : (client.isBusiness
-                              ? scheme.primary
-                              : scheme.secondary),
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: client == null
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Consumidor final',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: scheme.onSurface,
-                                  ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Elige un cliente o crea una empresa con RNC.',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    height: 1.25,
-                                  ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    client.nombre,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          color: scheme.onSurface,
-                                        ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: client.isBusiness
-                                        ? scheme.primary.withOpacity(0.1)
-                                        : scheme.secondary.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    client.entityLabel,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
-                                          color: client.isBusiness
-                                              ? scheme.primary
-                                              : scheme.secondary,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _clientDescriptor(client),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.25,
-                                  ),
-                            ),
-                            if (client.normalizedAddress != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                client.normalizedAddress!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: scheme.onSurfaceVariant
-                                          .withOpacity(0.86),
-                                    ),
-                              ),
-                            ],
-                          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: _showClientPicker,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: client == null
+                                ? scheme.surfaceContainerHighest
+                                : (client.isBusiness
+                                      ? scheme.primary.withOpacity(0.1)
+                                      : scheme.secondary.withOpacity(0.12)),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            client == null
+                                ? Icons.person_search_rounded
+                                : (client.isBusiness
+                                      ? Icons.apartment_rounded
+                                      : Icons.person_rounded),
+                            color: client == null
+                                ? scheme.onSurfaceVariant
+                                : (client.isBusiness
+                                      ? scheme.primary
+                                      : scheme.secondary),
+                            size: 22,
+                          ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: client == null
+                              ? Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Consumidor final',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                            color: scheme.onSurface,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Elige un cliente o crea una empresa con RNC.',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: scheme.onSurfaceVariant,
+                                            height: 1.25,
+                                          ),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            client.nombre,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleSmall
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w800,
+                                                  color: scheme.onSurface,
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: client.isBusiness
+                                                ? scheme.primary.withOpacity(
+                                                    0.1,
+                                                  )
+                                                : scheme.secondary.withOpacity(
+                                                    0.12,
+                                                  ),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            client.entityLabel,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: client.isBusiness
+                                                      ? scheme.primary
+                                                      : scheme.secondary,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _clientDescriptor(client),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: scheme.onSurfaceVariant,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.25,
+                                          ),
+                                    ),
+                                    if (client.normalizedAddress != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        client.normalizedAddress!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: scheme.onSurfaceVariant
+                                                  .withOpacity(0.86),
+                                            ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 10),
-                if (client == null) ...[
-                  IconButton(
-                    onPressed: _showCreateClientFromSales,
-                    tooltip: 'Crear cliente',
-                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ] else ...[
-                  IconButton(
-                    onPressed: _removeClient,
-                    tooltip: 'Quitar cliente',
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                  ),
-                  Icon(
-                    Icons.swap_horiz_rounded,
-                    color: scheme.onSurfaceVariant,
-                    size: 20,
-                  ),
-                ],
+              ),
+              const SizedBox(width: 10),
+              if (client == null) ...[
+                IconButton(
+                  onPressed: _showCreateClientFromSales,
+                  tooltip: 'Crear cliente',
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ] else ...[
+                IconButton(
+                  onPressed: _removeClient,
+                  tooltip: 'Quitar cliente',
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                ),
+                Icon(
+                  Icons.swap_horiz_rounded,
+                  color: scheme.onSurfaceVariant,
+                  size: 20,
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

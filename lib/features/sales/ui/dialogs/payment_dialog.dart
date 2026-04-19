@@ -4,6 +4,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../clients/data/client_model.dart';
+import '../../../clients/data/clients_repository.dart';
+import '../../../clients/utils/phone_validator.dart';
+import '../../../clients/utils/rnc_validator.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../../../core/theme/app_status_theme.dart';
 import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
@@ -13,6 +16,10 @@ enum PaymentMethod { cash, card, transfer, mixed, credit, layaway }
 enum PaymentOutputMode { ticket, pdf, none }
 
 enum PaymentDocumentType { consumidorFinal, creditoFiscal, cotizacion }
+
+enum PaymentCheckoutMode { ventaLocal, facturaElectronica, cotizacion }
+
+enum PaymentElectronicCustomerType { consumidorFinal, empresa }
 
 enum QuoteOutputMode { save, preview, print }
 
@@ -29,6 +36,7 @@ class PaymentDialog extends StatefulWidget {
   final Future<PaymentDocumentType> Function(PaymentDocumentType type)
   onDocumentTypeChanged;
   final Future<ClientModel?> Function() onSelectClient;
+  final Future<ClientModel?> Function()? onCreateClient;
   final Future<ClientModel?> Function(ClientModel client)? onEditClient;
 
   const PaymentDialog({
@@ -43,6 +51,7 @@ class PaymentDialog extends StatefulWidget {
     this.allowElectronicInvoiceOption = true,
     required this.onDocumentTypeChanged,
     required this.onSelectClient,
+    this.onCreateClient,
     this.onEditClient,
   });
 
@@ -72,6 +81,10 @@ class _PaymentDialogState extends State<PaymentDialog> {
   final _layawayNameController = TextEditingController();
   final _layawayPhoneController = TextEditingController();
   final _receivedController = TextEditingController();
+  final _invoiceRncController = TextEditingController();
+  final _invoiceNameController = TextEditingController();
+  final _invoiceAddressController = TextEditingController();
+  final _invoicePhoneController = TextEditingController();
   DateTime? _dueDate;
   double _change = 0.0;
   PaymentOutputMode _outputMode = PaymentOutputMode.ticket;
@@ -83,12 +96,23 @@ class _PaymentDialogState extends State<PaymentDialog> {
   String _lastTriggerSource = 'unknown';
   int _lastSubmitAtMs = 0;
   late PaymentDocumentType _selectedDocumentType;
+  late PaymentCheckoutMode _checkoutMode;
+  PaymentElectronicCustomerType _electronicCustomerType =
+      PaymentElectronicCustomerType.consumidorFinal;
   QuoteOutputMode _quoteOutputMode = QuoteOutputMode.save;
+  bool _showElectronicCompanyOptionalFields = false;
+  bool _saveInvoiceClient = false;
+  bool _isLookingUpInvoiceClient = false;
+  String? _invoiceLookupMessage;
+  bool _invoiceLookupMessageIsError = false;
+  ClientModel? _invoiceMatchedClient;
+  int _invoiceLookupRequestId = 0;
 
   bool get _printTicket => _outputMode == PaymentOutputMode.ticket;
   bool get _downloadInvoicePdf => _outputMode == PaymentOutputMode.pdf;
-  bool get _isQuoteMode =>
-      _selectedDocumentType == PaymentDocumentType.cotizacion;
+  bool get _isQuoteMode => _checkoutMode == PaymentCheckoutMode.cotizacion;
+  bool get _isElectronicInvoiceMode =>
+      _checkoutMode == PaymentCheckoutMode.facturaElectronica;
 
   PaymentDocumentType _normalizeDocumentType(PaymentDocumentType type) {
     if (!widget.allowElectronicInvoiceOption &&
@@ -96,6 +120,19 @@ class _PaymentDialogState extends State<PaymentDialog> {
       return PaymentDocumentType.consumidorFinal;
     }
     return type;
+  }
+
+  PaymentCheckoutMode _resolveInitialCheckoutMode(PaymentDocumentType type) {
+    switch (type) {
+      case PaymentDocumentType.cotizacion:
+        return PaymentCheckoutMode.cotizacion;
+      case PaymentDocumentType.creditoFiscal:
+        return widget.allowElectronicInvoiceOption
+            ? PaymentCheckoutMode.facturaElectronica
+            : PaymentCheckoutMode.ventaLocal;
+      case PaymentDocumentType.consumidorFinal:
+        return PaymentCheckoutMode.ventaLocal;
+    }
   }
 
   bool _handleKeyEvent(KeyEvent event) {
@@ -217,9 +254,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
     _paymentAttemptId = _buildPaymentRequestId();
     _outputMode = _resolveInitialOutputMode();
     _selectedDocumentType = _normalizeDocumentType(widget.initialDocumentType);
+    _checkoutMode = _resolveInitialCheckoutMode(_selectedDocumentType);
+    _electronicCustomerType =
+        _selectedDocumentType == PaymentDocumentType.creditoFiscal
+        ? PaymentElectronicCustomerType.empresa
+        : PaymentElectronicCustomerType.consumidorFinal;
     _selectedClient = widget.selectedClient;
     if (_selectedClient != null) {
       _syncLayawayFromClient(_selectedClient!);
+      _syncInvoiceClientForm(_selectedClient!, preserveLookupMessage: false);
     }
     _cashController.text = widget.total.toStringAsFixed(2);
     _receivedController.text = widget.total.toStringAsFixed(2);
@@ -245,7 +288,40 @@ class _PaymentDialogState extends State<PaymentDialog> {
     _layawayNameController.dispose();
     _layawayPhoneController.dispose();
     _receivedController.dispose();
+    _invoiceRncController.dispose();
+    _invoiceNameController.dispose();
+    _invoiceAddressController.dispose();
+    _invoicePhoneController.dispose();
     super.dispose();
+  }
+
+  void _syncInvoiceClientForm(
+    ClientModel client, {
+    bool preserveLookupMessage = true,
+  }) {
+    _invoiceMatchedClient = client;
+    _invoiceRncController.text = client.normalizedRnc ?? '';
+    _invoiceNameController.text = client.nombre.trim();
+    _invoiceAddressController.text = client.normalizedAddress ?? '';
+    _invoicePhoneController.text = client.normalizedPhone ?? '';
+    _saveInvoiceClient = false;
+    if (!preserveLookupMessage) {
+      _invoiceLookupMessage = null;
+      _invoiceLookupMessageIsError = false;
+      return;
+    }
+    _invoiceLookupMessage =
+        'Cliente encontrado y autocompletado desde la base de datos.';
+    _invoiceLookupMessageIsError = false;
+  }
+
+  void _clearInvoiceClientFormForManualEntry({bool keepRnc = true}) {
+    final currentRnc = keepRnc ? _invoiceRncController.text : '';
+    _invoiceMatchedClient = null;
+    _invoiceRncController.text = currentRnc;
+    _invoiceNameController.clear();
+    _invoiceAddressController.clear();
+    _invoicePhoneController.clear();
   }
 
   void _calculateReceivedChange() {
@@ -321,8 +397,244 @@ class _PaymentDialogState extends State<PaymentDialog> {
       setState(() {
         _selectedClient = picked;
         _syncLayawayFromClient(picked);
+        if (picked.isBusiness) {
+          _syncInvoiceClientForm(picked);
+        }
       });
     }
+  }
+
+  Future<void> _selectCheckoutMode(PaymentCheckoutMode mode) async {
+    if (mode == _checkoutMode) return;
+
+    if (mode == PaymentCheckoutMode.cotizacion) {
+      final resolved = await widget.onDocumentTypeChanged(
+        PaymentDocumentType.cotizacion,
+      );
+      if (!mounted || resolved != PaymentDocumentType.cotizacion) return;
+      setState(() {
+        _selectedDocumentType = resolved;
+        _checkoutMode = PaymentCheckoutMode.cotizacion;
+        _quoteOutputMode = QuoteOutputMode.save;
+      });
+      return;
+    }
+
+    if (mode == PaymentCheckoutMode.facturaElectronica) {
+      if (!widget.allowElectronicInvoiceOption) return;
+      final resolved = await widget.onDocumentTypeChanged(
+        PaymentDocumentType.creditoFiscal,
+      );
+      if (!mounted || resolved != PaymentDocumentType.creditoFiscal) return;
+      setState(() {
+        _selectedDocumentType = resolved;
+        _checkoutMode = PaymentCheckoutMode.facturaElectronica;
+      });
+      if (_selectedClient?.isBusiness == true) {
+        _syncInvoiceClientForm(_selectedClient!);
+      }
+      return;
+    }
+
+    final resolved = await widget.onDocumentTypeChanged(
+      PaymentDocumentType.consumidorFinal,
+    );
+    if (!mounted || resolved != PaymentDocumentType.consumidorFinal) return;
+    setState(() {
+      _selectedDocumentType = resolved;
+      _checkoutMode = PaymentCheckoutMode.ventaLocal;
+    });
+  }
+
+  void _selectElectronicCustomerType(PaymentElectronicCustomerType type) {
+    if (type == _electronicCustomerType) return;
+    setState(() {
+      _electronicCustomerType = type;
+      _showElectronicCompanyOptionalFields = false;
+      if (type == PaymentElectronicCustomerType.consumidorFinal) {
+        _saveInvoiceClient = false;
+      } else if (_selectedClient?.isBusiness == true) {
+        _syncInvoiceClientForm(_selectedClient!);
+      }
+    });
+  }
+
+  Future<void> _handleInvoiceRncChanged(String value) async {
+    final requestId = ++_invoiceLookupRequestId;
+    final normalized = RncValidator.normalize(value);
+
+    if (value.trim().isEmpty) {
+      setState(() {
+        _invoiceMatchedClient = null;
+        _invoiceLookupMessage = 'Ingrese RNC para factura empresarial';
+        _invoiceLookupMessageIsError = false;
+      });
+      return;
+    }
+
+    if (normalized == null) {
+      setState(() {
+        _invoiceMatchedClient = null;
+        _invoiceLookupMessage = 'RNC inválido. Debe contener 9 dígitos';
+        _invoiceLookupMessageIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLookingUpInvoiceClient = true;
+      _invoiceLookupMessage = 'Buscando cliente en la base de datos...';
+      _invoiceLookupMessageIsError = false;
+    });
+
+    final client = await ClientsRepository.getByRnc(normalized);
+    if (!mounted || requestId != _invoiceLookupRequestId) return;
+
+    setState(() {
+      _isLookingUpInvoiceClient = false;
+      if (client != null) {
+        _syncInvoiceClientForm(client);
+      } else {
+        if (_invoiceMatchedClient != null &&
+            _invoiceMatchedClient!.normalizedRnc != normalized) {
+          _clearInvoiceClientFormForManualEntry();
+        }
+        _invoiceMatchedClient = null;
+        _invoiceLookupMessage =
+            'RNC no registrado. Complete los datos y active Guardar cliente si desea almacenarlo.';
+        _invoiceLookupMessageIsError = false;
+      }
+    });
+  }
+
+  ClientModel _buildElectronicBusinessClientDraft() {
+    final normalizedRnc = RncValidator.normalize(_invoiceRncController.text);
+    final normalizedPhone = PhoneValidator.normalizeRDPhone(
+      _invoicePhoneController.text.trim(),
+    );
+
+    return ClientModel(
+      id: _invoiceMatchedClient?.id,
+      nombre: _invoiceNameController.text.trim(),
+      telefono: normalizedPhone,
+      direccion: _invoiceAddressController.text.trim().isEmpty
+          ? null
+          : _invoiceAddressController.text.trim(),
+      rnc: normalizedRnc,
+      cedula: null,
+      isActive: _invoiceMatchedClient?.isActive ?? true,
+      hasCredit: _invoiceMatchedClient?.hasCredit ?? false,
+      createdAtMs:
+          _invoiceMatchedClient?.createdAtMs ??
+          DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  Future<ClientModel?> _resolveElectronicBusinessClient() async {
+    final normalizedRnc = RncValidator.normalize(_invoiceRncController.text);
+    if (normalizedRnc == null) {
+      _showError('Ingrese un RNC válido para factura empresarial');
+      return null;
+    }
+
+    final businessName = _invoiceNameController.text.trim();
+    if (businessName.isEmpty) {
+      _showError('Debe indicar nombre o razón social para factura empresarial');
+      return null;
+    }
+
+    final rawPhone = _invoicePhoneController.text.trim();
+    if (rawPhone.isNotEmpty &&
+        PhoneValidator.normalizeRDPhone(rawPhone) == null) {
+      _showError('Teléfono inválido. Use 10 dígitos RD o deje el campo vacío');
+      return null;
+    }
+
+    final draft = _buildElectronicBusinessClientDraft();
+    if (!_saveInvoiceClient) {
+      return draft;
+    }
+
+    final existingByRnc = await ClientsRepository.getByRnc(normalizedRnc);
+    if (existingByRnc != null) {
+      final updated = existingByRnc.copyWith(
+        nombre: draft.nombre,
+        telefono: draft.telefono,
+        direccion: draft.direccion,
+        rnc: draft.rnc,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      await ClientsRepository.update(updated);
+      return (await ClientsRepository.getById(existingByRnc.id!)) ?? updated;
+    }
+
+    final createdId = await ClientsRepository.create(draft);
+    return (await ClientsRepository.getById(createdId)) ??
+        draft.copyWith(id: createdId);
+  }
+
+  PaymentDocumentType _resolvedDocumentType() {
+    if (_isElectronicInvoiceMode) {
+      return _electronicCustomerType == PaymentElectronicCustomerType.empresa
+          ? PaymentDocumentType.creditoFiscal
+          : PaymentDocumentType.consumidorFinal;
+    }
+    if (_isQuoteMode) {
+      return PaymentDocumentType.cotizacion;
+    }
+    return _selectedDocumentType;
+  }
+
+  ClientModel? _resolvedSelectedClient({
+    required ClientModel? resolvedElectronicClient,
+  }) {
+    if (_isElectronicInvoiceMode) {
+      return _electronicCustomerType == PaymentElectronicCustomerType.empresa
+          ? resolvedElectronicClient
+          : null;
+    }
+    return _selectedClient;
+  }
+
+  Future<bool> _confirmElectronicInvoice({
+    required PaymentDocumentType documentType,
+    required ClientModel? client,
+  }) async {
+    final label = documentType == PaymentDocumentType.creditoFiscal
+        ? 'E31'
+        : 'E32';
+    final clientLabel = documentType == PaymentDocumentType.creditoFiscal
+        ? '${client?.nombre ?? ''} • RNC ${(client?.rnc ?? '').trim()}'
+        : 'Consumidor final seleccionado';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar factura electrónica'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Se generará un comprobante $label para esta venta.'),
+            const SizedBox(height: 10),
+            Text(clientLabel),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Generar factura'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
   }
 
   void _syncLayawayFromClient(ClientModel client) {
@@ -360,6 +672,16 @@ class _PaymentDialogState extends State<PaymentDialog> {
       'PAYMENT_EXECUTE source=$_lastTriggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=${widget.cartFingerprint ?? 'na'} request=$paymentRequestId',
     );
 
+    final isElectronicInvoiceRequested = _isElectronicInvoiceMode;
+    ClientModel? resolvedElectronicClient;
+
+    if (isElectronicInvoiceRequested) {
+      if (_electronicCustomerType == PaymentElectronicCustomerType.empresa) {
+        resolvedElectronicClient = await _resolveElectronicBusinessClient();
+        if (resolvedElectronicClient == null) return;
+      }
+    }
+
     if (_isQuoteMode) {
       if (_selectedClient == null) {
         _showError('Debe seleccionar un cliente para generar la cotización');
@@ -376,7 +698,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
       final result = {
         'paymentRequestId': paymentRequestId,
         'triggerSource': _lastTriggerSource,
-        'documentType': _selectedDocumentType,
+        'documentType': PaymentDocumentType.cotizacion,
         'selectedClient': _selectedClient,
         'quoteOutputMode': _quoteOutputMode,
         'quoteValidDays': validDays,
@@ -440,15 +762,27 @@ class _PaymentDialogState extends State<PaymentDialog> {
       }
     }
 
-    // Si el usuario eligió descargar factura PDF, obligar a seleccionar cliente
-    // para poder nombrar el archivo de forma profesional.
+    final resolvedDocumentType = _resolvedDocumentType();
+    final resolvedSelectedClient = _resolvedSelectedClient(
+      resolvedElectronicClient: resolvedElectronicClient,
+    );
+
+    if (isElectronicInvoiceRequested &&
+        _electronicCustomerType == PaymentElectronicCustomerType.empresa &&
+        !(resolvedElectronicClient?.isBusiness ?? false)) {
+      _showError(
+        'La factura electrónica E31 requiere un cliente de empresa con RNC',
+      );
+      return;
+    }
+
     if (_downloadInvoicePdf) {
-      if (_selectedClient == null) {
+      if (resolvedSelectedClient == null) {
         _showError('Debe seleccionar un cliente para descargar la factura');
         await _ensureClientSelected();
         return;
       }
-      final name = _selectedClient?.nombre.trim() ?? '';
+      final name = resolvedSelectedClient.nombre.trim();
       if (name.isEmpty) {
         _showError(
           'Debe completar el nombre del cliente para descargar la factura',
@@ -515,12 +849,21 @@ class _PaymentDialogState extends State<PaymentDialog> {
       }
     }
 
+    if (isElectronicInvoiceRequested) {
+      final confirmed = await _confirmElectronicInvoice(
+        documentType: resolvedDocumentType,
+        client: resolvedSelectedClient,
+      );
+      if (!confirmed) return;
+    }
+
     // Retornar resultado (cerrar el diálogo que lo presentó)
     final result = {
       'paymentRequestId': paymentRequestId,
       'triggerSource': _lastTriggerSource,
-      'documentType': _selectedDocumentType,
-      'selectedClient': _selectedClient,
+      'documentType': resolvedDocumentType,
+      'selectedClient': resolvedSelectedClient,
+      'electronicInvoiceRequested': isElectronicInvoiceRequested,
       'method': _selectedMethod,
       'cash': cashAmount,
       'card': cardAmount,
@@ -559,26 +902,312 @@ class _PaymentDialogState extends State<PaymentDialog> {
     );
   }
 
-  Future<void> _selectDocumentType(PaymentDocumentType type) async {
-    final resolved = await widget.onDocumentTypeChanged(type);
-    if (!mounted) return;
-    setState(() {
-      _selectedDocumentType = resolved;
-      if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
-        _quoteOutputMode = QuoteOutputMode.save;
-      }
-    });
+  Widget _buildCheckoutModeSelector() {
+    Widget buildCard({
+      required PaymentCheckoutMode mode,
+      required String title,
+      required String subtitle,
+      required IconData icon,
+      required double width,
+    }) {
+      final selected = _checkoutMode == mode;
+      return SizedBox(
+        width: width,
+        child: InkWell(
+          onTap: () => unawaited(_selectCheckoutMode(mode)),
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: selected
+                  ? scheme.primary.withOpacity(0.10)
+                  : scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected ? scheme.primary : scheme.outlineVariant,
+                width: selected ? 1.6 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  icon,
+                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: selected ? scheme.primary : scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.3,
+                    color: scheme.onSurface.withAlpha(175),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Tipo de comprobante',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final optionCount = widget.allowElectronicInvoiceOption ? 3 : 2;
+            final isCompact = constraints.maxWidth < 760;
+            final spacing = 8.0;
+            final cardWidth = isCompact
+                ? constraints.maxWidth
+                : (constraints.maxWidth - (spacing * (optionCount - 1))) /
+                      optionCount;
+
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                buildCard(
+                  mode: PaymentCheckoutMode.ventaLocal,
+                  title: 'Venta normal',
+                  subtitle: 'Cobro rápido sin emisión DGII',
+                  icon: Icons.point_of_sale_rounded,
+                  width: cardWidth,
+                ),
+                if (widget.allowElectronicInvoiceOption)
+                  buildCard(
+                    mode: PaymentCheckoutMode.facturaElectronica,
+                    title: 'Factura electrónica',
+                    subtitle: 'Emitir E31 o E32 automáticamente',
+                    icon: Icons.receipt_long_rounded,
+                    width: cardWidth,
+                  ),
+                buildCard(
+                  mode: PaymentCheckoutMode.cotizacion,
+                  title: 'Cotización',
+                  subtitle: 'Guardar propuesta sin cobrar',
+                  icon: Icons.request_quote_outlined,
+                  width: cardWidth,
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
   }
 
-  String _documentTypeLabel(PaymentDocumentType type) {
-    switch (type) {
-      case PaymentDocumentType.consumidorFinal:
-        return 'Consumidor final';
-      case PaymentDocumentType.creditoFiscal:
-        return 'Factura electrónica (e-CF)';
-      case PaymentDocumentType.cotizacion:
-        return 'Cotización';
-    }
+  Widget _buildElectronicInvoiceClientPanel() {
+    final showLookupState = _invoiceLookupMessage?.trim().isNotEmpty == true;
+    final isBusiness =
+        _electronicCustomerType == PaymentElectronicCustomerType.empresa;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          scheme.primary.withOpacity(0.03),
+          scheme.surface,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tipo de cliente',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 680;
+              final optionWidth = stacked
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - 12) / 2;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  _ElectronicCustomerTypeOption(
+                    width: optionWidth,
+                    title: 'Consumidor final',
+                    subtitle: 'No se pedirá RNC. Se generará E32.',
+                    value: PaymentElectronicCustomerType.consumidorFinal,
+                    groupValue: _electronicCustomerType,
+                    onChanged: _selectElectronicCustomerType,
+                  ),
+                  _ElectronicCustomerTypeOption(
+                    width: optionWidth,
+                    title: 'Empresa / negocio',
+                    subtitle: 'RNC y razón social obligatorios. E31.',
+                    value: PaymentElectronicCustomerType.empresa,
+                    groupValue: _electronicCustomerType,
+                    onChanged: _selectElectronicCustomerType,
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 6),
+          if (!isBusiness)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: scheme.tertiary.withOpacity(0.35)),
+              ),
+              child: Text(
+                'Consumidor final seleccionado. Se generará un comprobante E32 automáticamente y no se solicitará RNC.',
+                style: TextStyle(
+                  color: scheme.onTertiaryContainer,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            )
+          else ...[
+            TextFormField(
+              controller: _invoiceRncController,
+              keyboardType: TextInputType.number,
+              onChanged: (value) => unawaited(_handleInvoiceRncChanged(value)),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'RNC *',
+                hintText: 'Ingrese RNC para factura empresarial',
+                prefixIcon: const Icon(Icons.business_rounded),
+                suffixIcon: _isLookingUpInvoiceClient
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _invoiceNameController,
+              decoration: const InputDecoration(
+                labelText: 'Nombre o razón social *',
+                prefixIcon: Icon(Icons.apartment_rounded),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _showElectronicCompanyOptionalFields =
+                            !_showElectronicCompanyOptionalFields;
+                      });
+                    },
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                    ),
+                    child: Text(
+                      _showElectronicCompanyOptionalFields
+                          ? 'Ver menos'
+                          : 'Ver más',
+                    ),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      setState(() => _saveInvoiceClient = !_saveInvoiceClient);
+                    },
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      backgroundColor: _saveInvoiceClient
+                          ? scheme.primary.withOpacity(0.18)
+                          : null,
+                    ),
+                    child: Text(_saveInvoiceClient ? 'Guardar: Sí' : 'Guardar'),
+                  ),
+                ],
+              ),
+            ),
+            if (_showElectronicCompanyOptionalFields) ...[
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _invoiceAddressController,
+                decoration: const InputDecoration(
+                  labelText: 'Dirección',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _invoicePhoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Teléfono',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+            if (showLookupState) ...[
+              const SizedBox(height: 4),
+              Text(
+                _invoiceLookupMessage!,
+                style: TextStyle(
+                  color: _invoiceLookupMessageIsError
+                      ? scheme.error
+                      : scheme.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
   }
 
   String _dialogTitle() {
@@ -869,76 +1498,14 @@ class _PaymentDialogState extends State<PaymentDialog> {
                       ),
 
                       const SizedBox(height: 16),
-                      const Text(
-                        'Tipo de documento',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 44,
-                        child: DropdownButtonFormField<PaymentDocumentType>(
-                          isExpanded: true,
-                          value: _selectedDocumentType,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            filled: true,
-                            fillColor: scheme.surfaceContainerHighest,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: scheme.primary,
-                                width: 1.5,
-                              ),
-                            ),
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                          items: [
-                            DropdownMenuItem(
-                              value: PaymentDocumentType.consumidorFinal,
-                              child: Text(
-                                _documentTypeLabel(
-                                  PaymentDocumentType.consumidorFinal,
-                                ),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: PaymentDocumentType.cotizacion,
-                              child: Text(
-                                _documentTypeLabel(
-                                  PaymentDocumentType.cotizacion,
-                                ),
-                              ),
-                            ),
-                            if (widget.allowElectronicInvoiceOption)
-                              DropdownMenuItem(
-                                value: PaymentDocumentType.creditoFiscal,
-                                child: Text(
-                                  _documentTypeLabel(
-                                    PaymentDocumentType.creditoFiscal,
-                                  ),
-                                ),
-                              ),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            unawaited(_selectDocumentType(value));
-                          },
-                        ),
-                      ),
+                      _buildCheckoutModeSelector(),
 
                       const SizedBox(height: 16),
+
+                      if (_isElectronicInvoiceMode) ...[
+                        _buildElectronicInvoiceClientPanel(),
+                        const SizedBox(height: 16),
+                      ],
 
                       if (_isQuoteMode) ...[
                         _buildQuoteModeBody(),
@@ -1666,7 +2233,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   String _chargeActionLabel() {
-    if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
+    if (_isQuoteMode) {
       return 'GUARDAR COTIZACIÓN';
     }
     switch (_outputMode) {
@@ -1680,7 +2247,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   IconData _chargeActionIcon() {
-    if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
+    if (_isQuoteMode) {
       return Icons.request_quote_outlined;
     }
     switch (_outputMode) {
@@ -1875,6 +2442,92 @@ class _PaymentDialogState extends State<PaymentDialog> {
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
       ],
+    );
+  }
+}
+
+class _ElectronicCustomerTypeOption extends StatelessWidget {
+  const _ElectronicCustomerTypeOption({
+    required this.width,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.groupValue,
+    required this.onChanged,
+  });
+
+  final double width;
+  final String title;
+  final String subtitle;
+  final PaymentElectronicCustomerType value;
+  final PaymentElectronicCustomerType groupValue;
+  final ValueChanged<PaymentElectronicCustomerType> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = value == groupValue;
+
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => onChanged(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected
+                ? scheme.primary.withOpacity(0.08)
+                : scheme.surfaceContainerHighest.withOpacity(0.45),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? scheme.primary : scheme.outlineVariant,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Radio<PaymentElectronicCustomerType>(
+                  value: value,
+                  groupValue: groupValue,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (next) {
+                    if (next != null) onChanged(next);
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: selected ? scheme.primary : scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.25,
+                        color: scheme.onSurface.withAlpha(175),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

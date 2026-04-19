@@ -8,8 +8,13 @@ import '../../../clients/ui/client_form_dialog.dart';
 /// Dialogo de seleccion de cliente.
 class ClientPickerDialog extends StatefulWidget {
   final List<ClientModel> clients;
+  final Future<ClientModel?> Function()? onCreateClient;
 
-  const ClientPickerDialog({super.key, required this.clients});
+  const ClientPickerDialog({
+    super.key,
+    required this.clients,
+    this.onCreateClient,
+  });
 
   @override
   State<ClientPickerDialog> createState() => _ClientPickerDialogState();
@@ -71,10 +76,12 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
   }
 
   Future<void> _createNewClient() async {
-    final result = await showDialog<ClientModel>(
-      context: context,
-      builder: (context) => const ClientFormDialog(),
-    );
+    final result = widget.onCreateClient != null
+        ? await widget.onCreateClient!()
+        : await showDialog<ClientModel>(
+            context: context,
+            builder: (context) => const ClientFormDialog(),
+          );
     if (result != null && mounted) {
       Navigator.pop(context, result);
     }

@@ -16,6 +16,8 @@ import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/products/data/products_repository.dart';
 import '../../features/products/models/product_model.dart';
+import '../../features/facturacion_electronica/data/factura_electronica_repository.dart';
+import '../../features/facturacion_electronica/data/models/factura_electronica_model.dart';
 import '../../features/sales/data/sales_repository.dart';
 import '../../features/sales/data/sales_model.dart';
 import '../config/backend_config.dart';
@@ -1662,7 +1664,10 @@ class CloudSyncService {
             r.id as return_id,
             r.original_sale_id,
             r.return_sale_id,
+            r.refund_type,
+            r.reason,
             r.note,
+            r.electronic_credit_note_requested,
             r.created_at_ms,
             os.local_code as original_sale_local_code,
             rs.local_code as return_sale_local_code,
@@ -1735,7 +1740,11 @@ class CloudSyncService {
               'originalSaleLocalCode': originalSaleLocalCode,
               'returnSaleLocalCode': returnSaleLocalCode,
               'sessionLocalId': row['session_local_id'] as int?,
+              'refundType': (row['refund_type'] as String?) ?? 'PARTIAL',
+              'reason': row['reason'] as String? ?? row['note'] as String?,
               'note': row['note'] as String?,
+              'electronicCreditNoteRequested':
+                  (row['electronic_credit_note_requested'] as int? ?? 0) == 1,
               'createdAt': DateTime.fromMillisecondsSinceEpoch(
                 row['created_at_ms'] as int,
               ).toUtc().toIso8601String(),
@@ -1777,6 +1786,14 @@ class CloudSyncService {
           );
           return false;
         }
+
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final results = decoded['results'];
+          if (results is List) {
+            await _applySyncedReturnResults(results.cast<dynamic>());
+          }
+        }
       }
 
       await AppLogger.instance.logInfo(
@@ -1790,6 +1807,114 @@ class CloudSyncService {
         module: 'cloud_sync',
       );
       return false;
+    }
+  }
+
+  Future<void> _applySyncedReturnResults(List<dynamic> rows) async {
+    if (rows.isEmpty) return;
+    final db = await AppDb.database;
+
+    for (final entry in rows) {
+      if (entry is! Map) continue;
+      final localId = entry['localId'];
+      if (localId is! int) continue;
+
+      final electronicCreditNote = entry['electronicCreditNote'];
+      final ecf = electronicCreditNote is Map
+          ? (electronicCreditNote['ecf'] as String?)?.trim()
+          : null;
+      final status = electronicCreditNote is Map
+          ? (electronicCreditNote['status'] as String?)?.trim()
+          : null;
+      final trackId = electronicCreditNote is Map
+          ? (electronicCreditNote['trackId'] as String?)?.trim()
+          : null;
+      final invoiceId = electronicCreditNote is Map
+          ? electronicCreditNote['invoiceId'] as int?
+          : null;
+      final requested = electronicCreditNote is Map
+          ? electronicCreditNote['requested'] == true
+          : false;
+      final returnSaleLocalCode = (entry['returnSaleLocalCode'] as String?)?.trim();
+
+      await db.update(
+        DbTables.returns,
+        {
+          'refund_type': entry['refundType'] as String? ?? 'PARTIAL',
+          'subtotal_amount': (entry['subtotalAmount'] as num?)?.toDouble() ?? 0.0,
+          'tax_amount': (entry['taxAmount'] as num?)?.toDouble() ?? 0.0,
+          'total_amount': (entry['totalAmount'] as num?)?.toDouble() ?? 0.0,
+          'electronic_credit_note_requested': requested ? 1 : 0,
+          'electronic_credit_note_invoice_id': invoiceId,
+          'electronic_credit_note_ecf': ecf,
+          'electronic_credit_note_status': status,
+          'electronic_credit_note_track_id': trackId,
+          'original_electronic_ecf': electronicCreditNote is Map
+              ? electronicCreditNote['originalEcf'] as String?
+              : null,
+          'original_electronic_document_type': electronicCreditNote is Map
+              ? electronicCreditNote['originalDocumentType'] as String?
+              : null,
+        },
+        where: 'id = ?',
+        whereArgs: [localId],
+      );
+
+      if (returnSaleLocalCode != null && returnSaleLocalCode.isNotEmpty && ecf != null && ecf.isNotEmpty) {
+        final saleRows = await db.query(
+          DbTables.sales,
+          columns: ['id'],
+          where: 'local_code = ?',
+          whereArgs: [returnSaleLocalCode],
+          limit: 1,
+        );
+        if (saleRows.isNotEmpty) {
+          final saleId = saleRows.first['id'] as int?;
+          if (saleId != null) {
+            await db.update(
+              DbTables.sales,
+              {
+                'electronic_invoice_enabled': 1,
+                'electronic_invoice_code': ecf,
+                'electronic_document_type': '34',
+              },
+              where: 'id = ?',
+              whereArgs: [saleId],
+            );
+
+            await FacturaElectronicaRepository.upsert(
+              FacturaElectronicaModel(
+                saleId: saleId,
+                localCode: returnSaleLocalCode,
+                ecf: ecf,
+                tipoDocumento: '34',
+                dgiiTrackId: trackId,
+                estadoDgii: _mapBackendDgiiStatus(status),
+                mensajeDgii: status,
+                montoTotal: ((entry['totalAmount'] as num?)?.toDouble() ?? 0.0)
+                    .abs(),
+                createdAtMs: DateTime.now().millisecondsSinceEpoch,
+                updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+              ),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  String _mapBackendDgiiStatus(String? status) {
+    switch ((status ?? '').trim().toUpperCase()) {
+      case 'ACCEPTED':
+        return FacturaElectronicaModel.statusAccepted;
+      case 'REJECTED':
+        return FacturaElectronicaModel.statusRejected;
+      case 'IN_PROCESS':
+      case 'SUBMITTED':
+      case 'NOT_SENT':
+        return FacturaElectronicaModel.statusPending;
+      default:
+        return FacturaElectronicaModel.statusPending;
     }
   }
 

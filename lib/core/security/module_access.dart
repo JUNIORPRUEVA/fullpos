@@ -28,15 +28,18 @@ class ModuleAccess {
     if (path == '/sales') return permissions.canSell;
     if (path == '/factura') return permissions.canViewSalesHistory;
 
-    if (path == '/quotes' || path == '/quotes-list')
+    if (path == '/quotes' || path == '/quotes-list') {
       return permissions.canViewQuotes;
-    if (path == '/credits' || path == '/credits-list')
+    }
+    if (path == '/credits' || path == '/credits-list') {
       return permissions.canViewCredits;
+    }
 
     if (path == '/products') return permissions.canViewProducts;
     if (path == '/products/history') return permissions.canViewProducts;
-    if (path.startsWith('/products/add-stock'))
+    if (path.startsWith('/products/add-stock')) {
       return permissions.canAdjustStock;
+    }
 
     if (path == '/clients') return permissions.canViewClients;
 
@@ -49,8 +52,9 @@ class ModuleAccess {
     }
 
     if (path == '/reports') return permissions.canViewReports;
-    if (path == '/tools' || path == '/electronic-documents')
+    if (path == '/tools' || path == '/electronic-documents') {
       return permissions.canAccessTools;
+    }
 
     if (path == '/settings' ||
         path == '/settings/printer' ||
@@ -78,8 +82,9 @@ class ModuleAccess {
     if (path.startsWith('/cash/expenses')) return 'Gastos';
     if (path.startsWith('/cash')) return 'Caja';
     if (path == '/reports') return 'Reportes';
-    if (path == '/tools' || path == '/electronic-documents')
+    if (path == '/tools' || path == '/electronic-documents') {
       return 'Herramientas';
+    }
     if (path.startsWith('/settings')) return 'Configuracion';
     if (path == '/account') return 'Cuenta';
     return 'Modulo';
