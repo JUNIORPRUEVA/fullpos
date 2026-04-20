@@ -161,6 +161,53 @@ void main() {
     expect(factura2!.ecf, 'E310000000002');
   });
 
+  test('saveLocal ignores remote id collisions and preserves business upsert key', () async {
+    await AppDb.resetForTests();
+
+    final repository = ElectronicSequenceRepository();
+    final first = await repository.saveLocal(
+      ElectronicSequenceModel(
+        companyId: 1,
+        branchId: 0,
+        documentTypeCode: '32',
+        prefix: 'E32',
+        startNumber: 1,
+        currentNumber: 0,
+        endNumber: 100,
+        status: 'ACTIVE',
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+
+    expect(first.id, isNotNull);
+
+    final saved = await repository.saveLocal(
+      ElectronicSequenceModel(
+        id: first.id,
+        companyId: 1,
+        branchId: 0,
+        documentTypeCode: '31',
+        prefix: 'E31',
+        startNumber: 1,
+        currentNumber: 0,
+        endNumber: 200,
+        status: 'ACTIVE',
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+
+    expect(saved.id, isNotNull);
+    expect(saved.id, isNot(first.id));
+
+    final rows = await (await AppDb.database).query(
+      'electronic_sequences',
+      orderBy: 'document_type_code ASC',
+    );
+
+    expect(rows, hasLength(2));
+    expect(rows.map((row) => row['document_type_code']), ['31', '32']);
+  });
+
   test(
     'invoice sale stores customer RNC snapshot for fiscal printing',
     () async {

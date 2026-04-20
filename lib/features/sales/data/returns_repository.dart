@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
@@ -362,11 +360,8 @@ class ReturnsRepository {
       return returnSaleId;
     });
 
-    CloudSyncService.instance.scheduleProductsSyncSoon();
-    unawaited(
-      CloudSyncService.instance.syncReturnsNow(reason: 'return_applied'),
-    );
-    unawaited(CloudSyncService.instance.syncSalesNow(reason: 'return_applied'));
+    await CloudSyncService.instance.syncReturnsNow(reason: 'return_applied');
+    await CloudSyncService.instance.syncSalesNow(reason: 'return_applied');
 
     return returnSaleId;
   }

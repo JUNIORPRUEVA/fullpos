@@ -58,6 +58,18 @@ class ElectronicSequenceRepository {
 
   static const List<String> _defaultTypes = ['31', '32', '34'];
 
+  Map<String, Object?> _localPersistenceMap(ElectronicSequenceModel sequence) => {
+    'company_id': sequence.companyId,
+    'branch_id': sequence.branchId,
+    'document_type_code': sequence.documentTypeCode,
+    'prefix': sequence.prefix,
+    'start_number': sequence.startNumber,
+    'current_number': sequence.currentNumber,
+    'end_number': sequence.endNumber,
+    'status': sequence.status,
+    'updated_at_ms': sequence.updatedAtMs,
+  };
+
   Future<List<ElectronicSequenceModel>> listLocal() async {
     final db = await AppDb.database;
     final companyId = await SessionManager.companyId() ?? 0;
@@ -98,15 +110,16 @@ class ElectronicSequenceRepository {
       whereArgs: [companyId, payload.branchId, payload.documentTypeCode],
       limit: 1,
     );
+    final localMap = _localPersistenceMap(payload);
     if (existing.isEmpty) {
-      final id = await db.insert(DbTables.electronicSequences, payload.toMap());
+      final id = await db.insert(DbTables.electronicSequences, localMap);
       return payload.copyWith(id: id);
     }
 
     final id = existing.first['id'] as int?;
     await db.update(
       DbTables.electronicSequences,
-      payload.toMap(),
+      localMap,
       where: 'id = ?',
       whereArgs: [id],
     );

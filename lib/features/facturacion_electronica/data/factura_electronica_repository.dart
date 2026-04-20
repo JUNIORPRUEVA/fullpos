@@ -12,7 +12,9 @@ import 'electronic_company_locator_helper.dart';
 import 'models/factura_electronica_model.dart';
 
 String _mapRemoteInvoiceStatus(Map<dynamic, dynamic> item) {
-  final dgiiStatus = (item['dgiiStatus']?.toString() ?? '').trim().toUpperCase();
+  final dgiiStatus = (item['dgiiStatus']?.toString() ?? '')
+      .trim()
+      .toUpperCase();
   switch (dgiiStatus) {
     case 'ACCEPTED':
     case 'ACCEPTED_CONDITIONAL':
@@ -25,8 +27,9 @@ String _mapRemoteInvoiceStatus(Map<dynamic, dynamic> item) {
       return FacturaElectronicaModel.statusPending;
   }
 
-  final internalStatus =
-      (item['internalStatus']?.toString() ?? '').trim().toUpperCase();
+  final internalStatus = (item['internalStatus']?.toString() ?? '')
+      .trim()
+      .toUpperCase();
   if (internalStatus == 'SUBMITTED' ||
       internalStatus == 'SIGNED' ||
       internalStatus == 'GENERATED') {
@@ -40,12 +43,43 @@ List<FacturaElectronicaModel> _markCacheOnly(
 ) {
   return documents
       .map(
-        (document) => document.copyWith(
-          estadoDgii: FacturaElectronicaModel.statusLocal,
-          estadoInterno: 'CACHE_ONLY',
-        ),
+        (document) {
+          if (document.estadoDgii != FacturaElectronicaModel.statusLocal) {
+            return document;
+          }
+          return document.copyWith(estadoInterno: 'CACHE_ONLY');
+        },
       )
       .toList(growable: false);
+}
+
+String _resolvedInvoiceKey(FacturaElectronicaModel document) {
+  if (document.saleId > 0) return 'sale:${document.saleId}';
+  final ecf = (document.ecf ?? '').trim();
+  if (ecf.isNotEmpty) return 'ecf:$ecf';
+  return 'local:${document.localCode.trim()}';
+}
+
+List<FacturaElectronicaModel> _mergeResolvedDocuments({
+  required List<FacturaElectronicaModel> remote,
+  required List<FacturaElectronicaModel> local,
+  required int limit,
+}) {
+  final merged = <String, FacturaElectronicaModel>{
+    for (final document in _markCacheOnly(local))
+      _resolvedInvoiceKey(document): document,
+  };
+
+  for (final document in remote) {
+    merged[_resolvedInvoiceKey(document)] = document;
+  }
+
+  final values = merged.values.toList(growable: false)
+    ..sort((left, right) => right.createdAtMs.compareTo(left.createdAtMs));
+  if (values.length <= limit) {
+    return values;
+  }
+  return values.take(limit).toList(growable: false);
 }
 
 class FacturaElectronicaRepository {
@@ -54,6 +88,7 @@ class FacturaElectronicaRepository {
   static Future<List<FacturaElectronicaModel>> loadRecentResolved({
     int limit = 40,
   }) async {
+    final localRecent = await getRecent(limit: limit);
     final settings = await BusinessSettingsRepository().loadSettings();
     final locators = buildElectronicCompanyLocators(
       sessionCompanyId: await SessionManager.companyId(),
@@ -62,7 +97,7 @@ class FacturaElectronicaRepository {
     );
 
     if (locators.isEmpty) {
-      return _markCacheOnly(await getRecent(limit: limit));
+      return _markCacheOnly(localRecent);
     }
 
     final api = ApiClient(
@@ -78,19 +113,16 @@ class FacturaElectronicaRepository {
       final response = await api.get(
         '/api/electronic-invoicing/outbound/by-rnc',
         headers: headers,
-        queryParameters: <String, String>{
-          ...locators,
-          'limit': '$limit',
-        },
+        queryParameters: <String, String>{...locators, 'limit': '$limit'},
         retry: false,
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _markCacheOnly(await getRecent(limit: limit));
+        return _markCacheOnly(localRecent);
       }
 
       final decoded = jsonDecode(response.body);
       if (decoded is! List) {
-        return _markCacheOnly(await getRecent(limit: limit));
+        return _markCacheOnly(localRecent);
       }
 
       final docs = decoded
@@ -107,24 +139,25 @@ class FacturaElectronicaRepository {
               tipoDocumento:
                   item['documentTypeCode']?.toString().trim() ?? 'venta',
               dgiiTrackId: item['dgiiTrackId']?.toString().trim(),
-                estadoDgii: _mapRemoteInvoiceStatus(item),
+              estadoDgii: _mapRemoteInvoiceStatus(item),
               codigoDgii: null,
               mensajeDgii: null,
               ambiente: null,
-              montoTotal:
-                  (item['totalAmount'] as num?)?.toDouble() ?? 0.0,
+              montoTotal: (item['totalAmount'] as num?)?.toDouble() ?? 0.0,
               clienteNombre: item['customerName']?.toString(),
               clienteRnc: item['customerRnc']?.toString(),
               tipoDescriptivo: item['documentLabel']?.toString(),
               referenciaDocumento: item['referenceDocument']?.toString(),
               estadoInterno: item['internalStatus']?.toString(),
               createdAtMs:
-                  DateTime.tryParse(item['createdAt']?.toString() ?? '')
-                      ?.millisecondsSinceEpoch ??
+                  DateTime.tryParse(
+                    item['createdAt']?.toString() ?? '',
+                  )?.millisecondsSinceEpoch ??
                   DateTime.now().millisecondsSinceEpoch,
               updatedAtMs:
-                  DateTime.tryParse(item['createdAt']?.toString() ?? '')
-                      ?.millisecondsSinceEpoch ??
+                  DateTime.tryParse(
+                    item['createdAt']?.toString() ?? '',
+                  )?.millisecondsSinceEpoch ??
                   DateTime.now().millisecondsSinceEpoch,
             ),
           )
@@ -133,9 +166,13 @@ class FacturaElectronicaRepository {
       for (final doc in docs.where((item) => item.saleId > 0)) {
         await upsert(doc);
       }
-      return docs;
+      return _mergeResolvedDocuments(
+        remote: docs,
+        local: localRecent,
+        limit: limit,
+      );
     } catch (_) {
-      return _markCacheOnly(await getRecent(limit: limit));
+      return _markCacheOnly(localRecent);
     }
   }
 
@@ -151,7 +188,9 @@ class FacturaElectronicaRepository {
     return FacturaElectronicaModel.fromMap(rows.first);
   }
 
-  static Future<List<FacturaElectronicaModel>> getRecent({int limit = 40}) async {
+  static Future<List<FacturaElectronicaModel>> getRecent({
+    int limit = 40,
+  }) async {
     final db = await AppDb.database;
     final rows = await db.query(
       DbTables.facturaElectronica,
@@ -191,7 +230,8 @@ class FacturaElectronicaRepository {
 
     final summary = <String, int>{};
     for (final row in rows) {
-      final key = row['estado_dgii'] as String? ?? FacturaElectronicaModel.statusLocal;
+      final key =
+          row['estado_dgii'] as String? ?? FacturaElectronicaModel.statusLocal;
       summary[key] = (row['total'] as int?) ?? 0;
     }
     return summary;
@@ -204,7 +244,9 @@ class FacturaElectronicaRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
     final payload = model.copyWith(updatedAtMs: now);
 
-    final existing = payload.saleId > 0 ? await getBySaleId(payload.saleId) : null;
+    final existing = payload.saleId > 0
+        ? await getBySaleId(payload.saleId)
+        : null;
     if (existing == null) {
       final id = await db.insert(
         DbTables.facturaElectronica,
