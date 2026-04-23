@@ -23,7 +23,19 @@ import '../../settings/ui/business_sections_settings_page.dart';
 import '../../settings/ui/settings_layout.dart';
 
 class ElectronicInvoicingPage extends ConsumerStatefulWidget {
-  const ElectronicInvoicingPage({super.key});
+  const ElectronicInvoicingPage({
+    super.key,
+    this.loadResolvedConfig,
+    this.loadRecentInvoices,
+    this.loadEmpresaConfig,
+    this.businessSettingsOverride,
+  });
+
+  final Future<ElectronicInvoicingResolvedConfig> Function()?
+  loadResolvedConfig;
+  final Future<List<FacturaElectronicaModel>> Function()? loadRecentInvoices;
+  final Future<EmpresaConfig> Function()? loadEmpresaConfig;
+  final BusinessSettings? businessSettingsOverride;
 
   @override
   ConsumerState<ElectronicInvoicingPage> createState() =>
@@ -98,11 +110,15 @@ class _ElectronicInvoicingPageState
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
-    final resolved = await _configRepository.loadResolvedConfig();
-    final invoices = await FacturaElectronicaRepository.loadRecentResolved(
-      limit: 18,
-    );
-    final empresaConfig = await EmpresaService.getEmpresaConfig();
+    final resolved = await (widget.loadResolvedConfig != null
+        ? widget.loadResolvedConfig!()
+        : _configRepository.loadResolvedConfig());
+    final invoices = await (widget.loadRecentInvoices != null
+        ? widget.loadRecentInvoices!()
+        : FacturaElectronicaRepository.loadRecentResolved(limit: 18));
+    final empresaConfig = await (widget.loadEmpresaConfig != null
+        ? widget.loadEmpresaConfig!()
+        : EmpresaService.getEmpresaConfig());
     if (!mounted) return;
 
     _syncControllers(resolved.company);
@@ -399,9 +415,6 @@ class _ElectronicInvoicingPageState
       await _persistConfiguredSequences();
       final resolved = await _configRepository.saveConfig(
         company: company.copyWith(apiToken: _apiTokenController.text.trim()),
-        electronicInvoicingEnabled: ref
-            .read(businessSettingsProvider)
-            .electronicInvoicingEnabled,
       );
 
       if (!mounted) return;
@@ -553,6 +566,17 @@ class _ElectronicInvoicingPageState
   }
 
   Future<void> _updateSalesVisibility(bool enabled) async {
+    if (!enabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'La facturación electrónica no se puede desactivar desde esta pantalla.',
+          ),
+        ),
+      );
+      return;
+    }
     if (_savingVisibility) return;
 
     final previousValue = ref
@@ -590,6 +614,17 @@ class _ElectronicInvoicingPageState
   }
 
   Future<void> _updateAutomaticEmission(bool enabled) async {
+    if (!enabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'El envío a DGII no se puede desactivar desde esta pantalla.',
+          ),
+        ),
+      );
+      return;
+    }
     final company = _company;
     if (company == null || _savingAutomaticEmission) return;
 
@@ -631,9 +666,6 @@ class _ElectronicInvoicingPageState
 
     final resolved = await _configRepository.saveConfig(
       company: company.copyWith(apiToken: _apiTokenController.text.trim()),
-      electronicInvoicingEnabled: ref
-          .read(businessSettingsProvider)
-          .electronicInvoicingEnabled,
     );
     if (!mounted) return;
 
@@ -713,9 +745,6 @@ class _ElectronicInvoicingPageState
         company: savedCompany.copyWith(
           apiToken: _apiTokenController.text.trim(),
         ),
-        electronicInvoicingEnabled: ref
-            .read(businessSettingsProvider)
-            .electronicInvoicingEnabled,
       );
       if (!mounted) return;
 
@@ -1131,7 +1160,8 @@ class _ElectronicInvoicingPageState
 
   @override
   Widget build(BuildContext context) {
-    final businessSettings = ref.watch(businessSettingsProvider);
+    final BusinessSettings businessSettings =
+      widget.businessSettingsOverride ?? ref.watch(businessSettingsProvider);
 
     return Theme(
       data: SettingsLayout.brandedTheme(context),
@@ -1273,7 +1303,7 @@ class _ElectronicInvoicingPageState
                   ),
                   const SizedBox(height: 8),
                   _PrimarySwitchTile(
-                    label: 'Enviar a DGII',
+                    label: 'Enviar automáticamente a DGII',
                     value: company.automaticEmission == 1,
                     dense: true,
                     onChanged: _savingAutomaticEmission

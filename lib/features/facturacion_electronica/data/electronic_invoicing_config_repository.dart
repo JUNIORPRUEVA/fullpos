@@ -92,7 +92,6 @@ class ElectronicInvoicingConfigRepository {
 
   Future<ElectronicInvoicingResolvedConfig> saveConfig({
     required ElectronicCompanyModel company,
-    required bool electronicInvoicingEnabled,
   }) async {
     final settings = await BusinessSettingsRepository().loadSettings();
     final locators = await _locators(settings);
@@ -111,8 +110,8 @@ class ElectronicInvoicingConfigRepository {
         body: <String, dynamic>{
           ...locators,
           'branchId': 0,
-          'active': electronicInvoicingEnabled,
-          'outboundEnabled': company.automaticEmission == 1,
+          'active': true,
+          'outboundEnabled': true,
           'authEnabled': true,
           'environment': _backendEnvironment(company.environment),
           'publicBaseUrl': api.baseUrl,

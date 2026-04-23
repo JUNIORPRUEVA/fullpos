@@ -54,6 +54,7 @@ class FacturaElectronicaModel {
   });
 
   String get statusLabel {
+    final normalizedMessage = (mensajeDgii ?? '').trim().toLowerCase();
     switch (estadoDgii) {
       case statusAccepted:
         return 'Aceptada';
@@ -62,9 +63,35 @@ class FacturaElectronicaModel {
       case statusPending:
         return 'Pendiente DGII';
       case statusConfigPending:
+        if (normalizedMessage.contains('venta no encontrada')) {
+          return 'Venta';
+        }
+        if (normalizedMessage.contains('certificado')) {
+          return 'Sin cert.';
+        }
+        if (normalizedMessage.contains('secuencia')) {
+          return 'Sin secuencia';
+        }
+        if (normalizedMessage.contains('clave maestra') ||
+            normalizedMessage.contains('fe_master_encryption_key')) {
+          return 'Backend FE';
+        }
+        if (normalizedMessage.contains('deshabilitada')) {
+          return 'FE deshabil.';
+        }
+        if (normalizedMessage.contains('empresa') ||
+            normalizedMessage.contains('compañía') ||
+            normalizedMessage.contains('compania') ||
+            normalizedMessage.contains('rnc') ||
+            normalizedMessage.contains('dirección') ||
+            normalizedMessage.contains('direccion')) {
+          return 'Empresa';
+        }
         return 'Configurar';
       default:
         switch ((estadoInterno ?? '').trim().toUpperCase()) {
+          case 'SUBMISSION_PENDING':
+            return 'Enviando';
           case 'SUBMITTED':
             return 'Enviada';
           case 'SIGNED':

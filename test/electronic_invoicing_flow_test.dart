@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/db_init.dart';
+import 'package:fullpos/core/db/tables.dart';
 import 'package:fullpos/features/facturacion_electronica/data/electronic_sequence_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/electronic_company_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/factura_electronica_repository.dart';
@@ -69,7 +70,7 @@ void main() {
     );
   }
 
-  test('invoice sale uses configured FE sequence and increments it', () async {
+  test('invoice sale is rolled back when real FE backend is unavailable', () async {
     await AppDb.resetForTests();
 
     await BusinessSettingsRepository().saveSettings(
@@ -87,78 +88,53 @@ void main() {
 
     await saveSequence(documentTypeCode: '31', prefix: 'E31', endNumber: 31);
 
-    final saleId = await SalesRepository.createSale(
-      localCode: 'V-ECF-TEST-001',
-      kind: 'invoice',
-      items: [
-        {
-          'product_code_snapshot': 'ECF-001',
-          'product_name_snapshot': 'Producto e-CF',
-          'qty': 1.0,
-          'unit_price': 250.0,
-          'purchase_price_snapshot': 120.0,
-          'discount_line': 0.0,
-          'total_line': 250.0,
-        },
-      ],
-      itbisEnabled: false,
-      subtotalOverride: 250.0,
-      itbisAmountOverride: 0.0,
-      totalOverride: 250.0,
-      paymentMethod: 'cash',
-      paymentCashAmount: 250.0,
-      paymentCardAmount: 0.0,
-      paymentTransferAmount: 0.0,
-      paidAmount: 250.0,
-      changeAmount: 0.0,
-      electronicInvoiceEnabled: true,
-      electronicDocumentType: '31',
-      customerName: 'CLIENTE FISCAL 1',
-      customerRnc: '131000001',
+    await expectLater(
+      SalesRepository.createSale(
+        localCode: 'V-ECF-TEST-001',
+        kind: 'invoice',
+        items: [
+          {
+            'product_code_snapshot': 'ECF-001',
+            'product_name_snapshot': 'Producto e-CF',
+            'qty': 1.0,
+            'unit_price': 250.0,
+            'purchase_price_snapshot': 120.0,
+            'discount_line': 0.0,
+            'total_line': 250.0,
+          },
+        ],
+        itbisEnabled: false,
+        subtotalOverride: 250.0,
+        itbisAmountOverride: 0.0,
+        totalOverride: 250.0,
+        paymentMethod: 'cash',
+        paymentCashAmount: 250.0,
+        paymentCardAmount: 0.0,
+        paymentTransferAmount: 0.0,
+        paidAmount: 250.0,
+        changeAmount: 0.0,
+        electronicInvoiceEnabled: true,
+        electronicDocumentType: '31',
+        customerName: 'CLIENTE FISCAL 1',
+        customerRnc: '131000001',
+      ),
+      throwsException,
     );
 
-    final saleId2 = await SalesRepository.createSale(
-      localCode: 'V-ECF-TEST-002',
-      kind: 'invoice',
-      items: [
-        {
-          'product_code_snapshot': 'ECF-002',
-          'product_name_snapshot': 'Producto e-CF 2',
-          'qty': 1.0,
-          'unit_price': 150.0,
-          'purchase_price_snapshot': 70.0,
-          'discount_line': 0.0,
-          'total_line': 150.0,
-        },
-      ],
-      itbisEnabled: false,
-      subtotalOverride: 150.0,
-      itbisAmountOverride: 0.0,
-      totalOverride: 150.0,
-      paymentMethod: 'cash',
-      paymentCashAmount: 150.0,
-      paymentCardAmount: 0.0,
-      paymentTransferAmount: 0.0,
-      paidAmount: 150.0,
-      changeAmount: 0.0,
-      electronicInvoiceEnabled: true,
-      electronicDocumentType: '31',
-      customerName: 'CLIENTE FISCAL 2',
-      customerRnc: '131000002',
+    final salesRows = await (await AppDb.database).query(
+      DbTables.sales,
+      columns: ['id', 'deleted_at_ms', 'status'],
+      where: 'local_code = ?',
+      whereArgs: ['V-ECF-TEST-001'],
     );
+
+    expect(salesRows, isNotEmpty);
+    final saleId = salesRows.first['id'] as int;
 
     final factura = await FacturaElectronicaRepository.getBySaleId(saleId);
-    final factura2 = await FacturaElectronicaRepository.getBySaleId(saleId2);
-
-    expect(factura, isNotNull);
-    expect(factura!.saleId, saleId);
-    expect(factura.tipoDocumento, '31');
-    expect(factura.estadoDgii, FacturaElectronicaModel.statusAccepted);
-    expect(factura.ecf, 'E310000000001');
-    expect(factura.xmlPayload, contains('<eCF>'));
-    expect(factura.xmlFirmado, contains('<FirmaDigital'));
-    expect(factura2, isNotNull);
-    expect(factura2!.ecf, 'E310000000002');
+    expect(factura, isNull);
+    expect(salesRows.first['deleted_at_ms'], isNotNull);
+    expect(salesRows.first['status'], 'cancelled_fe');
   });
 
   test('saveLocal ignores remote id collisions and preserves business upsert key', () async {
@@ -237,7 +213,7 @@ void main() {
         paymentTransferAmount: 0.0,
         paidAmount: 300.0,
         changeAmount: 0.0,
-        electronicInvoiceEnabled: true,
+        electronicInvoiceEnabled: false,
         electronicDocumentType: '31',
         customerName: 'EMPRESA CLIENTE SRL',
         customerPhone: '8095550001',

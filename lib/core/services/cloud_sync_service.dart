@@ -1296,7 +1296,15 @@ class CloudSyncService {
     }
   }
 
-  Future<bool> syncSalesIfEnabled() async {
+  Future<bool> syncSalesIfEnabled() {
+    return syncSalesIfEnabledDetailed();
+  }
+
+  Future<bool> syncSalesIfEnabledDetailed({
+    String? traceSaleLocalCode,
+    bool requireTraceLocalCode = false,
+    String reason = 'sales_changed',
+  }) async {
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
       if (!settings.cloudEnabled) return true;
@@ -1414,6 +1422,11 @@ class CloudSyncService {
         });
       }
 
+      await AppLogger.instance.logInfo(
+        'Cloud sales sync start reason=$reason traceSaleLocalCode=${traceSaleLocalCode ?? 'null'} companyCloudId=${cloudCompanyId ?? 'null'} companyRnc=${rnc.isEmpty ? 'null' : rnc} count=${payloadSales.length}',
+        module: 'cloud_sync',
+      );
+
       for (var i = 0; i < payloadSales.length; i += _chunkSize) {
         final chunk = payloadSales.sublist(
           i,
@@ -1439,7 +1452,45 @@ class CloudSyncService {
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
           await AppLogger.instance.logWarn(
-            'Cloud sales sync failed status=${response.statusCode}',
+            'Cloud sales sync failed reason=$reason status=${response.statusCode} response=${response.body}',
+            module: 'cloud_sync',
+          );
+          return false;
+        }
+
+        Map<String, dynamic> decoded;
+        try {
+          final parsed = jsonDecode(response.body);
+          decoded = parsed is Map<String, dynamic>
+              ? parsed
+              : <String, dynamic>{};
+        } catch (_) {
+          decoded = <String, dynamic>{};
+        }
+        final results = decoded['results'];
+        Map<String, dynamic>? tracedSale;
+        if (traceSaleLocalCode != null && results is List) {
+          for (final entry in results) {
+            if (entry is! Map) continue;
+            final row = Map<String, dynamic>.from(entry);
+            if ((row['localCode']?.toString() ?? '').trim() ==
+                traceSaleLocalCode.trim()) {
+              tracedSale = row;
+              break;
+            }
+          }
+        }
+
+        await AppLogger.instance.logInfo(
+          'Cloud sales sync response reason=$reason status=${response.statusCode} traceSaleLocalCode=${traceSaleLocalCode ?? 'null'} tracedRemoteSaleId=${tracedSale?['id']?.toString() ?? 'null'} response=${response.body}',
+          module: 'cloud_sync',
+        );
+
+        if (requireTraceLocalCode &&
+            traceSaleLocalCode != null &&
+            tracedSale == null) {
+          await AppLogger.instance.logWarn(
+            'Cloud sales sync missing traced sale reason=$reason traceSaleLocalCode=$traceSaleLocalCode',
             module: 'cloud_sync',
           );
           return false;
@@ -1447,7 +1498,7 @@ class CloudSyncService {
       }
 
       await AppLogger.instance.logInfo(
-        'Cloud sales sync ok',
+        'Cloud sales sync ok reason=$reason traceSaleLocalCode=${traceSaleLocalCode ?? 'null'}',
         module: 'cloud_sync',
       );
       return true;

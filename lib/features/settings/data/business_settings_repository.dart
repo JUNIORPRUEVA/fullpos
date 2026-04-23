@@ -83,13 +83,14 @@ class BusinessSettingsRepository {
     final existing = _ensureInFlight;
     if (existing != null) return existing;
 
-    final future = _ensureTableImpl(db);
-    _ensureInFlight = future.whenComplete(() {
-      if (identical(_ensureInFlight, future)) {
+    final inFlight = _ensureTableImpl(db);
+    _ensureInFlight = inFlight;
+    inFlight.whenComplete(() {
+      if (identical(_ensureInFlight, inFlight)) {
         _ensureInFlight = null;
       }
     });
-    return _ensureInFlight!;
+    return inFlight;
   }
 
   static Future<void> _ensureTableImpl(Database db) async {
@@ -209,10 +210,18 @@ class BusinessSettingsRepository {
   /// Guardar configuración del negocio (solo columnas válidas)
   Future<void> saveSettings(BusinessSettings settings) {
     return _withTable('business_settings_save', (db) async {
-      final tableInfo = await db.rawQuery('PRAGMA table_info($_tableName)');
-      final existingColumns = tableInfo
+      var tableInfo = await db.rawQuery('PRAGMA table_info($_tableName)');
+      var existingColumns = tableInfo
           .map((row) => row['name'] as String)
           .toSet();
+
+      if (existingColumns.isEmpty) {
+        await _ensureTable(db);
+        tableInfo = await db.rawQuery('PRAGMA table_info($_tableName)');
+        existingColumns = tableInfo
+            .map((row) => row['name'] as String)
+            .toSet();
+      }
 
       final map = settings.toMap();
       map['updated_at'] = DateTime.now().toIso8601String();
@@ -222,6 +231,10 @@ class BusinessSettingsRepository {
         if (existingColumns.contains(entry.key) && entry.key != 'id') {
           filteredMap[entry.key] = entry.value;
         }
+      }
+
+      if (filteredMap.isEmpty) {
+        return;
       }
 
       await db.update(_tableName, filteredMap, where: 'id = ?', whereArgs: [1]);

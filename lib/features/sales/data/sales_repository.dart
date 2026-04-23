@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/utils/app_event_bus.dart';
 import '../../../core/validation/business_rules.dart';
@@ -21,6 +22,86 @@ class SalesRepository {
   SalesRepository._();
 
   static final Random _random = Random();
+
+  static Future<void> _rollbackSaleAfterElectronicFailure(
+    int saleId,
+    StockUpdateMode stockUpdateMode,
+  ) async {
+    final db = await AppDb.database;
+    await db.transaction((txn) async {
+      final saleRows = await txn.query(
+        DbTables.sales,
+        columns: ['id', 'local_code', 'deleted_at_ms'],
+        where: 'id = ?',
+        whereArgs: [saleId],
+        limit: 1,
+      );
+      if (saleRows.isEmpty) return;
+
+      final saleRow = saleRows.first;
+      if (saleRow['deleted_at_ms'] != null) {
+        return;
+      }
+
+      final localCode = saleRow['local_code']?.toString() ?? 'VENTA';
+      final itemRows = await txn.query(
+        DbTables.saleItems,
+        columns: ['product_id', 'qty'],
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+      );
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      for (final item in itemRows) {
+        final productId = item['product_id'] as int?;
+        if (productId == null) continue;
+
+        final qty = (item['qty'] as num?)?.toDouble() ?? 0.0;
+        if (qty <= 0) continue;
+
+        if (stockUpdateMode == StockUpdateMode.deduct) {
+          await txn.rawUpdate(
+            'UPDATE ${DbTables.products} SET stock = stock + ? WHERE id = ?',
+            [qty, productId],
+          );
+          await txn.insert(DbTables.stockMovements, {
+            'product_id': productId,
+            'type': 'SALE_ROLLBACK',
+            'quantity': qty,
+            'note': 'Rollback FE venta #$saleId - $localCode',
+            'created_at_ms': now,
+          });
+        } else if (stockUpdateMode == StockUpdateMode.reserve) {
+          await txn.rawUpdate(
+            'UPDATE ${DbTables.products} SET reserved_stock = CASE WHEN reserved_stock >= ? THEN reserved_stock - ? ELSE 0 END WHERE id = ?',
+            [qty, qty, productId],
+          );
+        }
+      }
+
+      await txn.update(
+        DbTables.sales,
+        {
+          'status': 'cancelled_fe',
+          'deleted_at_ms': now,
+          'updated_at_ms': now,
+        },
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+
+      await txn.delete(
+        DbTables.facturaElectronica,
+        where: 'sale_id = ?',
+        whereArgs: [saleId],
+      );
+    });
+
+    if (stockUpdateMode != StockUpdateMode.none) {
+      CloudSyncService.instance.scheduleProductsSyncSoon();
+    }
+    CloudSyncService.instance.scheduleSalesSyncSoon(reason: 'sale_fe_rollback');
+  }
 
   /// Genera código local único: V-YYYYMMDD-XXXXXXX (microsegundos + aleatorio).
   static String _generateLocalCode() {
@@ -367,6 +448,11 @@ class SalesRepository {
       throw StateError('No se pudo crear la venta con un código local único.');
     }
 
+    await AppLogger.instance.logInfo(
+      'createSale saved local saleId=$saleId saleLocalCode=$currentLocalCode kind=$kind electronicInvoiceEnabled=$electronicInvoiceEnabled',
+      module: 'sales',
+    );
+
     // Usar la fecha real guardada en BD para que Reportes filtre por rango con precisión
     int createdAtMs = DateTime.now().millisecondsSinceEpoch;
     try {
@@ -385,13 +471,30 @@ class SalesRepository {
       // No bloquear emisión del evento
     }
 
+    if (kind == SaleKind.invoice) {
+      try {
+        await AppLogger.instance.logInfo(
+          'createSale starting FE saleId=$saleId saleLocalCode=$currentLocalCode',
+          module: 'sales',
+        );
+        await FacturacionElectronicaService.procesarVenta(saleId);
+        await AppLogger.instance.logInfo(
+          'createSale FE completed saleId=$saleId saleLocalCode=$currentLocalCode',
+          module: 'sales',
+        );
+      } catch (_) {
+        await AppLogger.instance.logWarn(
+          'createSale FE failed saleId=$saleId saleLocalCode=$currentLocalCode rollback=true',
+          module: 'sales',
+        );
+        await _rollbackSaleAfterElectronicFailure(saleId, stockUpdateMode);
+        rethrow;
+      }
+    }
+
     AppEventBus.emit(
       SaleCompletedEvent(saleId: saleId, createdAtMs: createdAtMs),
     );
-
-    if (kind == SaleKind.invoice) {
-      await FacturacionElectronicaService.procesarVenta(saleId);
-    }
 
     return saleId;
   }
