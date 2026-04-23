@@ -110,6 +110,20 @@ List<FacturaElectronicaModel> _mergeResolvedDocuments({
 class FacturaElectronicaRepository {
   FacturaElectronicaRepository._();
 
+  static String _backendTagFromHeaders(Map<String, String> headers) {
+    final instanceId = (headers['x-fullpos-instance'] ?? '').trim();
+    final version = (headers['x-fullpos-version'] ?? '').trim();
+    final commit = (headers['x-fullpos-commit'] ?? '').trim();
+
+    final parts = <String>[];
+    if (instanceId.isNotEmpty) parts.add('instance=$instanceId');
+    if (version.isNotEmpty) parts.add('version=$version');
+    if (commit.isNotEmpty) parts.add('commit=$commit');
+
+    if (parts.isEmpty) return '';
+    return ' backend(${parts.join(' ')})';
+  }
+
   static bool _isPendingRemoteDoc(FacturaElectronicaModel document) {
     final status = (document.estadoDgii).trim().toUpperCase();
     return status == FacturaElectronicaModel.statusPending.toUpperCase();
@@ -138,7 +152,7 @@ class FacturaElectronicaRepository {
         retry: false,
       );
       await AppLogger.instance.logInfo(
-        'FE recents dgii result query done trackId=$trackId status=${response.statusCode} response=${response.body}',
+        'FE recents dgii result query done trackId=$trackId status=${response.statusCode}${_backendTagFromHeaders(response.headers)} response=${response.body}',
         module: 'electronic_invoicing',
       );
 

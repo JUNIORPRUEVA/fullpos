@@ -19,6 +19,20 @@ import '../data/models/factura_electronica_model.dart';
 class FacturacionElectronicaService {
   FacturacionElectronicaService._();
 
+  static String _backendTagFromHeaders(Map<String, String> headers) {
+    final instanceId = (headers['x-fullpos-instance'] ?? '').trim();
+    final version = (headers['x-fullpos-version'] ?? '').trim();
+    final commit = (headers['x-fullpos-commit'] ?? '').trim();
+
+    final parts = <String>[];
+    if (instanceId.isNotEmpty) parts.add('instance=$instanceId');
+    if (version.isNotEmpty) parts.add('version=$version');
+    if (commit.isNotEmpty) parts.add('commit=$commit');
+
+    if (parts.isEmpty) return '';
+    return ' backend(${parts.join(' ')})';
+  }
+
   static String _resolveDocumentTypeCode(legacy_sales.SaleModel sale) {
     final rawType = (sale.electronicDocumentType ?? '').trim();
     if (rawType == '31' || rawType == '32') {
@@ -239,7 +253,7 @@ class FacturacionElectronicaService {
       retry: false,
     );
     await AppLogger.instance.logInfo(
-      'FE remote response path=$path status=${response.statusCode} request=${jsonEncode(body)} response=${response.body}',
+      'FE remote response path=$path status=${response.statusCode}${_backendTagFromHeaders(response.headers)} request=${jsonEncode(body)} response=${response.body}',
       module: 'electronic_invoicing',
     );
     final decoded = _decodeMap(response.body);
@@ -269,7 +283,7 @@ class FacturacionElectronicaService {
       retry: false,
     );
     await AppLogger.instance.logInfo(
-      'FE dgii result query path=$path status=${response.statusCode} trackId=${trackId.trim()} response=${response.body}',
+      'FE dgii result query path=$path status=${response.statusCode}${_backendTagFromHeaders(response.headers)} trackId=${trackId.trim()} response=${response.body}',
       module: 'electronic_invoicing',
     );
     final decoded = _decodeMap(response.body);
