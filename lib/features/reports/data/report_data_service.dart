@@ -30,14 +30,18 @@ class ReportData {
     required this.sales,
     required this.expenses,
     required this.totalSales,
+    required this.totalCost,
     required this.totalExpenses,
+    required this.grossProfit,
     required this.profit,
   });
 
   final List<SaleModel> sales;
   final List<ReportExpense> expenses;
   final double totalSales;
+  final double totalCost;
   final double totalExpenses;
+  final double grossProfit;
   final double profit;
 }
 
@@ -84,18 +88,91 @@ class ReportDataService {
         )
         .toList();
 
-    final totalSales = sales.fold<double>(0, (sum, sale) => sum + sale.total);
+    final totalSalesRows = await db.rawQuery(
+      '''
+        SELECT
+          COALESCE(SUM(
+            CASE
+              WHEN kind = 'return' THEN -ABS(COALESCE(total, 0))
+              ELSE COALESCE(total, 0)
+            END
+          ), 0) as total
+        FROM ${DbTables.sales}
+        WHERE status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+          AND kind IN ('invoice', 'sale', 'return')
+          AND deleted_at_ms IS NULL
+          AND created_at_ms >= ?
+          AND created_at_ms <= ?
+      ''',
+      [startMs, endMs],
+    );
+    final totalSales =
+        (totalSalesRows.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final soldCostRows = await db.rawQuery(
+      '''
+        SELECT
+          COALESCE(SUM(
+            COALESCE(si.qty, 0) *
+            COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
+          ), 0) as total
+        FROM ${DbTables.saleItems} si
+        INNER JOIN ${DbTables.sales} s ON si.sale_id = s.id
+        LEFT JOIN ${DbTables.products} p
+          ON (si.product_id = p.id)
+          OR (
+            si.product_id IS NULL
+            AND TRIM(si.product_code_snapshot) COLLATE NOCASE = TRIM(p.code) COLLATE NOCASE
+          )
+        WHERE s.status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+          AND s.kind IN ('invoice', 'sale')
+          AND s.deleted_at_ms IS NULL
+          AND s.created_at_ms >= ?
+          AND s.created_at_ms <= ?
+      ''',
+      [startMs, endMs],
+    );
+    final soldCost = (soldCostRows.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    final returnedCostRows = await db.rawQuery(
+      '''
+        SELECT
+          COALESCE(SUM(
+            COALESCE(ri.qty, 0) *
+            COALESCE(NULLIF(si.purchase_price_snapshot, 0), p.purchase_price, 0)
+          ), 0) as total
+        FROM ${DbTables.returnItems} ri
+        INNER JOIN ${DbTables.returns} r ON ri.return_id = r.id
+        INNER JOIN ${DbTables.sales} rs ON r.return_sale_id = rs.id
+        LEFT JOIN ${DbTables.saleItems} si ON ri.sale_item_id = si.id
+        LEFT JOIN ${DbTables.products} p
+          ON COALESCE(ri.product_id, si.product_id) = p.id
+        WHERE rs.status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
+          AND rs.kind = 'return'
+          AND rs.deleted_at_ms IS NULL
+          AND rs.created_at_ms >= ?
+          AND rs.created_at_ms <= ?
+      ''',
+      [startMs, endMs],
+    );
+    final returnedCost =
+        (returnedCostRows.first['total'] as num?)?.toDouble() ?? 0.0;
+    final totalCost = soldCost - returnedCost;
+
     final totalExpenses = expenses.fold<double>(
       0,
       (sum, expense) => sum + expense.amount,
     );
+    final grossProfit = totalSales - totalCost;
 
     return ReportData(
       sales: sales,
       expenses: expenses,
       totalSales: totalSales,
+      totalCost: totalCost,
       totalExpenses: totalExpenses,
-      profit: totalSales - totalExpenses,
+      grossProfit: grossProfit,
+      profit: grossProfit - totalExpenses,
     );
   }
 }

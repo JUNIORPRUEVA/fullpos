@@ -4,6 +4,7 @@ class FacturaElectronicaModel {
   static const String statusPending = 'pendiente_dgii';
   static const String statusAccepted = 'aceptada';
   static const String statusRejected = 'rechazada';
+  static const String statusSendError = 'error_envio_dgii';
 
   final int? id;
   final int saleId;
@@ -60,11 +61,21 @@ class FacturaElectronicaModel {
         return 'Aceptada';
       case statusRejected:
         return 'Rechazada';
+      case statusSendError:
+        return 'Error envio';
       case statusPending:
         return 'Pendiente DGII';
       case statusConfigPending:
         if (normalizedMessage.contains('venta no encontrada')) {
           return 'Venta';
+        }
+        if (normalizedMessage.contains('token dgii') ||
+            normalizedMessage.contains('autenticacion automatica dgii') ||
+            normalizedMessage.contains('dgii_auth') ||
+            normalizedMessage.contains('bearer') ||
+            normalizedMessage.contains('token requerido') ||
+            normalizedMessage.contains('token_required')) {
+          return 'Auth DGII';
         }
         if (normalizedMessage.contains('certificado')) {
           return 'Sin cert.';

@@ -5,9 +5,9 @@ import 'report_data_service.dart';
 /// Modelos para los reportes
 class KpisData {
   final double totalSales;
-  // Ganancia unificada del rango: ventas - costo - salidas de caja.
+  // Ganancia bruta del rango: ventas netas - costo neto.
   final double totalProfit;
-  // Alias conservado por compatibilidad con la UI existente.
+  // Ganancia neta del rango: ganancia bruta - salidas de caja que afectan utilidad.
   final double netProfit;
   final double totalCost;
   final int salesCount;
@@ -402,7 +402,7 @@ class ReportsRepository {
     }
 
     final netTotalSales = report.totalSales;
-    final netTotalCost = 0.0;
+    final netTotalCost = report.totalCost;
     double cashExpense = 0;
     double cashIncome = 0;
     try {
@@ -428,10 +428,11 @@ class ReportsRepository {
       // La tabla puede no existir
     }
 
-    final unifiedProfit = report.profit;
+    final grossProfit = report.grossProfit;
+    final netProfit = report.profit;
 
     double finalTotalSales = netTotalSales;
-    double finalTotalProfit = unifiedProfit;
+    double finalTotalProfit = grossProfit;
     double finalTotalCost = netTotalCost;
     int finalSalesCount = report.sales.length;
     double finalAvgTicket = finalSalesCount > 0
@@ -471,8 +472,6 @@ class ReportsRepository {
     final quotesConverted =
         (quotesConvertedResult.first['converted_count'] as int?) ?? 0;
 
-    final netProfit = unifiedProfit;
-
     return KpisData(
       totalSales: finalTotalSales,
       totalProfit: finalTotalProfit,
@@ -499,7 +498,12 @@ class ReportsRepository {
       '''
         SELECT 
           DATE(datetime(created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
-          COALESCE(SUM(total), 0) as daily_total
+          COALESCE(SUM(
+            CASE
+              WHEN kind = 'return' THEN -ABS(COALESCE(total, 0))
+              ELSE COALESCE(total, 0)
+            END
+          ), 0) as daily_total
         FROM ${DbTables.sales}
         WHERE kind IN ('invoice', 'sale', 'return')
           AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
@@ -737,6 +741,8 @@ class ReportsRepository {
             -COALESCE(SUM(amount), 0) as daily_profit
           FROM ${DbTables.cashMovements}
           WHERE type = 'OUT'
+            AND COALESCE(movement_type, 'expense') = 'expense'
+            AND COALESCE(affects_profit, 1) = 1
             AND created_at_ms >= ?
             AND created_at_ms <= ?
           GROUP BY date_label
@@ -968,7 +974,12 @@ class ReportsRepository {
         SELECT
           s.customer_id AS client_id,
           MAX(COALESCE(s.customer_name_snapshot, '')) AS snapshot_name,
-          COALESCE(SUM(s.total), 0) AS total_spent,
+          COALESCE(SUM(
+            CASE
+              WHEN s.kind = 'return' THEN -ABS(COALESCE(s.total, 0))
+              ELSE COALESCE(s.total, 0)
+            END
+          ), 0) AS total_spent,
           COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) AS purchase_count
         FROM ${DbTables.sales} s
         WHERE s.kind IN ('invoice', 'sale', 'return')
@@ -1009,7 +1020,12 @@ class ReportsRepository {
       SELECT 
         1 as user_id,
         'admin' as username,
-        COALESCE(SUM(s.total), 0) as total_sales,
+        COALESCE(SUM(
+          CASE
+            WHEN s.kind = 'return' THEN -ABS(COALESCE(s.total, 0))
+            ELSE COALESCE(s.total, 0)
+          END
+        ), 0) as total_sales,
         COALESCE(SUM(CASE WHEN s.kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) as sales_count
       FROM ${DbTables.sales} s
       WHERE s.kind IN ('invoice', 'sale', 'return')
@@ -1102,8 +1118,8 @@ class ReportsRepository {
         SELECT
           rs.customer_id AS client_id,
           MAX(COALESCE(rs.customer_name_snapshot, '')) AS snapshot_name,
-          COALESCE(SUM(rs.total), 0) AS total_sales,
-          COALESCE(SUM(CASE WHEN COALESCE(LOWER(os.payment_method), '') = 'credit' THEN rs.total ELSE 0 END), 0) AS total_credit,
+          COALESCE(SUM(-ABS(COALESCE(rs.total, 0))), 0) AS total_sales,
+          COALESCE(SUM(CASE WHEN COALESCE(LOWER(os.payment_method), '') = 'credit' THEN -ABS(COALESCE(rs.total, 0)) ELSE 0 END), 0) AS total_credit,
           0 AS sales_count,
           COALESCE(MAX(rs.created_at_ms), 0) AS last_purchase_at_ms
         FROM ${DbTables.returns} r
@@ -1184,7 +1200,9 @@ class ReportsRepository {
             kind: row['kind'] as String,
             createdAtMs: row['created_at_ms'] as int,
             customerName: row['customer_name_snapshot'] as String?,
-            total: (row['total'] as num?)?.toDouble() ?? 0,
+            total: ((row['kind'] as String?) == 'return')
+                ? -((row['total'] as num?)?.toDouble().abs() ?? 0)
+                : ((row['total'] as num?)?.toDouble() ?? 0),
             paymentMethod: row['payment_method'] as String?,
           ),
         )
@@ -1341,7 +1359,12 @@ class ReportsRepository {
     final todayQuery =
         '''
       SELECT
-        COALESCE(SUM(total), 0) as total,
+        COALESCE(SUM(
+          CASE
+            WHEN kind = 'return' THEN -ABS(COALESCE(total, 0))
+            ELSE COALESCE(total, 0)
+          END
+        ), 0) as total,
         COALESCE(SUM(CASE WHEN kind IN ('invoice', 'sale') THEN 1 ELSE 0 END), 0) as count
       FROM ${DbTables.sales}
       WHERE kind IN ('invoice', 'sale', 'return')

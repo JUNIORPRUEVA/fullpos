@@ -7,7 +7,7 @@ class CurrencyDisplay {
 
   static NumberFormat currency({
     String symbol = 'RD\$',
-    int decimalDigits = 0,
+    int decimalDigits = 2,
   }) {
     return NumberFormat.currency(
       locale: 'en_US',
@@ -19,7 +19,7 @@ class CurrencyDisplay {
   static String format(
     num value, {
     String symbol = 'RD\$',
-    int decimalDigits = 0,
+    int decimalDigits = 2,
   }) {
     return currency(
       symbol: symbol,

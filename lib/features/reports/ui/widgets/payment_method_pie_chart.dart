@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 import '../../data/reports_repository.dart';
+import '../../../../core/utils/currency_display.dart';
 
 class PaymentMethodPieChart extends StatefulWidget {
   final List<PaymentMethodData> data;
@@ -16,10 +16,7 @@ class _PaymentMethodPieChartState extends State<PaymentMethodPieChart> {
   int touchedIndex = -1;
 
   String _formatCurrency(double value) {
-    final normalized = value.isFinite ? value : 0;
-    final sign = normalized < 0 ? '-' : '';
-    final formatter = NumberFormat('#,##0', 'en_US');
-    return '${sign}RD\$ ${formatter.format(normalized.abs().round())}';
+    return CurrencyDisplay.format(value, symbol: 'RD\$', decimalDigits: 2);
   }
 
   @override

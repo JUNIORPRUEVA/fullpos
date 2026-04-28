@@ -1,5 +1,6 @@
 import 'electronic_company_model.dart';
 import 'electronic_sequence_model.dart';
+import 'electronic_signer_model.dart';
 
 class ElectronicInvoicingReadiness {
   const ElectronicInvoicingReadiness({
@@ -43,11 +44,13 @@ class ElectronicInvoicingReadiness {
 
     return ElectronicInvoicingReadiness(
       status: (map['status']?.toString().trim().toUpperCase() ?? 'NOT_READY'),
-      missing: (map['missing'] as List?)
+      missing:
+          (map['missing'] as List?)
               ?.map((item) => item.toString())
               .toList(growable: false) ??
           const <String>[],
-      messages: (map['messages'] as List?)
+      messages:
+          (map['messages'] as List?)
               ?.map((item) => item.toString())
               .toList(growable: false) ??
           const <String>[],
@@ -76,6 +79,8 @@ class ElectronicInvoicingResolvedConfig {
     required this.sequences,
     required this.readiness,
     required this.companySummary,
+    required this.signer,
+    this.certificateComparison,
     this.dgiiSubmitConfigured = false,
     this.dgiiTokenConfigured = false,
   });
@@ -84,6 +89,8 @@ class ElectronicInvoicingResolvedConfig {
   final List<ElectronicSequenceModel> sequences;
   final ElectronicInvoicingReadiness readiness;
   final Map<String, String?> companySummary;
+  final ElectronicSignerModel signer;
+  final ElectronicSignerCertificateComparison? certificateComparison;
   final bool dgiiSubmitConfigured;
   final bool dgiiTokenConfigured;
 
@@ -91,15 +98,24 @@ class ElectronicInvoicingResolvedConfig {
     Map<String, dynamic> map, {
     required String localApiToken,
   }) {
-    final companyMap = (map['company'] as Map?)?.cast<String, dynamic>() ??
+    final companyMap =
+        (map['company'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
-    final configMap = (map['config'] as Map?)?.cast<String, dynamic>() ??
+    final configMap =
+        (map['config'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
-    final certificateMap =
-        (map['certificate'] as Map?)?.cast<String, dynamic>();
-    final dgiiMap = (map['dgii'] as Map?)?.cast<String, dynamic>() ??
+    final certificateMap = (map['certificate'] as Map?)
+        ?.cast<String, dynamic>();
+    final dgiiMap =
+        (map['dgii'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
-    final readinessMap = (map['readiness'] as Map?)?.cast<String, dynamic>() ??
+    final signerMap =
+        (map['signer'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
+    final certificateComparisonMap = (map['certificateComparison'] as Map?)
+        ?.cast<String, dynamic>();
+    final readinessMap =
+        (map['readiness'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
     final companyName = companyMap['companyName']?.toString().trim() ?? '';
     final companyRnc = companyMap['rnc']?.toString().trim() ?? '';
@@ -117,7 +133,8 @@ class ElectronicInvoicingResolvedConfig {
       emissionAddress: companyAddress,
       phone: companyPhone,
       email: companyEmail,
-      environment: (configMap['uiEnvironment']?.toString().trim().isNotEmpty ?? false)
+      environment:
+          (configMap['uiEnvironment']?.toString().trim().isNotEmpty ?? false)
           ? configMap['uiEnvironment'].toString().trim()
           : _uiEnvironmentFromBackend(configMap['environment']?.toString()),
       apiToken: localApiToken,
@@ -129,12 +146,12 @@ class ElectronicInvoicingResolvedConfig {
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
 
-    final sequences = (map['sequences'] as List?)
+    final sequences =
+        (map['sequences'] as List?)
             ?.whereType<Map>()
             .map(
-              (item) => ElectronicSequenceModel.fromMap(
-                item.cast<String, Object?>(),
-              ),
+              (item) =>
+                  ElectronicSequenceModel.fromMap(item.cast<String, Object?>()),
             )
             .toList(growable: false) ??
         const <ElectronicSequenceModel>[];
@@ -153,6 +170,12 @@ class ElectronicInvoicingResolvedConfig {
         'phone': companyMap['phone']?.toString(),
         'email': companyMap['email']?.toString(),
       },
+      signer: ElectronicSignerModel.fromMap(signerMap),
+      certificateComparison: certificateComparisonMap == null
+          ? null
+          : ElectronicSignerCertificateComparison.fromMap(
+              certificateComparisonMap,
+            ),
       dgiiSubmitConfigured: dgiiMap['submitConfigured'] == true,
       dgiiTokenConfigured: dgiiMap['tokenConfigured'] == true,
     );
@@ -172,6 +195,8 @@ class ElectronicInvoicingResolvedConfig {
         messages: messages,
       ),
       companySummary: const <String, String?>{},
+      signer: ElectronicSignerModel.empty(),
+      certificateComparison: null,
     );
   }
 

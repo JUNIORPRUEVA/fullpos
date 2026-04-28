@@ -11,7 +11,7 @@ class TopProductsTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final money = NumberFormat.currency(
-      locale: 'es_DO',
+      locale: 'en_US',
       symbol: 'RD\$ ',
       decimalDigits: 2,
     );

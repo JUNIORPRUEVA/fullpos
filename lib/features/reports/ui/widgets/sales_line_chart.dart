@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart';
 
 import '../../data/reports_repository.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/currency_display.dart';
 
 class SalesLineChart extends StatelessWidget {
   final List<SeriesDataPoint> data;
@@ -216,9 +216,7 @@ class SalesLineChart extends StatelessWidget {
   }
 
   String _formatMoney(double value) {
-    final normalized = value.isFinite ? value : 0;
-    final sign = normalized < 0 ? '-' : '';
-    final formatter = NumberFormat('#,##0', 'en_US');
-    return '$sign${formatter.format(normalized.abs().round())}';
+    final normalized = value.isFinite ? value : 0.0;
+    return CurrencyDisplay.formatPlain(normalized, decimalDigits: 2);
   }
 }

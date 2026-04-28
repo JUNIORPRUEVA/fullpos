@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
@@ -10,6 +11,7 @@ import '../../../core/session/session_manager.dart';
 import '../../sales/data/sale_item_model.dart';
 import '../../sales/data/sales_model.dart' as legacy_sales;
 import '../data/electronic_company_repository.dart';
+import '../data/electronic_invoicing_diagnostics_repository.dart';
 import '../data/electronic_company_locator_helper.dart';
 import '../data/factura_electronica_repository.dart';
 import '../../settings/data/business_settings_repository.dart';
@@ -54,13 +56,34 @@ class FacturacionElectronicaService {
     return DateTime.tryParse(raw)?.millisecondsSinceEpoch;
   }
 
-  static Map<String, String> _buildHeaders(String? cloudKey) {
-    final headers = <String, String>{};
+  static Map<String, String> _buildHeaders(
+    String? cloudKey, {
+    required String requestId,
+  }) {
+    final headers = <String, String>{'x-request-id': requestId};
     final trimmed = cloudKey?.trim();
     if (trimmed != null && trimmed.isNotEmpty) {
       headers['x-cloud-key'] = trimmed;
     }
     return headers;
+  }
+
+  static String _newRequestId() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    final suffix = List.generate(
+      6,
+      (_) => chars[random.nextInt(chars.length)],
+    ).join();
+    return 'fe-${DateTime.now().millisecondsSinceEpoch}-$suffix';
+  }
+
+  static String _safeJsonForLog(Object? value) {
+    try {
+      return jsonEncode(sanitizeElectronicLogValue(value));
+    } catch (_) {
+      return '<no-json>';
+    }
   }
 
   static Map<String, String> _buildLocators({
@@ -90,7 +113,7 @@ class FacturacionElectronicaService {
         (error.errorCode ?? '').trim().toUpperCase() == 'SALE_NOT_FOUND';
   }
 
-  static Future<void> _syncSalesBeforeRemoteGenerate({
+  static Future<bool> _syncSalesBeforeRemoteGenerate({
     required legacy_sales.SaleModel sale,
     required String reason,
   }) async {
@@ -103,13 +126,7 @@ class FacturacionElectronicaService {
       'FE sales presync result reason=$reason saleId=${sale.id} saleLocalCode=${sale.localCode} success=$syncOk',
       module: 'electronic_invoicing',
     );
-    if (!syncOk) {
-      throw _RemoteElectronicInvoiceException(
-        message:
-            'La venta no quedó disponible en cloud antes de generar el documento electrónico',
-        errorCode: 'SALE_SYNC_REQUIRED',
-      );
-    }
+    return syncOk;
   }
 
   static Future<Map<String, dynamic>> _generateRemoteInvoice({
@@ -118,6 +135,7 @@ class FacturacionElectronicaService {
     required Map<String, String> locators,
     required legacy_sales.SaleModel sale,
     required String documentTypeCode,
+    required String requestId,
   }) async {
     final sessionCompanyId = await SessionManager.companyId();
     final generatePayload = <String, dynamic>{
@@ -139,32 +157,57 @@ class FacturacionElectronicaService {
     }
 
     await AppLogger.instance.logInfo(
-      'FE generate request saleId=${sale.id} saleLocalCode=${sale.localCode} companyId=${sessionCompanyId ?? 'null'} companyCloudId=${locators['companyCloudId'] ?? 'null'} companyRnc=${locators['companyRnc'] ?? 'null'} payload=${jsonEncode(generatePayload)}',
+      'FE generate request requestId=$requestId saleId=${sale.id} saleLocalCode=${sale.localCode} companyId=${sessionCompanyId ?? 'null'} companyCloudId=${locators['companyCloudId'] ?? 'null'} companyRnc=${locators['companyRnc'] ?? 'null'} payload=${_safeJsonForLog(generatePayload)}',
       module: 'electronic_invoicing',
     );
 
-    await _syncSalesBeforeRemoteGenerate(
+    final preSyncOk = await _syncSalesBeforeRemoteGenerate(
       sale: sale,
       reason: 'presubmit_sync',
     );
-
-    try {
-      return await runGenerate();
-    } on _RemoteElectronicInvoiceException catch (error) {
-      if (!_isSaleNotFoundError(error)) {
-        rethrow;
-      }
-
+    if (!preSyncOk) {
       await AppLogger.instance.logWarn(
-        'FE generate retry triggered saleId=${sale.id} saleLocalCode=${sale.localCode} errorCode=${error.errorCode}',
+        'FE presync did not confirm cloud availability, continuing with generate attempt saleId=${sale.id} saleLocalCode=${sale.localCode}',
         module: 'electronic_invoicing',
       );
-      await _syncSalesBeforeRemoteGenerate(
-        sale: sale,
-        reason: 'retry_after_sale_not_found',
-      );
-      return runGenerate();
     }
+
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await runGenerate();
+      } on _RemoteElectronicInvoiceException catch (error) {
+        if (!_isSaleNotFoundError(error)) {
+          rethrow;
+        }
+
+        if (attempt >= 3) {
+          throw _RemoteElectronicInvoiceException(
+            message:
+                'La venta no quedó disponible en cloud antes de generar el documento electrónico (saleLocalCode=${sale.localCode})',
+            errorCode: 'SALE_SYNC_REQUIRED',
+            originalError: error,
+          );
+        }
+
+        await AppLogger.instance.logWarn(
+          'FE generate retry triggered attempt=$attempt saleId=${sale.id} saleLocalCode=${sale.localCode} errorCode=${error.errorCode}',
+          module: 'electronic_invoicing',
+        );
+
+        await _syncSalesBeforeRemoteGenerate(
+          sale: sale,
+          reason: 'retry_after_sale_not_found_$attempt',
+        );
+
+        await Future<void>.delayed(Duration(milliseconds: 450 * attempt));
+      }
+    }
+
+    throw _RemoteElectronicInvoiceException(
+      message:
+          'No se pudo generar el documento electrónico para la venta ${sale.localCode}',
+      errorCode: 'ELECTRONIC_OUTBOUND_RUNTIME_ERROR',
+    );
   }
 
   static String _mapRemoteStatus(Map<String, dynamic> invoice) {
@@ -176,8 +219,9 @@ class FacturacionElectronicaService {
       case 'ACCEPTED_CONDITIONAL':
         return FacturaElectronicaModel.statusAccepted;
       case 'REJECTED':
-      case 'ERROR':
         return FacturaElectronicaModel.statusRejected;
+      case 'ERROR':
+        return FacturaElectronicaModel.statusSendError;
       case 'RECEIVED':
       case 'IN_PROCESS':
         return FacturaElectronicaModel.statusPending;
@@ -191,8 +235,9 @@ class FacturacionElectronicaService {
       case 'ACCEPTED_CONDITIONAL':
         return FacturaElectronicaModel.statusAccepted;
       case 'REJECTED':
-      case 'ERROR':
         return FacturaElectronicaModel.statusRejected;
+      case 'ERROR':
+        return FacturaElectronicaModel.statusSendError;
       case 'GENERATED':
       case 'SIGNED':
       case 'SUBMISSION_PENDING':
@@ -234,10 +279,27 @@ class FacturacionElectronicaService {
   static bool _shouldQueryTrack(Map<String, dynamic> invoice) {
     final trackId = (invoice['dgiiTrackId']?.toString() ?? '').trim();
     if (trackId.isEmpty) return false;
+
+    if (_isFinalRemoteStatus(invoice)) return false;
+
     final dgiiStatus = (invoice['dgiiStatus']?.toString() ?? '')
         .trim()
         .toUpperCase();
-    return dgiiStatus == 'RECEIVED' || dgiiStatus == 'IN_PROCESS';
+
+    if (dgiiStatus == 'RECEIVED' ||
+        dgiiStatus == 'IN_PROCESS' ||
+        dgiiStatus == 'SUBMITTED' ||
+        dgiiStatus == 'PENDING') {
+      return true;
+    }
+
+    final internalStatus = (invoice['internalStatus']?.toString() ?? '')
+        .trim()
+        .toUpperCase();
+    return internalStatus == 'SUBMISSION_PENDING' ||
+        internalStatus == 'SUBMITTED' ||
+        internalStatus == 'SIGNED' ||
+        internalStatus == 'GENERATED';
   }
 
   static Future<Map<String, dynamic>> _postRemoteStep({
@@ -251,18 +313,30 @@ class FacturacionElectronicaService {
       headers: headers,
       body: body,
       retry: false,
+      throwOnServerError: false,
     );
     await AppLogger.instance.logInfo(
-      'FE remote response path=$path status=${response.statusCode}${_backendTagFromHeaders(response.headers)} request=${jsonEncode(body)} response=${response.body}',
+      'FE remote response requestId=${headers['x-request-id'] ?? 'N/D'} path=$path status=${response.statusCode}${_backendTagFromHeaders(response.headers)} request=${_safeJsonForLog(body)} response=${_safeJsonForLog(_decodeMap(response.body).isEmpty ? {'raw': response.body} : _decodeMap(response.body))}',
       module: 'electronic_invoicing',
     );
     final decoded = _decodeMap(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      final errorCode = (decoded['errorCode']?.toString() ?? '').trim();
+      final backendMessage = decoded['message']?.toString().trim();
+      final stage = decoded['stage']?.toString().trim();
+      final details = decoded['details'];
+      final userMessage = classifyElectronicDiagnosticError(
+        errorCode: errorCode,
+        message: backendMessage,
+        statusCode: response.statusCode,
+      );
       throw _RemoteElectronicInvoiceException(
-        message: decoded['message']?.toString().trim().isNotEmpty == true
-            ? decoded['message'].toString().trim()
-            : 'No se pudo procesar el documento electrónico',
-        errorCode: decoded['errorCode']?.toString(),
+        message: backendMessage?.isNotEmpty == true
+            ? '$userMessage. $backendMessage'
+            : userMessage,
+        errorCode: errorCode,
+        stage: stage,
+        details: details is Map ? Map<String, dynamic>.from(details) : null,
       );
     }
     return decoded;
@@ -283,15 +357,17 @@ class FacturacionElectronicaService {
       retry: false,
     );
     await AppLogger.instance.logInfo(
-      'FE dgii result query path=$path status=${response.statusCode}${_backendTagFromHeaders(response.headers)} trackId=${trackId.trim()} response=${response.body}',
+      'FE dgii result query requestId=${headers['x-request-id'] ?? 'N/D'} path=$path status=${response.statusCode}${_backendTagFromHeaders(response.headers)} trackId=${trackId.trim()} response=${_safeJsonForLog(_decodeMap(response.body).isEmpty ? {'raw': response.body} : _decodeMap(response.body))}',
       module: 'electronic_invoicing',
     );
     final decoded = _decodeMap(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw _RemoteElectronicInvoiceException(
-        message: decoded['message']?.toString().trim().isNotEmpty == true
-            ? decoded['message'].toString().trim()
-            : 'No se pudo consultar el resultado DGII',
+        message: classifyElectronicDiagnosticError(
+          errorCode: decoded['errorCode']?.toString(),
+          message: decoded['message']?.toString(),
+          statusCode: response.statusCode,
+        ),
         errorCode: decoded['errorCode']?.toString(),
       );
     }
@@ -325,6 +401,9 @@ class FacturacionElectronicaService {
         const Duration(seconds: 8),
         const Duration(seconds: 20),
         const Duration(seconds: 45),
+        const Duration(seconds: 90),
+        const Duration(seconds: 180),
+        const Duration(seconds: 360),
       ];
 
       var current = lastInvoice;
@@ -444,7 +523,8 @@ class FacturacionElectronicaService {
     final api = ApiClient(
       baseUrl: CloudSyncService.instance.debugResolveCloudBaseUrl(settings),
     );
-    final headers = _buildHeaders(settings.cloudApiKey);
+    final requestId = _newRequestId();
+    final headers = _buildHeaders(settings.cloudApiKey, requestId: requestId);
 
     var invoice = await _generateRemoteInvoice(
       api: api,
@@ -452,6 +532,7 @@ class FacturacionElectronicaService {
       locators: locators,
       sale: sale,
       documentTypeCode: documentTypeCode,
+      requestId: requestId,
     );
 
     invoice = await _postRemoteStep(
@@ -461,16 +542,83 @@ class FacturacionElectronicaService {
       body: {...locators, 'invoiceId': invoice['id'], 'force': false},
     );
 
-    invoice = await _postRemoteStep(
-      api: api,
-      path: '/api/electronic-invoicing/outbound/submit/by-rnc',
-      headers: headers,
-      body: {...locators, 'invoiceId': invoice['id'], 'force': false},
-    );
+    final autoSubmitEnabled = company.automaticEmission == 1;
+    final manualToken = company.apiToken.trim();
+    if (!autoSubmitEnabled) {
+      const reason = 'Envio automatico a DGII desactivado';
+      await AppLogger.instance.logWarn(
+        'FE submit skipped requestId=$requestId saleId=${sale.id} saleLocalCode=${sale.localCode} reason=$reason',
+        module: 'electronic_invoicing',
+      );
+
+      final localPending =
+          _remoteInvoiceToModel(
+            sale: sale,
+            documentTypeCode: documentTypeCode,
+            company: company,
+            invoice: {
+              ...invoice,
+              'dgiiStatus': 'NOT_SENT',
+              'internalStatus': 'SIGNED',
+              'rejectionMessage': reason,
+            },
+          ).copyWith(
+            estadoDgii: FacturaElectronicaModel.statusConfigPending,
+            mensajeDgii: reason,
+          );
+
+      return localPending;
+    }
+
+    try {
+      invoice = await _postRemoteStep(
+        api: api,
+        path: '/api/electronic-invoicing/outbound/submit/by-rnc',
+        headers: headers,
+        body: {
+          ...locators,
+          'invoiceId': invoice['id'],
+          'force': false,
+          if (manualToken.isNotEmpty) 'dgiiManualToken': manualToken,
+        },
+      );
+    } on _RemoteElectronicInvoiceException catch (error) {
+      final normalizedCode = (error.errorCode ?? '').trim().toUpperCase();
+      if (normalizedCode != 'TOKEN_REQUIRED' &&
+          normalizedCode != 'DGII_AUTH_CONFIG_MISSING' &&
+          normalizedCode != 'CERTIFICATE_NOT_FOUND') {
+        rethrow;
+      }
+
+      const reason =
+          'La autenticacion automatica DGII no esta lista. Revise el certificado o la configuracion del backend, o use un token manual temporal.';
+      await AppLogger.instance.logWarn(
+        'FE submit skipped by backend auth requirement requestId=$requestId saleId=${sale.id} saleLocalCode=${sale.localCode} code=$normalizedCode',
+        module: 'electronic_invoicing',
+      );
+
+      final localPending =
+          _remoteInvoiceToModel(
+            sale: sale,
+            documentTypeCode: documentTypeCode,
+            company: company,
+            invoice: {
+              ...invoice,
+              'dgiiStatus': 'NOT_SENT',
+              'internalStatus': 'SIGNED',
+              'rejectionMessage': reason,
+            },
+          ).copyWith(
+            estadoDgii: FacturaElectronicaModel.statusConfigPending,
+            mensajeDgii: reason,
+          );
+
+      return localPending;
+    }
 
     final submittedTrackId = (invoice['dgiiTrackId']?.toString() ?? '').trim();
     await AppLogger.instance.logInfo(
-      'FE submit completed saleId=${sale.id} saleLocalCode=${sale.localCode} ${_safeRemoteStatusSummary(invoice)}',
+      'FE submit completed requestId=$requestId saleId=${sale.id} saleLocalCode=${sale.localCode} ${_safeRemoteStatusSummary(invoice)}',
       module: 'electronic_invoicing',
     );
 
@@ -479,7 +627,7 @@ class FacturacionElectronicaService {
     if (_shouldQueryTrack(invoice)) {
       if (submittedTrackId.isNotEmpty) {
         await AppLogger.instance.logInfo(
-          'FE trackId received trackId=$submittedTrackId saleId=${sale.id} saleLocalCode=${sale.localCode}',
+          'FE trackId received requestId=$requestId trackId=$submittedTrackId saleId=${sale.id} saleLocalCode=${sale.localCode}',
           module: 'electronic_invoicing',
         );
       }
@@ -492,12 +640,12 @@ class FacturacionElectronicaService {
           trackId: submittedTrackId,
         );
         await AppLogger.instance.logInfo(
-          'FE dgii result immediate ${_safeRemoteStatusSummary(invoice)}',
+          'FE dgii result immediate requestId=$requestId ${_safeRemoteStatusSummary(invoice)}',
           module: 'electronic_invoicing',
         );
       } catch (error) {
         await AppLogger.instance.logWarn(
-          'FE dgii result immediate failed trackId=$submittedTrackId error=$error',
+          'FE dgii result immediate failed requestId=$requestId trackId=$submittedTrackId error=$error',
           module: 'electronic_invoicing',
         );
       }
@@ -610,19 +758,20 @@ class _RemoteElectronicInvoiceException extends AppException {
   _RemoteElectronicInvoiceException({
     required this.message,
     this.errorCode,
-    Object? originalError,
-    StackTrace? stackTrace,
+    this.stage,
+    this.details,
+    super.originalError,
   }) : super(
          type: _mapErrorType(errorCode),
          code: errorCode,
          messageUser: message,
-         messageDev: _buildDevMessage(message, errorCode),
-         originalError: originalError,
-         stackTrace: stackTrace,
+         messageDev: _buildDevMessage(message, errorCode, stage, details),
        );
 
   final String message;
   final String? errorCode;
+  final String? stage;
+  final Map<String, dynamic>? details;
 
   static AppErrorType _mapErrorType(String? errorCode) {
     final normalized = (errorCode ?? '').trim().toUpperCase();
@@ -652,16 +801,27 @@ class _RemoteElectronicInvoiceException extends AppException {
     return AppErrorType.unknown;
   }
 
-  static String _buildDevMessage(String message, String? errorCode) {
+  static String _buildDevMessage(
+    String message,
+    String? errorCode,
+    String? stage,
+    Map<String, dynamic>? details,
+  ) {
     final normalized = (errorCode ?? '').trim();
+    final stagePart = stage?.trim().isNotEmpty == true
+        ? ' stage=${stage!.trim()}'
+        : '';
+    final detailsPart = details == null
+        ? ''
+        : ' details=${FacturacionElectronicaService._safeJsonForLog(details)}';
     if (normalized.isEmpty) {
-      return 'RemoteElectronicInvoiceException: $message';
+      return 'RemoteElectronicInvoiceException$stagePart: $message$detailsPart';
     }
-    return 'RemoteElectronicInvoiceException($normalized): $message';
+    return 'RemoteElectronicInvoiceException($normalized)$stagePart: $message$detailsPart';
   }
 
   @override
   String toString() => errorCode == null || errorCode!.trim().isEmpty
       ? message
-      : '$errorCode: $message';
+      : '$errorCode${stage?.trim().isNotEmpty == true ? '[$stage]' : ''}: $message';
 }

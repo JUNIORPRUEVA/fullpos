@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../data/reports_repository.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/currency_display.dart';
 
 class KpiCardsRow extends StatelessWidget {
   final KpisData kpis;
 
-  const KpiCardsRow({
-    super.key,
-    required this.kpis,
-  });
+  const KpiCardsRow({super.key, required this.kpis});
 
   @override
   Widget build(BuildContext context) {
@@ -130,11 +128,7 @@ class KpiCardsRow extends StatelessWidget {
   }
 
   String _formatMoney(double value) {
-    if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(2)}M';
-    } else if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}K';
-    }
-    return value.toStringAsFixed(2);
+    final normalized = value.isFinite ? value : 0.0;
+    return CurrencyDisplay.formatPlain(normalized, decimalDigits: 2);
   }
 }

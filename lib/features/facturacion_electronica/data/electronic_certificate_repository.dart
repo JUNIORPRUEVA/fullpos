@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import '../../../core/logging/app_logger.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../settings/data/business_settings_repository.dart';
 import 'electronic_company_locator_helper.dart';
 import 'electronic_company_repository.dart';
+import 'electronic_invoicing_diagnostics_repository.dart';
 
 class ElectronicCertificateUploadResult {
   const ElectronicCertificateUploadResult({
@@ -30,9 +32,21 @@ class ElectronicCertificateUploadResult {
 }
 
 class ElectronicCertificateUploadException implements Exception {
-  const ElectronicCertificateUploadException(this.userMessage);
+  const ElectronicCertificateUploadException(
+    this.userMessage, {
+    this.errorCode,
+    this.statusCode,
+    this.backendMessage,
+    this.details,
+    this.requestId,
+  });
 
   final String userMessage;
+  final String? errorCode;
+  final int? statusCode;
+  final String? backendMessage;
+  final Map<String, dynamic>? details;
+  final String? requestId;
 
   @override
   String toString() => userMessage;
@@ -45,16 +59,32 @@ String friendlyCertificateUploadErrorMessage({
   int? statusCode,
 }) {
   switch ((errorCode ?? '').trim()) {
+    case 'POS_OVERRIDE_KEY_REQUIRED':
+      return 'El backend requiere configurar la llave de conexión del POS';
+    case 'POS_OVERRIDE_KEY_INVALID':
+      return 'La llave de conexión del POS no coincide con el backend';
     case 'ELECTRONIC_CERTIFICATE_PASSWORD_INVALID':
+    case 'CERTIFICATE_INVALID_PASSWORD':
       return 'La contraseña no es correcta';
     case 'ELECTRONIC_CERTIFICATE_INVALID_FILE':
     case 'ELECTRONIC_CERTIFICATE_FILE_REQUIRED':
+    case 'CERTIFICATE_INVALID':
       return 'El certificado no es válido';
+    case 'CERTIFICATE_EXPIRED':
+      return 'El certificado está vencido';
+    case 'CERTIFICATE_RNC_MISMATCH':
+      return 'El RNC del certificado no coincide con la empresa';
     case 'ELECTRONIC_CERTIFICATE_COMPANY_REQUIRED':
       return 'No se pudo identificar la empresa';
+    case 'DGII_SEED_VALIDATE_BAD_REQUEST':
+      return 'DGII rechazó la firma del certificado. Verifique el certificado, contraseña y que el backend esté actualizado';
   }
 
   final normalizedMessage = (message ?? '').toLowerCase();
+  if (normalizedMessage.contains('firma del certificado inválida') ||
+      normalizedMessage.contains('firma del certificado invalida')) {
+    return 'DGII rechazó la firma del certificado. Verifique el certificado, contraseña y que el backend esté actualizado';
+  }
   if (normalizedMessage.contains('vencido')) {
     return 'El certificado está vencido';
   }
@@ -86,7 +116,11 @@ class ElectronicCertificateRepository {
     final cloudKey = settings.cloudApiKey?.trim();
     if (cloudKey != null && cloudKey.isNotEmpty) {
       request.headers['x-cloud-key'] = cloudKey;
+      request.headers['x-override-key'] = cloudKey;
+      request.headers['Authorization'] = 'Bearer $cloudKey';
     }
+    final requestId = newElectronicRequestId();
+    request.headers['x-request-id'] = requestId;
 
     final companyId = await SessionManager.companyId();
     final locators = buildElectronicCompanyLocators(
@@ -122,12 +156,28 @@ class ElectronicCertificateRepository {
       final decoded = _decodeBody(response.body);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        final errorCode = decoded['errorCode']?.toString();
+        final message = decoded['message']?.toString();
+        final details = _normalizeDetails(decoded['details']);
+        await _logUploadFailure(
+          requestId: requestId,
+          uri: uri,
+          statusCode: response.statusCode,
+          errorCode: errorCode,
+          message: message,
+          details: details,
+        );
         throw ElectronicCertificateUploadException(
           friendlyCertificateUploadErrorMessage(
-            errorCode: decoded['errorCode']?.toString(),
-            message: decoded['message']?.toString(),
+            errorCode: errorCode,
+            message: message,
             statusCode: response.statusCode,
           ),
+          errorCode: errorCode,
+          statusCode: response.statusCode,
+          backendMessage: message,
+          details: details,
+          requestId: requestId,
         );
       }
 
@@ -158,9 +208,37 @@ class ElectronicCertificateRepository {
       return result;
     } on ElectronicCertificateUploadException {
       rethrow;
-    } catch (_) {
-      throw const ElectronicCertificateUploadException(
+    } on ApiException catch (error) {
+      await _logUploadFailure(
+        requestId: requestId,
+        uri: uri,
+        statusCode: error.statusCode,
+        errorCode: null,
+        message: error.message,
+        details: const <String, dynamic>{'source': 'api_client'},
+      );
+      throw ElectronicCertificateUploadException(
+        friendlyCertificateUploadErrorMessage(
+          message: error.message,
+          statusCode: error.statusCode,
+        ),
+        statusCode: error.statusCode,
+        backendMessage: error.message,
+        requestId: requestId,
+      );
+    } catch (error) {
+      await _logUploadFailure(
+        requestId: requestId,
+        uri: uri,
+        statusCode: null,
+        errorCode: null,
+        message: error.toString(),
+        details: const <String, dynamic>{'source': 'unexpected'},
+      );
+      throw ElectronicCertificateUploadException(
         'No se pudo cargar el certificado',
+        backendMessage: error.toString(),
+        requestId: requestId,
       );
     }
   }
@@ -173,5 +251,55 @@ class ElectronicCertificateRepository {
       }
     } catch (_) {}
     return <String, dynamic>{};
+  }
+
+  Map<String, dynamic>? _normalizeDetails(Object? value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return null;
+  }
+
+  Future<void> _logUploadFailure({
+    required String requestId,
+    required Uri uri,
+    required int? statusCode,
+    required String? errorCode,
+    required String? message,
+    required Map<String, dynamic>? details,
+  }) async {
+    await AppLogger.instance.logWarn(
+      jsonEncode({
+        'event': 'electronic_certificate_upload_failed',
+        'requestId': requestId,
+        'path': uri.path,
+        'statusCode': statusCode,
+        'errorCode': errorCode,
+        'message': message,
+        'details': _sanitizeDetails(details),
+      }),
+      module: 'electronic_invoicing',
+    );
+  }
+
+  Map<String, dynamic>? _sanitizeDetails(Map<String, dynamic>? details) {
+    if (details == null) return null;
+    const blockedKeys = {
+      'password',
+      'token',
+      'authorization',
+      'certificate',
+      'certificateBuffer',
+      'privateKey',
+      'signedXml',
+      'xml',
+    };
+    return details.map((key, value) {
+      if (blockedKeys.contains(key.toLowerCase())) {
+        return MapEntry(key, '<redacted>');
+      }
+      return MapEntry(key, value);
+    });
   }
 }

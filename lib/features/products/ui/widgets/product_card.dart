@@ -38,7 +38,8 @@ class ProductCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currencyFormat = NumberFormat.currency(
-      symbol: '\$',
+      locale: 'en_US',
+      symbol: 'RD\$ ',
       decimalDigits: 2,
     );
     final numberFormat = NumberFormat.decimalPattern();

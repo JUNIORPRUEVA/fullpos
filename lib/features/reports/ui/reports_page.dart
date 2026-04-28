@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/printing/reports_printer.dart';
 import '../../../core/utils/app_event_bus.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../theme/app_colors.dart' as ui_colors;
 import '../data/reports_repository.dart';
 import 'client_sales_report_page.dart';
@@ -459,11 +460,9 @@ class _ReportsPageState extends State<ReportsPage> {
   String _formatCurrency(num value) {
     final normalized = value.toDouble();
     if (normalized.isNaN || normalized.isInfinite) {
-      return 'RD\$ 0';
+      return 'RD\$ 0.00';
     }
-
-    final sign = normalized < 0 ? '-' : '';
-    return '${sign}RD\$ ${_formatNumber(normalized.abs())}';
+    return CurrencyDisplay.format(normalized, symbol: 'RD\$', decimalDigits: 2);
   }
 
   Widget _buildActionButton({
@@ -772,8 +771,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         value: kpis.netProfit,
                         tone: scheme.tertiary,
                         icon: Icons.trending_up_outlined,
-                        footnote:
-                            'Ganancia bruta: ${_formatCurrency(kpis.totalProfit)}',
+                        footnote: 'Utilidad despues de costos y gastos.',
                       ),
                       const SizedBox(height: 12),
                       _buildExecutiveMetricCard(
@@ -804,8 +802,7 @@ class _ReportsPageState extends State<ReportsPage> {
                           value: kpis.netProfit,
                           tone: scheme.tertiary,
                           icon: Icons.trending_up_outlined,
-                          footnote:
-                              'Ganancia bruta: ${_formatCurrency(kpis.totalProfit)}',
+                          footnote: 'Utilidad despues de costos y gastos.',
                         ),
                       ),
                       const SizedBox(width: 14),

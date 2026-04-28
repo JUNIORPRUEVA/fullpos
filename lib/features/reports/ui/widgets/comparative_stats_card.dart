@@ -66,7 +66,7 @@ class ComparativeStatsCard extends StatelessWidget {
   ) {
     final scheme = Theme.of(context).colorScheme;
     final currency = NumberFormat.currency(
-      locale: 'es_DO',
+      locale: 'en_US',
       symbol: 'RD\$ ',
       decimalDigits: 2,
     );

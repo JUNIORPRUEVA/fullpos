@@ -1,8 +1,8 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../data/reports_repository.dart';
+import '../../../../core/utils/currency_display.dart';
 
 class SalesBarChart extends StatefulWidget {
   final List<SeriesDataPoint> data;
@@ -27,7 +27,6 @@ class _SalesBarChartState extends State<SalesBarChart> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final barColor = widget.barColor ?? scheme.primary;
-    final moneyAxis = NumberFormat('#,##0', 'en_US');
 
     if (widget.data.isEmpty) {
       return Center(
@@ -170,7 +169,7 @@ class _SalesBarChartState extends State<SalesBarChart> {
                 interval: interval,
                 getTitlesWidget: (value, meta) {
                   return Text(
-                    moneyAxis.format(value),
+                    CurrencyDisplay.formatPlain(value, decimalDigits: 2),
                     style: TextStyle(
                       color: scheme.onSurface.withOpacity(0.6),
                       fontSize: 10,
@@ -257,10 +256,7 @@ class _SalesBarChartState extends State<SalesBarChart> {
   }
 
   String _formatCurrency(double value) {
-    final normalized = value.isFinite ? value : 0;
-    final sign = normalized < 0 ? '-' : '';
-    final formatter = NumberFormat('#,##0', 'en_US');
-    return '${sign}RD\$ ${formatter.format(normalized.abs().round())}';
+    return CurrencyDisplay.format(value, symbol: 'RD\$', decimalDigits: 2);
   }
 
   String _formatDate(String dateStr) {

@@ -30,7 +30,8 @@ class ProductDetailsDialog extends StatelessWidget {
     final dialogWidth = (viewport.width * 0.42).clamp(520.0, 680.0);
     final dialogHeight = (viewport.height - 24).clamp(560.0, 840.0);
     final currencyFormat = NumberFormat.currency(
-      symbol: '\$',
+      locale: 'en_US',
+      symbol: 'RD\$ ',
       decimalDigits: 2,
     );
     final numberFormat = NumberFormat.decimalPattern();

@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/db_init.dart';
 import 'package:fullpos/features/facturacion_electronica/data/electronic_company_repository.dart';
-import 'package:fullpos/features/facturacion_electronica/data/electronic_sequence_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/models/electronic_invoicing_config_model.dart';
 import 'package:fullpos/features/facturacion_electronica/data/models/electronic_company_model.dart';
 import 'package:fullpos/features/facturacion_electronica/data/models/electronic_sequence_model.dart';
@@ -108,30 +106,30 @@ void main() {
       city: 'La Altagracia',
     );
     final company = ElectronicCompanyModel.defaults().copyWith(
-        environment: 'pruebas',
-        apiToken: 'token-demo',
-        certificateName: 'cert-demo',
-        certificateValidFromMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
-        certificateValidToMs: DateTime(2027, 1, 1).millisecondsSinceEpoch,
-        certificateStatus: 'active',
-        automaticEmission: 1,
+      environment: 'pruebas',
+      apiToken: 'token-demo',
+      certificateName: 'cert-demo',
+      certificateValidFromMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
+      certificateValidToMs: DateTime(2027, 1, 1).millisecondsSinceEpoch,
+      certificateStatus: 'active',
+      automaticEmission: 1,
     );
     final resolvedConfig = resolvedConfigForTest(
       company: company,
       sequences: [
         ElectronicSequenceModel.defaults('31').copyWith(
-        prefix: 'E31',
-        startNumber: 1,
-        currentNumber: 15,
-        endNumber: 200,
-        status: 'ACTIVE',
+          prefix: 'E31',
+          startNumber: 1,
+          currentNumber: 15,
+          endNumber: 200,
+          status: 'ACTIVE',
         ),
         ElectronicSequenceModel.defaults('32').copyWith(
-        prefix: 'E32',
-        startNumber: 1,
-        currentNumber: 7,
-        endNumber: 200,
-        status: 'ACTIVE',
+          prefix: 'E32',
+          startNumber: 1,
+          currentNumber: 7,
+          endNumber: 200,
+          status: 'ACTIVE',
         ),
         ElectronicSequenceModel.defaults('34').copyWith(
           prefix: 'E34',
@@ -200,7 +198,9 @@ void main() {
       city: 'La Altagracia',
     );
     final resolvedConfig = resolvedConfigForTest(
-      company: ElectronicCompanyModel.defaults().copyWith(environment: 'pruebas'),
+      company: ElectronicCompanyModel.defaults().copyWith(
+        environment: 'pruebas',
+      ),
       sequences: const <ElectronicSequenceModel>[],
       missing: const <String>['Certificado'],
     );
@@ -221,7 +221,9 @@ void main() {
     tester,
   ) async {
     final resolvedConfig = resolvedConfigForTest(
-      company: ElectronicCompanyModel.defaults().copyWith(environment: 'pruebas'),
+      company: ElectronicCompanyModel.defaults().copyWith(
+        environment: 'pruebas',
+      ),
       sequences: const <ElectronicSequenceModel>[],
       missing: const <String>['Certificado'],
     );

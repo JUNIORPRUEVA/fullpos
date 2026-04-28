@@ -1,21 +1,27 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/errors/error_handler.dart';
+import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/services/empresa_service.dart';
+import '../../../core/session/session_manager.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/window/window_service.dart';
 import '../../facturacion_electronica/data/electronic_certificate_repository.dart';
+import '../../facturacion_electronica/data/electronic_invoicing_diagnostics_repository.dart';
 import '../../facturacion_electronica/data/electronic_invoicing_config_repository.dart';
 import '../../facturacion_electronica/data/electronic_sequence_repository.dart';
+import '../../facturacion_electronica/data/electronic_signer_repository.dart';
 import '../../facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
 import '../../facturacion_electronica/data/models/electronic_invoicing_config_model.dart';
 import '../../facturacion_electronica/data/models/electronic_sequence_model.dart';
+import '../../facturacion_electronica/data/models/electronic_signer_model.dart';
 import '../../facturacion_electronica/data/models/factura_electronica_model.dart';
 import '../../settings/data/business_settings_model.dart';
 import '../../settings/providers/business_settings_provider.dart';
@@ -47,6 +53,8 @@ class _ElectronicInvoicingPageState
   final _apiTokenController = TextEditingController();
   final _certificateAliasController = TextEditingController();
   final _certificatePasswordController = TextEditingController();
+  final _signerFullNameController = TextEditingController();
+  final _signerDocumentNumberController = TextEditingController();
   final Map<String, TextEditingController> _sequencePrefixControllers = {};
   final Map<String, TextEditingController> _sequenceStartControllers = {};
   final Map<String, TextEditingController> _sequenceNumberControllers = {};
@@ -57,6 +65,10 @@ class _ElectronicInvoicingPageState
       ElectronicInvoicingConfigRepository();
   final ElectronicSequenceRepository _sequenceRepository =
       ElectronicSequenceRepository();
+  final ElectronicSignerRepository _signerRepository =
+      ElectronicSignerRepository();
+  final ElectronicInvoicingDiagnosticsRepository _diagnosticsRepository =
+      ElectronicInvoicingDiagnosticsRepository();
 
   ElectronicCompanyModel? _company;
   EmpresaConfig? _empresaConfig;
@@ -75,12 +87,25 @@ class _ElectronicInvoicingPageState
   bool _savingAutomaticEmission = false;
   bool _autoConfiguring = false;
   bool _uploadingCertificate = false;
+  bool _savingSigner = false;
   bool _showCertificatePassword = false;
+  bool _testingBackend = false;
+  bool _testingDgiiAuth = false;
 
   String? _creatingSequenceCode;
   String? _selectedCertificatePath;
   String? _certificateNotice;
   bool _certificateNoticeIsError = false;
+  int? _localCompanyId;
+  DateTime? _lastBackendRefreshAt;
+  ElectronicBackendDiagnosticResult? _backendDiagnostic;
+  ElectronicDgiiAuthDiagnosticResult? _dgiiAuthDiagnostic;
+  ElectronicSignerModel _signer = ElectronicSignerModel.empty();
+  ElectronicSignerCertificateComparison? _certificateComparison;
+  String _lastDiagnosticOperation = 'Carga inicial';
+  String? _lastDiagnosticErrorCode;
+  String? _lastDiagnosticErrorMessage;
+  DateTime? _lastSuccessfulDiagnosticAt;
 
   @override
   void initState() {
@@ -93,6 +118,8 @@ class _ElectronicInvoicingPageState
     _apiTokenController.dispose();
     _certificateAliasController.dispose();
     _certificatePasswordController.dispose();
+    _signerFullNameController.dispose();
+    _signerDocumentNumberController.dispose();
     for (final controller in _sequencePrefixControllers.values) {
       controller.dispose();
     }
@@ -119,6 +146,7 @@ class _ElectronicInvoicingPageState
     final empresaConfig = await (widget.loadEmpresaConfig != null
         ? widget.loadEmpresaConfig!()
         : EmpresaService.getEmpresaConfig());
+    final localCompanyId = await SessionManager.companyId();
     if (!mounted) return;
 
     _syncControllers(resolved.company);
@@ -126,7 +154,18 @@ class _ElectronicInvoicingPageState
     setState(() {
       _storeResolvedConfig(resolved);
       _empresaConfig = empresaConfig;
+      _localCompanyId = localCompanyId;
       _recentInvoices = invoices;
+      if (resolved.readiness.backendValidated) {
+        _lastBackendRefreshAt = DateTime.now();
+        _lastSuccessfulDiagnosticAt ??= _lastBackendRefreshAt;
+      }
+      _lastDiagnosticOperation = resolved.readiness.backendValidated
+          ? 'Configuración validada con backend'
+          : 'Mostrando fallback local/caché';
+      if (resolved.readiness.messages.isNotEmpty) {
+        _lastDiagnosticErrorMessage = resolved.readiness.messages.first;
+      }
       _loading = false;
     });
   }
@@ -178,6 +217,14 @@ class _ElectronicInvoicingPageState
     _sequences = resolved.sequences;
     _readiness = resolved.readiness;
     _resolvedCompanySummary = resolved.companySummary;
+    _signer = resolved.signer;
+    _certificateComparison = resolved.certificateComparison;
+    _syncSignerControllers(resolved.signer);
+  }
+
+  void _syncSignerControllers(ElectronicSignerModel signer) {
+    _signerFullNameController.text = signer.signerFullName;
+    _signerDocumentNumberController.text = signer.signerDocumentNumber;
   }
 
   String _normalizeSummaryValue(String? value) {
@@ -351,7 +398,7 @@ class _ElectronicInvoicingPageState
     if (startNumber <= 0 || currentNumber < 0 || endNumber == null) {
       return false;
     }
-    return startNumber <= endNumber && endNumber >= currentNumber;
+    return startNumber <= endNumber && endNumber > currentNumber;
   }
 
   String _sequenceDraftStatusLabel(
@@ -387,6 +434,71 @@ class _ElectronicInvoicingPageState
     setState(() {});
   }
 
+  Future<void> _testBackendDiagnostics() async {
+    if (_testingBackend) return;
+    setState(() {
+      _testingBackend = true;
+      _lastDiagnosticOperation = 'Probando backend';
+      _lastDiagnosticErrorCode = null;
+      _lastDiagnosticErrorMessage = null;
+    });
+    final result = await _diagnosticsRepository.testBackend();
+    if (!mounted) return;
+    if (result.ok && result.response.isNotEmpty) {
+      final resolved = ElectronicInvoicingResolvedConfig.fromBackendMap(
+        result.response,
+        localApiToken: _company?.apiToken ?? _apiTokenController.text.trim(),
+      );
+      _syncControllers(resolved.company);
+      _syncSequenceControllers(resolved.sequences);
+      _storeResolvedConfig(resolved);
+      _lastBackendRefreshAt = result.testedAt;
+      _lastSuccessfulDiagnosticAt = result.testedAt;
+    }
+    setState(() {
+      _backendDiagnostic = result;
+      _testingBackend = false;
+      _lastDiagnosticOperation = 'Probar backend';
+      _lastDiagnosticErrorCode = result.errorCode;
+      _lastDiagnosticErrorMessage = result.ok ? null : result.message;
+    });
+  }
+
+  Future<void> _testDgiiAuthDiagnostics() async {
+    if (_testingDgiiAuth) return;
+    final company = _company;
+    if (company == null) return;
+    setState(() {
+      _testingDgiiAuth = true;
+      _lastDiagnosticOperation = 'Probando token DGII';
+      _lastDiagnosticErrorCode = null;
+      _lastDiagnosticErrorMessage = null;
+    });
+    final result = await _diagnosticsRepository.testDgiiAuth(
+      environment: company.environment,
+    );
+    if (!mounted) return;
+    setState(() {
+      _dgiiAuthDiagnostic = result;
+      _testingDgiiAuth = false;
+      _lastDiagnosticOperation = 'Probar token DGII';
+      _lastDiagnosticErrorCode = result.errorCode;
+      _lastDiagnosticErrorMessage = result.ok ? null : result.message;
+      if (result.ok) {
+        _lastSuccessfulDiagnosticAt = result.testedAt;
+      }
+    });
+  }
+
+  Future<void> _copyDiagnostics(BusinessSettings businessSettings) async {
+    final summary = _buildDiagnosticCopyText(businessSettings);
+    await Clipboard.setData(ClipboardData(text: summary));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Diagnóstico copiado sin secretos')),
+    );
+  }
+
   ElectronicSequenceModel _sequenceFor(String documentTypeCode) {
     for (final sequence in _sequences) {
       if (sequence.documentTypeCode == documentTypeCode) {
@@ -413,8 +525,13 @@ class _ElectronicInvoicingPageState
     setState(() => _saving = true);
     try {
       await _persistConfiguredSequences();
+      final activeEnabled = ref
+          .read(businessSettingsProvider)
+          .electronicInvoicingEnabled;
       final resolved = await _configRepository.saveConfig(
         company: company.copyWith(apiToken: _apiTokenController.text.trim()),
+        active: activeEnabled,
+        outboundEnabled: company.automaticEmission == 1,
       );
 
       if (!mounted) return;
@@ -451,12 +568,95 @@ class _ElectronicInvoicingPageState
     }
   }
 
+  Future<void> _saveSigner() async {
+    if (_savingSigner) return;
+    final fullName = _signerFullNameController.text.trim();
+    final documentNumber = _signerDocumentNumberController.text
+        .trim()
+        .replaceAll(RegExp(r'[-\s]'), '');
+
+    if (fullName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Escriba el nombre completo del firmante'),
+        ),
+      );
+      return;
+    }
+    if (documentNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escriba el documento del firmante')),
+      );
+      return;
+    }
+
+    setState(() => _savingSigner = true);
+    try {
+      final saved = await _signerRepository.saveSigner(
+        signer: _signer.copyWith(
+          signerFullName: fullName,
+          signerDocumentType: _signer.signerDocumentType,
+          signerDocumentNumber: documentNumber,
+        ),
+      );
+      final resolved = await _configRepository.loadResolvedConfig();
+      if (!mounted) return;
+      setState(() {
+        _signer = saved;
+        _storeResolvedConfig(resolved);
+        _savingSigner = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Responsable de firma guardado')),
+      );
+    } on ElectronicSignerException catch (error) {
+      if (!mounted) return;
+      setState(() => _savingSigner = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error, stackTrace) {
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        module: 'electronic_invoicing/signer_save',
+      );
+      if (!mounted) return;
+      setState(() => _savingSigner = false);
+    }
+  }
+
+  void _useCertificateIdentity() {
+    final comparison = _certificateComparison;
+    if (comparison == null) return;
+    final suggestedName = comparison.certificateSignerName?.trim() ?? '';
+    final suggestedDocument =
+        comparison.certificateDocumentNumber?.trim() ?? '';
+    if (suggestedName.isEmpty && suggestedDocument.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se detectó identidad del certificado'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      if (suggestedName.isNotEmpty) {
+        _signerFullNameController.text = suggestedName;
+      }
+      if (suggestedDocument.isNotEmpty) {
+        _signerDocumentNumberController.text = suggestedDocument;
+      }
+    });
+  }
+
   Future<void> _pickCertificateFile() async {
     try {
       final result = await WindowService.runWithSystemDialog(
         () => FilePicker.platform.pickFiles(
           type: FileType.custom,
-          allowedExtensions: const ['p12'],
+          allowedExtensions: const ['p12', 'pfx'],
           allowMultiple: false,
         ),
       );
@@ -566,17 +766,6 @@ class _ElectronicInvoicingPageState
   }
 
   Future<void> _updateSalesVisibility(bool enabled) async {
-    if (!enabled) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'La facturación electrónica no se puede desactivar desde esta pantalla.',
-          ),
-        ),
-      );
-      return;
-    }
     if (_savingVisibility) return;
 
     final previousValue = ref
@@ -587,7 +776,7 @@ class _ElectronicInvoicingPageState
       await ref
           .read(businessSettingsProvider.notifier)
           .updateElectronicInvoicingEnabled(enabled);
-      await _saveCurrentRemoteConfig();
+      await _saveCurrentRemoteConfig(visibilityEnabled: enabled);
     } on ElectronicInvoicingConfigException catch (error) {
       await ref
           .read(businessSettingsProvider.notifier)
@@ -614,17 +803,6 @@ class _ElectronicInvoicingPageState
   }
 
   Future<void> _updateAutomaticEmission(bool enabled) async {
-    if (!enabled) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'El envío a DGII no se puede desactivar desde esta pantalla.',
-          ),
-        ),
-      );
-      return;
-    }
     final company = _company;
     if (company == null || _savingAutomaticEmission) return;
 
@@ -660,12 +838,18 @@ class _ElectronicInvoicingPageState
     }
   }
 
-  Future<void> _saveCurrentRemoteConfig() async {
+  Future<void> _saveCurrentRemoteConfig({bool? visibilityEnabled}) async {
     final company = _company;
     if (company == null) return;
 
+    final effectiveVisibility =
+        visibilityEnabled ??
+        ref.read(businessSettingsProvider).electronicInvoicingEnabled;
+
     final resolved = await _configRepository.saveConfig(
       company: company.copyWith(apiToken: _apiTokenController.text.trim()),
+      active: effectiveVisibility,
+      outboundEnabled: company.automaticEmission == 1,
     );
     if (!mounted) return;
 
@@ -791,9 +975,8 @@ class _ElectronicInvoicingPageState
     final scrollController = ScrollController();
     try {
       final latestSequences = await _sequenceRepository.listLocal();
-      final latestInvoices = await FacturaElectronicaRepository.loadRecentResolved(
-        limit: 18,
-      );
+      final latestInvoices =
+          await FacturaElectronicaRepository.loadRecentResolved(limit: 18);
       if (!mounted) return;
       _syncSequenceControllers(latestSequences);
       setState(() {
@@ -854,6 +1037,28 @@ class _ElectronicInvoicingPageState
                                     const SizedBox(height: 8),
                                 itemBuilder: (context, index) {
                                   final invoice = _recentInvoices[index];
+                                  final statusDetail = (() {
+                                    final isRejected =
+                                        invoice.estadoDgii ==
+                                        FacturaElectronicaModel.statusRejected;
+                                    final isSendError =
+                                        invoice.estadoDgii ==
+                                        FacturaElectronicaModel.statusSendError;
+                                    if (!isRejected && !isSendError) {
+                                      return null;
+                                    }
+
+                                    final code = (invoice.codigoDgii ?? '')
+                                        .trim();
+                                    final message = (invoice.mensajeDgii ?? '')
+                                        .trim();
+                                    if (code.isEmpty && message.isEmpty) {
+                                      return null;
+                                    }
+                                    if (code.isEmpty) return message;
+                                    if (message.isEmpty) return code;
+                                    return '$code - $message';
+                                  })();
                                   return _DocumentTableRow(
                                     number: invoice.numeroDocumento.trim(),
                                     type: invoice.tipoDescriptivoResuelto,
@@ -868,6 +1073,14 @@ class _ElectronicInvoicingPageState
                                         ? invoice.clienteNombre!.trim()
                                         : 'Consumidor final',
                                     status: invoice.statusLabel,
+                                    statusDetail: statusDetail,
+                                    onViewStatusDetail:
+                                        statusDetail?.trim().isNotEmpty == true
+                                        ? () => _showStatusDetailDialog(
+                                            invoice.statusLabel,
+                                            statusDetail!,
+                                          )
+                                        : null,
                                     statusColor: _statusColor(
                                       invoice.estadoDgii,
                                     ),
@@ -881,11 +1094,11 @@ class _ElectronicInvoicingPageState
                                     ),
                                     reference:
                                         invoice.referenciaDocumento
-                                            ?.trim()
-                                            .isNotEmpty ==
-                                        true
-                                    ? invoice.referenciaDocumento!.trim()
-                                    : null,
+                                                ?.trim()
+                                                .isNotEmpty ==
+                                            true
+                                        ? invoice.referenciaDocumento!.trim()
+                                        : null,
                                     date: dateFormat.format(
                                       DateTime.fromMillisecondsSinceEpoch(
                                         invoice.createdAtMs,
@@ -906,6 +1119,42 @@ class _ElectronicInvoicingPageState
     } finally {
       scrollController.dispose();
     }
+  }
+
+  Future<void> _showStatusDetailDialog(String status, String detail) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.visibility_outlined, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Detalle de $status')),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SelectableText(
+              detail,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _submitSequence(String documentTypeCode) async {
@@ -953,10 +1202,10 @@ class _ElectronicInvoicingPageState
       );
       return;
     }
-    if (currentNumber > endNumber) {
+    if (currentNumber >= endNumber) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('La secuencia actual no puede exceder el límite'),
+          content: Text('El límite debe ser mayor que la secuencia actual'),
         ),
       );
       return;
@@ -970,7 +1219,7 @@ class _ElectronicInvoicingPageState
         startNumber: startNumber,
         currentNumber: currentNumber,
         endNumber: endNumber,
-        status: currentNumber >= endNumber ? 'EXHAUSTED' : 'ACTIVE',
+        status: 'ACTIVE',
       );
       if (!mounted) return;
       _replaceSequence(saved);
@@ -1135,8 +1384,9 @@ class _ElectronicInvoicingPageState
   }
 
   _SystemStatusData _systemStatus(BuildContext context) {
+    final readiness = _effectiveReadiness();
     final scheme = Theme.of(context).colorScheme;
-    switch (_readiness.status) {
+    switch (readiness.status) {
       case 'READY':
         return _SystemStatusData(
           label: 'LISTO',
@@ -1161,7 +1411,7 @@ class _ElectronicInvoicingPageState
   @override
   Widget build(BuildContext context) {
     final BusinessSettings businessSettings =
-      widget.businessSettingsOverride ?? ref.watch(businessSettingsProvider);
+        widget.businessSettingsOverride ?? ref.watch(businessSettingsProvider);
 
     return Theme(
       data: SettingsLayout.brandedTheme(context),
@@ -1222,11 +1472,366 @@ class _ElectronicInvoicingPageState
   }) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
+      cacheExtent: 2400,
       children: [
         _buildHeroSection(context, businessSettings: businessSettings),
         const SizedBox(height: 10),
+        _buildDiagnosticsSection(context, businessSettings),
+        const SizedBox(height: 10),
         _buildSequencesSection(context),
       ],
+    );
+  }
+
+  Widget _buildDiagnosticsSection(
+    BuildContext context,
+    BusinessSettings businessSettings,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final company = _company;
+    final backendUrl =
+        _backendDiagnostic?.backendUrl ??
+        _dgiiAuthDiagnostic?.backendUrl ??
+        CloudSyncService.instance.debugResolveCloudBaseUrl(businessSettings);
+    final cloudKey = businessSettings.cloudApiKey?.trim();
+    final cloudKeyExists = cloudKey != null && cloudKey.isNotEmpty;
+    final backendAcceptedKey = _backendDiagnostic?.backendAcceptedKey;
+    final validTo = company?.certificateValidToMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(company!.certificateValidToMs!);
+    final certificateExpired =
+        validTo != null && validTo.isBefore(DateTime.now());
+    final dgiiAuth = _dgiiAuthDiagnostic?.dgiiAuth ?? const <String, dynamic>{};
+    final dgiiConfig = _dgiiAuthDiagnostic?.config ?? const <String, dynamic>{};
+    final dgiiSigner = _dgiiAuthDiagnostic?.signer ?? const <String, dynamic>{};
+    final dgiiSignerContext =
+        _dgiiAuthDiagnostic?.signerContext ?? const <String, dynamic>{};
+    final sourceLabel = _readiness.backendValidated
+        ? 'Datos validados por backend'
+        : 'Fallback local/caché';
+    final identityWarning = _identityWarning(businessSettings);
+
+    return _SectionCard(
+      title: 'Diagnóstico de conexión y DGII',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Use estas pruebas para separar conexión POS/backend, empresa, certificado, ambiente DGII y token.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _testingBackend ? null : _testBackendDiagnostics,
+                icon: _testingBackend
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_sync_outlined),
+                label: const Text('Probar backend'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _testingDgiiAuth ? null : _testDgiiAuthDiagnostics,
+                icon: _testingDgiiAuth
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.vpn_key_outlined),
+                label: const Text('Probar token DGII'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _copyDiagnostics(businessSettings),
+                icon: const Icon(Icons.copy_outlined),
+                label: const Text('Copiar diagnóstico'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _DiagnosticGroup(
+            title: 'Backend/runtime',
+            children: [
+              _DiagnosticLine(label: 'URL efectiva', value: backendUrl),
+              _DiagnosticLine(
+                label: 'Endpoint config',
+                value: _backendDiagnostic == null
+                    ? 'Sin probar en esta sesión'
+                    : (_backendDiagnostic!.ok ? 'Responde OK' : 'Falló'),
+              ),
+              _DiagnosticLine(
+                label: 'HTTP último config',
+                value:
+                    _backendDiagnostic?.statusCode?.toString() ??
+                    'No disponible',
+              ),
+              _DiagnosticLine(
+                label: 'Código/mensaje backend',
+                value: _joinCodeMessage(
+                  _backendDiagnostic?.errorCode,
+                  _backendDiagnostic?.message,
+                ),
+              ),
+              _DiagnosticLine(
+                label: 'Último refresh backend',
+                value: _formatDateTime(_lastBackendRefreshAt),
+              ),
+              _DiagnosticLine(label: 'Datos mostrados', value: sourceLabel),
+              if (_backendDiagnostic != null && !_backendDiagnostic!.ok)
+                _DiagnosticNotice(
+                  color: scheme.error,
+                  text: _backendDiagnostic!.classification,
+                ),
+            ],
+          ),
+          _DiagnosticGroup(
+            title: 'Auth/llave POS',
+            children: [
+              _DiagnosticLine(
+                label: 'x-cloud-key local',
+                value: cloudKeyExists
+                    ? 'Existe (${maskElectronicSecret(cloudKey)})'
+                    : 'No configurada',
+              ),
+              _DiagnosticLine(
+                label: 'Backend aceptó la llave',
+                value: backendAcceptedKey == null
+                    ? 'No probado'
+                    : (backendAcceptedKey ? 'Sí' : 'No'),
+              ),
+              if (backendAcceptedKey == false)
+                _DiagnosticNotice(
+                  color: scheme.error,
+                  text: 'La llave de conexión con el backend no fue aceptada',
+                ),
+            ],
+          ),
+          _DiagnosticGroup(
+            title: 'Empresa/localizadores',
+            children: [
+              _DiagnosticLine(
+                label: 'local companyId',
+                value: _localCompanyId?.toString() ?? 'No disponible',
+              ),
+              _DiagnosticLine(
+                label: 'cloudCompanyId',
+                value:
+                    businessSettings.cloudCompanyId?.trim().isNotEmpty == true
+                    ? businessSettings.cloudCompanyId!.trim()
+                    : 'No configurado',
+              ),
+              _DiagnosticLine(
+                label: 'companyRnc',
+                value: businessSettings.rnc?.trim().isNotEmpty == true
+                    ? businessSettings.rnc!.trim()
+                    : 'No configurado',
+              ),
+              _DiagnosticLine(
+                label: 'Backend companyId',
+                value:
+                    _resolvedCompanySummary['companyId'] ??
+                    _dgiiAuthDiagnostic?.companyResolved?['id']?.toString() ??
+                    'No resuelto',
+              ),
+              _DiagnosticLine(
+                label: 'Backend RNC/nombre',
+                value:
+                    '${_resolvedCompanySummary['rnc'] ?? _dgiiAuthDiagnostic?.companyResolved?['rnc'] ?? 'Sin RNC'} / ${_resolvedCompanySummary['companyName'] ?? _dgiiAuthDiagnostic?.companyResolved?['name'] ?? 'Sin nombre'}',
+              ),
+              if (identityWarning != null)
+                _DiagnosticNotice(
+                  color: scheme.tertiary,
+                  text: identityWarning,
+                ),
+            ],
+          ),
+          _DiagnosticGroup(
+            title: 'Certificado',
+            children: [
+              _DiagnosticLine(
+                label: 'Existe',
+                value:
+                    company?.hasCertificateConfigured == true ||
+                        _dgiiAuthDiagnostic?.certificate['found'] == true
+                    ? 'Sí'
+                    : 'No',
+              ),
+              _DiagnosticLine(
+                label: 'Estado',
+                value:
+                    _dgiiAuthDiagnostic?.certificate['status']?.toString() ??
+                    company?.certificateStatus ??
+                    'No disponible',
+              ),
+              _DiagnosticLine(
+                label: 'Alias',
+                value:
+                    _dgiiAuthDiagnostic?.certificate['alias']?.toString() ??
+                    company?.certificateName ??
+                    'No disponible',
+              ),
+              _DiagnosticLine(
+                label: 'Vence',
+                value:
+                    _dgiiAuthDiagnostic?.certificate['validTo']?.toString() ??
+                    (validTo == null
+                        ? 'No disponible'
+                        : DateFormat('dd/MM/yyyy').format(validTo)),
+              ),
+              _DiagnosticLine(
+                label: 'Vencido',
+                value:
+                    (_dgiiAuthDiagnostic?.certificate['expired'] == true ||
+                        certificateExpired)
+                    ? 'Sí'
+                    : 'No',
+              ),
+              _DiagnosticLine(
+                label: 'Listo según backend',
+                value:
+                    _dgiiAuthDiagnostic?.certificate['ready'] == true ||
+                        _readiness.checklist['certificateReady'] == true
+                    ? 'Sí'
+                    : 'No',
+              ),
+            ],
+          ),
+          _DiagnosticGroup(
+            title: 'Responsable de firma',
+            children: [
+              _DiagnosticLine(
+                label: 'Configurado',
+                value: _boolLabel(
+                  _readiness.checklist['signerConfigured'] ??
+                      ((_signer.signerFullName.trim().isNotEmpty) ||
+                              (dgiiSigner['signerFullName']
+                                      ?.toString()
+                                      .trim()
+                                      .isNotEmpty ==
+                                  true)
+                          ? true
+                          : false),
+                ),
+              ),
+              _DiagnosticLine(
+                label: 'Documento guardado',
+                value: _signer.signerDocumentNumber.trim().isNotEmpty
+                    ? _signer.signerDocumentNumber
+                    : (dgiiSignerContext['signerDocumentMasked']?.toString() ??
+                          'N/D'),
+              ),
+              _DiagnosticLine(
+                label: 'Doc. coincide con certificado',
+                value: _boolLabel(
+                  _certificateComparison?.signerDocumentMatchesCertificate ??
+                      dgiiSignerContext['signerDocumentMatchesCertificate'],
+                ),
+              ),
+              _DiagnosticLine(
+                label: 'Autorización DGII confirmada',
+                value: _boolLabel(
+                  _signer.signerAuthorizedForDgii ||
+                      dgiiSigner['signerAuthorizedForDgii'] == true,
+                ),
+              ),
+              if ((dgiiSignerContext['recommendation']
+                      ?.toString()
+                      .trim()
+                      .isNotEmpty ??
+                  false))
+                _DiagnosticNotice(
+                  color: scheme.tertiary,
+                  text: dgiiSignerContext['recommendation'].toString(),
+                ),
+            ],
+          ),
+          _DiagnosticGroup(
+            title: 'Ambiente DGII',
+            children: [
+              _DiagnosticLine(
+                label: 'Ambiente',
+                value: _environmentLabel(company?.environment ?? 'pruebas'),
+              ),
+              _DiagnosticLine(
+                label: 'Producción bloqueada',
+                value: dgiiConfig['productionBlocked'] == true
+                    ? 'Sí'
+                    : 'No/No aplica',
+              ),
+              _DiagnosticLine(
+                label: 'Auth seed URL',
+                value: _boolLabel(dgiiAuth['seedUrlConfigured']),
+              ),
+              _DiagnosticLine(
+                label: 'Auth validate URL',
+                value: _boolLabel(dgiiAuth['validateUrlConfigured']),
+              ),
+              _DiagnosticLine(
+                label: 'Submit URL',
+                value: _boolLabel(dgiiAuth['submitUrlConfigured']),
+              ),
+              _DiagnosticLine(
+                label: 'Result URL',
+                value: _boolLabel(dgiiAuth['resultUrlConfigured']),
+              ),
+              _DiagnosticLine(
+                label: 'Seed / firma / validación / token',
+                value:
+                    '${_boolLabel(dgiiAuth['seedOk'])} / ${_boolLabel(dgiiAuth['signOk'])} / ${_boolLabel(dgiiAuth['validateOk'])} / ${_boolLabel(dgiiAuth['tokenFound'])}',
+              ),
+              _DiagnosticLine(
+                label: 'HTTP/payload/root/firma',
+                value:
+                    '${dgiiAuth['httpStatus'] ?? 'N/D'} / ${dgiiAuth['payloadMode'] ?? 'N/D'} / ${dgiiAuth['rootElement'] ?? 'N/D'} / ${_boolLabel(dgiiAuth['hasSignature'])}',
+              ),
+              if (_dgiiAuthDiagnostic != null && !_dgiiAuthDiagnostic!.ok)
+                _DiagnosticNotice(
+                  color: scheme.error,
+                  text: _dgiiAuthDiagnostic!.classification,
+                ),
+            ],
+          ),
+          _DiagnosticGroup(
+            title: 'Secuencias backend/caché',
+            children: const ['31', '32', '34']
+                .map((code) {
+                  final sequence = _sequenceFor(code);
+                  return _DiagnosticLine(
+                    label: 'E$code',
+                    value: _sequenceDiagnosticSummary(sequence),
+                  );
+                })
+                .toList(growable: false),
+          ),
+          _DiagnosticGroup(
+            title: 'Diagnóstico reciente',
+            children: [
+              _DiagnosticLine(
+                label: 'Última operación',
+                value: _lastDiagnosticOperation,
+              ),
+              _DiagnosticLine(
+                label: 'Último código',
+                value: _lastDiagnosticErrorCode ?? 'Sin error',
+              ),
+              _DiagnosticLine(
+                label: 'Último mensaje',
+                value: _lastDiagnosticErrorMessage ?? 'Sin error',
+              ),
+              _DiagnosticLine(
+                label: 'Última prueba exitosa',
+                value: _formatDateTime(_lastSuccessfulDiagnosticAt),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1235,6 +1840,7 @@ class _ElectronicInvoicingPageState
     required BusinessSettings businessSettings,
   }) {
     final company = _company!;
+    final readiness = _effectiveReadiness();
     final status = _systemStatus(context);
     final scheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
@@ -1256,24 +1862,24 @@ class _ElectronicInvoicingPageState
           ),
           const SizedBox(height: 8),
           Text(
-            _readiness.backendValidated
+            readiness.backendValidated
                 ? 'Estado validado con el backend para la empresa activa.'
                 : 'Estado calculado con datos locales mientras se recupera la validación backend.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          if (_readiness.messages.isNotEmpty) ...[
+          if (readiness.messages.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
-              _readiness.messages.first,
+              readiness.messages.first,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],
-          if (_readiness.missing.isNotEmpty) ...[
+          if (readiness.missing.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _readiness.missing
+              children: readiness.missing
                   .map((item) => _InlineMetaPill(label: 'Falta', value: item))
                   .toList(growable: false),
             ),
@@ -1356,7 +1962,7 @@ class _ElectronicInvoicingPageState
                     ),
                     const SizedBox(height: 8),
                     Text(
-                        'Se crean las sugerencias E31, E32 y E34 con inicio en 1. Debe completar el límite autorizado para producción.',
+                      'Se crean las sugerencias E31, E32 y E34 con inicio en 1. Debe completar el límite autorizado para producción.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 8),
@@ -1406,7 +2012,169 @@ class _ElectronicInvoicingPageState
             },
           ),
           const SizedBox(height: 12),
+          _buildSignerSection(context),
+          const SizedBox(height: 12),
           _buildCertificateSection(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignerSection(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final comparison = _certificateComparison;
+    final warningCodes = comparison?.warningCodes ?? const <String>[];
+
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Responsable de firma digital',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Debe coincidir con el titular real del certificado cargado en el backend.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 760;
+              final fields = [
+                Expanded(
+                  flex: 3,
+                  child: TextFormField(
+                    controller: _signerFullNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre completo',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<String>(
+                    value: _signer.signerDocumentType,
+                    decoration: const InputDecoration(labelText: 'Tipo doc.'),
+                    items: const [
+                      DropdownMenuItem(value: 'CEDULA', child: Text('Cédula')),
+                      DropdownMenuItem(
+                        value: 'PASSPORT',
+                        child: Text('Pasaporte'),
+                      ),
+                      DropdownMenuItem(value: 'RNC', child: Text('RNC')),
+                      DropdownMenuItem(value: 'OTHER', child: Text('Otro')),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _signer = _signer.copyWith(signerDocumentType: value);
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: TextFormField(
+                    controller: _signerDocumentNumberController,
+                    decoration: const InputDecoration(
+                      labelText: 'Número de documento',
+                    ),
+                  ),
+                ),
+              ];
+
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    fields[0],
+                    const SizedBox(height: 8),
+                    fields[1],
+                    const SizedBox(height: 8),
+                    fields[2],
+                  ],
+                );
+              }
+
+              return Row(children: fields);
+            },
+          ),
+          const SizedBox(height: 8),
+          CheckboxListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Confirmo que este firmante está autorizado ante DGII',
+            ),
+            value: _signer.signerAuthorizedForDgii,
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _signer = _signer.copyWith(signerAuthorizedForDgii: value);
+              });
+            },
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _savingSigner ? null : _saveSigner,
+                icon: _savingSigner
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.verified_user_outlined),
+                label: const Text('Guardar firmante'),
+              ),
+              OutlinedButton.icon(
+                onPressed: comparison == null ? null : _useCertificateIdentity,
+                icon: const Icon(Icons.badge_outlined),
+                label: const Text('Usar datos del certificado'),
+              ),
+            ],
+          ),
+          if (comparison != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _InlineMetaPill(
+                  label: 'Nombre vs certificado',
+                  value: comparison.signerNameMatchesCertificate
+                      ? 'Coincide'
+                      : 'No coincide',
+                ),
+                _InlineMetaPill(
+                  label: 'Documento vs certificado',
+                  value: comparison.signerDocumentMatchesCertificate
+                      ? 'Coincide'
+                      : 'No coincide',
+                ),
+                if ((comparison.certificateDocumentNumber ?? '').isNotEmpty)
+                  _InlineMetaPill(
+                    label: 'Doc. certificado',
+                    value: comparison.certificateDocumentNumber!,
+                  ),
+              ],
+            ),
+          ],
+          if (warningCodes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _DiagnosticNotice(
+              color: scheme.tertiary,
+              text: 'Advertencias: ${warningCodes.join(', ')}',
+            ),
+          ],
         ],
       ),
     );
@@ -1672,7 +2440,9 @@ class _ElectronicInvoicingPageState
                     TextFormField(
                       controller: _apiTokenController,
                       decoration: const InputDecoration(
-                        labelText: 'Token DGII',
+                        labelText: 'Token DGII manual (opcional)',
+                        helperText:
+                            'Solo para override temporal. El backend intentara autenticacion automatica con el certificado activo.',
                       ),
                     ),
                   ],
@@ -1710,7 +2480,9 @@ class _ElectronicInvoicingPageState
                     child: TextFormField(
                       controller: _apiTokenController,
                       decoration: const InputDecoration(
-                        labelText: 'Token DGII',
+                        labelText: 'Token DGII manual (opcional)',
+                        helperText:
+                            'Solo para override temporal. El backend intentara autenticacion automatica con el certificado activo.',
                       ),
                     ),
                   ),
@@ -1876,9 +2648,9 @@ class _ElectronicInvoicingPageState
     if (currentNumber == null || currentNumber < 0) {
       throw const ElectronicSequenceException('Escriba una secuencia válida');
     }
-    if (endNumber == null || endNumber < currentNumber) {
+    if (endNumber == null || endNumber <= currentNumber) {
       throw const ElectronicSequenceException(
-        'Escriba un límite autorizado igual o mayor que la secuencia actual',
+        'Escriba un límite autorizado mayor que la secuencia actual',
       );
     }
     if (startNumber > endNumber) {
@@ -1892,7 +2664,243 @@ class _ElectronicInvoicingPageState
       startNumber: startNumber,
       currentNumber: currentNumber,
       endNumber: endNumber,
-      status: currentNumber >= endNumber ? 'EXHAUSTED' : 'ACTIVE',
+      status: 'ACTIVE',
+    );
+  }
+
+  String _formatDateTime(DateTime? value) {
+    if (value == null) return 'No disponible';
+    return DateFormat('dd/MM/yyyy HH:mm:ss').format(value);
+  }
+
+  String _joinCodeMessage(String? code, String? message) {
+    final normalizedCode = code?.trim() ?? '';
+    final normalizedMessage = message?.trim() ?? '';
+    if (normalizedCode.isEmpty && normalizedMessage.isEmpty) {
+      return 'Sin error';
+    }
+    if (normalizedCode.isEmpty) return normalizedMessage;
+    if (normalizedMessage.isEmpty) return normalizedCode;
+    return '$normalizedCode - $normalizedMessage';
+  }
+
+  String _boolLabel(Object? value) {
+    if (value == true) return 'Sí';
+    if (value == false) return 'No';
+    return 'N/D';
+  }
+
+  String _environmentLabel(String value) {
+    return value.trim().toLowerCase() == 'produccion'
+        ? 'production'
+        : 'precertification';
+  }
+
+  String? _identityWarning(BusinessSettings settings) {
+    final backendRnc = (_resolvedCompanySummary['rnc'] ?? '').trim();
+    final localRnc = (settings.rnc ?? '').trim();
+    final backendCloudId = (_resolvedCompanySummary['companyCloudId'] ?? '')
+        .trim();
+    final localCloudId = (settings.cloudCompanyId ?? '').trim();
+    if (backendRnc.isNotEmpty &&
+        localRnc.isNotEmpty &&
+        backendRnc != localRnc) {
+      return 'El RNC local no coincide con el RNC resuelto por backend.';
+    }
+    if (backendCloudId.isNotEmpty &&
+        localCloudId.isNotEmpty &&
+        backendCloudId != localCloudId) {
+      return 'El cloudCompanyId local no coincide con el backend.';
+    }
+    if (!_readiness.backendValidated) {
+      return 'La pantalla está usando caché local; confirme con Probar backend.';
+    }
+    return null;
+  }
+
+  String _sequenceDiagnosticSummary(ElectronicSequenceModel sequence) {
+    final end = sequence.endNumber;
+    final remaining = end == null ? null : end - sequence.currentNumber;
+    final issues = <String>[];
+    if (sequence.status.trim().toUpperCase() != 'ACTIVE') {
+      issues.add('inactiva');
+    }
+    if (end == null) {
+      issues.add('sin límite');
+    } else if (remaining != null && remaining <= 0) {
+      issues.add('agotada');
+    }
+    final base =
+        '${sequence.statusLabel}, actual ${sequence.currentNumber}, límite ${end ?? 'N/D'}, restantes ${remaining ?? 'N/D'}';
+    if (issues.isEmpty) return base;
+    return '$base — advertencia: ${issues.join(', ')}';
+  }
+
+  String _buildDiagnosticCopyText(BusinessSettings settings) {
+    final buffer = StringBuffer()
+      ..writeln('Diagnóstico Facturación Electrónica FULLPOS')
+      ..writeln('Timestamp: ${DateTime.now().toIso8601String()}')
+      ..writeln(
+        'Backend URL: ${_backendDiagnostic?.backendUrl ?? _dgiiAuthDiagnostic?.backendUrl ?? CloudSyncService.instance.debugResolveCloudBaseUrl(settings)}',
+      )
+      ..writeln('Request backend: ${_backendDiagnostic?.requestId ?? 'N/D'}')
+      ..writeln('Request DGII: ${_dgiiAuthDiagnostic?.requestId ?? 'N/D'}')
+      ..writeln(
+        'Datos: ${_readiness.backendValidated ? 'backend validado' : 'fallback local/caché'}',
+      )
+      ..writeln(
+        'x-cloud-key: ${(settings.cloudApiKey?.trim().isNotEmpty ?? false) ? maskElectronicSecret(settings.cloudApiKey) : 'No configurada'}',
+      )
+      ..writeln('localCompanyId: ${_localCompanyId ?? 'N/D'}')
+      ..writeln(
+        'companyRnc: ${settings.rnc?.trim().isNotEmpty == true ? settings.rnc!.trim() : 'N/D'}',
+      )
+      ..writeln(
+        'cloudCompanyId: ${settings.cloudCompanyId?.trim().isNotEmpty == true ? settings.cloudCompanyId!.trim() : 'N/D'}',
+      )
+      ..writeln(
+        'Backend companyId: ${_resolvedCompanySummary['companyId'] ?? _dgiiAuthDiagnostic?.companyResolved?['id'] ?? 'N/D'}',
+      )
+      ..writeln(
+        'Backend empresa/RNC: ${_resolvedCompanySummary['companyName'] ?? _dgiiAuthDiagnostic?.companyResolved?['name'] ?? 'N/D'} / ${_resolvedCompanySummary['rnc'] ?? _dgiiAuthDiagnostic?.companyResolved?['rnc'] ?? 'N/D'}',
+      )
+      ..writeln(
+        'Config active/outbound: ${_readiness.checklist['configActive'] ?? 'N/D'} / ${_readiness.checklist['outboundEnabled'] ?? 'N/D'}',
+      )
+      ..writeln(
+        'Readiness: ${_readiness.status} missing=${_readiness.missing.join(',')}',
+      )
+      ..writeln(
+        'Firmante: nombre=${_signer.signerFullName.isEmpty ? 'N/D' : _signer.signerFullName} doc=${_signer.signerDocumentNumber.isEmpty ? 'N/D' : _signer.signerDocumentNumber} autorizadoDGII=${_signer.signerAuthorizedForDgii}',
+      )
+      ..writeln(
+        'Firmante vs certificado: nombre=${_certificateComparison?.signerNameMatchesCertificate ?? 'N/D'} doc=${_certificateComparison?.signerDocumentMatchesCertificate ?? 'N/D'}',
+      )
+      ..writeln(
+        'Certificado: ${_company?.certificateStatus ?? 'N/D'} alias=${_company?.certificateName ?? 'N/D'} vence=${_company?.certificateValidToMs == null ? 'N/D' : DateTime.fromMillisecondsSinceEpoch(_company!.certificateValidToMs!).toIso8601String()}',
+      )
+      ..writeln(
+        'DGII auth: ok=${_dgiiAuthDiagnostic?.ok ?? 'N/D'} seed=${_dgiiAuthDiagnostic?.dgiiAuth['seedOk'] ?? 'N/D'} sign=${_dgiiAuthDiagnostic?.dgiiAuth['signOk'] ?? 'N/D'} validate=${_dgiiAuthDiagnostic?.dgiiAuth['validateOk'] ?? 'N/D'} token=${_dgiiAuthDiagnostic?.dgiiAuth['tokenFound'] ?? 'N/D'}',
+      )
+      ..writeln(
+        'DGII env URLs: seed=${_dgiiAuthDiagnostic?.dgiiAuth['seedUrlConfigured'] ?? 'N/D'} validate=${_dgiiAuthDiagnostic?.dgiiAuth['validateUrlConfigured'] ?? 'N/D'} submit=${_dgiiAuthDiagnostic?.dgiiAuth['submitUrlConfigured'] ?? 'N/D'} result=${_dgiiAuthDiagnostic?.dgiiAuth['resultUrlConfigured'] ?? 'N/D'}',
+      )
+      ..writeln(
+        'DGII safe error: ${_joinCodeMessage(_dgiiAuthDiagnostic?.errorCode, _dgiiAuthDiagnostic?.message)}',
+      )
+      ..writeln('Secuencias:');
+    for (final code in const ['31', '32', '34']) {
+      buffer.writeln(
+        '  E$code: ${_sequenceDiagnosticSummary(_sequenceFor(code))}',
+      );
+    }
+    buffer
+      ..writeln('Última operación: $_lastDiagnosticOperation')
+      ..writeln(
+        'Último error: ${_joinCodeMessage(_lastDiagnosticErrorCode, _lastDiagnosticErrorMessage)}',
+      );
+    return buffer.toString();
+  }
+
+  ElectronicInvoicingReadiness _effectiveReadiness() {
+    return _readiness;
+  }
+}
+
+class _DiagnosticGroup extends StatelessWidget {
+  const _DiagnosticGroup({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: scheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _DiagnosticLine extends StatelessWidget {
+  const _DiagnosticLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(color: scheme.onSurface, fontSize: 12),
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            TextSpan(
+              text: value.trim().isEmpty ? 'N/D' : value.trim(),
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DiagnosticNotice extends StatelessWidget {
+  const _DiagnosticNotice({required this.color, required this.text});
+
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      ),
     );
   }
 }
@@ -2408,6 +3416,8 @@ class _DocumentTableRow extends StatelessWidget {
     required this.client,
     required this.amount,
     required this.status,
+    this.statusDetail,
+    this.onViewStatusDetail,
     required this.statusColor,
     required this.accentColor,
     required this.date,
@@ -2420,6 +3430,8 @@ class _DocumentTableRow extends StatelessWidget {
   final String client;
   final String amount;
   final String status;
+  final String? statusDetail;
+  final VoidCallback? onViewStatusDetail;
   final Color statusColor;
   final Color accentColor;
   final String date;
@@ -2500,7 +3512,50 @@ class _DocumentTableRow extends StatelessWidget {
             flex: 2,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: _StatusChip(label: status, color: statusColor),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: _StatusChip(label: status, color: statusColor),
+                      ),
+                      if (onViewStatusDetail != null)
+                        IconButton(
+                          onPressed: onViewStatusDetail,
+                          tooltip: 'Ver detalle completo',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 26,
+                            minHeight: 26,
+                          ),
+                          icon: Icon(
+                            Icons.visibility_outlined,
+                            size: 16,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (statusDetail?.trim().isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        statusDetail!.trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           _BodyCell(

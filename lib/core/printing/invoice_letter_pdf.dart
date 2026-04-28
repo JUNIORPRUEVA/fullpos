@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/utils/currency_display.dart';
 import '../../features/facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../features/sales/data/sales_model.dart';
 import '../../features/settings/data/business_settings_model.dart';
@@ -35,7 +36,7 @@ class InvoiceLetterPdf {
   }
 
   static String _fmtMoney(String symbol, double amount) {
-    return '$symbol ${amount.toStringAsFixed(2)}';
+    return '$symbol ${CurrencyDisplay.formatPlain(amount, decimalDigits: 2)}';
   }
 
   static String _fmtQty(double qty) {

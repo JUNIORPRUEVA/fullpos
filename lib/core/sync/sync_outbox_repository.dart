@@ -36,16 +36,12 @@ class SyncOutboxRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       final next = now + delay.inMilliseconds;
 
-      final rows = await db.query(
+      // INSERT OR IGNORE crea la fila si no existe; si ya existe no hace nada.
+      // El UPDATE posterior aplica siempre (nueva fila o existente), eliminando
+      // la race condition en llamadas concurrentes.
+      await db.insert(
         DbTables.syncOutbox,
-        columns: ['target', 'created_at_ms'],
-        where: 'target = ?',
-        whereArgs: [target],
-        limit: 1,
-      );
-
-      if (rows.isEmpty) {
-        await db.insert(DbTables.syncOutbox, {
+        {
           'target': target,
           'status': 'pending',
           'attempt_count': 0,
@@ -57,9 +53,9 @@ class SyncOutboxRepository {
           'created_at_ms': now,
           'updated_at_ms': now,
           'last_duration_ms': null,
-        });
-        return;
-      }
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
 
       await db.update(
         DbTables.syncOutbox,

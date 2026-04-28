@@ -1627,11 +1627,11 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final currency = NumberFormat.currency(
-      locale: 'es_DO',
+      locale: 'en_US',
       symbol: 'RD\$ ',
       decimalDigits: 2,
     );
-    final number = NumberFormat.decimalPattern('es_DO');
+    final number = NumberFormat.decimalPattern('en_US');
     final product = widget.product;
     final purchaseText = widget.showPurchasePrice
         ? currency.format(product.purchasePrice)

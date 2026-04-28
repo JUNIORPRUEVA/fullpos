@@ -11,7 +11,7 @@ class AdvancedKpiCards extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final currency = NumberFormat.currency(
-      locale: 'es_DO',
+      locale: 'en_US',
       symbol: 'RD\$ ',
       decimalDigits: 2,
     );
@@ -37,7 +37,7 @@ class AdvancedKpiCards extends StatelessWidget {
                 icon: Icons.trending_up,
                 color: scheme.tertiary,
                 subtitle:
-                    '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto | bruta ${currency.format(kpis.totalProfit)}',
+                    '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto',
                 currency: currency,
               ),
             ] else
@@ -61,7 +61,7 @@ class AdvancedKpiCards extends StatelessWidget {
                       icon: Icons.trending_up,
                       color: scheme.tertiary,
                       subtitle:
-                          '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto | bruta ${currency.format(kpis.totalProfit)}',
+                          '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto',
                       currency: currency,
                     ),
                   ),

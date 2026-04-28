@@ -59,4 +59,14 @@ void main() {
 
     expect(model.statusLabel, 'Enviando');
   });
+
+  test('statusLabel shows technical send error separately from rejected', () {
+    final model = _model(
+      estadoDgii: FacturaElectronicaModel.statusSendError,
+      mensajeDgii: 'Error enviando documento a DGII',
+      estadoInterno: 'ERROR',
+    );
+
+    expect(model.statusLabel, 'Error envio');
+  });
 }

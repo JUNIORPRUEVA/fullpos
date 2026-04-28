@@ -1048,6 +1048,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   // Ajusta el stock localmente tras completar una venta para reflejar el inventario actualizado
   void _applyStockAdjustments(List<SaleItemModel> items) {
+    if (!mounted) return;
     if (items.isEmpty) return;
 
     final Map<int, double> deltas = {};
@@ -1069,6 +1070,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       return updated < 0 ? 0 : updated;
     }
 
+    if (!mounted) return;
     setState(() {
       _allProducts = _allProducts
           .map(

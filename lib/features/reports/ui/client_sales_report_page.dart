@@ -399,7 +399,11 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
   Widget _buildGeneralPanel(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(symbol: 'RD\$ ', decimalDigits: 2);
+    final money = NumberFormat.currency(
+      locale: 'en_US',
+      symbol: 'RD\$ ',
+      decimalDigits: 2,
+    );
 
     final totalSales = _clientSummaries.fold<double>(
       0,
@@ -552,7 +556,11 @@ class _ClientSalesReportPageState extends State<ClientSalesReportPage> {
   Widget _buildClientDetailPanel(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final money = NumberFormat.currency(symbol: 'RD\$ ', decimalDigits: 2);
+    final money = NumberFormat.currency(
+      locale: 'en_US',
+      symbol: 'RD\$ ',
+      decimalDigits: 2,
+    );
     final date = DateFormat('dd/MM/yyyy HH:mm');
 
     return Container(

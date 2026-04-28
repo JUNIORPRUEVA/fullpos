@@ -9,6 +9,7 @@ import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../settings/data/business_settings_repository.dart';
 import 'electronic_company_locator_helper.dart';
+import 'electronic_invoicing_diagnostics_repository.dart';
 import 'models/electronic_sequence_model.dart';
 
 class ElectronicSequenceException implements Exception {
@@ -31,6 +32,8 @@ String friendlyElectronicSequenceErrorMessage({
       return 'No se pudo identificar la empresa';
     case 'SEQUENCE_LIMIT_INVALID':
       return 'El límite autorizado no es válido';
+    case 'SEQUENCE_END_NUMBER_REQUIRED':
+      return 'Debe indicar el límite final de la secuencia.';
     case 'SEQUENCE_RANGE_INVALID':
     case 'SEQUENCE_CURRENT_OUT_OF_RANGE':
       return 'Revise el rango autorizado de la secuencia';
@@ -38,15 +41,42 @@ String friendlyElectronicSequenceErrorMessage({
       return 'La secuencia ya fue usada y no se puede cambiar libremente';
     case 'SEQUENCE_PREFIX_INVALID':
       return 'El prefijo no corresponde al tipo de comprobante';
+    case 'ELECTRONIC_SEQUENCE_STORAGE_MIGRATION_REQUIRED':
+      return 'El backend debe actualizarse para aceptar rangos DGII de 10 dígitos';
   }
 
   if (statusCode == 401) {
-    return 'No se pudo validar la conexión';
+    return 'La llave de conexión del POS no fue aceptada por el backend';
   }
 
   final normalized = (message ?? '').toLowerCase();
   if (normalized.contains('empresa')) {
     return 'No se pudo identificar la empresa';
+  }
+  if (normalized.contains('null constraint violation') &&
+      normalized.contains('endnumber')) {
+    return 'El backend debe aplicar la migración de secuencias: existe una columna legacy endNumber obligatoria.';
+  }
+  if (normalized.contains('endnumber') && normalized.contains('null')) {
+    return 'El backend debe aplicar la migración de secuencias: existe una columna legacy endNumber obligatoria.';
+  }
+  if (normalized.contains('10 dígitos') ||
+      normalized.contains('10 digitos') ||
+      normalized.contains('p2022') ||
+      normalized.contains('column does not exist') ||
+      normalized.contains('schema mismatch') ||
+      normalized.contains('no coincide con prisma') ||
+      normalized.contains('migracion') ||
+      normalized.contains('migración')) {
+    return 'El backend debe actualizarse para aceptar rangos DGII de 10 dígitos';
+  }
+  if ((statusCode ?? 0) >= 500 &&
+      (message ?? '').trim().isNotEmpty &&
+      normalized != 'unexpected error') {
+    return message!.trim();
+  }
+  if ((statusCode ?? 0) >= 500) {
+    return 'El backend no pudo guardar la secuencia. Aplique las migraciones del backend y reinicie el servicio.';
   }
   return 'No se pudo crear la secuencia';
 }
@@ -58,17 +88,18 @@ class ElectronicSequenceRepository {
 
   static const List<String> _defaultTypes = ['31', '32', '34'];
 
-  Map<String, Object?> _localPersistenceMap(ElectronicSequenceModel sequence) => {
-    'company_id': sequence.companyId,
-    'branch_id': sequence.branchId,
-    'document_type_code': sequence.documentTypeCode,
-    'prefix': sequence.prefix,
-    'start_number': sequence.startNumber,
-    'current_number': sequence.currentNumber,
-    'end_number': sequence.endNumber,
-    'status': sequence.status,
-    'updated_at_ms': sequence.updatedAtMs,
-  };
+  Map<String, Object?> _localPersistenceMap(ElectronicSequenceModel sequence) =>
+      {
+        'company_id': sequence.companyId,
+        'branch_id': sequence.branchId,
+        'document_type_code': sequence.documentTypeCode,
+        'prefix': sequence.prefix,
+        'start_number': sequence.startNumber,
+        'current_number': sequence.currentNumber,
+        'end_number': sequence.endNumber,
+        'status': sequence.status,
+        'updated_at_ms': sequence.updatedAtMs,
+      };
 
   Future<List<ElectronicSequenceModel>> listLocal() async {
     final db = await AppDb.database;
@@ -145,6 +176,7 @@ class ElectronicSequenceRepository {
     if (cloudKey != null && cloudKey.isNotEmpty) {
       headers['x-cloud-key'] = cloudKey;
     }
+    headers['x-request-id'] = newElectronicRequestId();
 
     final companyId = await SessionManager.companyId();
     final locators = buildElectronicCompanyLocators(
@@ -152,24 +184,49 @@ class ElectronicSequenceRepository {
       companyCloudId: settings.cloudCompanyId,
       companyRnc: settings.rnc,
     );
-    final response = await api.postJson(
-      '/api/electronic-invoicing/sequences',
-      headers: headers,
-      body: {
-        'branchId': 0,
-        'documentTypeCode': documentTypeCode,
-        'prefix': prefix,
-        'startNumber': startNumber,
-        'currentNumber': currentNumber,
-        'endNumber': endNumber,
-        'status': status,
-        ...locators,
-      },
-      retry: false,
+    debugPrint(
+      '[electronic-sequence] save request documentTypeCode=$documentTypeCode '
+      'prefix=$prefix startNumber=$startNumber currentNumber=$currentNumber '
+      'endNumber=$endNumber maxNumber=$endNumber '
+      'companyRnc=${settings.rnc} companyCloudId=${settings.cloudCompanyId}',
     );
+    late final dynamic response;
+    try {
+      response = await api.postJson(
+        '/api/electronic-invoicing/sequences',
+        headers: headers,
+        body: {
+          'branchId': 0,
+          'documentTypeCode': documentTypeCode,
+          'prefix': prefix,
+          'startNumber': startNumber,
+          'currentNumber': currentNumber,
+          'endNumber': endNumber,
+          'maxNumber': endNumber,
+          'status': status,
+          ...locators,
+        },
+        retry: false,
+      );
+    } on ApiException catch (error) {
+      debugPrint(
+        '[electronic-sequence] save api exception status=${error.statusCode} message=${error.message}',
+      );
+      throw ElectronicSequenceException(
+        friendlyElectronicSequenceErrorMessage(
+          message: error.message,
+          statusCode: error.statusCode,
+        ),
+      );
+    }
 
     final decoded = _decodeMap(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      debugPrint(
+        '[electronic-sequence] save failed status=${response.statusCode} '
+        'errorCode=${decoded['errorCode']} message=${decoded['message']} '
+        'details=${sanitizeElectronicLogValue(decoded['details'])}',
+      );
       throw ElectronicSequenceException(
         friendlyElectronicSequenceErrorMessage(
           errorCode: decoded['errorCode']?.toString(),
@@ -179,18 +236,25 @@ class ElectronicSequenceRepository {
       );
     }
 
+    final sequenceJson = decoded['sequence'] is Map<String, dynamic>
+        ? decoded['sequence'] as Map<String, dynamic>
+        : decoded;
+
     final model = ElectronicSequenceModel(
-      id: decoded['id'] as int?,
-      companyId: (decoded['companyId'] as num?)?.toInt() ?? (companyId ?? 0),
-      branchId: (decoded['branchId'] as int?) ?? 0,
+      id: sequenceJson['id'] as int?,
+      companyId:
+          (sequenceJson['companyId'] as num?)?.toInt() ?? (companyId ?? 0),
+      branchId: (sequenceJson['branchId'] as int?) ?? 0,
       documentTypeCode:
-          decoded['documentTypeCode']?.toString().trim() ?? documentTypeCode,
-      prefix: decoded['prefix']?.toString().trim() ?? prefix,
-      startNumber: (decoded['startNumber'] as num?)?.toInt() ?? startNumber,
+          sequenceJson['documentTypeCode']?.toString().trim() ??
+          documentTypeCode,
+      prefix: sequenceJson['prefix']?.toString().trim() ?? prefix,
+      startNumber:
+          (sequenceJson['startNumber'] as num?)?.toInt() ?? startNumber,
       currentNumber:
-          (decoded['currentNumber'] as num?)?.toInt() ?? currentNumber,
-      endNumber: (decoded['endNumber'] as num?)?.toInt() ?? endNumber,
-      status: decoded['status']?.toString().trim() ?? status,
+          (sequenceJson['currentNumber'] as num?)?.toInt() ?? currentNumber,
+      endNumber: (sequenceJson['endNumber'] as num?)?.toInt() ?? endNumber,
+      status: sequenceJson['status']?.toString().trim() ?? status,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
 

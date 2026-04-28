@@ -370,6 +370,6 @@ class _CashBoxPageState extends State<CashBoxPage> {
 
   String _formatAmount(double? value) {
     final amount = value ?? 0.0;
-    return CurrencyDisplay.formatPlain(amount);
+    return CurrencyDisplay.formatPlain(amount, decimalDigits: 2);
   }
 }

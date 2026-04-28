@@ -385,7 +385,7 @@ class ReportsPrinter {
                     label: 'Ganancia neta',
                     value: money(kpis.netProfit),
                     tone: brandTeal,
-                    secondary: 'Bruta ${money(kpis.totalProfit)}',
+                    secondary: 'Despues de costos y gastos',
                   ),
                   summaryCard(
                     label: 'Balance de caja',
@@ -418,7 +418,6 @@ class ReportsPrinter {
               );
             } else {
               content.add(kvRow('Total Ventas:', money(kpis.totalSales)));
-              content.add(kvRow('Ganancia Bruta:', money(kpis.totalProfit)));
               content.add(kvRow('Gastos del rango:', money(kpis.cashExpense)));
               content.add(kvRow('Ganancia Neta:', money(kpis.netProfit)));
               content.add(kvRow('Cantidad Ventas:', '${kpis.salesCount}'));

@@ -495,8 +495,9 @@ class _InventoryTabState extends State<InventoryTab> {
     final scheme = theme.colorScheme;
     final mutedText = scheme.onSurface.withOpacity(0.7);
     final currencyFormat = NumberFormat.currency(
-      symbol: '\$',
-      decimalDigits: 0,
+      locale: 'en_US',
+      symbol: 'RD\$ ',
+      decimalDigits: 2,
     );
     final unitsFormat = NumberFormat.decimalPattern();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');

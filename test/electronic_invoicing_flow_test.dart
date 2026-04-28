@@ -8,7 +8,6 @@ import 'package:fullpos/features/facturacion_electronica/data/electronic_sequenc
 import 'package:fullpos/features/facturacion_electronica/data/electronic_company_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/factura_electronica_repository.dart';
 import 'package:fullpos/features/facturacion_electronica/data/models/electronic_sequence_model.dart';
-import 'package:fullpos/features/facturacion_electronica/data/models/factura_electronica_model.dart';
 import 'package:fullpos/features/sales/data/sales_repository.dart';
 import 'package:fullpos/features/settings/data/business_settings_model.dart';
 import 'package:fullpos/features/settings/data/business_settings_repository.dart';
@@ -70,119 +69,125 @@ void main() {
     );
   }
 
-  test('invoice sale is rolled back when real FE backend is unavailable', () async {
-    await AppDb.resetForTests();
+  test(
+    'invoice sale is rolled back when real FE backend is unavailable',
+    () async {
+      await AppDb.resetForTests();
 
-    await BusinessSettingsRepository().saveSettings(
-      BusinessSettings(
-        businessName: 'FULLPOS SRL',
-        rnc: '101010101',
-        address: 'Santo Domingo',
-      ),
-    );
+      await BusinessSettingsRepository().saveSettings(
+        BusinessSettings(
+          businessName: 'FULLPOS SRL',
+          rnc: '101010101',
+          address: 'Santo Domingo',
+        ),
+      );
 
-    final company = await ElectronicCompanyRepository.getOrCreate();
-    await ElectronicCompanyRepository.save(
-      company.copyWith(environment: 'pruebas', automaticEmission: 1),
-    );
+      final company = await ElectronicCompanyRepository.getOrCreate();
+      await ElectronicCompanyRepository.save(
+        company.copyWith(environment: 'pruebas', automaticEmission: 1),
+      );
 
-    await saveSequence(documentTypeCode: '31', prefix: 'E31', endNumber: 31);
+      await saveSequence(documentTypeCode: '31', prefix: 'E31', endNumber: 31);
 
-    await expectLater(
-      SalesRepository.createSale(
-        localCode: 'V-ECF-TEST-001',
-        kind: 'invoice',
-        items: [
-          {
-            'product_code_snapshot': 'ECF-001',
-            'product_name_snapshot': 'Producto e-CF',
-            'qty': 1.0,
-            'unit_price': 250.0,
-            'purchase_price_snapshot': 120.0,
-            'discount_line': 0.0,
-            'total_line': 250.0,
-          },
-        ],
-        itbisEnabled: false,
-        subtotalOverride: 250.0,
-        itbisAmountOverride: 0.0,
-        totalOverride: 250.0,
-        paymentMethod: 'cash',
-        paymentCashAmount: 250.0,
-        paymentCardAmount: 0.0,
-        paymentTransferAmount: 0.0,
-        paidAmount: 250.0,
-        changeAmount: 0.0,
-        electronicInvoiceEnabled: true,
-        electronicDocumentType: '31',
-        customerName: 'CLIENTE FISCAL 1',
-        customerRnc: '131000001',
-      ),
-      throwsException,
-    );
+      await expectLater(
+        SalesRepository.createSale(
+          localCode: 'V-ECF-TEST-001',
+          kind: 'invoice',
+          items: [
+            {
+              'product_code_snapshot': 'ECF-001',
+              'product_name_snapshot': 'Producto e-CF',
+              'qty': 1.0,
+              'unit_price': 250.0,
+              'purchase_price_snapshot': 120.0,
+              'discount_line': 0.0,
+              'total_line': 250.0,
+            },
+          ],
+          itbisEnabled: false,
+          subtotalOverride: 250.0,
+          itbisAmountOverride: 0.0,
+          totalOverride: 250.0,
+          paymentMethod: 'cash',
+          paymentCashAmount: 250.0,
+          paymentCardAmount: 0.0,
+          paymentTransferAmount: 0.0,
+          paidAmount: 250.0,
+          changeAmount: 0.0,
+          electronicInvoiceEnabled: true,
+          electronicDocumentType: '31',
+          customerName: 'CLIENTE FISCAL 1',
+          customerRnc: '131000001',
+        ),
+        throwsException,
+      );
 
-    final salesRows = await (await AppDb.database).query(
-      DbTables.sales,
-      columns: ['id', 'deleted_at_ms', 'status'],
-      where: 'local_code = ?',
-      whereArgs: ['V-ECF-TEST-001'],
-    );
+      final salesRows = await (await AppDb.database).query(
+        DbTables.sales,
+        columns: ['id', 'deleted_at_ms', 'status'],
+        where: 'local_code = ?',
+        whereArgs: ['V-ECF-TEST-001'],
+      );
 
-    expect(salesRows, isNotEmpty);
-    final saleId = salesRows.first['id'] as int;
+      expect(salesRows, isNotEmpty);
+      final saleId = salesRows.first['id'] as int;
 
-    final factura = await FacturaElectronicaRepository.getBySaleId(saleId);
-    expect(factura, isNull);
-    expect(salesRows.first['deleted_at_ms'], isNotNull);
-    expect(salesRows.first['status'], 'cancelled_fe');
-  });
+      final factura = await FacturaElectronicaRepository.getBySaleId(saleId);
+      expect(factura, isNull);
+      expect(salesRows.first['deleted_at_ms'], isNotNull);
+      expect(salesRows.first['status'], 'cancelled_fe');
+    },
+  );
 
-  test('saveLocal ignores remote id collisions and preserves business upsert key', () async {
-    await AppDb.resetForTests();
+  test(
+    'saveLocal ignores remote id collisions and preserves business upsert key',
+    () async {
+      await AppDb.resetForTests();
 
-    final repository = ElectronicSequenceRepository();
-    final first = await repository.saveLocal(
-      ElectronicSequenceModel(
-        companyId: 1,
-        branchId: 0,
-        documentTypeCode: '32',
-        prefix: 'E32',
-        startNumber: 1,
-        currentNumber: 0,
-        endNumber: 100,
-        status: 'ACTIVE',
-        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-      ),
-    );
+      final repository = ElectronicSequenceRepository();
+      final first = await repository.saveLocal(
+        ElectronicSequenceModel(
+          companyId: 1,
+          branchId: 0,
+          documentTypeCode: '32',
+          prefix: 'E32',
+          startNumber: 1,
+          currentNumber: 0,
+          endNumber: 100,
+          status: 'ACTIVE',
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
 
-    expect(first.id, isNotNull);
+      expect(first.id, isNotNull);
 
-    final saved = await repository.saveLocal(
-      ElectronicSequenceModel(
-        id: first.id,
-        companyId: 1,
-        branchId: 0,
-        documentTypeCode: '31',
-        prefix: 'E31',
-        startNumber: 1,
-        currentNumber: 0,
-        endNumber: 200,
-        status: 'ACTIVE',
-        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-      ),
-    );
+      final saved = await repository.saveLocal(
+        ElectronicSequenceModel(
+          id: first.id,
+          companyId: 1,
+          branchId: 0,
+          documentTypeCode: '31',
+          prefix: 'E31',
+          startNumber: 1,
+          currentNumber: 0,
+          endNumber: 200,
+          status: 'ACTIVE',
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
 
-    expect(saved.id, isNotNull);
-    expect(saved.id, isNot(first.id));
+      expect(saved.id, isNotNull);
+      expect(saved.id, isNot(first.id));
 
-    final rows = await (await AppDb.database).query(
-      'electronic_sequences',
-      orderBy: 'document_type_code ASC',
-    );
+      final rows = await (await AppDb.database).query(
+        'electronic_sequences',
+        orderBy: 'document_type_code ASC',
+      );
 
-    expect(rows, hasLength(2));
-    expect(rows.map((row) => row['document_type_code']), ['31', '32']);
-  });
+      expect(rows, hasLength(2));
+      expect(rows.map((row) => row['document_type_code']), ['31', '32']);
+    },
+  );
 
   test(
     'invoice sale stores customer RNC snapshot for fiscal printing',

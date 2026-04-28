@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../data/reports_repository.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/currency_display.dart';
 
 class ProfitLineChart extends StatelessWidget {
   final List<SeriesDataPoint> data;
 
-  const ProfitLineChart({
-    super.key,
-    required this.data,
-  });
+  const ProfitLineChart({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -34,10 +32,7 @@ class ProfitLineChart extends StatelessWidget {
             drawVerticalLine: false,
             horizontalInterval: maxY > 0 ? maxY / 5 : 1,
             getDrawingHorizontalLine: (value) {
-              return FlLine(
-                color: Colors.grey.shade300,
-                strokeWidth: 1,
-              );
+              return FlLine(color: Colors.grey.shade300, strokeWidth: 1);
             },
           ),
           titlesData: FlTitlesData(
@@ -52,7 +47,9 @@ class ProfitLineChart extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 30,
-                interval: data.length > 10 ? (data.length / 7).ceilToDouble() : 1,
+                interval: data.length > 10
+                    ? (data.length / 7).ceilToDouble()
+                    : 1,
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
                   if (index < 0 || index >= data.length) {
@@ -63,10 +60,7 @@ class ProfitLineChart extends StatelessWidget {
                   final day = parts.length == 3 ? parts[2] : label;
                   return Text(
                     day,
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      fontSize: 10,
-                    ),
+                    style: const TextStyle(color: Colors.black54, fontSize: 10),
                   );
                 },
               ),
@@ -74,15 +68,12 @@ class ProfitLineChart extends StatelessWidget {
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 50,
+                reservedSize: 72,
                 interval: maxY > 0 ? maxY / 5 : 1,
                 getTitlesWidget: (value, meta) {
                   return Text(
                     _formatMoney(value),
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      fontSize: 10,
-                    ),
+                    style: const TextStyle(color: Colors.black54, fontSize: 10),
                   );
                 },
               ),
@@ -131,11 +122,7 @@ class ProfitLineChart extends StatelessWidget {
   }
 
   String _formatMoney(double value) {
-    if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(1)}M';
-    } else if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(0)}K';
-    }
-    return value.toStringAsFixed(0);
+    final normalized = value.isFinite ? value : 0.0;
+    return CurrencyDisplay.formatPlain(normalized, decimalDigits: 2);
   }
 }

@@ -9,10 +9,12 @@ import '../../settings/data/business_settings_model.dart';
 import '../../settings/data/business_settings_repository.dart';
 import 'electronic_company_locator_helper.dart';
 import 'electronic_company_repository.dart';
+import 'electronic_invoicing_diagnostics_repository.dart';
 import 'electronic_sequence_repository.dart';
 import 'models/electronic_company_model.dart';
 import 'models/electronic_invoicing_config_model.dart';
 import 'models/electronic_sequence_model.dart';
+import 'models/electronic_signer_model.dart';
 
 class ElectronicInvoicingConfigException implements Exception {
   const ElectronicInvoicingConfigException(this.userMessage);
@@ -25,7 +27,7 @@ class ElectronicInvoicingConfigException implements Exception {
 
 class ElectronicInvoicingConfigRepository {
   ElectronicInvoicingConfigRepository({ApiClient? apiClient})
-      : _apiClient = apiClient;
+    : _apiClient = apiClient;
 
   final ApiClient? _apiClient;
   final ElectronicSequenceRepository _sequenceRepository =
@@ -43,55 +45,53 @@ class ElectronicInvoicingConfigRepository {
 
     try {
       final api = _api(settings);
+      final requestId = newElectronicRequestId();
       final response = await api.get(
         '/api/electronic-invoicing/config/by-rnc',
-        headers: _headers(settings),
-        queryParameters: <String, String>{
-          ...locators,
-          'branchId': '0',
-        },
+        headers: _headers(settings, requestId: requestId),
+        queryParameters: <String, String>{...locators, 'branchId': '0'},
         retry: false,
       );
 
       final decoded = _decodeMap(response.body);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _fallback(
-          localCompany,
-          localSequences,
-          <String>[
-            _friendlyMessage(
-              message: decoded['message']?.toString(),
-              statusCode: response.statusCode,
-            ),
-          ],
-        );
+        return _fallback(localCompany, localSequences, <String>[
+          _friendlyMessage(
+            message: decoded['message']?.toString(),
+            statusCode: response.statusCode,
+          ),
+        ]);
       }
 
-      final resolved = ElectronicInvoicingResolvedConfig.fromBackendMap(
-        decoded,
-        localApiToken: localCompany.apiToken,
-      ).copyWith(
-        sequences: mergeResolvedElectronicSequences(
-          remote: ElectronicInvoicingResolvedConfig.fromBackendMap(
+      final resolved =
+          ElectronicInvoicingResolvedConfig.fromBackendMap(
             decoded,
             localApiToken: localCompany.apiToken,
-          ).sequences,
-          local: localSequences,
-        ),
-      );
+          ).copyWith(
+            sequences: mergeResolvedElectronicSequences(
+              remote: ElectronicInvoicingResolvedConfig.fromBackendMap(
+                decoded,
+                localApiToken: localCompany.apiToken,
+              ).sequences,
+              local: localSequences,
+            ),
+          );
       await _cacheResolvedConfig(resolved);
       return resolved;
+    } on ApiException catch (error) {
+      return _fallback(localCompany, localSequences, <String>[error.message]);
     } catch (_) {
-      return _fallback(
-        localCompany,
-        localSequences,
-        const <String>['No se pudo validar la configuración con el backend.'],
-      );
+      return _fallback(localCompany, localSequences, const <String>[
+        'No se pudo validar la configuración con el backend.',
+      ]);
     }
   }
 
   Future<ElectronicInvoicingResolvedConfig> saveConfig({
     required ElectronicCompanyModel company,
+    bool? active,
+    bool? outboundEnabled,
+    bool? authEnabled,
   }) async {
     final settings = await BusinessSettingsRepository().loadSettings();
     final locators = await _locators(settings);
@@ -104,15 +104,17 @@ class ElectronicInvoicingConfigRepository {
     final api = _api(settings);
     late final dynamic response;
     try {
+      final requestId = newElectronicRequestId();
       response = await api.putJson(
         '/api/electronic-invoicing/config/by-rnc',
-        headers: _headers(settings),
+        headers: _headers(settings, requestId: requestId),
         body: <String, dynamic>{
           ...locators,
           'branchId': 0,
-          'active': true,
-          'outboundEnabled': true,
-          'authEnabled': true,
+          'active': active ?? true,
+          'outboundEnabled':
+              outboundEnabled ?? (company.automaticEmission == 1),
+          'authEnabled': authEnabled ?? true,
           'environment': _backendEnvironment(company.environment),
           'publicBaseUrl': api.baseUrl,
           'tokenTtlSeconds': 300,
@@ -133,18 +135,19 @@ class ElectronicInvoicingConfigRepository {
       );
     }
 
-    final resolved = ElectronicInvoicingResolvedConfig.fromBackendMap(
-      decoded,
-      localApiToken: company.apiToken,
-    ).copyWith(
-      sequences: mergeResolvedElectronicSequences(
-        remote: ElectronicInvoicingResolvedConfig.fromBackendMap(
+    final resolved =
+        ElectronicInvoicingResolvedConfig.fromBackendMap(
           decoded,
           localApiToken: company.apiToken,
-        ).sequences,
-        local: await _sequenceRepository.listLocal(),
-      ),
-    );
+        ).copyWith(
+          sequences: mergeResolvedElectronicSequences(
+            remote: ElectronicInvoicingResolvedConfig.fromBackendMap(
+              decoded,
+              localApiToken: company.apiToken,
+            ).sequences,
+            local: await _sequenceRepository.listLocal(),
+          ),
+        );
     await _cacheResolvedConfig(resolved.copyWithCompany(company));
     return resolved.copyWithCompany(company);
   }
@@ -153,7 +156,9 @@ class ElectronicInvoicingConfigRepository {
     await ElectronicCompanyRepository.save(company);
   }
 
-  Future<void> cacheDraftSequences(List<ElectronicSequenceModel> sequences) async {
+  Future<void> cacheDraftSequences(
+    List<ElectronicSequenceModel> sequences,
+  ) async {
     for (final sequence in sequences) {
       await _sequenceRepository.saveLocal(sequence);
     }
@@ -170,13 +175,16 @@ class ElectronicInvoicingConfigRepository {
   ApiClient _api(BusinessSettings settings) {
     return _apiClient ??
         ApiClient(
-          baseUrl:
-              CloudSyncService.instance.debugResolveCloudBaseUrl(settings),
+          baseUrl: CloudSyncService.instance.debugResolveCloudBaseUrl(settings),
         );
   }
 
-  Map<String, String> _headers(BusinessSettings settings) {
+  Map<String, String> _headers(BusinessSettings settings, {String? requestId}) {
     final headers = <String, String>{};
+    final id = requestId?.trim();
+    if (id != null && id.isNotEmpty) {
+      headers['x-request-id'] = id;
+    }
     final cloudKey = settings.cloudApiKey?.trim();
     if (cloudKey != null && cloudKey.isNotEmpty) {
       headers['x-cloud-key'] = cloudKey;
@@ -196,7 +204,7 @@ class ElectronicInvoicingConfigRepository {
 
   String _friendlyMessage({String? message, int? statusCode}) {
     if (statusCode == 401 || statusCode == 403) {
-      return 'No se pudo validar la empresa en el backend';
+      return 'La llave de conexión del POS no fue aceptada por el backend';
     }
     final normalized = (message ?? '').trim();
     if (normalized.isNotEmpty) {
@@ -249,6 +257,8 @@ extension on ElectronicInvoicingResolvedConfig {
     List<ElectronicSequenceModel>? sequences,
     ElectronicInvoicingReadiness? readiness,
     Map<String, String?>? companySummary,
+    ElectronicSignerModel? signer,
+    ElectronicSignerCertificateComparison? certificateComparison,
     bool? dgiiSubmitConfigured,
     bool? dgiiTokenConfigured,
   }) {
@@ -257,8 +267,10 @@ extension on ElectronicInvoicingResolvedConfig {
       sequences: sequences ?? this.sequences,
       readiness: readiness ?? this.readiness,
       companySummary: companySummary ?? this.companySummary,
-      dgiiSubmitConfigured:
-          dgiiSubmitConfigured ?? this.dgiiSubmitConfigured,
+      signer: signer ?? this.signer,
+      certificateComparison:
+          certificateComparison ?? this.certificateComparison,
+      dgiiSubmitConfigured: dgiiSubmitConfigured ?? this.dgiiSubmitConfigured,
       dgiiTokenConfigured: dgiiTokenConfigured ?? this.dgiiTokenConfigured,
     );
   }
@@ -274,6 +286,8 @@ extension on ElectronicInvoicingResolvedConfig {
       sequences: sequences,
       readiness: readiness,
       companySummary: companySummary,
+      signer: signer,
+      certificateComparison: certificateComparison,
       dgiiSubmitConfigured: dgiiSubmitConfigured,
       dgiiTokenConfigured: dgiiTokenConfigured,
     );
@@ -297,17 +311,17 @@ List<ElectronicSequenceModel> mergeResolvedElectronicSequences({
       continue;
     }
 
-    final mergedCurrent = remoteSequence.currentNumber >= localSequence.currentNumber
+    final mergedCurrent =
+        remoteSequence.currentNumber >= localSequence.currentNumber
         ? remoteSequence.currentNumber
         : localSequence.currentNumber;
     final mergedEnd = remoteSequence.endNumber ?? localSequence.endNumber;
-    final resolvedStatus =
-        mergedEnd != null && mergedCurrent >= mergedEnd
+    final resolvedStatus = mergedEnd != null && mergedCurrent >= mergedEnd
         ? 'EXHAUSTED'
         : (localSequence.currentNumber > remoteSequence.currentNumber &&
-                  localSequence.status.trim().isNotEmpty)
-              ? localSequence.status
-              : remoteSequence.status;
+              localSequence.status.trim().isNotEmpty)
+        ? localSequence.status
+        : remoteSequence.status;
 
     merged.add(
       remoteSequence.copyWith(

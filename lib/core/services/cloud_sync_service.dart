@@ -61,8 +61,7 @@ class CloudSyncService {
   Timer? _outboxPollingTimer;
   bool _outboxRunning = false;
   bool _engineStarted = false;
-  final Set<CloudSyncTarget> _criticalSyncTargetsInFlight =
-      <CloudSyncTarget>{};
+  final Set<CloudSyncTarget> _criticalSyncTargetsInFlight = <CloudSyncTarget>{};
   final Map<String, ({bool ok, int checkedAtMs})> _imageHealthCache = {};
 
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
@@ -1422,8 +1421,20 @@ class CloudSyncService {
         });
       }
 
+      final trimmedTraceLocalCode = traceSaleLocalCode?.trim();
+      final traceIncludedInPayload = trimmedTraceLocalCode == null
+          ? null
+          : payloadSales.any(
+              (row) =>
+                  (row['localCode']?.toString() ?? '').trim() ==
+                  trimmedTraceLocalCode,
+            );
+
+      var tracedRemoteSaleId = 'null';
+      var tracedSaleConfirmed = trimmedTraceLocalCode == null;
+
       await AppLogger.instance.logInfo(
-        'Cloud sales sync start reason=$reason traceSaleLocalCode=${traceSaleLocalCode ?? 'null'} companyCloudId=${cloudCompanyId ?? 'null'} companyRnc=${rnc.isEmpty ? 'null' : rnc} count=${payloadSales.length}',
+        'Cloud sales sync start reason=$reason traceSaleLocalCode=${trimmedTraceLocalCode ?? 'null'} requireTraceLocalCode=$requireTraceLocalCode traceIncludedInPayload=${traceIncludedInPayload?.toString() ?? 'null'} companyCloudId=${cloudCompanyId ?? 'null'} companyRnc=${rnc.isEmpty ? 'null' : rnc} count=${payloadSales.length}',
         module: 'cloud_sync',
       );
 
@@ -1434,6 +1445,14 @@ class CloudSyncService {
               ? payloadSales.length
               : (i + _chunkSize),
         );
+
+        final chunkHasTrace = trimmedTraceLocalCode == null
+            ? null
+            : chunk.any(
+                (row) =>
+                    (row['localCode']?.toString() ?? '').trim() ==
+                    trimmedTraceLocalCode,
+              );
 
         final payload = {
           if (rnc.isNotEmpty) 'companyRnc': rnc,
@@ -1469,28 +1488,41 @@ class CloudSyncService {
         }
         final results = decoded['results'];
         Map<String, dynamic>? tracedSale;
-        if (traceSaleLocalCode != null && results is List) {
+        if (trimmedTraceLocalCode != null && results is List) {
           for (final entry in results) {
             if (entry is! Map) continue;
             final row = Map<String, dynamic>.from(entry);
             if ((row['localCode']?.toString() ?? '').trim() ==
-                traceSaleLocalCode.trim()) {
+                trimmedTraceLocalCode) {
               tracedSale = row;
               break;
             }
           }
         }
 
+        if (!tracedSaleConfirmed && tracedSale != null) {
+          tracedRemoteSaleId = tracedSale['id']?.toString() ?? 'null';
+          tracedSaleConfirmed = true;
+        }
+
         await AppLogger.instance.logInfo(
-          'Cloud sales sync response reason=$reason status=${response.statusCode} traceSaleLocalCode=${traceSaleLocalCode ?? 'null'} tracedRemoteSaleId=${tracedSale?['id']?.toString() ?? 'null'} response=${response.body}',
+          'Cloud sales sync response reason=$reason status=${response.statusCode} chunkOffset=$i chunkSize=${chunk.length} chunkHasTrace=${chunkHasTrace?.toString() ?? 'null'} traceSaleLocalCode=${trimmedTraceLocalCode ?? 'null'} tracedRemoteSaleId=${tracedSale?['id']?.toString() ?? 'null'} responseHasResults=${(results is List).toString()} response=${response.body}',
           module: 'cloud_sync',
         );
+      }
 
-        if (requireTraceLocalCode &&
-            traceSaleLocalCode != null &&
-            tracedSale == null) {
+      if (requireTraceLocalCode && trimmedTraceLocalCode != null) {
+        if (!traceIncludedInPayload!) {
           await AppLogger.instance.logWarn(
-            'Cloud sales sync missing traced sale reason=$reason traceSaleLocalCode=$traceSaleLocalCode',
+            'Cloud sales sync trace not included in payload reason=$reason traceSaleLocalCode=$trimmedTraceLocalCode payloadCount=${payloadSales.length}',
+            module: 'cloud_sync',
+          );
+          return false;
+        }
+
+        if (!tracedSaleConfirmed) {
+          await AppLogger.instance.logWarn(
+            'Cloud sales sync missing traced sale after all chunks reason=$reason traceSaleLocalCode=$trimmedTraceLocalCode',
             module: 'cloud_sync',
           );
           return false;
@@ -1498,7 +1530,7 @@ class CloudSyncService {
       }
 
       await AppLogger.instance.logInfo(
-        'Cloud sales sync ok reason=$reason traceSaleLocalCode=${traceSaleLocalCode ?? 'null'}',
+        'Cloud sales sync ok reason=$reason traceSaleLocalCode=${trimmedTraceLocalCode ?? 'null'} tracedRemoteSaleId=$tracedRemoteSaleId',
         module: 'cloud_sync',
       );
       return true;
@@ -1886,13 +1918,15 @@ class CloudSyncService {
       final requested = electronicCreditNote is Map
           ? electronicCreditNote['requested'] == true
           : false;
-      final returnSaleLocalCode = (entry['returnSaleLocalCode'] as String?)?.trim();
+      final returnSaleLocalCode = (entry['returnSaleLocalCode'] as String?)
+          ?.trim();
 
       await db.update(
         DbTables.returns,
         {
           'refund_type': entry['refundType'] as String? ?? 'PARTIAL',
-          'subtotal_amount': (entry['subtotalAmount'] as num?)?.toDouble() ?? 0.0,
+          'subtotal_amount':
+              (entry['subtotalAmount'] as num?)?.toDouble() ?? 0.0,
           'tax_amount': (entry['taxAmount'] as num?)?.toDouble() ?? 0.0,
           'total_amount': (entry['totalAmount'] as num?)?.toDouble() ?? 0.0,
           'electronic_credit_note_requested': requested ? 1 : 0,
@@ -1911,7 +1945,10 @@ class CloudSyncService {
         whereArgs: [localId],
       );
 
-      if (returnSaleLocalCode != null && returnSaleLocalCode.isNotEmpty && ecf != null && ecf.isNotEmpty) {
+      if (returnSaleLocalCode != null &&
+          returnSaleLocalCode.isNotEmpty &&
+          ecf != null &&
+          ecf.isNotEmpty) {
         final saleRows = await db.query(
           DbTables.sales,
           columns: ['id'],

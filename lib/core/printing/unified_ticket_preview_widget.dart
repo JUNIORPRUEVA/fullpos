@@ -513,7 +513,7 @@ class UnifiedTicketPreviewWidget extends StatelessWidget {
   }
 
   String _formatNumber(double value) {
-    final formatter = NumberFormat('#,##0.00', 'es_DO');
+    final formatter = NumberFormat('#,##0.00', 'en_US');
     return formatter.format(value);
   }
 

@@ -36,7 +36,8 @@ class ApiClient {
   final http.Client _client;
   final ApiClientOptions _options;
 
-  String get baseUrl => AppConfig.normalizeBaseUrl(_baseUrl ?? AppConfig.apiBaseUrl);
+  String get baseUrl =>
+      AppConfig.normalizeBaseUrl(_baseUrl ?? AppConfig.apiBaseUrl);
 
   Uri uri(String path, {Map<String, String>? queryParameters}) {
     final base = Uri.parse(baseUrl);
@@ -46,7 +47,7 @@ class ApiClient {
     final combinedPath = _joinPaths(basePath, normalized);
 
     final effectiveQuery =
-      queryParameters ?? (base.hasQuery ? base.queryParameters : null);
+        queryParameters ?? (base.hasQuery ? base.queryParameters : null);
     return base.replace(path: combinedPath, queryParameters: effectiveQuery);
   }
 
@@ -92,12 +93,7 @@ class ApiClient {
       baseUrl: baseUrl,
       client: client,
       options: _options,
-    ).get(
-      path,
-      headers: headers,
-      timeout: timeout,
-      retry: retry,
-    );
+    ).get(path, headers: headers, timeout: timeout, retry: retry);
 
     return CancelableApiCall._(future: future, cancel: cancel);
   }
@@ -127,19 +123,18 @@ class ApiClient {
     Object? body,
     Duration? timeout,
     bool retry = false,
+    bool throwOnServerError = true,
   }) {
     return _request(
       method: 'POST',
       path: path,
-      headers: {
-        'Content-Type': 'application/json',
-        ...?headers,
-      },
+      headers: {'Content-Type': 'application/json', ...?headers},
       queryParameters: queryParameters,
       body: jsonEncode(body ?? const {}),
       timeout: timeout,
       retry: retry,
       idempotent: false,
+      throwOnServerError: throwOnServerError,
     );
   }
 
@@ -154,10 +149,7 @@ class ApiClient {
     return _request(
       method: 'PUT',
       path: path,
-      headers: {
-        'Content-Type': 'application/json',
-        ...?headers,
-      },
+      headers: {'Content-Type': 'application/json', ...?headers},
       queryParameters: queryParameters,
       body: jsonEncode(body ?? const {}),
       timeout: timeout,
@@ -275,6 +267,7 @@ class ApiClient {
     Duration? timeout,
     required bool retry,
     required bool idempotent,
+    bool throwOnServerError = true,
   }) async {
     final effectiveTimeout = timeout ?? _options.timeout;
 
@@ -289,7 +282,10 @@ class ApiClient {
       }
 
       try {
-        final req = http.Request(method, uri(path, queryParameters: queryParameters));
+        final req = http.Request(
+          method,
+          uri(path, queryParameters: queryParameters),
+        );
 
         final effectiveHeaders = <String, String>{...?headers};
         final cloudKey = effectiveHeaders['x-cloud-key']?.trim();
@@ -319,9 +315,14 @@ class ApiClient {
         final res = await http.Response.fromStream(streamed);
 
         if (res.statusCode >= 500 && res.statusCode <= 599) {
+          if (!throwOnServerError) {
+            return res;
+          }
           final backendMessage = _tryExtractServerMessage(res.body);
           lastApiEx = ApiException(
-            message: backendMessage ?? 'Error del servidor (HTTP ${res.statusCode}).',
+            message:
+                backendMessage ??
+                'Error del servidor (HTTP ${res.statusCode}).',
             statusCode: res.statusCode,
           );
           if (retry && idempotent) {
