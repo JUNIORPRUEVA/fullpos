@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import '../../data/reports_repository.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -27,7 +28,7 @@ class KpiCardsRow extends StatelessWidget {
               width: cardWidth,
             ),
             _buildKpiCard(
-              title: 'Ganancia Neta',
+              title: 'Utilidad',
               value: 'RD\$ ${_formatMoney(kpis.netProfit)}',
               icon: Icons.trending_up,
               color: AppColors.gold,

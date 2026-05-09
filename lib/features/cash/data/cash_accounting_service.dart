@@ -119,6 +119,18 @@ class CashAccountingService {
     );
   }
 
+  static double calculateExpectedDrawerCash({
+    required double openingAmount,
+    required double cashSales,
+    required double cashRefunds,
+    required double cashInManual,
+    required double cashOutManual,
+  }) {
+    return _normalizeCurrency(
+      openingAmount + cashSales - cashRefunds + cashInManual - cashOutManual,
+    );
+  }
+
   static CashClosingSummary buildClosingSummary({
     required double openingAmount,
     required double totalSales,

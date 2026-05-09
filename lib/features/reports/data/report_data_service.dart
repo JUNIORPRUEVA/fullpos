@@ -172,7 +172,7 @@ class ReportDataService {
       totalCost: totalCost,
       totalExpenses: totalExpenses,
       grossProfit: grossProfit,
-      profit: grossProfit - totalExpenses,
+      profit: grossProfit,
     );
   }
 }

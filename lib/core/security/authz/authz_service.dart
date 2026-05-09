@@ -30,7 +30,17 @@ class AuthzService {
   // This is intentionally short-lived and in-memory only.
   // Only a short cooldown to prevent back-to-back prompts caused by multiple guards
   // running in sequence for the same user interaction.
-  static const Duration _overrideTtl = Duration(seconds: 3);
+  //
+  // SECURITY: Screen overrides are NOT cached long-term. They use the same short
+  // TTL as action overrides (3 seconds) so that back-to-back guard calls in the
+  // same navigation event don't prompt twice, but re-entry into the screen WILL
+  // require a new authorization. PermissionGate.dispose() also explicitly removes
+  // the override so the next visit always requires fresh auth.
+  static const Duration _actionOverrideTtl = Duration(seconds: 3);
+  // Keep screen override available a bit longer to avoid premature expiration
+  // during route transitions/loading, while still being temporary and in-memory.
+  // It is explicitly cleared on screen dispose by PermissionGate/BlankPermissionGate.
+  static const Duration _screenOverrideTtl = Duration(seconds: 15);
   static final Map<String, DateTime> _overrideCache = <String, DateTime>{};
 
   static String _overrideKey({
@@ -42,6 +52,34 @@ class AuthzService {
     // Cache at permission level (not resource-level) to avoid back-to-back prompts
     // triggered by multiple guards during the same user flow.
     return '$userId|${permission.code}';
+  }
+
+  /// Clears ALL temporary overrides (call on logout / user switch).
+  static void clearOverrideCache() {
+    _overrideCache.clear();
+    assert(() {
+      debugPrint('[AUTHZ] clearOverrideCache: all temporary authorizations cleared');
+      return true;
+    }());
+  }
+
+  /// Clears the temporary override for a specific user+permission combination.
+  /// Called by PermissionGate.dispose() so re-entry always requires fresh auth.
+  static void clearOverrideFor({
+    required int userId,
+    required Permission permission,
+  }) {
+    final key = _overrideKey(
+      userId: userId,
+      permission: permission,
+      resourceType: null,
+      resourceId: null,
+    );
+    _overrideCache.remove(key);
+    assert(() {
+      debugPrint('[AUTHZ] clearOverrideFor: userId=$userId perm=${permission.code} removed');
+      return true;
+    }());
   }
 
   static bool _hasValidCachedOverride(String key) {
@@ -94,6 +132,14 @@ class AuthzService {
   /// API obligatoria: chequeo sin cambiar UI.
   static bool can(User u, Permission p) {
     if (u.isAdmin) return true;
+
+    final cachedKey = _overrideKey(
+      userId: u.userId,
+      permission: p,
+      resourceType: null,
+      resourceId: null,
+    );
+    if (_hasValidCachedOverride(cachedKey)) return true;
 
     if (p.kind == PermissionKind.action) {
       return u.actionPermissions[p.code] ?? false;
@@ -179,7 +225,10 @@ class AuthzService {
     );
 
     if (ok) {
-      _overrideCache[cachedKey] = DateTime.now().add(_overrideTtl);
+      final ttl = p.kind == PermissionKind.screen
+          ? _screenOverrideTtl
+          : _actionOverrideTtl;
+      _overrideCache[cachedKey] = DateTime.now().add(ttl);
     }
 
     await AuthzAuditService.log(

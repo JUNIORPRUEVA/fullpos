@@ -68,7 +68,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final sections = <_SettingsSectionData>[
       _SettingsSectionData(
         title: 'Negocio',
-        description: 'Empresa, documentos electrónicos y configuración general del POS.',
+        description:
+            'Empresa, documentos electrónicos y configuración general del POS.',
         icon: Icons.storefront_outlined,
         items: [
           _SettingsItemData(
@@ -215,7 +216,8 @@ class _SettingsPageState extends State<SettingsPage> {
         items: [
           _SettingsItemData(
             title: 'Tema y diseño visual',
-            subtitle: 'Colores, estilo general y personalización de la interfaz.',
+            subtitle:
+                'Colores, estilo general y personalización de la interfaz.',
             icon: Icons.palette_outlined,
             onTap: _openThemeSettings,
           ),
@@ -665,8 +667,6 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-
-
 }
 
 class _SettingsSectionData {
@@ -1092,4 +1092,3 @@ class _LicenseSummaryDialogContentState
     );
   }
 }
-

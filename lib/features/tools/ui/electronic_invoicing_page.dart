@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,11 +16,13 @@ import '../../../core/theme/app_status_theme.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/window/window_service.dart';
 import '../../facturacion_electronica/data/electronic_certificate_repository.dart';
+import '../../facturacion_electronica/data/dgii_certification_repository.dart';
 import '../../facturacion_electronica/data/electronic_invoicing_diagnostics_repository.dart';
 import '../../facturacion_electronica/data/electronic_invoicing_config_repository.dart';
 import '../../facturacion_electronica/data/electronic_sequence_repository.dart';
 import '../../facturacion_electronica/data/electronic_signer_repository.dart';
 import '../../facturacion_electronica/data/factura_electronica_repository.dart';
+import '../../facturacion_electronica/data/models/dgii_certification_model.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
 import '../../facturacion_electronica/data/models/electronic_invoicing_config_model.dart';
 import '../../facturacion_electronica/data/models/electronic_sequence_model.dart';
@@ -51,6 +56,8 @@ class ElectronicInvoicingPage extends ConsumerStatefulWidget {
 class _ElectronicInvoicingPageState
     extends ConsumerState<ElectronicInvoicingPage> {
   final _apiTokenController = TextEditingController();
+  final _aiApiKeyController = TextEditingController();
+  final _aiModelController = TextEditingController();
   final _certificateAliasController = TextEditingController();
   final _certificatePasswordController = TextEditingController();
   final _signerFullNameController = TextEditingController();
@@ -69,12 +76,24 @@ class _ElectronicInvoicingPageState
       ElectronicSignerRepository();
   final ElectronicInvoicingDiagnosticsRepository _diagnosticsRepository =
       ElectronicInvoicingDiagnosticsRepository();
+  final DgiiCertificationRepository _certificationRepository =
+      DgiiCertificationRepository();
 
   ElectronicCompanyModel? _company;
   EmpresaConfig? _empresaConfig;
   Map<String, String?> _resolvedCompanySummary = const <String, String?>{};
   List<FacturaElectronicaModel> _recentInvoices = <FacturaElectronicaModel>[];
   List<ElectronicSequenceModel> _sequences = <ElectronicSequenceModel>[];
+  List<DgiiCertificationBatchModel> _certificationBatches =
+      <DgiiCertificationBatchModel>[];
+  List<DgiiCertificationCaseModel> _certificationCases =
+      <DgiiCertificationCaseModel>[];
+  DgiiCertificationBatchModel? _selectedCertificationBatch;
+  DgiiCertificationBatchSummary? _certificationSummary;
+  DgiiCertificationDiagnosticsModel? _certificationDiagnostics;
+  DgiiCertificationBatchPreflightModel? _certificationBatchPreflight;
+  final Map<int, DgiiCertificationCasePreflightModel> _certificationPreflights =
+      <int, DgiiCertificationCasePreflightModel>{};
   ElectronicInvoicingReadiness _readiness =
       ElectronicInvoicingReadiness.localFallback(
         missing: const <String>[],
@@ -91,6 +110,34 @@ class _ElectronicInvoicingPageState
   bool _showCertificatePassword = false;
   bool _testingBackend = false;
   bool _testingDgiiAuth = false;
+  bool _showCertificationSection = false;
+  bool _loadingCertification = false;
+  bool _importingCertificationExcel = false;
+  bool _generatingBatchXml = false;
+  bool _resettingBatchXml = false;
+  bool _signingBatchXml = false;
+  bool _downloadingDgiiSeed = false;
+  bool _uploadingDgiiSignedSeed = false;
+  bool _sendingBatchXml = false;
+  bool _queryingBatchResults = false;
+  bool _preflightingBatch = false;
+  bool _reprocessingAndSendingBatch = false;
+  bool _auditingBatch = false;
+  bool _aiAuditingBatch = false;
+  bool _aiSuggestingFixBatch = false;
+  int? _generatingCaseXmlId;
+  int? _validatingCaseXmlId;
+  int? _resettingCaseXmlId;
+  int? _exportingCaseXmlId;
+  int? _importingSignedCaseXmlId;
+  int? _signingCaseXmlId;
+  int? _sendingCaseXmlId;
+  int? _queryingCaseResultId;
+  int? _preflightingCaseId;
+  int? _auditingCaseId;
+  int? _aiAuditingCaseId;
+  int? _aiSuggestingFixCaseId;
+  int? _applyingCertifiedFixCaseId;
 
   String? _creatingSequenceCode;
   String? _selectedCertificatePath;
@@ -116,6 +163,8 @@ class _ElectronicInvoicingPageState
   @override
   void dispose() {
     _apiTokenController.dispose();
+    _aiApiKeyController.dispose();
+    _aiModelController.dispose();
     _certificateAliasController.dispose();
     _certificatePasswordController.dispose();
     _signerFullNameController.dispose();
@@ -147,6 +196,14 @@ class _ElectronicInvoicingPageState
         ? widget.loadEmpresaConfig!()
         : EmpresaService.getEmpresaConfig());
     final localCompanyId = await SessionManager.companyId();
+    List<DgiiCertificationBatchModel> certificationBatches =
+        const <DgiiCertificationBatchModel>[];
+    try {
+      certificationBatches = await _certificationRepository
+          .getCertificationBatches();
+    } catch (_) {
+      certificationBatches = const <DgiiCertificationBatchModel>[];
+    }
     if (!mounted) return;
 
     _syncControllers(resolved.company);
@@ -156,6 +213,17 @@ class _ElectronicInvoicingPageState
       _empresaConfig = empresaConfig;
       _localCompanyId = localCompanyId;
       _recentInvoices = invoices;
+      _certificationBatches = certificationBatches;
+      DgiiCertificationBatchModel? selectedBatch;
+      for (final batch in certificationBatches) {
+        if (batch.id == _selectedCertificationBatch?.id) {
+          selectedBatch = batch;
+          break;
+        }
+      }
+      _selectedCertificationBatch =
+          selectedBatch ??
+          (certificationBatches.isNotEmpty ? certificationBatches.first : null);
       if (resolved.readiness.backendValidated) {
         _lastBackendRefreshAt = DateTime.now();
         _lastSuccessfulDiagnosticAt ??= _lastBackendRefreshAt;
@@ -168,10 +236,19 @@ class _ElectronicInvoicingPageState
       }
       _loading = false;
     });
+    final selectedBatch = _selectedCertificationBatch;
+    if (selectedBatch != null) {
+      await _loadCertificationCases(selectedBatch);
+    }
   }
 
   void _syncControllers(ElectronicCompanyModel company) {
     _apiTokenController.text = company.apiToken;
+    final settings = ref.read(businessSettingsProvider);
+    _aiApiKeyController.text = settings.aiApiKey ?? '';
+    _aiModelController.text = (settings.aiModel?.trim().isNotEmpty ?? false)
+        ? settings.aiModel!
+        : 'gpt-4.1-mini';
     _certificateAliasController.text = company.certificateName.isEmpty
         ? 'Certificado DGII'
         : company.certificateName;
@@ -524,6 +601,17 @@ class _ElectronicInvoicingPageState
 
     setState(() => _saving = true);
     try {
+      final currentSettings = ref.read(businessSettingsProvider);
+      await ref.read(businessSettingsProvider.notifier).saveSettings(
+        currentSettings.copyWith(
+          aiApiKey: _aiApiKeyController.text.trim().isEmpty
+              ? null
+              : _aiApiKeyController.text.trim(),
+          aiModel: _aiModelController.text.trim().isEmpty
+              ? 'gpt-4.1-mini'
+              : _aiModelController.text.trim(),
+        ),
+      );
       await _persistConfiguredSequences();
       final activeEnabled = ref
           .read(businessSettingsProvider)
@@ -763,6 +851,2235 @@ class _ElectronicInvoicingPageState
         setState(() => _uploadingCertificate = false);
       }
     }
+  }
+
+  Future<void> _refreshCertificationBatches() async {
+    setState(() => _loadingCertification = true);
+    try {
+      final diagnostics = await _certificationRepository
+          .getCertificationDiagnostics();
+      final batches = await _certificationRepository.getCertificationBatches();
+      if (!mounted) return;
+      final selectedId = _selectedCertificationBatch?.id;
+      DgiiCertificationBatchModel? selected;
+      for (final batch in batches) {
+        if (batch.id == selectedId) {
+          selected = batch;
+          break;
+        }
+      }
+      setState(() {
+        _certificationDiagnostics = diagnostics;
+        _certificationBatches = batches;
+        _selectedCertificationBatch =
+            selected ?? (batches.isNotEmpty ? batches.first : null);
+        if (_selectedCertificationBatch == null) {
+          _certificationCases = const <DgiiCertificationCaseModel>[];
+        }
+      });
+      final batch = _selectedCertificationBatch;
+      if (batch != null) {
+        await _loadCertificationCases(batch);
+      }
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _loadingCertification = false);
+    }
+  }
+
+  Future<void> _loadCertificationCases(
+    DgiiCertificationBatchModel batch,
+  ) async {
+    setState(() {
+      _selectedCertificationBatch = batch;
+      _loadingCertification = true;
+    });
+    try {
+      final diagnosticsFuture = _certificationRepository
+          .getCertificationDiagnostics();
+      final cases = await _certificationRepository.getCertificationBatchCases(
+        batch.id,
+      );
+      final summary = await _certificationRepository
+          .getCertificationBatchSummary(batch.id);
+      final diagnostics = await diagnosticsFuture;
+      if (!mounted) return;
+      setState(() {
+        _certificationDiagnostics = diagnostics;
+        _certificationCases = cases;
+        _certificationSummary = summary;
+        _certificationBatchPreflight = null;
+        _certificationPreflights.clear();
+      });
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _loadingCertification = false);
+    }
+  }
+
+  Future<void> _pickAndImportCertificationExcel() async {
+    if (_importingCertificationExcel) return;
+    try {
+      final result = await WindowService.runWithSystemDialog(
+        () => FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['xlsx'],
+          allowMultiple: false,
+        ),
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      final path = file.path;
+      if (path == null || path.trim().isEmpty) return;
+      if (!path.toLowerCase().endsWith('.xlsx')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Seleccione un archivo Excel .xlsx')),
+        );
+        return;
+      }
+
+      setState(() => _importingCertificationExcel = true);
+      final imported = await _certificationRepository.importCertificationExcel(
+        path,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            imported.warnings.isEmpty
+                ? 'Archivo DGII importado: ${imported.imported} casos'
+                : 'Archivo importado con ${imported.warnings.length} advertencias',
+          ),
+        ),
+      );
+      await _refreshCertificationBatches();
+      await _loadCertificationCases(imported.batch);
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error, stackTrace) {
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        module: 'electronic_invoicing/certification_import',
+      );
+    } finally {
+      if (mounted) setState(() => _importingCertificationExcel = false);
+    }
+  }
+
+  Future<void> _downloadDgiiManualSeed() async {
+    if (_downloadingDgiiSeed) return;
+    setState(() => _downloadingDgiiSeed = true);
+    try {
+      final seedXml = await _certificationRepository.downloadManualDgiiSeed();
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Guardar semilla DGII',
+        fileName: 'dgii-semilla.xml',
+        bytes: Uint8List.fromList(utf8.encode(seedXml)),
+      );
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Semilla descargada. Fírmala con la app oficial DGII.'),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _downloadingDgiiSeed = false);
+    }
+  }
+
+  Future<void> _uploadDgiiManualSignedSeed() async {
+    if (_uploadingDgiiSignedSeed) return;
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['xml'],
+      withData: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return;
+
+    setState(() => _uploadingDgiiSignedSeed = true);
+    try {
+      final result = await _certificationRepository
+          .uploadManualSignedDgiiSeed(path);
+      final diagnostics = await _certificationRepository
+          .getCertificationDiagnostics();
+      if (!mounted) return;
+      setState(() => _certificationDiagnostics = diagnostics);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.message ??
+                'Semilla firmada validada. Token/Auth listo para probar un caso.',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _uploadingDgiiSignedSeed = false);
+    }
+  }
+
+  Future<void> _deleteCertificationBatch(
+    DgiiCertificationBatchModel batch,
+  ) async {
+    try {
+      await _certificationRepository.deleteCertificationBatch(batch.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lote de certificacion eliminado')),
+      );
+      await _refreshCertificationBatches();
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    }
+  }
+
+  void _replaceCertificationCase(DgiiCertificationCaseModel updated) {
+    setState(() {
+      _certificationCases = _certificationCases
+          .map((item) => item.id == updated.id ? updated : item)
+          .toList(growable: false);
+      _certificationPreflights.remove(updated.id);
+      _certificationBatchPreflight = null;
+    });
+    final batch = _selectedCertificationBatch;
+    if (batch != null) {
+      _certificationRepository
+          .getCertificationBatchSummary(batch.id)
+          .then((summary) {
+            if (!mounted) return;
+            setState(() => _certificationSummary = summary);
+          })
+          .catchError((_) {});
+    }
+  }
+
+  Future<void> _generateCertificationCaseXml(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_generatingCaseXmlId != null) return;
+    setState(() => _generatingCaseXmlId = item.id);
+    try {
+      final updated = await _certificationRepository
+          .generateCertificationCaseXml(item.id);
+      if (!mounted) return;
+      _replaceCertificationCase(updated);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('XML generado')));
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      final batch = _selectedCertificationBatch;
+      if (batch != null) await _loadCertificationCases(batch);
+    } finally {
+      if (mounted) setState(() => _generatingCaseXmlId = null);
+    }
+  }
+
+  Future<void> _resetCertificationCaseXml(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_resettingCaseXmlId != null) return;
+    final forceReset = const {
+      'ACCEPTED',
+      'ACCEPTED_CONDITIONAL',
+      'REJECTED',
+    }.contains(item.status);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Limpiar XML generado'),
+        content: Text(
+          'Esto borra el XML, la validacion y cualquier firma/envio guardado '
+          'para ${item.encf}. El caso vuelve a IMPORTED para generarlo de nuevo.'
+          '${forceReset ? '\n\nEste caso tiene resultado final DGII. Se reiniciara explicitamente para repetir la prueba de certificacion.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Limpiar XML'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _resettingCaseXmlId = item.id);
+    try {
+      final updated = await _certificationRepository.resetCertificationCase(
+        item.id,
+        force: forceReset,
+      );
+      if (!mounted) return;
+      _replaceCertificationCase(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('XML limpiado. Ya puedes generar el caso nuevamente.'),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      final batch = _selectedCertificationBatch;
+      if (batch != null) await _loadCertificationCases(batch);
+    } finally {
+      if (mounted) setState(() => _resettingCaseXmlId = null);
+    }
+  }
+
+  Future<void> _generateCertificationBatchXml() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _generatingBatchXml) return;
+    setState(() => _generatingBatchXml = true);
+    try {
+      final result = await _certificationRepository
+          .generateCertificationBatchXml(batch.id);
+      if (!mounted) return;
+      await _loadCertificationCases(batch);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'XML generados: ${result.generated}/${result.total}. Fallidos: ${result.failed}',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _generatingBatchXml = false);
+    }
+  }
+
+  Future<void> _resetCertificationBatchXml() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _resettingBatchXml) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Limpiar XML del lote'),
+        content: Text(
+          'Esto limpia XML, validaciones, firmas y TrackId de los casos no finales '
+          'del lote "${batch.fileName}". El Excel importado y las filas se conservan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Limpiar lote'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _resettingBatchXml = true);
+    try {
+      final result = await _certificationRepository.resetCertificationBatch(
+        batch.id,
+      );
+      if (!mounted) return;
+      await _loadCertificationCases(batch);
+      final reset = result['reset'] ?? 0;
+      final blocked = result['blockedFinal'] ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Lote limpiado: $reset casos. Finales protegidos: $blocked.',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _resettingBatchXml = false);
+    }
+  }
+
+  Future<void> _signCertificationCase(DgiiCertificationCaseModel item) async {
+    if (_signingCaseXmlId != null) return;
+    setState(() => _signingCaseXmlId = item.id);
+    try {
+      final updated = await _certificationRepository.signCertificationCase(
+        item.id,
+      );
+      if (!mounted) return;
+      _replaceCertificationCase(updated);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('XML firmado')));
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      final batch = _selectedCertificationBatch;
+      if (batch != null) await _loadCertificationCases(batch);
+    } finally {
+      if (mounted) setState(() => _signingCaseXmlId = null);
+    }
+  }
+
+  Future<void> _validateCertificationCaseXml(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_validatingCaseXmlId != null) return;
+    setState(() => _validatingCaseXmlId = item.id);
+    try {
+      final result = await _certificationRepository
+          .validateCertificationCaseXml(item.id);
+      if (!mounted) return;
+      final batch = _selectedCertificationBatch;
+      if (batch != null) await _loadCertificationCases(batch);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.canSign ? 'XML validado' : 'XML no listo para firmarse',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _validatingCaseXmlId = null);
+    }
+  }
+
+  Future<void> _signCertificationBatch() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _signingBatchXml) return;
+    setState(() => _signingBatchXml = true);
+    try {
+      final result = await _certificationRepository.signCertificationBatch(
+        batch.id,
+      );
+      if (!mounted) return;
+      await _loadCertificationCases(batch);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Firmados: ${result.signed}/${result.total}. Omitidos: ${result.skipped}. Fallidos: ${result.failed}',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _signingBatchXml = false);
+    }
+  }
+
+  Future<void> _preflightCertificationCase(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_preflightingCaseId != null) return;
+    setState(() => _preflightingCaseId = item.id);
+    try {
+      final result = await _certificationRepository.preflightCertificationCase(
+        item.id,
+      );
+      if (!mounted) return;
+      setState(() => _certificationPreflights[item.id] = result);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.canSend
+                ? 'Preflight aprobado para enviar'
+                : 'Preflight bloqueado: ${result.blockers.length} pendiente(s)',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _preflightingCaseId = null);
+    }
+  }
+
+  Future<void> _preflightCertificationBatch() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _preflightingBatch) return;
+    setState(() => _preflightingBatch = true);
+    try {
+      final diagnosticsFuture = _certificationRepository
+          .getCertificationDiagnostics();
+      final result = await _certificationRepository.preflightCertificationBatch(
+        batch.id,
+      );
+      final diagnostics = await diagnosticsFuture;
+      if (!mounted) return;
+      setState(() {
+        _certificationDiagnostics = diagnostics;
+        _certificationBatchPreflight = result;
+        _certificationPreflights
+          ..clear()
+          ..addEntries(result.cases.map((item) => MapEntry(item.caseId, item)));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Preflight: ${result.readyToSend}/${result.total} listo(s), ${result.blocked} bloqueado(s)',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _preflightingBatch = false);
+    }
+  }
+
+  Future<void> _auditCertificationCase(
+    DgiiCertificationCaseModel item, {
+    bool ai = false,
+  }) async {
+    if ((_auditingCaseId ?? _aiAuditingCaseId) != null) return;
+    setState(() {
+      if (ai) {
+        _aiAuditingCaseId = item.id;
+      } else {
+        _auditingCaseId = item.id;
+      }
+    });
+    try {
+      final result = ai
+          ? await _certificationRepository.aiAuditCertificationCase(
+              item.id,
+              aiApiKey: _aiApiKeyController.text.trim(),
+              aiModel: _aiModelController.text.trim(),
+            )
+          : await _certificationRepository.auditCertificationCase(item.id);
+      if (!mounted) return;
+      await _showCertificationAuditDialog(
+        title: ai
+            ? 'Auditoría IA ${item.encf ?? item.id}'
+            : 'Auditoría ${item.encf ?? item.id}',
+        result: result,
+        currentCase: item,
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _auditingCaseId = null;
+          _aiAuditingCaseId = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _auditCertificationBatch({bool ai = false}) async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null) return;
+    if (ai ? _aiAuditingBatch : _auditingBatch) return;
+    setState(() {
+      if (ai) {
+        _aiAuditingBatch = true;
+      } else {
+        _auditingBatch = true;
+      }
+    });
+    try {
+      final result = ai
+          ? await _certificationRepository.aiAuditCertificationBatch(
+              batch.id,
+              aiApiKey: _aiApiKeyController.text.trim(),
+              aiModel: _aiModelController.text.trim(),
+            )
+          : await _certificationRepository.auditCertificationBatch(batch.id);
+      if (!mounted) return;
+      final cases = (result['cases'] is List)
+          ? (result['cases'] as List)
+                .whereType<Map>()
+                .map(
+                  (item) => DgiiCertificationAuditResult.fromMap(
+                    item.cast<String, dynamic>(),
+                  ),
+                )
+                .toList(growable: false)
+          : const <DgiiCertificationAuditResult>[];
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(ai ? 'Auditar lote con IA' : 'Auditar lote'),
+          content: SizedBox(
+            width: 920,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    'Estado: ${result['status'] ?? 'N/D'}\nAptos: ${result['aptos'] ?? 0}/${result['total'] ?? 0}\nNo aptos: ${result['noAptos'] ?? 0}',
+                  ),
+                  if (result['ai'] is Map) ...[
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      const JsonEncoder.withIndent(
+                        '  ',
+                      ).convert(result['ai'] as Map),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFamily: 'RobotoMono',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  ...cases.map(
+                    (audit) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('${audit.encf ?? audit.caseId} · ${audit.status}'),
+                        subtitle: Text(audit.summary),
+                        trailing: Text(
+                          audit.aptoParaEnviar ? 'OK' : 'ERROR',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: audit.aptoParaEnviar
+                                ? Colors.green
+                                : Colors.red,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                final payload = const JsonEncoder.withIndent('  ').convert(result);
+                await Clipboard.setData(ClipboardData(text: payload));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Reporte copiado')),
+                );
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Copiar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _auditingBatch = false;
+          _aiAuditingBatch = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _suggestCertificationFixCase(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if ((_aiSuggestingFixCaseId ?? _applyingCertifiedFixCaseId) != null) {
+      return;
+    }
+    setState(() => _aiSuggestingFixCaseId = item.id);
+    try {
+      final result = await _certificationRepository
+          .aiFixSuggestionCertificationCase(
+            item.id,
+            aiApiKey: _aiApiKeyController.text.trim(),
+            aiModel: _aiModelController.text.trim(),
+          );
+      if (!mounted) return;
+      await _showCertificationFixSuggestionDialog(item: item, result: result);
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      if (error.userMessage.contains('llave de conexion del POS')) {
+        try {
+          final audit = await _certificationRepository.auditCertificationCase(
+            item.id,
+          );
+          if (!mounted) return;
+          await _showCertificationFixSuggestionDialog(
+            item: item,
+            result: {
+              'caseId': audit.caseId,
+              'eNCF': audit.encf,
+              'tipoEcf': audit.tipoEcf,
+              'audit': {
+                'caseId': audit.caseId,
+                'eNCF': audit.encf,
+                'tipoEcf': audit.tipoEcf,
+                'filename': audit.filename,
+                'filenameValid': audit.filenameValid,
+                'xsdValid': audit.xsdValid,
+                'requiredFieldsPresent': audit.requiredFieldsPresent,
+                'noPlaceholders': audit.noPlaceholders,
+                'totalsMatchExcel': audit.totalsMatchExcel,
+                'totalsMatchItems': audit.totalsMatchItems,
+                'aptoParaEnviar': audit.aptoParaEnviar,
+                'status': audit.status,
+                'summary': audit.summary,
+                'warnings': audit.warnings,
+                'errors': audit.errors,
+                'mismatches': audit.mismatches
+                    .map(
+                      (m) => {
+                        'field': m.field,
+                        'excelExpected': m.excelExpected,
+                        'xmlGenerated': m.xmlGenerated,
+                        'calculatedFromItems': m.calculatedFromItems,
+                        'difference': m.difference,
+                        'severity': m.severity,
+                      },
+                    )
+                    .toList(growable: false),
+                'excelValues': audit.excelValues,
+                'xmlValues': audit.xmlValues,
+                'calculatedValues': audit.calculatedValues,
+              },
+              'suggestion': _localCertificationFixSuggestion(item, audit),
+            },
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'La llave rechazada es la del POS/backend, no la de IA. Se mostró una sugerencia técnica local.',
+              ),
+            ),
+          );
+          return;
+        } on DgiiCertificationException {
+          // fall through to original message
+        }
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _aiSuggestingFixCaseId = null);
+    }
+  }
+
+  Future<void> _applyCertifiedFix(DgiiCertificationCaseModel item) async {
+    if (_applyingCertifiedFixCaseId != null) return;
+    setState(() => _applyingCertifiedFixCaseId = item.id);
+    try {
+      final result = await _certificationRepository
+          .applyCertifiedFixCertificationCase(item.id);
+      if (!mounted) return;
+      final caseMap = result['case'];
+      if (caseMap is Map) {
+        _replaceCertificationCase(
+          DgiiCertificationCaseModel.fromMap(caseMap.cast<String, dynamic>()),
+        );
+      } else {
+        final batch = _selectedCertificationBatch;
+        if (batch != null) await _loadCertificationCases(batch);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['aptoParaEnviar'] == true
+                ? 'Corrección certificada aplicada y caso apto para enviar.'
+                : 'Corrección aplicada. Revisa la auditoría técnica antes de firmar.',
+          ),
+        ),
+      );
+      final auditMap = result['audit'];
+      if (auditMap is Map<String, dynamic>) {
+        await _showCertificationAuditDialog(
+          title: 'Auditoría tras corrección ${item.encf ?? item.id}',
+          result: DgiiCertificationAuditResult.fromMap(auditMap),
+          currentCase: caseMap is Map
+              ? DgiiCertificationCaseModel.fromMap(
+                  caseMap.cast<String, dynamic>(),
+                )
+              : item,
+        );
+      }
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _applyingCertifiedFixCaseId = null);
+    }
+  }
+
+  Future<void> _suggestCertificationFixBatch() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _aiSuggestingFixBatch) return;
+    setState(() => _aiSuggestingFixBatch = true);
+    try {
+      final result = await _certificationRepository
+          .aiFixSuggestionCertificationBatch(
+            batch.id,
+            aiApiKey: _aiApiKeyController.text.trim(),
+            aiModel: _aiModelController.text.trim(),
+          );
+      if (!mounted) return;
+      final payload = const JsonEncoder.withIndent('  ').convert(result);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Sugerir correcciones lote con IA'),
+          content: SizedBox(
+            width: 960,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(
+                    'Total: ${result['total'] ?? 0}\n'
+                    'Corregibles automáticamente: ${result['automaticFixable'] ?? 0}\n'
+                    'Revisión manual: ${result['manualReview'] ?? 0}\n'
+                    'Ya aptos: ${result['alreadyReady'] ?? 0}',
+                  ),
+                  const SizedBox(height: 12),
+                  if (result['repeatedCauses'] is List)
+                    ...(result['repeatedCauses'] as List)
+                        .whereType<Map>()
+                        .map(
+                          (item) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(item['cause']?.toString() ?? 'Sin causa'),
+                            trailing: Text('${item['count'] ?? 0}'),
+                          ),
+                        ),
+                  if (result['ai'] is Map) ...[
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      const JsonEncoder.withIndent(
+                        '  ',
+                      ).convert(result['ai'] as Map),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFamily: 'RobotoMono',
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  SelectableText(
+                    payload,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontFamily: 'RobotoMono',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: payload));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Reporte copiado')),
+                );
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Copiar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      if (error.userMessage.contains('llave de conexion del POS')) {
+        try {
+          final result = await _certificationRepository.auditCertificationBatch(
+            batch.id,
+          );
+          if (!mounted) return;
+          final cases = (result['cases'] is List)
+              ? (result['cases'] as List)
+                    .whereType<Map>()
+                    .map(
+                      (item) => DgiiCertificationAuditResult.fromMap(
+                        item.cast<String, dynamic>(),
+                      ),
+                    )
+                    .toList(growable: false)
+              : const <DgiiCertificationAuditResult>[];
+          final summary = {
+            'total': cases.length,
+            'automaticFixable': cases
+                .where((item) => _localSuggestionCanAutoFix(item))
+                .length,
+            'manualReview': cases
+                .where(
+                  (item) => !_localSuggestionCanAutoFix(item) && !item.aptoParaEnviar,
+                )
+                .length,
+            'alreadyReady': cases.where((item) => item.aptoParaEnviar).length,
+            'repeatedCauses': _localBatchRepeatedCauses(cases),
+            'cases': cases
+                .map(
+                  (item) => {
+                    'caseId': item.caseId,
+                    'eNCF': item.encf,
+                    'tipoEcf': item.tipoEcf,
+                    'aptoParaEnviar': item.aptoParaEnviar,
+                    'puedeCorregirseAutomaticamente':
+                        _localSuggestionCanAutoFix(item),
+                    'causaPrincipal': _localSuggestionCause(item),
+                  },
+                )
+                .toList(growable: false),
+          };
+          final payload = const JsonEncoder.withIndent('  ').convert(summary);
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Sugerir correcciones lote con IA'),
+              content: SizedBox(
+                width: 900,
+                child: SingleChildScrollView(
+                  child: SelectableText(payload),
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: payload));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Reporte copiado')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('Copiar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'La llave rechazada es la del POS/backend, no la de IA. Se mostró un resumen técnico local.',
+              ),
+            ),
+          );
+          return;
+        } on DgiiCertificationException {
+          // fall through
+        }
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _aiSuggestingFixBatch = false);
+    }
+  }
+
+  Future<void> _sendCertificationCase(DgiiCertificationCaseModel item) async {
+    if (_sendingCaseXmlId != null) return;
+    setState(() => _sendingCaseXmlId = item.id);
+    try {
+      final updated = await _certificationRepository.sendCertificationCase(
+        item.id,
+      );
+      if (!mounted) return;
+      _replaceCertificationCase(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Enviado a DGII${updated.trackId == null ? '' : ': ${updated.trackId}'}',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      final batch = _selectedCertificationBatch;
+      if (batch != null) await _loadCertificationCases(batch);
+    } finally {
+      if (mounted) setState(() => _sendingCaseXmlId = null);
+    }
+  }
+
+  Future<void> _sendCertificationBatch() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _sendingBatchXml) return;
+    setState(() => _sendingBatchXml = true);
+    var sent = 0;
+    var rejected = 0;
+    var failed = 0;
+    var skipped = 0;
+    final errors = <String>[];
+    try {
+      final readyCaseIds = _certificationBatchPreflight?.cases
+              .where((item) => item.canSend)
+              .map((item) => item.caseId)
+              .toSet() ??
+          const <int>{};
+      final candidates = _certificationCases
+          .where(
+            (item) =>
+                (item.status == 'SIGNED' ||
+                    (item.status == 'ERROR' &&
+                        (item.trackId?.trim().isEmpty ?? true))) &&
+                (item.xmlSigned?.trim().isNotEmpty ?? false) &&
+                (readyCaseIds.isEmpty || readyCaseIds.contains(item.id)),
+          )
+          .toList(growable: false);
+
+      for (final item in candidates) {
+        if (!mounted) break;
+        setState(() => _sendingCaseXmlId = item.id);
+        try {
+          final updated = await _certificationRepository.sendCertificationCase(
+            item.id,
+          );
+          if (!mounted) break;
+          _replaceCertificationCase(updated);
+          if (updated.status == 'SENT' || updated.status == 'EN_PROCESO') {
+            sent += 1;
+          } else if (updated.status == 'REJECTED') {
+            rejected += 1;
+          } else if (updated.status == 'ERROR') {
+            failed += 1;
+            errors.add(
+              '${updated.encf ?? 'Caso ${updated.id}'}: ${updated.errorMessage ?? 'DGII no devolvio una respuesta valida'}',
+            );
+          } else {
+            skipped += 1;
+          }
+        } on DgiiCertificationException catch (error) {
+          failed += 1;
+          errors.add('${item.encf ?? 'Caso ${item.id}'}: ${error.userMessage}');
+        }
+      }
+
+      if (!mounted) return;
+      await _loadCertificationCases(batch);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Envio DGII: enviados $sent/${candidates.length}, rechazados $rejected, omitidos $skipped, fallidos $failed',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      await _loadCertificationCases(batch);
+    } finally {
+      if (mounted && errors.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errors.take(2).join('\n'))),
+        );
+      }
+      if (mounted) setState(() => _sendingCaseXmlId = null);
+      if (mounted) setState(() => _sendingBatchXml = false);
+    }
+  }
+
+  Future<void> _reprocessAndSendCertificationBatch() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _reprocessingAndSendingBatch) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reprocesar y enviar lote'),
+        content: Text(
+          'Vamos a limpiar, generar XML, firmar, verificar y enviar los casos no finales '
+          'del lote "${batch.fileName}". Los casos finales se quedan protegidos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Ejecutar todo'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _reprocessingAndSendingBatch = true);
+    try {
+      final result = await _certificationRepository
+          .reprocessAndSendCertificationBatch(batch.id);
+      if (!mounted) return;
+      await _loadCertificationCases(batch);
+
+      final reset = (result['reset'] as num?)?.toInt() ?? 0;
+      final blockedFinal = (result['blockedFinal'] as num?)?.toInt() ?? 0;
+      final generated = (result['generated'] as num?)?.toInt() ?? 0;
+      final generationFailed = (result['generationFailed'] as num?)?.toInt() ?? 0;
+      final signed = (result['signed'] as num?)?.toInt() ?? 0;
+      final signingFailed = (result['signingFailed'] as num?)?.toInt() ?? 0;
+      final readyToSend = (result['readyToSend'] as num?)?.toInt() ?? 0;
+      final blocked = (result['blocked'] as num?)?.toInt() ?? 0;
+      final sent = (result['sent'] as num?)?.toInt() ?? 0;
+      final sendFailed = (result['sendFailed'] as num?)?.toInt() ?? 0;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Proceso completo: limpiados $reset, XML $generated, firmados $signed, '
+            'listos $readyToSend, enviados $sent. Bloqueados $blocked, fallos XML $generationFailed, '
+            'fallos firma $signingFailed, fallos envio $sendFailed, finales protegidos $blockedFinal.',
+          ),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+
+      final sendErrors = result['sendErrors'];
+      final generationErrors = result['generationErrors'];
+      final signingErrors = result['signingErrors'];
+      final blockedCases = result['blockedCases'];
+      String readMapValue(dynamic item, List<String> keys) {
+        if (item is! Map) return item?.toString() ?? '';
+        final map = item.cast<dynamic, dynamic>();
+        for (final key in keys) {
+          final value = map[key];
+          if (value != null && value.toString().trim().isNotEmpty) {
+            return value.toString();
+          }
+        }
+        return '';
+      }
+      final details = <String>[
+        if (generationErrors is List && generationErrors.isNotEmpty)
+          'XML: ${readMapValue(generationErrors.first, ['humanReadableMessage', 'message'])}',
+        if (signingErrors is List && signingErrors.isNotEmpty)
+          'Firma: ${readMapValue(signingErrors.first, ['message'])}',
+        if (blockedCases is List && blockedCases.isNotEmpty)
+          'Bloqueado: ${readMapValue(blockedCases.first, ['encf']).isEmpty ? 'caso' : readMapValue(blockedCases.first, ['encf'])} -> ${((blockedCases.first is Map ? blockedCases.first['blockers'] : null) as List?)?.join(', ') ?? ''}',
+        if (sendErrors is List && sendErrors.isNotEmpty)
+          'Envio: ${readMapValue(sendErrors.first, ['message'])}',
+      ];
+      if (details.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(details.take(2).join('\n')),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _reprocessingAndSendingBatch = false);
+    }
+  }
+
+  bool _hasCertificationCasesReadyToSend() {
+    return _certificationCases.any(
+      (item) =>
+          (item.status == 'SIGNED' ||
+              (item.status == 'ERROR' &&
+                  (item.trackId?.trim().isEmpty ?? true))) &&
+          (item.xmlSigned?.trim().isNotEmpty ?? false),
+    );
+  }
+
+  Future<void> _queryCertificationCaseResult(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_queryingCaseResultId != null) return;
+    setState(() => _queryingCaseResultId = item.id);
+    try {
+      final updated = await _certificationRepository
+          .queryCertificationCaseResult(item.id);
+      if (!mounted) return;
+      _replaceCertificationCase(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Resultado DGII: ${_certificationStatusLabel(updated.status)}',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _queryingCaseResultId = null);
+    }
+  }
+
+  Future<void> _queryCertificationBatchResults() async {
+    final batch = _selectedCertificationBatch;
+    if (batch == null || _queryingBatchResults) return;
+    setState(() => _queryingBatchResults = true);
+    try {
+      final result = await _certificationRepository
+          .queryCertificationBatchResults(batch.id);
+      if (!mounted) return;
+      await _loadCertificationCases(batch);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Consultados: ${result.queried}/${result.total}. Aceptados: ${result.accepted}. Rechazados: ${result.rejected}. En proceso: ${result.processing}',
+          ),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } finally {
+      if (mounted) setState(() => _queryingBatchResults = false);
+    }
+  }
+
+  Future<void> _showCertificationXml(
+    DgiiCertificationCaseModel item, {
+    bool signed = false,
+  }) async {
+    try {
+      final cached = signed ? item.xmlSigned : item.xmlGenerated;
+      final xml = cached?.trim().isNotEmpty == true
+          ? cached!
+          : signed
+          ? await _certificationRepository.getCertificationCaseSignedXml(
+              item.id,
+            )
+          : await _certificationRepository.getCertificationCaseXml(item.id);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            '${signed ? 'XML firmado' : 'XML'} ${item.encf ?? item.id}',
+          ),
+          content: SizedBox(
+            width: 760,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                xml,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontFamily: 'RobotoMono'),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: xml));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('XML copiado')));
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Copiar XML'),
+            ),
+            TextButton.icon(
+              onPressed: () => _downloadCertificationXml(item, xml),
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('Descargar XML'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    }
+  }
+
+  Future<void> _showCertificationAuditDialog({
+    required String title,
+    required DgiiCertificationAuditResult result,
+    DgiiCertificationCaseModel? currentCase,
+  }) async {
+    final payload = const JsonEncoder.withIndent('  ').convert({
+      'caseId': result.caseId,
+      'eNCF': result.encf,
+      'tipoEcf': result.tipoEcf,
+      'filename': result.filename,
+      'filenameValid': result.filenameValid,
+      'xsdValid': result.xsdValid,
+      'requiredFieldsPresent': result.requiredFieldsPresent,
+      'noPlaceholders': result.noPlaceholders,
+      'totalsMatchExcel': result.totalsMatchExcel,
+      'totalsMatchItems': result.totalsMatchItems,
+      'aptoParaEnviar': result.aptoParaEnviar,
+      'status': result.status,
+      'summary': result.summary,
+      'warnings': result.warnings,
+      'errors': result.errors,
+      'mismatches': result.mismatches
+          .map(
+            (item) => {
+              'field': item.field,
+              'excelExpected': item.excelExpected,
+              'xmlGenerated': item.xmlGenerated,
+              'calculatedFromItems': item.calculatedFromItems,
+              'difference': item.difference,
+              'severity': item.severity,
+            },
+          )
+          .toList(growable: false),
+      'excelValues': result.excelValues,
+      'xmlValues': result.xmlValues,
+      'calculatedValues': result.calculatedValues,
+      'ai': result.ai,
+    });
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 920,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _StatusChip(
+                      label: result.status,
+                      color: result.aptoParaEnviar ? Colors.green : Colors.red,
+                    ),
+                    _InlineMetaPill(
+                      label: 'Archivo',
+                      value: result.filename ?? 'N/D',
+                    ),
+                    _InlineMetaPill(
+                      label: 'XSD',
+                      value: result.xsdValid ? 'Válido' : 'Inválido',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(result.summary, style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (result.mismatches.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ...result.mismatches.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: item.severity == 'ERROR'
+                              ? Colors.red.withOpacity(0.06)
+                              : Colors.orange.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: item.severity == 'ERROR'
+                                ? Colors.red.withOpacity(0.20)
+                                : Colors.orange.withOpacity(0.24),
+                          ),
+                        ),
+                        child: SelectableText(
+                          '${item.field}\nExcel: ${item.excelExpected ?? 'N/D'}\nXML: ${item.xmlGenerated ?? 'N/D'}\nItems: ${item.calculatedFromItems ?? 'N/D'}\nDiferencia: ${item.difference ?? '0.00'}',
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                SelectableText(
+                  payload,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFamily: 'RobotoMono',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          if (currentCase != null)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _suggestCertificationFixCase(currentCase);
+              },
+              icon: const Icon(Icons.auto_fix_high_outlined),
+              label: const Text('Sugerir corrección con IA'),
+            ),
+          if (currentCase != null)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _applyCertifiedFix(currentCase);
+              },
+              icon: const Icon(Icons.build_circle_outlined),
+              label: const Text('Aplicar corrección certificada'),
+            ),
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: payload));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Reporte copiado')),
+              );
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copiar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+      );
+  }
+
+  Map<String, dynamic> _localCertificationFixSuggestion(
+    DgiiCertificationCaseModel item,
+    DgiiCertificationAuditResult audit,
+  ) {
+    List<Map<String, dynamic>> suggestedItems = [];
+
+    void addBucket(
+      String field,
+      String indicador,
+      String nombre,
+    ) {
+      final raw = audit.excelValues[field]?.toString().trim();
+      if (raw == null || raw.isEmpty) return;
+      final parsed = double.tryParse(raw.replaceAll(',', ''));
+      if (parsed == null || parsed <= 0) return;
+      suggestedItems.add({
+        'NumeroLinea': suggestedItems.length + 1,
+        'IndicadorFacturacion': indicador,
+        'NombreItem': nombre,
+        'IndicadorBienoServicio': '2',
+        'CantidadItem': '1.00',
+        'PrecioUnitarioItem': raw,
+        'MontoItem': raw,
+      });
+    }
+
+    addBucket('MontoGravadoI1', '1', 'Ajuste gravado 18 DGII');
+    addBucket('MontoGravadoI2', '2', 'Ajuste gravado 16 DGII');
+    addBucket('MontoGravadoI3', '3', 'Ajuste gravado 0 DGII');
+    addBucket('MontoExento', '4', 'Ajuste exento DGII');
+
+    final canAutoFix = _localSuggestionCanAutoFix(audit);
+
+    return {
+      'modo': 'Sugerir corrección DGII',
+      'aptoParaEnviar': audit.aptoParaEnviar,
+      'puedeCorregirseAutomaticamente': canAutoFix,
+      'causaPrincipal': _localSuggestionCause(audit),
+      'correccionRecomendada': canAutoFix
+          ? 'Reconstruir DetallesItems desde los buckets del Excel, regenerar XML, validar XSD y repetir auditoría.'
+          : 'Revisar campos obligatorios faltantes o diferencias que no pueden corregirse automáticamente.',
+      'itemsSugeridos': suggestedItems,
+      'totalesSugeridos': audit.excelValues,
+      'camposOpcionalesAOmitir': _rawPlaceholderKeys(item),
+      'camposObligatoriosFaltantes': item.missingXmlFields,
+      'diferenciasQueSeResolverian': audit.mismatches
+          .map((m) => m.field)
+          .toSet()
+          .toList(growable: false),
+      'riesgoDGII': audit.aptoParaEnviar
+          ? 'BAJO'
+          : (canAutoFix ? 'MEDIO' : 'ALTO'),
+      'pasosParaCorregir': [
+        'Usar los valores del Excel DGII como fuente oficial.',
+        if (suggestedItems.isNotEmpty)
+          'Reconstruir DetallesItems usando un item por bucket fiscal.',
+        if (item.missingXmlFields.isNotEmpty)
+          'Completar los campos obligatorios faltantes.',
+        'Regenerar XML.',
+        'Validar contra XSD.',
+        'Verificar nuevamente Excel vs XML vs Totales calculados.',
+      ],
+    };
+  }
+
+  bool _localSuggestionCanAutoFix(DgiiCertificationAuditResult audit) {
+    final hasBuckets = [
+      audit.excelValues['MontoGravadoI1'],
+      audit.excelValues['MontoGravadoI2'],
+      audit.excelValues['MontoGravadoI3'],
+      audit.excelValues['MontoExento'],
+    ].any((value) {
+      final text = value?.toString().trim();
+      if (text == null || text.isEmpty) return false;
+      final parsed = double.tryParse(text.replaceAll(',', ''));
+      return parsed != null && parsed > 0;
+    });
+    return !audit.aptoParaEnviar &&
+        audit.filenameValid &&
+        audit.requiredFieldsPresent &&
+        hasBuckets;
+  }
+
+  String _localSuggestionCause(DgiiCertificationAuditResult audit) {
+    if (!audit.filenameValid) {
+      return 'El nombre del archivo no cumple el formato DGII.';
+    }
+    if (!audit.requiredFieldsPresent) {
+      return 'Faltan campos obligatorios para construir el XML.';
+    }
+    if (!audit.xsdValid) {
+      return 'El XML no valida contra el XSD DGII.';
+    }
+    if (!audit.totalsMatchExcel || !audit.totalsMatchItems) {
+      return 'Los Totales y los DetallesItems no reproducen la fila oficial del Excel.';
+    }
+    if (!audit.noPlaceholders) {
+      return 'El XML conserva placeholders inválidos.';
+    }
+    return audit.summary;
+  }
+
+  List<String> _rawPlaceholderKeys(DgiiCertificationCaseModel item) {
+    const placeholderValues = {'#e', '#n/a', 'n/a', 'null', 'undefined', ''};
+    return item.rawRowJson.entries
+        .where((entry) {
+          if (entry.key.startsWith('__')) return false;
+          final normalized = entry.value?.toString().trim().toLowerCase() ?? '';
+          return placeholderValues.contains(normalized) &&
+              !item.missingXmlFields.contains(entry.key);
+        })
+        .map((entry) => entry.key)
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _localBatchRepeatedCauses(
+    List<DgiiCertificationAuditResult> audits,
+  ) {
+    final counts = <String, int>{};
+    for (final audit in audits) {
+      final cause = _localSuggestionCause(audit);
+      counts[cause] = (counts[cause] ?? 0) + 1;
+    }
+    final rows = counts.entries
+        .map((entry) => {'cause': entry.key, 'count': entry.value})
+        .toList(growable: false);
+    rows.sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+    return rows;
+  }
+
+  Future<void> _showCertificationFixSuggestionDialog({
+    required DgiiCertificationCaseModel item,
+    required Map<String, dynamic> result,
+  }) async {
+    final suggestion = result['suggestion'] is Map
+        ? (result['suggestion'] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+    final audit = result['audit'] is Map
+        ? (result['audit'] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+    final payload = const JsonEncoder.withIndent('  ').convert(result);
+    final items = suggestion['itemsSugeridos'] is List
+        ? (suggestion['itemsSugeridos'] as List).whereType<Map>().toList()
+        : const <Map>[];
+    final pasos = suggestion['pasosParaCorregir'] is List
+        ? (suggestion['pasosParaCorregir'] as List)
+              .map((value) => value.toString())
+              .toList(growable: false)
+        : const <String>[];
+    final diferencias = suggestion['diferenciasQueSeResolverian'] is List
+        ? (suggestion['diferenciasQueSeResolverian'] as List)
+              .map((value) => value.toString())
+              .toList(growable: false)
+        : const <String>[];
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Sugerir corrección con IA ${item.encf ?? item.id}'),
+        content: SizedBox(
+          width: 960,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _StatusChip(
+                      label: suggestion['aptoParaEnviar'] == true
+                          ? 'APTO PARA ENVIAR'
+                          : (suggestion['puedeCorregirseAutomaticamente'] == true
+                                ? 'REQUIERE CORRECCIÓN'
+                                : 'NO APTO PARA ENVIAR'),
+                      color: suggestion['aptoParaEnviar'] == true
+                          ? Colors.green
+                          : (suggestion['puedeCorregirseAutomaticamente'] == true
+                                ? Colors.orange
+                                : Colors.red),
+                    ),
+                    _InlineMetaPill(
+                      label: 'Riesgo DGII',
+                      value: suggestion['riesgoDGII']?.toString() ?? 'N/D',
+                    ),
+                    _InlineMetaPill(
+                      label: 'Auto fix',
+                      value: suggestion['puedeCorregirseAutomaticamente'] == true
+                          ? 'Sí'
+                          : 'No',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  'Problema principal: ${suggestion['causaPrincipal'] ?? audit['summary'] ?? 'N/D'}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                SelectableText(
+                  'Corrección recomendada: ${suggestion['correccionRecomendada'] ?? 'N/D'}',
+                ),
+                if (diferencias.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Diferencias que se resolverían',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  ...diferencias.map((value) => SelectableText('• $value')),
+                ],
+                if (items.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Items sugeridos',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  ...items.map(
+                    (itemMap) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blueGrey.withOpacity(0.18)),
+                      ),
+                      child: SelectableText(
+                        const JsonEncoder.withIndent('  ').convert(itemMap),
+                      ),
+                    ),
+                  ),
+                ],
+                if (pasos.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Pasos para corregir',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  ...pasos.map((value) => SelectableText('• $value')),
+                ],
+                const SizedBox(height: 12),
+                SelectableText(
+                  payload,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFamily: 'RobotoMono',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          if (suggestion['puedeCorregirseAutomaticamente'] == true)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _applyCertifiedFix(item);
+              },
+              icon: const Icon(Icons.build_circle_outlined),
+              label: const Text('Aplicar corrección certificada'),
+            ),
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: payload));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Reporte copiado')),
+              );
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copiar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _downloadCertificationXml(
+    DgiiCertificationCaseModel item,
+    String xml,
+  ) async {
+    try {
+      final safeName =
+          (item.encf?.trim().isNotEmpty == true
+                  ? item.encf!.trim()
+                  : 'dgii_case_${item.id}')
+              .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Guardar XML DGII',
+        fileName: '$safeName.xml',
+        bytes: Uint8List.fromList(utf8.encode(xml)),
+      );
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('XML descargado')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo descargar el XML')),
+      );
+    }
+  }
+
+  Future<void> _exportGeneratedCertificationXml(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_exportingCaseXmlId != null) return;
+    setState(() => _exportingCaseXmlId = item.id);
+    try {
+      final xml = item.xmlGenerated?.trim().isNotEmpty == true
+          ? item.xmlGenerated!
+          : await _certificationRepository.getCertificationCaseXml(item.id);
+      final safeName =
+          (item.encf?.trim().isNotEmpty == true
+                  ? item.encf!.trim()
+                  : 'dgii_case_${item.id}')
+              .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Exportar XML sin firmar',
+        fileName: '$safeName-sin-firmar.xml',
+        bytes: Uint8List.fromList(utf8.encode(xml)),
+      );
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('XML exportado. Firmalo con la app DGII y luego importalo.'),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _exportingCaseXmlId = null);
+    }
+  }
+
+  Future<void> _importManualSignedCertificationXml(
+    DgiiCertificationCaseModel item,
+  ) async {
+    if (_importingSignedCaseXmlId != null) return;
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['xml'],
+      withData: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return;
+
+    setState(() => _importingSignedCaseXmlId = item.id);
+    try {
+      final updated = await _certificationRepository
+          .uploadManualSignedCertificationCaseXml(item.id, path);
+      if (!mounted) return;
+      _replaceCertificationCase(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('XML firmado importado. Ya puedes enviar solo este caso.'),
+        ),
+      );
+    } on DgiiCertificationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _importingSignedCaseXmlId = null);
+    }
+  }
+
+  Future<void> _showCertificationCaseDetail(
+    DgiiCertificationCaseModel item,
+  ) async {
+    DgiiCertificationCaseModel detail = item;
+    try {
+      detail = await _certificationRepository.getCertificationCase(item.id);
+    } catch (_) {}
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          detail.encf?.trim().isNotEmpty == true ? detail.encf! : 'Caso DGII',
+        ),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _DiagnosticLine(label: 'eNCF', value: detail.encf ?? 'N/D'),
+                _DiagnosticLine(
+                  label: 'Tipo e-CF',
+                  value: detail.tipoEcf ?? 'N/D',
+                ),
+                _DiagnosticLine(label: 'Hoja', value: detail.sheetName),
+                _DiagnosticLine(
+                  label: 'Fila',
+                  value: detail.rowNumber.toString(),
+                ),
+                _DiagnosticLine(
+                  label: 'Estado',
+                  value: _certificationStatusLabel(detail.status),
+                ),
+                _DiagnosticLine(
+                  label: 'TrackId',
+                  value: detail.trackId ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'Codigo DGII',
+                  value: detail.dgiiStatusCode ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'Mensaje DGII',
+                  value: detail.dgiiStatusMessage ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'Validacion XML',
+                  value: _xmlValidationLabel(detail),
+                ),
+                _DiagnosticLine(
+                  label: 'XSD usado',
+                  value: detail.effectiveXsdFileUsed ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'Codigo rechazo',
+                  value: detail.rejectionCode ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'Motivo rechazo',
+                  value:
+                      detail.rejectionMessage ??
+                      detail.xmlGenerationHumanMessage ??
+                      'N/D',
+                ),
+                if (detail.dgiiRawResponseJson?.isNotEmpty == true) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Respuesta cruda DGII',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceVariant.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        detail.formattedDgiiRawResponseJson(),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontFamily: 'RobotoMono',
+                            ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (detail.parsedXsdElementHint?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Elemento XSD reportado',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(detail.parsedXsdElementHint!),
+                ],
+                if (detail.effectiveRawXmllintOutput?.trim().isNotEmpty ==
+                    true) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Error XSD / xmllint',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.errorContainer.withOpacity(0.28),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SelectableText(
+                      detail.effectiveRawXmllintOutput!,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(fontFamily: 'RobotoMono'),
+                    ),
+                  ),
+                ],
+                if (detail.xmlValidationWarnings.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Advertencias de validacion',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    detail.xmlValidationWarnings
+                        .map((value) => '- $value')
+                        .join('\n'),
+                  ),
+                ],
+                if (detail.missingXmlFields.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Campos faltantes',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(detail.missingXmlFields.join(', ')),
+                ],
+                if (detail.extractedXmlFields.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Campos detectados',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(_formatCompactJson(detail.extractedXmlFields)),
+                ],
+                const SizedBox(height: 10),
+                Text(
+                  'Resumen rawRowJson',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 6),
+                SelectableText(
+                  detail.rawRowKeys.take(40).join(', '),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                _DiagnosticLine(
+                  label: 'RNC emisor',
+                  value: detail.rncEmisor ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'RNC comprador',
+                  value: detail.rncComprador ?? 'N/D',
+                ),
+                _DiagnosticLine(
+                  label: 'Fecha emision',
+                  value: detail.fechaEmision == null
+                      ? 'N/D'
+                      : DateFormat('dd/MM/yyyy').format(detail.fechaEmision!),
+                ),
+                _DiagnosticLine(
+                  label: 'Monto total',
+                  value: detail.montoTotal == null
+                      ? 'N/D'
+                      : CurrencyDisplay.format(detail.montoTotal!),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Raw row JSON',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 6),
+                SelectableText(
+                  detail.formattedRawJson(),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'RobotoMono'),
+                ),
+                const SizedBox(height: 12),
+                Text('XML', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 6),
+                if (detail.xmlGenerated?.trim().isNotEmpty == true) ...[
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceVariant.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        detail.xmlGenerated!.length > 4000
+                            ? '${detail.xmlGenerated!.substring(0, 4000)}\n...'
+                            : detail.xmlGenerated!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'RobotoMono',
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (detail.xmlGenerated?.trim().isNotEmpty == true) ...[
+                      OutlinedButton.icon(
+                        onPressed: () => _showCertificationXml(detail),
+                        icon: const Icon(Icons.visibility_outlined),
+                        label: const Text('Ver XML'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _validateCertificationCaseXml(detail),
+                        icon: const Icon(Icons.rule_outlined),
+                        label: const Text('Validar XML'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: detail.xmlGenerated!),
+                          );
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('XML copiado')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_outlined),
+                        label: const Text('Copiar XML'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _downloadCertificationXml(
+                          detail,
+                          detail.xmlGenerated!,
+                        ),
+                        icon: const Icon(Icons.download_outlined),
+                        label: const Text('Descargar XML'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: const <String>{
+                                  'ACCEPTED',
+                                  'ACCEPTED_CONDITIONAL',
+                                  'REJECTED',
+                                }.contains(detail.status.toUpperCase())
+                            ? null
+                            : () {
+                                Navigator.of(context).pop();
+                                _importManualSignedCertificationXml(detail);
+                              },
+                        icon: const Icon(Icons.upload_file_outlined),
+                        label: const Text('Subir XML firmado'),
+                      ),
+                    ],
+                    if (detail.xmlSigned?.trim().isNotEmpty == true) ...[
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            _showCertificationXml(detail, signed: true),
+                        icon: const Icon(Icons.verified_outlined),
+                        label: const Text('Ver XML firmado'),
+                      ),
+                    ],
+                    if (detail.status.toUpperCase() == 'XML_GENERATED')
+                      FilledButton.icon(
+                        onPressed: _certificationXmlCanBeSigned(detail)
+                            ? () {
+                                Navigator.of(context).pop();
+                                _signCertificationCase(detail);
+                              }
+                            : null,
+                        icon: const Icon(Icons.draw_outlined),
+                        label: const Text('Firmar XML'),
+                      ),
+                    if (detail.status.toUpperCase() == 'SIGNED')
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _sendCertificationCase(detail);
+                        },
+                        icon: const Icon(Icons.send_outlined),
+                        label: const Text('Enviar a DGII'),
+                      ),
+                    if (detail.status.toUpperCase() == 'SENT' ||
+                        detail.status.toUpperCase() == 'EN_PROCESO')
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _queryCertificationCaseResult(detail);
+                        },
+                        icon: const Icon(Icons.fact_check_outlined),
+                        label: const Text('Consultar resultado'),
+                      ),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _generateCertificationCaseXml(detail);
+                      },
+                      icon: const Icon(Icons.code_outlined),
+                      label: Text(
+                        detail.xmlGenerated?.trim().isNotEmpty == true
+                            ? 'Regenerar XML'
+                            : 'Generar XML',
+                      ),
+                    ),
+                    if (detail.xmlGenerated?.trim().isNotEmpty == true &&
+                        !const <String>{
+                          'ACCEPTED',
+                          'ACCEPTED_CONDITIONAL',
+                          'REJECTED',
+                        }.contains(detail.status.toUpperCase()))
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _resetCertificationCaseXml(detail);
+                        },
+                        icon: const Icon(Icons.cleaning_services_outlined),
+                        label: const Text('Limpiar XML'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _suggestCertificationFixCase(item);
+            },
+            icon: const Icon(Icons.auto_fix_high_outlined),
+            label: const Text('Sugerir corrección con IA'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateSalesVisibility(bool enabled) async {
@@ -1412,6 +3729,11 @@ class _ElectronicInvoicingPageState
   Widget build(BuildContext context) {
     final BusinessSettings businessSettings =
         widget.businessSettingsOverride ?? ref.watch(businessSettingsProvider);
+    final bool isDebug = kDebugMode;
+    // Runtime gate: keep this section hidden for clients while still compiling
+    // the original implementation (avoids stale/unused warnings).
+    final bool showConstructionOnly = DateTime.now().millisecondsSinceEpoch >=
+        0;
 
     return Theme(
       data: SettingsLayout.brandedTheme(context),
@@ -1429,38 +3751,79 @@ class _ElectronicInvoicingPageState
             },
           ),
           title: const Text('Facturación Electrónica'),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: FilledButton.icon(
-                onPressed: _loading || _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save_outlined),
-                label: const Text('Guardar'),
-              ),
-            ),
-          ],
-        ),
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            return SettingsLayout.pageFrame(
-              constraints,
-              max: 1240,
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildContent(
-                      context,
-                      constraints,
-                      businessSettings: businessSettings,
+          actions: showConstructionOnly
+              ? const []
+              : [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: FilledButton.icon(
+                      onPressed: _loading || _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: const Text('Guardar'),
                     ),
-            );
-          },
+                  ),
+                ],
         ),
+        body: showConstructionOnly
+            ? Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Card(
+                    margin: const EdgeInsets.all(24),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.construction_outlined),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Esta sección está en construcción',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            isDebug
+                                ? 'Modo DEBUG: por ahora no se muestra la configuración de Facturación Electrónica.'
+                                : 'Modo PRODUCCIÓN: esta sección está temporalmente oculta para evitar confusión al cliente.',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return SettingsLayout.pageFrame(
+                    constraints,
+                    max: 1500,
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _buildContent(
+                            context,
+                            constraints,
+                            businessSettings: businessSettings,
+                          ),
+                  );
+                },
+              ),
       ),
     );
   }
@@ -1474,12 +3837,971 @@ class _ElectronicInvoicingPageState
       physics: const AlwaysScrollableScrollPhysics(),
       cacheExtent: 2400,
       children: [
-        _buildHeroSection(context, businessSettings: businessSettings),
+        _buildModeSelector(context),
         const SizedBox(height: 10),
-        _buildDiagnosticsSection(context, businessSettings),
-        const SizedBox(height: 10),
-        _buildSequencesSection(context),
+        if (_showCertificationSection)
+          _buildCertificationSection(context)
+        else ...[
+          _buildHeroSection(context, businessSettings: businessSettings),
+          const SizedBox(height: 10),
+          _buildDiagnosticsSection(context, businessSettings),
+          const SizedBox(height: 10),
+          _buildSequencesSection(context),
+        ],
       ],
+    );
+  }
+
+  Widget _buildModeSelector(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(
+            value: false,
+            label: Text('Configuracion normal'),
+            icon: Icon(Icons.tune_outlined),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Text('Certificacion DGII'),
+            icon: Icon(Icons.assignment_turned_in_outlined),
+          ),
+        ],
+        selected: {_showCertificationSection},
+        onSelectionChanged: (selection) {
+          final next = selection.first;
+          setState(() => _showCertificationSection = next);
+          if (next && _certificationBatches.isEmpty) {
+            _refreshCertificationBatches();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildCertificationSection(BuildContext context) {
+    final theme = Theme.of(context);
+    final selectedBatch = _selectedCertificationBatch;
+    final summary = _certificationSummary;
+    final diagnostics = _certificationDiagnostics;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionCard(
+          title: 'Certificacion DGII',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Importa el archivo Excel de pruebas descargado desde DGII para preparar los casos ECF y RFCE de esta empresa.',
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _importingCertificationExcel
+                        ? null
+                        : _pickAndImportCertificationExcel,
+                    icon: _importingCertificationExcel
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.upload_file_outlined),
+                    label: const Text('Importar Excel DGII'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _loadingCertification
+                        ? null
+                        : _refreshCertificationBatches,
+                    icon: const Icon(Icons.refresh_outlined),
+                    label: const Text('Actualizar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _generatingBatchXml
+                        ? null
+                        : _generateCertificationBatchXml,
+                    icon: _generatingBatchXml
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.code_outlined),
+                    label: const Text('Generar XML de todos'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _resettingBatchXml
+                        ? null
+                        : _resetCertificationBatchXml,
+                    icon: _resettingBatchXml
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cleaning_services_outlined),
+                    label: const Text('Limpiar XML del lote'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _signingBatchXml
+                        ? null
+                        : _signCertificationBatch,
+                    icon: _signingBatchXml
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.draw_outlined),
+                    label: const Text('Firmar todos'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _preflightingBatch
+                        ? null
+                        : _preflightCertificationBatch,
+                    icon: _preflightingBatch
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.rule_outlined),
+                    label: const Text('Verificar antes de enviar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _auditingBatch
+                        ? null
+                        : () => _auditCertificationBatch(),
+                    icon: _auditingBatch
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.search_outlined),
+                    label: const Text('Auditar lote'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _aiAuditingBatch
+                        ? null
+                        : () => _auditCertificationBatch(ai: true),
+                    icon: _aiAuditingBatch
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome_outlined),
+                    label: const Text('Auditar lote con IA'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _aiSuggestingFixBatch
+                        ? null
+                        : _suggestCertificationFixBatch,
+                    icon: _aiSuggestingFixBatch
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high_outlined),
+                    label: const Text('Sugerir correcciones lote con IA'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        selectedBatch == null || _reprocessingAndSendingBatch
+                        ? null
+                        : _reprocessAndSendCertificationBatch,
+                    icon: _reprocessingAndSendingBatch
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high_outlined),
+                    label: const Text('Reprocesar y enviar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _downloadingDgiiSeed
+                        ? null
+                        : _downloadDgiiManualSeed,
+                    icon: _downloadingDgiiSeed
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.key_outlined),
+                    label: const Text('Descargar semilla DGII'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _uploadingDgiiSignedSeed
+                        ? null
+                        : _uploadDgiiManualSignedSeed,
+                    icon: _uploadingDgiiSignedSeed
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.upload_outlined),
+                    label: const Text('Subir semilla firmada'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        selectedBatch == null ||
+                            _sendingBatchXml ||
+                            diagnostics?.canSubmitToDgii != true ||
+                            !_hasCertificationCasesReadyToSend()
+                        ? null
+                        : _sendCertificationBatch,
+                    icon: _sendingBatchXml
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send_outlined),
+                    label: const Text('Enviar todos firmados'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: selectedBatch == null || _queryingBatchResults
+                        ? null
+                        : _queryCertificationBatchResults,
+                    icon: _queryingBatchResults
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.fact_check_outlined),
+                    label: const Text('Consultar todos'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 820;
+                  final apiKeyField = TextFormField(
+                    controller: _aiApiKeyController,
+                    decoration: const InputDecoration(
+                      labelText: 'API key IA para auditoría',
+                      hintText: 'sk-...',
+                      prefixIcon: Icon(Icons.key_outlined),
+                    ),
+                  );
+                  final modelField = TextFormField(
+                    controller: _aiModelController,
+                    decoration: const InputDecoration(
+                      labelText: 'Modelo IA',
+                      prefixIcon: Icon(Icons.memory_outlined),
+                    ),
+                  );
+                  if (stacked) {
+                    return Column(
+                      children: [
+                        apiKeyField,
+                        const SizedBox(height: 8),
+                        modelField,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: apiKeyField),
+                      const SizedBox(width: 8),
+                      SizedBox(width: 180, child: modelField),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _SectionCard(
+          title: 'Diagnostico de certificacion',
+          child: _buildCertificationDiagnosticsCard(context, diagnostics),
+        ),
+        const SizedBox(height: 10),
+        if (selectedBatch != null && summary != null) ...[
+          _SectionCard(
+            title: 'Progreso del lote',
+            child: _buildCertificationDashboard(context, summary),
+          ),
+          const SizedBox(height: 10),
+        ],
+        _SectionCard(
+          title: 'Lotes importados',
+          child: _certificationBatches.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'Aun no has importado el archivo de pruebas DGII. Descargalo desde el portal de certificacion e importalo aqui.',
+                  ),
+                )
+              : Column(
+                  children: _certificationBatches
+                      .map(
+                        (batch) => _CertificationBatchTile(
+                          batch: batch,
+                          selected: batch.id == selectedBatch?.id,
+                          onTap: () => _loadCertificationCases(batch),
+                          onDelete: () => _deleteCertificationBatch(batch),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+        ),
+        const SizedBox(height: 10),
+        _SectionCard(
+          title: 'Casos del lote',
+          child: selectedBatch == null
+              ? const Text('Seleccione un lote importado para ver sus casos.')
+              : _loadingCertification
+              ? const Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : _certificationCases.isEmpty
+              ? const Text('No se detectaron casos en este lote.')
+              : _buildCertificationCasesList(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCertificationDiagnosticsCard(
+    BuildContext context,
+    DgiiCertificationDiagnosticsModel? diagnostics,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    if (diagnostics == null) {
+      return const Text('Actualiza para consultar el diagnostico del backend.');
+    }
+    final migrationOk = diagnostics.databaseHasNewFields == true;
+    final batchPreflight = _certificationBatchPreflight;
+    final summary = _certificationSummary;
+    final signedCasesCount = diagnostics.signedCasesCount > 0
+        ? diagnostics.signedCasesCount
+        : summary?.signed ?? 0;
+    final totalCasesCount = diagnostics.totalCasesCount > 0
+        ? diagnostics.totalCasesCount
+        : summary?.totalCases ?? 0;
+    final signatureOk =
+        signedCasesCount > 0 &&
+        diagnostics.signingEngineAvailable &&
+        diagnostics.certificateConfigured;
+    final endpointBlockers = diagnostics.submitBlockers
+        .where(
+          (item) =>
+              item.contains('ENDPOINT') ||
+              item.contains('RECEPCION') ||
+              item.contains('SUBMIT') ||
+              item.contains('RESULT'),
+        )
+        .toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _InlineMetaPill(
+              label: 'Migracion DB',
+              value: migrationOk
+                  ? 'Aplicada'
+                  : diagnostics.databaseHasNewFields == null
+                  ? 'No verificable'
+                  : 'Pendiente',
+            ),
+            _InlineMetaPill(
+              label: 'XSD disponibles',
+              value: '${diagnostics.xsdFilesFound}',
+            ),
+            _InlineMetaPill(
+              label: 'Motor XSD',
+              value: diagnostics.xsdValidationEngineAvailable ? 'Si' : 'No',
+            ),
+            _InlineMetaPill(
+              label: 'RFCE disponible',
+              value: diagnostics.rfceGenerationAvailable ? 'Si' : 'No',
+            ),
+            _InlineMetaPill(
+              label: 'Listo para enviar DGII',
+              value: diagnostics.canSubmitToDgii ? 'Si' : 'No',
+            ),
+            _InlineMetaPill(
+              label: 'Firmados',
+              value: '$signedCasesCount/$totalCasesCount',
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          children: [
+            _DiagnosticLine(label: 'DB', value: migrationOk ? '✅' : '❌'),
+            _DiagnosticLine(
+              label: 'XSD',
+              value:
+                  diagnostics.xsdFilesFound > 0 &&
+                      diagnostics.xsdValidationEngineAvailable
+                  ? '✅'
+                  : '❌',
+            ),
+            _DiagnosticLine(label: 'Firma', value: signatureOk ? '✅' : '❌'),
+            _DiagnosticLine(
+              label: 'Endpoint',
+              value: diagnostics.dgiiEndpointConfigExists ? '✅' : '❌',
+            ),
+            _DiagnosticLine(
+              label: 'Token/Auth',
+              value:
+                  diagnostics.dgiiAuthConfigExists &&
+                      diagnostics.dgiiAuthLastErrorCode == null &&
+                      diagnostics.dgiiAuthLastErrorMessage == null
+                  ? '✅'
+                  : '❌',
+            ),
+            _DiagnosticLine(
+              label: 'Certificado',
+              value: diagnostics.activeCertificateExists ? '✅' : '❌',
+            ),
+          ],
+        ),
+        if (batchPreflight != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Preflight: ${batchPreflight.readyToSend}/${batchPreflight.total} listo(s), ${batchPreflight.blocked} bloqueado(s)',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ],
+        if (!diagnostics.dgiiEndpointConfigExists &&
+            endpointBlockers.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _DiagnosticNotice(
+            color: Colors.orange,
+            text: 'Endpoint pendiente: ${endpointBlockers.join(', ')}',
+          ),
+        ],
+        if (!diagnostics.canSubmitToDgii &&
+            diagnostics.submitBlockers.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Bloqueos para envio DGII',
+            style: TextStyle(
+              color: scheme.error,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ...diagnostics.submitBlockers.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                '- $item',
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (diagnostics.dgiiAuthLastErrorMessage?.trim().isNotEmpty ==
+            true) ...[
+          const SizedBox(height: 10),
+          _DiagnosticNotice(
+            color: Colors.orange,
+            text:
+                'Ultimo error Token/Auth: ${diagnostics.dgiiAuthLastErrorCode ?? 'DGII_AUTH'} - ${diagnostics.dgiiAuthLastErrorMessage}',
+          ),
+        ],
+        if (diagnostics.lastSigningError?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: 10),
+          _DiagnosticNotice(
+            color: Colors.orange,
+            text: 'Ultimo error de firma: ${diagnostics.lastSigningError}',
+          ),
+        ],
+        if (diagnostics.hasMigrationWarning) ...[
+          const SizedBox(height: 10),
+          _DiagnosticNotice(
+            color: scheme.error,
+            text: diagnostics.pendingMigrationWarning?.trim().isNotEmpty == true
+                ? diagnostics.pendingMigrationWarning!
+                : 'La migración de certificación DGII no está aplicada en la base de datos real.',
+          ),
+        ],
+        if (diagnostics.xsdFilesFound == 0) ...[
+          const SizedBox(height: 10),
+          _DiagnosticNotice(
+            color: Colors.orange,
+            text:
+                'No hay archivos XSD oficiales en resources/dgii/xsd. La validacion XSD seguira como XSD_NOT_AVAILABLE.',
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCertificationDashboard(
+    BuildContext context,
+    DgiiCertificationBatchSummary summary,
+  ) {
+    final value = (summary.progressPercentage.clamp(0, 100)) / 100;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _InlineMetaPill(
+              label: 'Total casos',
+              value: '${summary.totalCases}',
+            ),
+            _InlineMetaPill(
+              label: 'XML generados',
+              value: '${summary.xmlGenerated}',
+            ),
+            _InlineMetaPill(label: 'Firmados', value: '${summary.signed}'),
+            _InlineMetaPill(label: 'Enviados', value: '${summary.sent}'),
+            _InlineMetaPill(label: 'Aceptados', value: '${summary.accepted}'),
+            _InlineMetaPill(label: 'Rechazados', value: '${summary.rejected}'),
+            _InlineMetaPill(
+              label: 'En proceso',
+              value: '${summary.processing}',
+            ),
+            _InlineMetaPill(label: 'Errores', value: '${summary.error}'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        LinearProgressIndicator(value: value),
+        const SizedBox(height: 8),
+        Text(
+          'Importado -> XML -> Firmado -> Enviado -> Resultado',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _certificationNextAction(summary),
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+      ],
+    );
+  }
+
+  String _certificationNextAction(DgiiCertificationBatchSummary summary) {
+    if (summary.error > 0) return 'Revisa los errores del lote';
+    if (summary.rejected > 0) return 'Revisa el motivo de rechazo';
+    if (summary.imported > 0) return 'Genera los XML';
+    if (summary.xmlGenerated > summary.signed) return 'Firma los XML';
+    if (summary.signed > summary.sent) return 'Envia a DGII';
+    if (summary.processing > 0 ||
+        summary.sent >
+            summary.accepted + summary.rejected + summary.acceptedConditional) {
+      return 'Consulta resultados';
+    }
+    return 'Lote sin bloqueos pendientes';
+  }
+
+  String _certificationStatusLabel(String status) {
+    switch (status.toUpperCase()) {
+      case 'IMPORTED':
+        return 'Importado';
+      case 'XML_GENERATED':
+        return 'XML generado';
+      case 'SIGNED':
+        return 'Firmado';
+      case 'SENT':
+        return 'Enviado';
+      case 'ACCEPTED':
+        return 'Aceptado';
+      case 'ACCEPTED_CONDITIONAL':
+        return 'Aceptado condicional';
+      case 'REJECTED':
+        return 'Rechazado';
+      case 'EN_PROCESO':
+        return 'En proceso';
+      case 'ERROR':
+        return 'Error';
+      default:
+        return status;
+    }
+  }
+
+  String _xmlValidationLabel(DgiiCertificationCaseModel item) {
+    switch ((item.xmlValidationStatus ?? 'NOT_VALIDATED').toUpperCase()) {
+      case 'XML_INVALID':
+        return 'XML invalido';
+      case 'XSD_NOT_AVAILABLE':
+        return 'XSD no disponible';
+      case 'XSD_VALID':
+        return 'XSD valido';
+      case 'XSD_INVALID':
+        return 'XSD invalido';
+      case 'XML_VALID':
+        return 'XML valido';
+      default:
+        return 'Sin validar';
+    }
+  }
+
+  String _formatCompactJson(Map<String, dynamic> value) {
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(value);
+  }
+
+  bool _certificationXmlCanBeSigned(DgiiCertificationCaseModel item) {
+    final status = (item.xmlValidationStatus ?? '').toUpperCase();
+    return item.xmlGenerated?.trim().isNotEmpty == true &&
+        status != 'XML_INVALID' &&
+        status != 'XSD_INVALID' &&
+        status != 'NOT_VALIDATED';
+  }
+
+  Future<void> _showCertificationValidationErrors(
+    DgiiCertificationCaseModel item,
+  ) async {
+    final errors = item.xmlValidationErrors;
+    final warnings = item.xmlValidationWarnings;
+    final rawOutput = item.effectiveRawXmllintOutput;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Validacion XML'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              [
+                'Estado: ${_xmlValidationLabel(item)}',
+                'XSD usado: ${item.effectiveXsdFileUsed ?? 'N/D'}',
+                if (item.parsedXsdElementHint?.trim().isNotEmpty == true)
+                  '\nElemento XSD:',
+                if (item.parsedXsdElementHint?.trim().isNotEmpty == true)
+                  item.parsedXsdElementHint!,
+                if (errors.isNotEmpty) '\nErrores:',
+                ...errors.map((value) => '- $value'),
+                if (rawOutput?.trim().isNotEmpty == true) '\nSalida xmllint:',
+                if (rawOutput?.trim().isNotEmpty == true) rawOutput!,
+                if (warnings.isNotEmpty) '\nAdvertencias:',
+                ...warnings.map((value) => '- $value'),
+                if (errors.isEmpty && warnings.isEmpty)
+                  'Sin errores registrados.',
+              ].join('\n'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyCertificationXsdError(
+    DgiiCertificationCaseModel item,
+  ) async {
+    final text = [
+      'eNCF: ${item.encf ?? 'N/D'}',
+      'Tipo e-CF: ${item.tipoEcf ?? 'N/D'}',
+      'Hoja: ${item.sheetName}',
+      'Estado validacion: ${_xmlValidationLabel(item)}',
+      'XSD usado: ${item.effectiveXsdFileUsed ?? 'N/D'}',
+      if (item.parsedXsdElementHint?.trim().isNotEmpty == true)
+        '\n${item.parsedXsdElementHint}',
+      if (item.effectiveRawXmllintOutput?.trim().isNotEmpty == true)
+        '\n${item.effectiveRawXmllintOutput}',
+      if (item.xmlValidationErrors.isNotEmpty)
+        '\nErrores:\n${item.xmlValidationErrors.map((value) => '- $value').join('\n')}',
+    ].join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Error XSD copiado')));
+  }
+
+  Future<void> _showCertificationPreflight(
+    DgiiCertificationCasePreflightModel preflight,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Preflight DGII'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              [
+                'Listo para enviar: ${preflight.canSend ? 'Si' : 'No'}',
+                'Endpoint: ${preflight.endpointType ?? 'N/D'} ${preflight.endpointUrlMasked ?? ''}'
+                    .trim(),
+                'Certificado: ${preflight.certificateStatus ?? 'N/D'}',
+                'XML: ${preflight.xmlValidationStatus ?? 'N/D'}',
+                'Firma: ${preflight.signatureStatus ?? 'N/D'}',
+                if (preflight.blockers.isNotEmpty) '\nBloqueos:',
+                ...preflight.blockers.map((value) => '- $value'),
+                if (preflight.warnings.isNotEmpty) '\nAdvertencias:',
+                ...preflight.warnings.map((value) => '- $value'),
+              ].join('\n'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _certificationStatusColor(BuildContext context, String status) {
+    final scheme = Theme.of(context).colorScheme;
+    switch (status.toUpperCase()) {
+      case 'ACCEPTED':
+        return Colors.green;
+      case 'ACCEPTED_CONDITIONAL':
+        return Colors.teal;
+      case 'REJECTED':
+      case 'ERROR':
+        return scheme.error;
+      case 'SENT':
+      case 'EN_PROCESO':
+        return Colors.orange;
+      case 'SIGNED':
+        return Colors.indigo;
+      case 'XML_GENERATED':
+        return scheme.primary;
+      default:
+        return scheme.onSurfaceVariant;
+    }
+  }
+
+  List<Widget> _certificationCaseActions(DgiiCertificationCaseModel item) {
+    final status = item.status.toUpperCase();
+    final busyXml = _generatingCaseXmlId == item.id;
+    final busyValidate = _validatingCaseXmlId == item.id;
+    final busyReset = _resettingCaseXmlId == item.id;
+    final busyExport = _exportingCaseXmlId == item.id;
+    final busyImportSigned = _importingSignedCaseXmlId == item.id;
+    final busySign = _signingCaseXmlId == item.id;
+    final busySend = _sendingCaseXmlId == item.id;
+    final busyQuery = _queryingCaseResultId == item.id;
+    final busyPreflight = _preflightingCaseId == item.id;
+    final busyAudit = _auditingCaseId == item.id;
+    final busyAiAudit = _aiAuditingCaseId == item.id;
+    final busyFixSuggestion = _aiSuggestingFixCaseId == item.id;
+    final busyApplyFix = _applyingCertifiedFixCaseId == item.id;
+    final hasXml = item.xmlGenerated?.trim().isNotEmpty == true;
+    final validationStatus = (item.xmlValidationStatus ?? '').toUpperCase();
+    final hasInvalidGeneratedXml =
+        status == 'XML_GENERATED' &&
+        (validationStatus == 'XSD_INVALID' ||
+            validationStatus == 'XML_INVALID');
+    final canResetGeneratedXml =
+        hasXml &&
+        !const <String>{'ACCEPTED', 'ACCEPTED_CONDITIONAL'}.contains(status);
+    final preflight = _certificationPreflights[item.id];
+    Widget iconAction({
+      required String tooltip,
+      required IconData icon,
+      required VoidCallback? onPressed,
+    }) {
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 19),
+        visualDensity: VisualDensity.compact,
+      );
+    }
+
+    return [
+      iconAction(
+        tooltip: 'Detalle',
+        icon: Icons.visibility_outlined,
+        onPressed: () => _showCertificationCaseDetail(item),
+      ),
+      if (status == 'IMPORTED' || status == 'ERROR')
+        iconAction(
+          tooltip: busyXml ? 'Generando XML' : 'Generar XML',
+          icon: Icons.code_outlined,
+          onPressed: busyXml ? null : () => _generateCertificationCaseXml(item),
+        ),
+      if (hasInvalidGeneratedXml)
+        iconAction(
+          tooltip: busyXml ? 'Regenerando XML' : 'Regenerar XML',
+          icon: Icons.refresh_outlined,
+          onPressed: busyXml ? null : () => _generateCertificationCaseXml(item),
+        ),
+      if (canResetGeneratedXml)
+        iconAction(
+          tooltip: busyReset ? 'Limpiando XML' : 'Limpiar XML',
+          icon: Icons.cleaning_services_outlined,
+          onPressed: busyReset ? null : () => _resetCertificationCaseXml(item),
+        ),
+      if (hasXml)
+        iconAction(
+          tooltip: 'Ver XML',
+          icon: Icons.article_outlined,
+          onPressed: () => _showCertificationXml(item),
+        ),
+      if (hasXml)
+        iconAction(
+          tooltip: busyExport ? 'Exportando XML' : 'Exportar XML sin firmar',
+          icon: Icons.file_download_outlined,
+          onPressed:
+              busyExport ? null : () => _exportGeneratedCertificationXml(item),
+        ),
+      if (hasXml &&
+          !const <String>{'ACCEPTED', 'ACCEPTED_CONDITIONAL', 'REJECTED'}
+              .contains(status) &&
+          item.trackId?.trim().isNotEmpty != true)
+        iconAction(
+          tooltip: busyImportSigned
+              ? 'Importando XML firmado'
+              : 'Importar XML firmado DGII',
+          icon: Icons.file_upload_outlined,
+          onPressed: busyImportSigned
+              ? null
+              : () => _importManualSignedCertificationXml(item),
+        ),
+      if (hasXml)
+        iconAction(
+          tooltip: busyValidate ? 'Validando XML' : 'Validar XML',
+          icon: Icons.rule_outlined,
+          onPressed: busyValidate
+              ? null
+              : () => _validateCertificationCaseXml(item),
+        ),
+      if (item.xmlValidationJson != null)
+        iconAction(
+          tooltip: 'Ver validacion',
+          icon: Icons.remove_red_eye_outlined,
+          onPressed: () => _showCertificationValidationErrors(item),
+        ),
+      iconAction(
+        tooltip: busyAudit ? 'Auditando' : 'Auditoría técnica',
+        icon: Icons.search_outlined,
+        onPressed: busyAudit ? null : () => _auditCertificationCase(item),
+      ),
+      iconAction(
+        tooltip: busyAiAudit ? 'Auditando con IA' : 'Validar con IA',
+        icon: Icons.auto_awesome_outlined,
+        onPressed: busyAiAudit
+            ? null
+            : () => _auditCertificationCase(item, ai: true),
+      ),
+      iconAction(
+        tooltip: busyFixSuggestion
+            ? 'Sugiriendo corrección'
+            : 'Sugerir corrección con IA',
+        icon: Icons.auto_fix_high_outlined,
+        onPressed: busyFixSuggestion
+            ? null
+            : () => _suggestCertificationFixCase(item),
+      ),
+      if (hasXml)
+        iconAction(
+          tooltip: busyApplyFix
+              ? 'Aplicando corrección'
+              : 'Aplicar corrección certificada',
+          icon: Icons.build_circle_outlined,
+          onPressed: busyApplyFix ? null : () => _applyCertifiedFix(item),
+        ),
+      if (item.effectiveRawXmllintOutput?.trim().isNotEmpty == true ||
+          item.xmlValidationErrors.isNotEmpty ||
+          item.xmlValidationStatus?.toUpperCase() == 'XSD_INVALID')
+        iconAction(
+          tooltip: 'Copiar error XSD',
+          icon: Icons.copy_outlined,
+          onPressed: () => _copyCertificationXsdError(item),
+        ),
+      if (status == 'XML_GENERATED')
+        iconAction(
+          tooltip: busySign ? 'Firmando XML' : 'Firmar XML',
+          icon: Icons.draw_outlined,
+          onPressed: busySign || !_certificationXmlCanBeSigned(item)
+              ? null
+              : () => _signCertificationCase(item),
+        ),
+      if (item.xmlSigned?.trim().isNotEmpty == true || status == 'SIGNED')
+        iconAction(
+          tooltip: 'Ver XML firmado',
+          icon: Icons.verified_outlined,
+          onPressed: () => _showCertificationXml(item, signed: true),
+        ),
+      if (item.xmlSigned?.trim().isNotEmpty == true || status == 'SIGNED')
+        iconAction(
+          tooltip: busyPreflight ? 'Verificando' : 'Verificar antes de enviar',
+          icon: Icons.fact_check_outlined,
+          onPressed: busyPreflight
+              ? null
+              : () => _preflightCertificationCase(item),
+        ),
+      if (preflight != null)
+        iconAction(
+          tooltip: preflight.canSend ? 'Preflight OK' : 'Ver bloqueos',
+          icon: preflight.canSend
+              ? Icons.check_circle_outline
+              : Icons.error_outline,
+          onPressed: () => _showCertificationPreflight(preflight),
+        ),
+      if (status == 'SIGNED')
+        iconAction(
+          tooltip: busySend ? 'Enviando' : 'Enviar solo este caso a DGII',
+          icon: Icons.send_outlined,
+          onPressed:
+              busySend ||
+                  preflight?.canSend == false ||
+                  _certificationDiagnostics?.canSubmitToDgii != true
+              ? null
+              : () => _sendCertificationCase(item),
+        ),
+      if (status == 'SENT' || status == 'EN_PROCESO')
+        iconAction(
+          tooltip: busyQuery ? 'Consultando' : 'Consultar resultado',
+          icon: Icons.manage_search_outlined,
+          onPressed: busyQuery
+              ? null
+              : () => _queryCertificationCaseResult(item),
+        ),
+    ];
+  }
+
+  Widget _buildCertificationCasesList(BuildContext context) {
+    return Column(
+      children: _certificationCases
+          .map(
+            (item) => _CertificationCaseCard(
+              item: item,
+              statusLabel: _certificationStatusLabel(item.status),
+              statusColor: _certificationStatusColor(context, item.status),
+              validationLabel: _xmlValidationLabel(item),
+              amountLabel: item.montoTotal == null
+                  ? 'N/D'
+                  : CurrencyDisplay.format(item.montoTotal!),
+              actions: _certificationCaseActions(item),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -2947,6 +6269,205 @@ class _SectionCard extends StatelessWidget {
           ],
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _CertificationBatchTile extends StatelessWidget {
+  const _CertificationBatchTile({
+    required this.batch,
+    required this.selected,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final DgiiCertificationBatchModel batch;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final uploaded = DateFormat('dd/MM/yyyy HH:mm').format(batch.uploadedAt);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: selected
+            ? scheme.primaryContainer.withOpacity(0.35)
+            : scheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected
+              ? scheme.primary.withOpacity(0.45)
+              : scheme.outlineVariant.withOpacity(0.35),
+        ),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        title: Text(
+          batch.fileName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '$uploaded | total ${batch.totalCases} | ECF ${batch.ecfCases} | RFCE ${batch.rfceCases} | ${batch.status}',
+        ),
+        trailing: IconButton(
+          tooltip: 'Eliminar lote',
+          onPressed: onDelete,
+          icon: const Icon(Icons.delete_outline),
+        ),
+      ),
+    );
+  }
+}
+
+class _CertificationCaseCard extends StatefulWidget {
+  const _CertificationCaseCard({
+    required this.item,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.validationLabel,
+    required this.amountLabel,
+    required this.actions,
+  });
+
+  final DgiiCertificationCaseModel item;
+  final String statusLabel;
+  final Color statusColor;
+  final String validationLabel;
+  final String amountLabel;
+  final List<Widget> actions;
+
+  @override
+  State<_CertificationCaseCard> createState() => _CertificationCaseCardState();
+}
+
+class _CertificationCaseCardState extends State<_CertificationCaseCard> {
+  final ScrollController _actionsScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _actionsScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final xsdError = widget.item.effectiveRawXmllintOutput;
+    final hint = widget.item.parsedXsdElementHint;
+    final missingFieldsText = widget.item.missingXmlFields.isEmpty
+        ? null
+        : 'Campos faltantes: ${widget.item.missingXmlFields.join(', ')}';
+    final generationMessage =
+        missingFieldsText ?? widget.item.xmlGenerationHumanMessage?.trim();
+    final inlineIssue = generationMessage?.isNotEmpty == true
+        ? generationMessage
+        : hint?.trim().isNotEmpty == true
+        ? hint
+        : xsdError?.trim().isNotEmpty == true
+        ? xsdError!.replaceAll(RegExp(r'\s+'), ' ')
+        : null;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.55)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: constraints.maxWidth < 1240 ? 1240 : constraints.maxWidth,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 155,
+                    child: Text(
+                      widget.item.encf?.trim().isNotEmpty == true
+                          ? widget.item.encf!
+                          : 'Sin eNCF',
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _InlineMetaPill(
+                    label: 'tipo',
+                    value: widget.item.tipoEcf ?? 'N/D',
+                  ),
+                  const SizedBox(width: 6),
+                  _InlineMetaPill(label: 'hoja', value: widget.item.sheetName),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 135,
+                    child: _InlineMetaPill(
+                      label: 'monto',
+                      value: widget.amountLabel,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _StatusChip(
+                    label: widget.statusLabel,
+                    color: widget.statusColor,
+                  ),
+                  const SizedBox(width: 6),
+                  _InlineMetaPill(
+                    label: 'validacion',
+                    value: widget.validationLabel,
+                  ),
+                  const SizedBox(width: 8),
+                  if (inlineIssue?.trim().isNotEmpty == true)
+                    Expanded(
+                      child: Container(
+                        height: 30,
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: scheme.errorContainer.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          inlineIssue!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 390,
+                    child: Scrollbar(
+                      controller: _actionsScrollController,
+                      child: SingleChildScrollView(
+                        controller: _actionsScrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: widget.actions,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -1,25 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/security/security_config.dart';
 import '../../../core/session/session_manager.dart';
-import '../providers/business_settings_provider.dart';
 import 'settings_layout.dart';
 
-class SecuritySettingsPage extends ConsumerStatefulWidget {
+class SecuritySettingsPage extends StatefulWidget {
   const SecuritySettingsPage({super.key});
 
   @override
-  ConsumerState<SecuritySettingsPage> createState() =>
-      _SecuritySettingsPageState();
+  State<SecuritySettingsPage> createState() => _SecuritySettingsPageState();
 }
 
-class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
+class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
   SecurityConfig? _config;
   bool _loading = true;
-  int _companyId = 1;
-  String _terminalId = '';
 
   @override
   void initState() {
@@ -40,30 +34,8 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
     if (!mounted) return;
     setState(() {
       _config = config;
-      _companyId = companyId;
-      _terminalId = terminalId;
       _loading = false;
     });
-  }
-
-  Future<void> _save(SecurityConfig newConfig) async {
-    if (!mounted) return;
-    setState(() {
-      _config = newConfig;
-    });
-    await SecurityConfigRepository.save(
-      config: newConfig,
-      companyId: _companyId,
-      terminalId: _terminalId,
-    );
-  }
-
-  Future<void> _copy(String label, String value) async {
-    await Clipboard.setData(ClipboardData(text: value));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label copiado')),
-    );
   }
 
   @override
@@ -71,11 +43,6 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
     if (_loading || _config == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-
-    final businessSettings = ref.watch(businessSettingsProvider);
-    final cloudEnabled = businessSettings.cloudEnabled;
-    final config = _config!;
-    final theme = Theme.of(context);
 
     return Theme(
       data: SettingsLayout.brandedTheme(context),
@@ -86,67 +53,15 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
             return SettingsLayout.pageFrame(
               constraints,
               child: ListView(
-                children: [
-                  SettingsLayout.sectionHeading(
-                    context,
-                    title: 'Seguridad operativa',
-                    subtitle:
-                        'Aqui defines como se aprueban acciones restringidas en este terminal, sin editar privilegios por modulo.',
-                  ),
-                  const SizedBox(height: 12),
+                children: const [
+                  _SecurityHeader(),
+                  SizedBox(height: 12),
                   _SettingsCard(
                     icon: Icons.admin_panel_settings_outlined,
-                    title: 'PIN de administrador (offline)',
+                    title: 'Código de administración',
                     subtitle:
-                        'Aprobaciones locales usando el PIN de cualquier usuario administrador.',
-                    trailing: Switch.adaptive(
-                      value: config.offlinePinEnabled,
-                      onChanged: (v) =>
-                          _save(config.copyWith(offlinePinEnabled: v)),
-                    ),
-                  ),
-                  const Divider(),
-                  _SettingsCard(
-                    icon: Icons.cloud_outlined,
-                    title: 'Token en la nube (remote)',
-                    subtitle: cloudEnabled
-                        ? 'El dueño puede aprobar remotamente vía token u online.'
-                        : 'Requiere activar Cloud para usar aprobaciones remotas.',
-                    trailing: Switch.adaptive(
-                      value: (config.remoteEnabled || config.virtualTokenEnabled),
-                      onChanged: cloudEnabled
-                          ? (v) => _save(
-                                config.copyWith(
-                                  remoteEnabled: v,
-                                  virtualTokenEnabled: v,
-                                ),
-                              )
-                          : null,
-                    ),
-                  ),
-                  const Divider(),
-                  _SettingsCard(
-                    icon: Icons.confirmation_number_outlined,
-                    title: 'ID de Terminal/Caja',
-                    subtitle:
-                        'Usa este ID para activar aprobaciones remotas por token en Owner o nube.',
-                    trailing: FilledButton.tonalIcon(
-                      onPressed: _terminalId.isEmpty
-                          ? null
-                          : () => _copy('ID de Terminal', _terminalId),
-                      icon: const Icon(Icons.copy),
-                      label: const Text('Copiar'),
-                    ),
-                    content: Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: SelectableText(
-                        _terminalId,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontFamily: 'monospace',
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
+                        'Las acciones restringidas se autorizan únicamente con el código/PIN de un usuario administrador activo. No hay QR ni aprobaciones remotas.',
+                    trailing: _ActiveBadge(),
                   ),
                 ],
               ),
@@ -158,19 +73,56 @@ class _SecuritySettingsPageState extends ConsumerState<SecuritySettingsPage> {
   }
 }
 
+class _SecurityHeader extends StatelessWidget {
+  const _SecurityHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsLayout.sectionHeading(
+      context,
+      title: 'Seguridad operativa',
+      subtitle:
+          'La autorización del sistema está unificada: el administrador debe ingresar su código para aprobar acciones restringidas.',
+    );
+  }
+}
+
+class _ActiveBadge extends StatelessWidget {
+  const _ActiveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.primary.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.primary.withOpacity(0.24)),
+      ),
+      child: Text(
+        'Activo',
+        style: TextStyle(
+          color: scheme.primary,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final Widget trailing;
-  final Widget? content;
 
   const _SettingsCard({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.trailing,
-    this.content,
   });
 
   @override
@@ -211,13 +163,9 @@ class _SettingsCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: trailing,
-              ),
+              Padding(padding: const EdgeInsets.only(top: 2), child: trailing),
             ],
           ),
-          if (content != null) content!,
         ],
       ),
     );

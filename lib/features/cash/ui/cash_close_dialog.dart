@@ -562,7 +562,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     final summary = _summary;
     final session = _session;
     final expectedCash = money.format(summary?.expectedCash ?? 0.0);
-    final totalSales = money.format(summary?.totalSales ?? 0.0);
+    final totalSold = money.format(summary?.totalSold ?? 0.0);
     final tickets = '${summary?.totalTickets ?? 0}';
     final openedAt = session == null
         ? '--'
@@ -711,7 +711,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    expectedCash,
+                                    totalSold,
                                     style: theme.textTheme.headlineSmall
                                         ?.copyWith(
                                           fontWeight: FontWeight.w900,
@@ -720,11 +720,20 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Efectivo esperado para el cierre',
+                                    'Total vendido del turno',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: scheme.onSurface.withOpacity(0.66),
                                       fontSize: 10.4,
                                     ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Efectivo esperado: $expectedCash',
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          color: sidebarAccent,
+                                          fontWeight: FontWeight.w900,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -749,8 +758,8 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
                                   fontFamily: settings.fontFamily,
                                 ),
                                 _buildStatChip(
-                                  totalSales,
-                                  'Ventas',
+                                  totalSold,
+                                  'Total vendido',
                                   scheme.tertiary,
                                   fg: sidebarText,
                                   fontFamily: settings.fontFamily,

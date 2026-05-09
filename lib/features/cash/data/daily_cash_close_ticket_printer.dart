@@ -99,9 +99,13 @@ class DailyCashCloseTicketPrinter {
     final lines = <String>[];
     final fmt = DateFormat('dd/MM/yyyy hh:mm a');
     final dateFmt = DateFormat('dd/MM/yyyy');
-    final totalSales =
-        salesCashTotal + salesCardTotal + salesTransferTotal + salesCreditTotal;
-    final totalExpenses = refundsCash + cashOutManual;
+    final totalSold =
+        salesCashTotal +
+        salesCardTotal +
+        salesTransferTotal +
+        salesCreditTotal -
+        refundsCash;
+    final cashOutTotal = refundsCash + cashOutManual;
     final finalCash = cashbox.currentAmount;
     final difference = finalCash - expectedCash;
 
@@ -164,13 +168,15 @@ class DailyCashCloseTicketPrinter {
     lines.add(line());
 
     addPair('FONDO INICIAL:', money(openingAmount));
-    addPair('VENTAS:', money(totalSales));
-    addPair('GASTOS:', money(totalExpenses));
+    addPair('TOTAL VENDIDO:', money(totalSold));
+    addPair('SALIDAS CAJA:', money(cashOutTotal));
+    addPair('EFECTIVO ESPERADO:', money(expectedCash));
     addPair('EFECTIVO FINAL:', money(finalCash));
     addPair('DIFERENCIA:', money(difference));
     addPair('TICKETS:', totalTickets.toString());
     lines.add(line());
 
+    addPair('EFECTIVO:', money(salesCashTotal));
     if (salesCardTotal > 0) addPair('TARJETA:', money(salesCardTotal));
     if (salesTransferTotal > 0) {
       addPair('TRANSFERENCIA:', money(salesTransferTotal));

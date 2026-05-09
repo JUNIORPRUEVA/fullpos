@@ -220,8 +220,10 @@ class ProductSyncOutboxRepository {
         DbTables.productSyncOutbox,
         {
           'status': 'pending',
+          'retry_count': 0,
           'next_attempt_at_ms': now,
           'locked_at_ms': null,
+          'last_error': null,
           'updated_at_ms': now,
         },
         where: 'status = ?',

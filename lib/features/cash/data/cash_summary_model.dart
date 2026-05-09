@@ -38,9 +38,19 @@ class CashSummaryModel {
     required this.totalRefunds,
   });
 
-  /// Total de ventas (todos los métodos)
+  /// Total bruto vendido antes de devoluciones (todos los métodos).
   double get grossSalesTotal =>
       salesCashTotal + salesCardTotal + salesTransferTotal + salesCreditTotal;
+
+  /// Total vendido neto del turno/día (todos los métodos menos devoluciones).
+  ///
+  /// `totalSales` se mantiene como campo legacy, pero desde el repositorio se
+  /// llena con este total multicanal para que la UI y los tickets no muestren
+  /// solo ventas en efectivo.
+  double get totalSold => _normalizeCurrency(totalSales);
+
+  /// Efectivo neto generado por ventas que sí afecta la gaveta.
+  double get netCashSales => _normalizeCurrency(salesCashTotal - refundsCash);
 
   double get profit => CashAccountingService.calculateProfit(
     totalSales: totalSales,
@@ -49,22 +59,18 @@ class CashSummaryModel {
 
   /// Calcular diferencia con el conteo real
   double calculateDifference(double closingAmount) {
-    return CashAccountingService.buildClosingSummary(
-      openingAmount: openingAmount,
-      totalSales: totalSales,
-      totalExpenses: totalExpenses,
-      totalWithdrawals: totalWithdrawals,
-      countedCash: closingAmount,
-    ).difference;
+    return _normalizeCurrency(closingAmount - expectedCash);
   }
 
   CashClosingSummary toClosingSummary({required double countedCash}) {
-    return CashAccountingService.buildClosingSummary(
+    return CashClosingSummary(
       openingAmount: openingAmount,
       totalSales: totalSales,
       totalExpenses: totalExpenses,
       totalWithdrawals: totalWithdrawals,
+      expectedCash: expectedCash,
       countedCash: countedCash,
+      difference: calculateDifference(countedCash),
     );
   }
 
@@ -126,5 +132,9 @@ class CashSummaryModel {
       totalTickets: totalTickets ?? this.totalTickets,
       totalRefunds: totalRefunds ?? this.totalRefunds,
     );
+  }
+
+  static double _normalizeCurrency(double value) {
+    return double.parse(value.toStringAsFixed(2));
   }
 }

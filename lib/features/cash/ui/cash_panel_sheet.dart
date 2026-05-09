@@ -72,11 +72,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   }
 
   Future<void> _loadData() async {
-    await Future.wait([
-      _loadSession(),
-      _loadSummary(),
-      _loadMovements(),
-    ]);
+    await Future.wait([_loadSession(), _loadSummary(), _loadMovements()]);
   }
 
   Future<void> _loadSession() async {
@@ -177,72 +173,72 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             width: dialogWidth,
             height: availableHeight,
             child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
-            border: Border.all(
-              color: sidebarAccent.withOpacity(0.34),
-              width: 1.3,
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.alphaBlend(
-                  sidebarColor.withOpacity(0.22),
-                  scheme.surface,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
+                border: Border.all(
+                  color: sidebarAccent.withOpacity(0.34),
+                  width: 1.3,
                 ),
-                Color.alphaBlend(
-                  sidebarAccent.withOpacity(0.10),
-                  scheme.surface,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color.alphaBlend(
+                      sidebarColor.withOpacity(0.22),
+                      scheme.surface,
+                    ),
+                    Color.alphaBlend(
+                      sidebarAccent.withOpacity(0.10),
+                      scheme.surface,
+                    ),
+                    scheme.surface,
+                  ],
                 ),
-                scheme.surface,
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: sidebarColor.withOpacity(0.18),
-                blurRadius: 38,
-                offset: const Offset(0, 18),
-              ),
-              BoxShadow(
-                color: theme.shadowColor.withOpacity(0.12),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              _buildHeader(
-                theme: theme,
-                session: session,
-                durationText: durationText,
-                isCompact: isCompact,
-                isUltraCompact: isUltraCompact,
-                sidebarAccent: sidebarAccent,
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                    isUltraCompact ? 10 : 6,
-                    isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                    isUltraCompact ? 12 : (isCompact ? 14 : 16),
+                boxShadow: [
+                  BoxShadow(
+                    color: sidebarColor.withOpacity(0.18),
+                    blurRadius: 38,
+                    offset: const Offset(0, 18),
                   ),
-                  child: _buildDashboard(
+                  BoxShadow(
+                    color: theme.shadowColor.withOpacity(0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  _buildHeader(
                     theme: theme,
+                    session: session,
+                    durationText: durationText,
                     isCompact: isCompact,
                     isUltraCompact: isUltraCompact,
-                    sidebarColor: sidebarColor,
                     sidebarAccent: sidebarAccent,
-                    sidebarText: sidebarText,
                   ),
-                ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        isUltraCompact ? 12 : (isCompact ? 14 : 18),
+                        isUltraCompact ? 10 : 6,
+                        isUltraCompact ? 12 : (isCompact ? 14 : 18),
+                        isUltraCompact ? 12 : (isCompact ? 14 : 16),
+                      ),
+                      child: _buildDashboard(
+                        theme: theme,
+                        isCompact: isCompact,
+                        isUltraCompact: isUltraCompact,
+                        sidebarColor: sidebarColor,
+                        sidebarAccent: sidebarAccent,
+                        sidebarText: sidebarText,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
           ),
         ),
       ),
@@ -596,7 +592,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       ),
       (
         icon: Icons.remove_circle_rounded,
-        label: 'Retiros manuales',
+        label: 'Salidas de caja',
         amount: summary.cashOutManual,
         color: status.error,
       ),
@@ -643,7 +639,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'La apertura forma parte de la caja esperada, pero no del total de ventas del turno.',
+              'Total vendido incluye todos los métodos; efectivo esperado es solo lo que debe estar en gaveta.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurface.withOpacity(0.64),
                 fontWeight: FontWeight.w600,
@@ -815,7 +811,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           Row(
             children: [
               Text(
-                'EFECTIVO ESPERADO',
+                'TOTAL VENDIDO',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: scheme.onSurface.withOpacity(0.74),
                   letterSpacing: 0.5,
@@ -856,7 +852,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                _moneyFormat.format(summary.expectedCash),
+                _moneyFormat.format(summary.totalSold),
                 style:
                     (isUltraCompact
                             ? theme.textTheme.headlineMedium
@@ -868,10 +864,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                         ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 5,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 decoration: BoxDecoration(
                   color: Color.alphaBlend(
                     scheme.primary.withOpacity(0.12),
@@ -889,7 +882,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Listo para corte',
+                      'Efectivo esperado: ${_moneyFormat.format(summary.expectedCash)}',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: sidebarAccent,
                         fontWeight: FontWeight.w800,
@@ -916,20 +909,20 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               const SizedBox(width: 8),
               Expanded(
                 child: _buildMiniStatCard(
-                  label: 'Tickets',
-                  value: '${summary.totalTickets}',
+                  label: 'Efectivo esperado',
+                  value: _moneyFormat.format(summary.expectedCash),
                   color: scheme.secondary,
-                  icon: Icons.receipt_long_rounded,
+                  icon: Icons.account_balance_wallet_rounded,
                   isUltraCompact: isUltraCompact,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _buildMiniStatCard(
-                  label: 'Ventas turno',
-                  value: _moneyFormat.format(summary.totalSales),
+                  label: 'Tickets',
+                  value: '${summary.totalTickets}',
                   color: status.success,
-                  icon: Icons.trending_up_rounded,
+                  icon: Icons.receipt_long_rounded,
                   isUltraCompact: isUltraCompact,
                 ),
               ),
@@ -1400,5 +1393,4 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       ),
     );
   }
-
 }

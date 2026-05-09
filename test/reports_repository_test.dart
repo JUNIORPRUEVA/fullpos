@@ -118,7 +118,7 @@ void main() {
   });
 
   test(
-    'getKpis keeps sales real and discounts filtered expenses from net profit',
+    'getKpis keeps sales real and ignores cash expenses for report profit',
     () async {
       final db = await AppDb.database;
       final cashboxId = await _insertCashboxTodayWithAmount(db, 500.0);
@@ -175,10 +175,10 @@ void main() {
 
       expect(kpis.totalSales, 100.0);
       expect(kpis.totalProfit, 60.0);
-      expect(kpis.netProfit, 45.0);
+      expect(kpis.netProfit, 60.0);
       expect(kpis.salesCount, 1);
       expect(kpis.cashIncome, 80.0);
-      expect(kpis.cashExpense, 15.0);
+      expect(kpis.cashExpense, 0.0);
     },
   );
 
@@ -234,13 +234,13 @@ void main() {
 
       expect(kpis.totalSales, 318.6);
       expect(kpis.avgTicket, 318.6);
-      expect(kpis.totalProfit, 280.0);
+      expect(kpis.totalProfit, closeTo(128.6, 0.001));
       expect(kpis.salesCount, 1);
     },
   );
 
   test(
-    'profit series discounts daily expenses and keeps expense-only days negative',
+    'profit series ignores cash expenses and only follows sales cost profit',
     () async {
       final db = await AppDb.database;
       final cashboxId = await _insertCashboxTodayWithAmount(db, 0.0);
@@ -313,8 +313,8 @@ void main() {
       );
 
       final byDate = {for (final point in series) point.label: point.value};
-      expect(byDate['2026-03-20'], closeTo(60.0, 0.001));
-      expect(byDate['2026-03-21'], closeTo(-30.0, 0.001));
+      expect(byDate['2026-03-20'], closeTo(70.0, 0.001));
+      expect(byDate.containsKey('2026-03-21'), isFalse);
     },
   );
 

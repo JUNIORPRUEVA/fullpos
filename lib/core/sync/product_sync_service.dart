@@ -14,6 +14,7 @@ import '../db/tables.dart';
 import '../logging/app_logger.dart';
 import '../network/api_client.dart';
 import '../session/session_manager.dart';
+import '../services/cloud_company_identity_service.dart';
 import '../services/cloud_sync_service.dart';
 import 'product_sync_event_bus.dart';
 import 'product_sync_outbox_repository.dart';
@@ -374,7 +375,10 @@ class ProductSyncService {
 
     final companyRnc = settings.rnc?.trim() ?? '';
     final companyCloudId = settings.cloudCompanyId?.trim() ?? '';
-    if (companyRnc.isEmpty && companyCloudId.isEmpty) {
+    final companyIdentity = await CloudCompanyIdentityService.resolve(settings);
+    if (companyRnc.isEmpty &&
+        companyCloudId.isEmpty &&
+        companyIdentity.companyTenantKey.isEmpty) {
       throw StateError('Cloud company not configured');
     }
 
@@ -390,7 +394,9 @@ class ProductSyncService {
     final normalizedPayload = _normalizeOperationPayloadForRequest(payload);
 
     final requestBody = <String, dynamic>{
-      'companyId': localCompanyId,
+      // No enviar el companyId local de SQLite al backend cloud: en PostgreSQL
+      // ese campo representa otro ID y puede provocar COMPANY_LOCATOR_CONFLICT.
+      ...companyIdentity.toPayload(),
       if (companyRnc.isNotEmpty) 'companyRnc': companyRnc,
       if (companyCloudId.isNotEmpty) 'companyCloudId': companyCloudId,
       'operations': [normalizedPayload],
@@ -672,7 +678,10 @@ class ProductSyncService {
 
     final companyRnc = settings.rnc?.trim() ?? '';
     final companyCloudId = settings.cloudCompanyId?.trim() ?? '';
-    if (companyRnc.isEmpty && companyCloudId.isEmpty) {
+    final companyIdentity = await CloudCompanyIdentityService.resolve(settings);
+    if (companyRnc.isEmpty &&
+        companyCloudId.isEmpty &&
+        companyIdentity.companyTenantKey.isEmpty) {
       _disposeSocket();
       return;
     }
@@ -681,6 +690,13 @@ class ProductSyncService {
     if (current != null &&
         (current.connected || current.disconnected == false)) {
       return;
+    }
+
+    // Descartar el socket anterior antes de crear uno nuevo para evitar
+    // conexiones fantasma si el socket quedó en estado desconectado.
+    if (current != null) {
+      current.dispose();
+      _socket = null;
     }
 
     final baseUrl = CloudSyncService.instance.debugResolveCloudBaseUrl(
@@ -694,6 +710,7 @@ class ProductSyncService {
         .setReconnectionDelay(1500)
         .setAuth({
           'clientType': 'pos',
+          ...companyIdentity.toPayload(),
           'companyRnc': companyRnc,
           'companyCloudId': companyCloudId,
           'cloudKey': settings.cloudApiKey,

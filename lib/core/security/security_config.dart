@@ -10,9 +10,6 @@ import 'app_actions.dart';
 class SecurityConfig {
   final Map<String, bool> overrideByAction;
   final bool offlinePinEnabled;
-  final bool offlineBarcodeEnabled;
-  final bool remoteEnabled;
-  final bool virtualTokenEnabled;
   final bool scannerEnabled;
   final String scannerSuffix;
   final String? scannerPrefix;
@@ -20,10 +17,7 @@ class SecurityConfig {
 
   SecurityConfig({
     required this.overrideByAction,
-    this.offlinePinEnabled = false,
-    this.offlineBarcodeEnabled = false,
-    this.remoteEnabled = false,
-    this.virtualTokenEnabled = false,
+    this.offlinePinEnabled = true,
     this.scannerEnabled = true,
     this.scannerSuffix = '\n',
     this.scannerPrefix,
@@ -37,10 +31,7 @@ class SecurityConfig {
     }
     return SecurityConfig(
       overrideByAction: overrideDefaults,
-      offlinePinEnabled: false,
-      offlineBarcodeEnabled: false,
-      remoteEnabled: false,
-      virtualTokenEnabled: false,
+      offlinePinEnabled: true,
       scannerEnabled: true,
       scannerSuffix: '\n',
       scannerPrefix: '',
@@ -51,9 +42,6 @@ class SecurityConfig {
   SecurityConfig copyWith({
     Map<String, bool>? overrideByAction,
     bool? offlinePinEnabled,
-    bool? offlineBarcodeEnabled,
-    bool? remoteEnabled,
-    bool? virtualTokenEnabled,
     bool? scannerEnabled,
     String? scannerSuffix,
     String? scannerPrefix,
@@ -62,10 +50,6 @@ class SecurityConfig {
     return SecurityConfig(
       overrideByAction: overrideByAction ?? this.overrideByAction,
       offlinePinEnabled: offlinePinEnabled ?? this.offlinePinEnabled,
-      offlineBarcodeEnabled:
-          offlineBarcodeEnabled ?? this.offlineBarcodeEnabled,
-      remoteEnabled: remoteEnabled ?? this.remoteEnabled,
-      virtualTokenEnabled: virtualTokenEnabled ?? this.virtualTokenEnabled,
       scannerEnabled: scannerEnabled ?? this.scannerEnabled,
       scannerSuffix: scannerSuffix ?? this.scannerSuffix,
       scannerPrefix: scannerPrefix ?? this.scannerPrefix,
@@ -76,9 +60,6 @@ class SecurityConfig {
   Map<String, dynamic> toJson() => {
     'override_by_action': overrideByAction,
     'offline_pin_enabled': offlinePinEnabled,
-    'offline_barcode_enabled': offlineBarcodeEnabled,
-    'remote_enabled': remoteEnabled,
-    'virtual_token_enabled': virtualTokenEnabled,
     'scanner_enabled': scannerEnabled,
     'scanner_suffix': scannerSuffix,
     'scanner_prefix': scannerPrefix,
@@ -95,10 +76,7 @@ class SecurityConfig {
     }
     return SecurityConfig(
       overrideByAction: overrides,
-      offlinePinEnabled: json['offline_pin_enabled'] as bool? ?? false,
-      offlineBarcodeEnabled: json['offline_barcode_enabled'] as bool? ?? false,
-      remoteEnabled: json['remote_enabled'] as bool? ?? false,
-      virtualTokenEnabled: json['virtual_token_enabled'] as bool? ?? false,
+      offlinePinEnabled: json['offline_pin_enabled'] as bool? ?? true,
       scannerEnabled: json['scanner_enabled'] as bool? ?? true,
       scannerSuffix: json['scanner_suffix'] as String? ?? '\n',
       scannerPrefix: json['scanner_prefix'] as String?,

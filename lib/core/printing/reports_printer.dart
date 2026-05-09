@@ -382,19 +382,16 @@ class ReportsPrinter {
                     secondary: '${kpis.salesCount} transacciones',
                   ),
                   summaryCard(
-                    label: 'Ganancia neta',
+                    label: 'Utilidad',
                     value: money(kpis.netProfit),
                     tone: brandTeal,
-                    secondary: 'Despues de costos y gastos',
+                    secondary: 'Despues de costos',
                   ),
                   summaryCard(
-                    label: 'Balance de caja',
-                    value: money(kpis.cashIncome - kpis.cashExpense),
-                    tone: (kpis.cashIncome - kpis.cashExpense) >= 0
-                        ? brandTeal
-                        : brandRose,
-                    secondary:
-                        'Ingresos ${money(kpis.cashIncome)} | Egresos ${money(kpis.cashExpense)}',
+                    label: 'Costo vendido',
+                    value: money(kpis.totalCost),
+                    tone: brandRose,
+                    secondary: 'Costo de productos vendidos',
                   ),
                 ],
               ),
@@ -418,8 +415,8 @@ class ReportsPrinter {
               );
             } else {
               content.add(kvRow('Total Ventas:', money(kpis.totalSales)));
-              content.add(kvRow('Gastos del rango:', money(kpis.cashExpense)));
-              content.add(kvRow('Ganancia Neta:', money(kpis.netProfit)));
+              content.add(kvRow('Costo vendido:', money(kpis.totalCost)));
+              content.add(kvRow('Utilidad:', money(kpis.netProfit)));
               content.add(kvRow('Cantidad Ventas:', '${kpis.salesCount}'));
               content.add(kvRow('Cotizaciones:', '${kpis.quotesCount}'));
               content.add(
@@ -494,9 +491,8 @@ class ReportsPrinter {
           if (sections['profitSeries'] == true) {
             content.add(
               sectionTitle(
-                'Ganancia Neta por Período',
-                subtitle:
-                    'Utilidad del periodo descontando devoluciones y egresos.',
+                'Utilidad por Período',
+                subtitle: 'Utilidad del periodo despues de costos.',
               ),
             );
             final rows = profitSeries
@@ -512,7 +508,7 @@ class ReportsPrinter {
               );
             } else {
               content.add(
-                simpleTable(headers: ['Período', 'Ganancia neta'], rows: rows),
+                simpleTable(headers: ['Período', 'Utilidad'], rows: rows),
               );
             }
           }

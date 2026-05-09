@@ -5,6 +5,7 @@ import '../../settings/data/users_repository.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/sync/product_sync_service.dart';
+import '../../../core/security/authz/authz_service.dart';
 
 /// Repositorio de autenticación
 class AuthRepository {
@@ -35,11 +36,21 @@ class AuthRepository {
   }
 
   static Future<void> _startSession(UserModel user) async {
+    // Normalize role to lowercase so 'Admin', 'ADMIN', 'admin' all behave identically.
+    // This prevents stale role cache from a previous session causing incorrect
+    // permission decisions (Bug: admin treated as cashier after role-switch).
+    final normalizedRole = user.role.trim().toLowerCase();
+
+    // Clear any temporary authorization overrides from the previous session so
+    // that a cashier logging in after an admin session does NOT inherit admin-level
+    // temporary overrides, and vice-versa.
+    AuthzService.clearOverrideCache();
+
     await SessionManager.login(
       userId: user.id!,
       username: user.username,
       displayName: user.displayLabel,
-      role: user.role,
+      role: normalizedRole,
       permissions: user.permissions,
       companyId: user.companyId,
     );

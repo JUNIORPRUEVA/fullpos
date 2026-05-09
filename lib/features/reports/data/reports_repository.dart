@@ -7,7 +7,7 @@ class KpisData {
   final double totalSales;
   // Ganancia bruta del rango: ventas netas - costo neto.
   final double totalProfit;
-  // Ganancia neta del rango: ganancia bruta - salidas de caja que afectan utilidad.
+  // Utilidad del rango: ventas netas - costo neto. No descuenta gastos de caja.
   final double netProfit;
   final double totalCost;
   final int salesCount;
@@ -172,41 +172,6 @@ class SaleRecord {
 /// Repositorio para generar reportes y estadísticas
 class ReportsRepository {
   ReportsRepository._();
-
-  static double _allocateExpenseShare({
-    required double totalExpenses,
-    required double revenue,
-    required double revenueBase,
-  }) {
-    if (totalExpenses.abs() <= 0.009 || revenue <= 0 || revenueBase <= 0) {
-      return 0.0;
-    }
-    return totalExpenses * (revenue / revenueBase);
-  }
-
-  static Future<double> _getCashExpenseTotal({
-    required dynamic db,
-    required int startMs,
-    required int endMs,
-  }) async {
-    try {
-      final cashExpenseResult = await db.rawQuery(
-        '''
-          SELECT COALESCE(SUM(amount), 0) as total
-          FROM ${DbTables.cashMovements}
-          WHERE type = 'OUT'
-            AND COALESCE(movement_type, 'expense') = 'expense'
-            AND COALESCE(affects_profit, 1) = 1
-            AND created_at_ms >= ?
-            AND created_at_ms <= ?
-        ''',
-        [startMs, endMs],
-      );
-      return (cashExpenseResult.first['total'] as num?)?.toDouble() ?? 0.0;
-    } catch (_) {
-      return 0.0;
-    }
-  }
 
   static String _normalizePaymentMethodLabel(String? method) {
     return switch ((method ?? '').trim().toLowerCase()) {
@@ -403,7 +368,6 @@ class ReportsRepository {
 
     final netTotalSales = report.totalSales;
     final netTotalCost = report.totalCost;
-    double cashExpense = 0;
     double cashIncome = 0;
     try {
       final cashIncomeQuery =
@@ -419,17 +383,12 @@ class ReportsRepository {
         endMs,
       ]);
       cashIncome = (cashIncomeResult.first['total'] as num?)?.toDouble() ?? 0.0;
-      cashExpense = await _getCashExpenseTotal(
-        db: db,
-        startMs: startMs,
-        endMs: endMs,
-      );
     } catch (_) {
       // La tabla puede no existir
     }
 
     final grossProfit = report.grossProfit;
-    final netProfit = report.profit;
+    final netProfit = grossProfit;
 
     double finalTotalSales = netTotalSales;
     double finalTotalProfit = grossProfit;
@@ -482,7 +441,7 @@ class ReportsRepository {
       quotesConverted: quotesConverted,
       avgTicket: finalAvgTicket,
       cashIncome: cashIncome,
-      cashExpense: cashExpense,
+      cashExpense: 0,
     );
   }
 
@@ -630,43 +589,25 @@ class ReportsRepository {
       [startMs, endMs, startMs, endMs],
     );
 
-    final cashExpense = await _getCashExpenseTotal(
-      db: db,
-      startMs: startMs,
-      endMs: endMs,
-    );
-    final revenueBase = rows.fold<double>(0.0, (sum, row) {
-      final sales = (row['sales_total'] as num?)?.toDouble() ?? 0.0;
-      final refunds = (row['refund_total'] as num?)?.toDouble() ?? 0.0;
-      final netSales = sales - refunds;
-      return sum + (netSales > 0 ? netSales : 0.0);
-    });
-
     return rows.map((row) {
       final sales = (row['sales_total'] as num?)?.toDouble() ?? 0.0;
       final refunds = (row['refund_total'] as num?)?.toDouble() ?? 0.0;
       final netSales = sales - refunds;
       final profitBeforeExpenses =
           (row['profit_before_expenses'] as num?)?.toDouble() ?? 0.0;
-      final expenseShare = _allocateExpenseShare(
-        totalExpenses: cashExpense,
-        revenue: netSales,
-        revenueBase: revenueBase,
-      );
-      final profit = profitBeforeExpenses - expenseShare;
       return CategoryPerformanceData(
         category: row['category'] as String? ?? 'Sin categoria',
         sales: sales,
         refunds: refunds,
         netSales: netSales,
-        profit: profit,
+        profit: profitBeforeExpenses,
         itemsSold: (row['items_sold'] as num?)?.toDouble() ?? 0.0,
         itemsRefunded: (row['items_refunded'] as num?)?.toDouble() ?? 0.0,
       );
     }).toList();
   }
 
-  /// Serie temporal de ganancia neta por día
+  /// Serie temporal de utilidad por día
   static Future<List<SeriesDataPoint>> getProfitSeries({
     required int startMs,
     required int endMs,
@@ -735,33 +676,11 @@ class ReportsRepository {
             AND s.created_at_ms >= ?
             AND s.created_at_ms <= ?
           GROUP BY date_label
-          UNION ALL
-          SELECT
-            DATE(datetime(created_at_ms/1000, 'unixepoch', 'localtime')) as date_label,
-            -COALESCE(SUM(amount), 0) as daily_profit
-          FROM ${DbTables.cashMovements}
-          WHERE type = 'OUT'
-            AND COALESCE(movement_type, 'expense') = 'expense'
-            AND COALESCE(affects_profit, 1) = 1
-            AND created_at_ms >= ?
-            AND created_at_ms <= ?
-          GROUP BY date_label
         ) t
         GROUP BY date_label
         ORDER BY date_label ASC
       ''',
-      [
-        startMs,
-        endMs,
-        startMs,
-        endMs,
-        startMs,
-        endMs,
-        startMs,
-        endMs,
-        startMs,
-        endMs,
-      ],
+      [startMs, endMs, startMs, endMs, startMs, endMs, startMs, endMs],
     );
 
     var series = results.map((row) {
@@ -922,31 +841,16 @@ class ReportsRepository {
       limit,
     ]);
 
-    final cashExpense = await _getCashExpenseTotal(
-      db: db,
-      startMs: startMs,
-      endMs: endMs,
-    );
-    final revenueBase = results.fold<double>(0.0, (sum, row) {
-      final revenue = (row['total_sales'] as num?)?.toDouble() ?? 0.0;
-      return sum + (revenue > 0 ? revenue : 0.0);
-    });
-
     return results.map((row) {
       final totalSales = (row['total_sales'] as num?)?.toDouble() ?? 0.0;
       final profitBeforeExpenses =
           (row['profit_before_expenses'] as num?)?.toDouble() ?? 0.0;
-      final expenseShare = _allocateExpenseShare(
-        totalExpenses: cashExpense,
-        revenue: totalSales,
-        revenueBase: revenueBase,
-      );
       return TopProduct(
         productId: row['product_id'] as int? ?? 0,
         productName: row['product_name'] as String? ?? '',
         totalSales: totalSales,
         totalQty: (row['total_qty'] as num?)?.toDouble() ?? 0.0,
-        totalProfit: profitBeforeExpenses - expenseShare,
+        totalProfit: profitBeforeExpenses,
       );
     }).toList();
   }

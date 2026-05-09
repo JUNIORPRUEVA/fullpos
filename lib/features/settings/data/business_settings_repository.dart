@@ -54,6 +54,8 @@ class BusinessSettingsRepository {
     'cloud_endpoint': 'TEXT',
     'cloud_bucket': 'TEXT',
     'cloud_api_key': 'TEXT',
+    'ai_api_key': 'TEXT',
+    'ai_model': "TEXT DEFAULT 'gpt-4.1-mini'",
     'cloud_allowed_roles': "TEXT DEFAULT '[\"admin\"]'",
     'cloud_owner_app_android_url': 'TEXT',
     'cloud_owner_app_ios_url': 'TEXT',

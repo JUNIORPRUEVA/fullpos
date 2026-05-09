@@ -32,12 +32,12 @@ class AdvancedKpiCards extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _buildMainKpiCard(
-                title: 'Ganancia Neta',
+                title: 'Utilidad',
                 value: kpis.netProfit,
                 icon: Icons.trending_up,
                 color: scheme.tertiary,
                 subtitle:
-                    '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto',
+                    '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen',
                 currency: currency,
               ),
             ] else
@@ -56,12 +56,12 @@ class AdvancedKpiCards extends StatelessWidget {
                   const SizedBox(width: 14),
                   Expanded(
                     child: _buildMainKpiCard(
-                      title: 'Ganancia Neta',
+                      title: 'Utilidad',
                       value: kpis.netProfit,
                       icon: Icons.trending_up,
                       color: scheme.tertiary,
                       subtitle:
-                          '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen neto',
+                          '${_calculateMargin(kpis.netProfit, kpis.totalSales).toStringAsFixed(1)}% margen',
                       currency: currency,
                     ),
                   ),
@@ -111,21 +111,10 @@ class AdvancedKpiCards extends StatelessWidget {
                       : (constraints.maxWidth - 24) / 3,
                 ),
                 _buildSecondaryKpiCard(
-                  title: 'Egresos Caja',
-                  value: currency.format(kpis.cashExpense),
-                  icon: Icons.arrow_upward,
-                  color: scheme.error,
-                  width: compact
-                      ? constraints.maxWidth
-                      : (constraints.maxWidth - 24) / 3,
-                ),
-                _buildSecondaryKpiCard(
-                  title: 'Balance Caja',
-                  value: currency.format(kpis.cashIncome - kpis.cashExpense),
-                  icon: Icons.account_balance_outlined,
-                  color: (kpis.cashIncome - kpis.cashExpense) >= 0
-                      ? scheme.tertiary
-                      : scheme.error,
+                  title: 'Costo vendido',
+                  value: currency.format(kpis.totalCost),
+                  icon: Icons.inventory_2_outlined,
+                  color: scheme.secondary,
                   width: compact
                       ? constraints.maxWidth
                       : (constraints.maxWidth - 24) / 3,

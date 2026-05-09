@@ -943,12 +943,18 @@ class CashRepository {
     ''', doubleSessionArgs);
     final totalRefunds = (refundsCountResult.first['count'] as int?) ?? 0;
 
-    final totalSales = salesCashTotal - refundsCash;
-    final expectedCash = CashAccountingService.calculateExpectedCash(
+    final totalSales =
+        salesCashTotal +
+        salesCardTotal +
+        salesTransferTotal +
+        salesCreditTotal -
+        refundsCash;
+    final expectedCash = CashAccountingService.calculateExpectedDrawerCash(
       openingAmount: openingAmount,
-      totalSales: totalSales,
-      totalExpenses: totalExpenses,
-      totalWithdrawals: totalWithdrawals,
+      cashSales: salesCashTotal,
+      cashRefunds: refundsCash,
+      cashInManual: cashInManual,
+      cashOutManual: cashOutManual,
     );
 
     return CashSummaryModel(
@@ -1135,15 +1141,20 @@ class CashRepository {
     );
     final totalRefunds = (refundsCountResult.first['count'] as int?) ?? 0;
 
-    // Calcular efectivo esperado
-    // expected = apertura + ventas efectivo + entradas - salidas - devoluciones efectivo
+    // Total vendido = todos los métodos. Efectivo esperado = solo gaveta física.
     // Nota: las ventas en efectivo se calculan con `total` para no incluir devuelta/cambio.
-    final totalSales = salesCashTotal - refundsCash;
-    final expectedCash = CashAccountingService.calculateExpectedCash(
+    final totalSales =
+        salesCashTotal +
+        salesCardTotal +
+        salesTransferTotal +
+        salesCreditTotal -
+        refundsCash;
+    final expectedCash = CashAccountingService.calculateExpectedDrawerCash(
       openingAmount: openingAmount,
-      totalSales: totalSales,
-      totalExpenses: totalExpenses,
-      totalWithdrawals: totalWithdrawals,
+      cashSales: salesCashTotal,
+      cashRefunds: refundsCash,
+      cashInManual: cashInManual,
+      cashOutManual: cashOutManual,
     );
 
     return CashSummaryModel(

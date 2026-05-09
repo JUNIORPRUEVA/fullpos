@@ -56,6 +56,18 @@ void main() {
       });
     });
 
+    test('calculates expected drawer cash without card or transfer sales', () {
+      final expected = CashAccountingService.calculateExpectedDrawerCash(
+        openingAmount: 0,
+        cashSales: 420,
+        cashRefunds: 0,
+        cashInManual: 1000,
+        cashOutManual: 1000,
+      );
+
+      expect(expected, 420);
+    });
+
     test('profit excludes withdrawals', () {
       expect(
         CashAccountingService.calculateProfit(
@@ -101,8 +113,10 @@ void main() {
 
       final closing = summary.toClosingSummary(countedCash: 615);
 
-      expect(closing.expectedCash, 850);
-      expect(closing.difference, -235);
+      expect(summary.totalSold, 1000);
+      expect(summary.netCashSales, 600);
+      expect(closing.expectedCash, 620);
+      expect(closing.difference, -5);
     });
   });
 }

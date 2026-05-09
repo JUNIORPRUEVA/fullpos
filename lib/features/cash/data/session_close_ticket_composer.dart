@@ -151,17 +151,11 @@ class SessionCloseTicketComposer {
     if (summary.totalRefunds > 0) {
       addValueRow('DEVOLUCIONES', summary.totalRefunds.toString());
     }
-    addValueRow('TOTAL VENDIDO', money(summary.totalSales));
+    addValueRow('TOTAL VENDIDO', money(summary.totalSold));
     addValueRow('EFECTIVO', money(summary.salesCashTotal));
-    if (summary.salesCardTotal > 0) {
-      addValueRow('TARJETA', money(summary.salesCardTotal));
-    }
-    if (summary.salesTransferTotal > 0) {
-      addValueRow('TRANSFERENCIA', money(summary.salesTransferTotal));
-    }
-    if (summary.salesCreditTotal > 0) {
-      addValueRow('CREDITO', money(summary.salesCreditTotal));
-    }
+    addValueRow('TARJETA', money(summary.salesCardTotal));
+    addValueRow('TRANSFERENCIA', money(summary.salesTransferTotal));
+    addValueRow('CREDITO', money(summary.salesCreditTotal));
     if (summary.refundsCash > 0) {
       addValueRow('MONTO DEVUELTO', money(summary.refundsCash));
     }
@@ -199,11 +193,15 @@ class SessionCloseTicketComposer {
       addValueRow('BASE CAJA DIARIA', money(cashboxInitialAmount));
     }
     addValueRow('BASE DE SESION', money(summary.openingAmount));
+    addValueRow('EFECTIVO VENTAS', money(summary.salesCashTotal));
+    if (summary.refundsCash > 0) {
+      addValueRow('DEVOLUCIONES EFECTIVO', money(summary.refundsCash));
+    }
     if (manualOnlyAmount > 0) {
       addValueRow('ENTRADAS MANUALES', money(manualOnlyAmount));
     }
     if (summary.cashOutManual > 0) {
-      addValueRow('RETIROS MANUALES', money(summary.cashOutManual));
+      addValueRow('SALIDAS DE CAJA', money(summary.cashOutManual));
     }
     if (summary.creditAbonos > 0) {
       addValueRow('ABONOS CREDITO', money(summary.creditAbonos));
@@ -283,7 +281,7 @@ class SessionCloseTicketComposer {
     lines.add(strongRule());
     lines.add('<H2C>${fit('TOTALES DEL CIERRE')}');
     lines.add(strongRule());
-    addLeftAmountLine('TOTAL VENDIDO', summary.totalSales);
+    addLeftAmountLine('TOTAL VENDIDO', summary.totalSold);
     lines.add(fit('TOTAL TICKETS: ${summary.totalTickets}'));
     if (summary.totalRefunds > 0) {
       addLeftAmountLine('DEVOLUCIONES', summary.refundsCash, prefix: '');
@@ -292,7 +290,7 @@ class SessionCloseTicketComposer {
       addLeftAmountLine('ENTRADAS MANUALES', manualOnlyAmount, prefix: '');
     }
     if (summary.cashOutManual > 0) {
-      addLeftAmountLine('RETIROS MANUALES', summary.cashOutManual, prefix: '');
+      addLeftAmountLine('SALIDAS DE CAJA', summary.cashOutManual, prefix: '');
     }
     lines.add(sectionRule());
     lines.add(fit('EFECTIVO ESPERADO: ${money(summary.expectedCash)}'));

@@ -54,6 +54,8 @@ class BusinessSettings {
   final String? cloudEndpoint;
   final String? cloudBucket;
   final String? cloudApiKey;
+  final String? aiApiKey;
+  final String? aiModel;
   final List<String> cloudAllowedRoles; // admin/supervisor/cashier
   final String? cloudOwnerAppAndroidUrl;
   final String? cloudOwnerAppIosUrl;
@@ -103,6 +105,8 @@ class BusinessSettings {
     this.cloudEndpoint,
     this.cloudBucket,
     this.cloudApiKey,
+    this.aiApiKey,
+    this.aiModel,
     this.cloudAllowedRoles = const ['admin'],
     this.cloudOwnerAppAndroidUrl,
     this.cloudOwnerAppIosUrl,
@@ -179,6 +183,8 @@ class BusinessSettings {
       cloudEndpoint: map['cloud_endpoint'] as String?,
       cloudBucket: map['cloud_bucket'] as String?,
       cloudApiKey: map['cloud_api_key'] as String?,
+      aiApiKey: map['ai_api_key'] as String?,
+      aiModel: map['ai_model'] as String?,
       cloudAllowedRoles: (() {
         final raw = map['cloud_allowed_roles'];
         if (raw is String && raw.isNotEmpty) {
@@ -241,6 +247,8 @@ class BusinessSettings {
       'cloud_endpoint': cloudEndpoint,
       'cloud_bucket': cloudBucket,
       'cloud_api_key': cloudApiKey,
+      'ai_api_key': aiApiKey,
+      'ai_model': aiModel,
       'cloud_allowed_roles': jsonEncode(cloudAllowedRoles),
       'cloud_owner_app_android_url': cloudOwnerAppAndroidUrl,
       'cloud_owner_app_ios_url': cloudOwnerAppIosUrl,
@@ -298,6 +306,8 @@ class BusinessSettings {
     String? cloudEndpoint,
     String? cloudBucket,
     String? cloudApiKey,
+    String? aiApiKey,
+    String? aiModel,
     List<String>? cloudAllowedRoles,
     String? cloudOwnerAppAndroidUrl,
     String? cloudOwnerAppIosUrl,
@@ -352,6 +362,8 @@ class BusinessSettings {
       cloudEndpoint: cloudEndpoint ?? this.cloudEndpoint,
       cloudBucket: cloudBucket ?? this.cloudBucket,
       cloudApiKey: cloudApiKey ?? this.cloudApiKey,
+      aiApiKey: aiApiKey ?? this.aiApiKey,
+      aiModel: aiModel ?? this.aiModel,
       cloudAllowedRoles: cloudAllowedRoles ?? this.cloudAllowedRoles,
       cloudOwnerAppAndroidUrl:
           cloudOwnerAppAndroidUrl ?? this.cloudOwnerAppAndroidUrl,
@@ -409,6 +421,8 @@ class BusinessSettings {
         other.cloudEndpoint == cloudEndpoint &&
         other.cloudBucket == cloudBucket &&
         other.cloudApiKey == cloudApiKey &&
+        other.aiApiKey == aiApiKey &&
+        other.aiModel == aiModel &&
         listEquals(other.cloudAllowedRoles, cloudAllowedRoles) &&
         other.cloudOwnerAppAndroidUrl == cloudOwnerAppAndroidUrl &&
         other.cloudOwnerAppIosUrl == cloudOwnerAppIosUrl &&
@@ -456,6 +470,8 @@ class BusinessSettings {
       cloudEndpoint,
       cloudBucket,
       cloudApiKey,
+      aiApiKey,
+      aiModel,
       Object.hashAll(cloudAllowedRoles),
       cloudOwnerAppAndroidUrl,
       cloudOwnerAppIosUrl,

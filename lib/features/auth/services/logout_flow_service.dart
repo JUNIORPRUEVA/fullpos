@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/security/authz/authz_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../cash/data/operation_flow_service.dart';
 
@@ -44,6 +45,11 @@ class LogoutFlowService {
 
       final container = ProviderScope.containerOf(routerContext, listen: false);
       container.read(appBootstrapProvider).forceLoggedOut();
+
+      // Clear all temporary authorization overrides before destroying the session.
+      // This ensures a cashier logging in after an admin (or vice-versa) does NOT
+      // inherit any in-memory temporary overrides from the previous session.
+      AuthzService.clearOverrideCache();
 
       await SessionManager.logout();
 

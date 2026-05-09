@@ -54,7 +54,7 @@ void main() {
       ),
       summary: CashSummaryModel(
         openingAmount: 1500,
-        totalSales: 5700,
+        totalSales: 7125,
         totalExpenses: 125,
         totalWithdrawals: 200,
         cashInManual: 500,
@@ -151,8 +151,14 @@ void main() {
       isTrue,
     );
     expect(lines.any((line) => line.contains('FIRMA CAJERO')), isFalse);
+    expect(lines.any((line) => line.contains('7,125.00')), isTrue);
+    expect(lines.any((line) => line.contains('1,800.00')), isTrue);
+    expect(lines.any((line) => line.contains('950.00')), isTrue);
+    expect(lines.any((line) => line.contains('300.00')), isTrue);
     expect(lines.any((line) => line.contains('6,875.00')), isTrue);
     expect(lines.any((line) => line.contains('6,900.00')), isTrue);
+    expect(lines.any((line) => line.contains('SALIDAS DE CAJA')), isTrue);
+    expect(lines.any((line) => line.contains('RETIROS MANUALES')), isFalse);
     expect(lines.any((line) => line.contains('VENTAS DE LA SESION')), isFalse);
     expect(lines.any((line) => line.contains('CIERRE POR CATEGORIA')), isFalse);
   });

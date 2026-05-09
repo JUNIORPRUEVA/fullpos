@@ -169,7 +169,13 @@ class SyncOutboxRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       await db.update(
         DbTables.syncOutbox,
-        {'status': 'pending', 'next_attempt_at_ms': now, 'updated_at_ms': now},
+        {
+          'status': 'pending',
+          'attempt_count': 0,
+          'next_attempt_at_ms': now,
+          'last_error': null,
+          'updated_at_ms': now,
+        },
         where: 'status = ?',
         whereArgs: ['failed'],
       );

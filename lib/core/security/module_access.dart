@@ -5,7 +5,7 @@ import '../../features/settings/data/user_model.dart';
 /// Regla del negocio:
 /// - El sidebar puede mostrar TODOS los modulos.
 /// - Entrar a un modulo depende de permisos de modulo (UserPermissions).
-/// - Las acciones internas usan AppActions/override (PIN/token) por separado.
+/// - Las acciones internas usan AppActions/override por código de administración.
 class ModuleAccess {
   ModuleAccess._();
 

@@ -120,10 +120,12 @@ class SessionManager {
     return generated;
   }
 
-  /// Verifica si el usuario actual es admin
+  /// Verifica si el usuario actual es admin.
+  /// Normaliza el rol a minúsculas para evitar falsos negativos por capitalización
+  /// (e.g. 'Admin', 'ADMIN' deben tratarse igual que 'admin').
   static Future<bool> isAdmin() async {
     final userRole = await role();
-    return userRole == 'admin';
+    return (userRole?.trim().toLowerCase()) == 'admin';
   }
 
   /// Inicia sesión con un usuario

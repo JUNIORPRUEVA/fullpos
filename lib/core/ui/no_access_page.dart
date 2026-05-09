@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/settings/data/user_model.dart';
+import '../security/authz/authz_service.dart';
+import '../security/authz/route_permissions.dart';
 import '../security/module_access.dart';
 
 class NoAccessPage extends StatelessWidget {
@@ -30,7 +32,9 @@ class NoAccessPage extends StatelessWidget {
         child: Card(
           elevation: 0,
           color: scheme.surfaceContainerHighest.withOpacity(0.55),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
@@ -44,7 +48,11 @@ class NoAccessPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: scheme.error.withOpacity(0.25)),
                   ),
-                  child: Icon(Icons.lock_outline, color: scheme.error, size: 26),
+                  child: Icon(
+                    Icons.lock_outline,
+                    color: scheme.error,
+                    size: 26,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -90,11 +98,36 @@ class NoAccessPage extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => _authorizeAndEnter(
+                          context: context,
+                          requestedPath: requestedPath,
+                          label: label,
+                        ),
+                        icon: const Icon(
+                          Icons.verified_user_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Autorizar'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
                           final router = GoRouter.of(context);
                           final canPopRouter =
-                              router.routerDelegate.currentConfiguration.matches.length >
+                              router
+                                  .routerDelegate
+                                  .currentConfiguration
+                                  .matches
+                                  .length >
                               1;
                           if (canPopRouter) {
                             context.pop();
@@ -123,6 +156,46 @@ class NoAccessPage extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _authorizeAndEnter({
+  required BuildContext context,
+  required String requestedPath,
+  required String label,
+}) async {
+  if (requestedPath.trim().isEmpty) return;
+
+  final permission = RoutePermissions.forPath(requestedPath);
+  if (permission == null) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Esta pantalla no tiene autorización administrativa configurada.',
+        ),
+      ),
+    );
+    return;
+  }
+
+  final user = await AuthzService.currentUser();
+  if (!context.mounted) return;
+  if (user == null) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('No hay usuario autenticado.')),
+    );
+    return;
+  }
+
+  final ok = await AuthzService.require(
+    context,
+    user,
+    permission,
+    reason: 'Autorizar acceso a $label',
+    resourceType: 'route',
+    resourceId: requestedPath,
+  );
+  if (!context.mounted) return;
+  if (ok) context.go(requestedPath);
 }
 
 // Duplicado intencional: el router usa la misma heuristica para elegir fallback.

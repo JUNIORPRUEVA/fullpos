@@ -24,6 +24,7 @@ import '../config/backend_config.dart';
 import '../config/app_config.dart';
 import '../logging/app_logger.dart';
 import '../session/session_manager.dart';
+import 'cloud_company_identity_service.dart';
 import '../storage/prefs_safe.dart';
 import '../theme/app_themes.dart';
 
@@ -64,11 +65,26 @@ class CloudSyncService {
   final Set<CloudSyncTarget> _criticalSyncTargetsInFlight = <CloudSyncTarget>{};
   final Map<String, ({bool ok, int checkedAtMs})> _imageHealthCache = {};
 
+  /// Mensaje del último error de sincronización por target.
+  /// Se usa para almacenar el detalle real en el outbox en lugar del genérico 'sync_failed'.
+  String? _lastSyncFailureMessage;
+
+  void _recordSyncFailure(String message) {
+    _lastSyncFailureMessage = message;
+  }
+
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
   ///
   /// Útil para diagnóstico en UI.
   String debugResolveCloudBaseUrl(BusinessSettings settings) {
     return _resolveBaseUrl(settings);
+  }
+
+  Future<Map<String, dynamic>> _companyIdentityPayload(
+    BusinessSettings settings,
+  ) async {
+    final identity = await CloudCompanyIdentityService.resolve(settings);
+    return identity.toPayload();
   }
 
   static const int _historyDaysToSync = 90;
@@ -381,6 +397,7 @@ class CloudSyncService {
           if (target == null) continue;
 
           await _outbox.markSyncing(target.value);
+          _lastSyncFailureMessage = null;
           final startedAt = DateTime.now().millisecondsSinceEpoch;
           await AppLogger.instance.logInfo(
             'Sync started target=${target.value}',
@@ -403,12 +420,13 @@ class CloudSyncService {
           final retryDelay = _retryDelayForAttempt(attempts);
           await _outbox.markFailure(
             target.value,
-            error: 'sync_failed',
+            error: _lastSyncFailureMessage ?? 'sync_failed',
             attemptCount: attempts,
             retryDelay: retryDelay,
           );
           await AppLogger.instance.logWarn(
             'Sync failed target=${target.value} attempts=$attempts retryInMs=${retryDelay.inMilliseconds}',
+            // error detail already logged inside each syncX function
             module: 'cloud_sync',
           );
         }
@@ -626,6 +644,7 @@ class CloudSyncService {
       );
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -661,6 +680,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud users sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -720,6 +740,7 @@ class CloudSyncService {
       }
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -841,12 +862,14 @@ class CloudSyncService {
           'Cloud company config sync failed status=${response.statusCode} baseUrl=$baseUrl body=$body',
           module: 'cloud_sync',
         );
+        _recordSyncFailure('HTTP ${response.statusCode}: $body');
         return false;
       }
 
       await AppLogger.instance.logInfo('Cloud sync ok', module: 'cloud_sync');
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -868,6 +891,9 @@ class CloudSyncService {
       final baseUrl = _resolveBaseUrl(settings);
       final headers = <String, String>{'Content-Type': 'application/json'};
       final cloudKey = settings.cloudApiKey?.trim();
+      final companyIdentity = await CloudCompanyIdentityService.resolve(
+        settings,
+      );
       if (cloudKey != null && cloudKey.isNotEmpty) {
         headers['x-cloud-key'] = cloudKey;
       }
@@ -931,11 +957,7 @@ class CloudSyncService {
             filePath: localImageFilePath,
             cloudKey: cloudKey,
             oldImageUrl: imageUrl,
-            companyRnc: rnc.isNotEmpty ? rnc : null,
-            companyCloudId:
-                (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
-                ? cloudCompanyId
-                : null,
+            companyIdentity: companyIdentity,
           );
           if (uploadedUrl != null) {
             imageUrl = uploadedUrl;
@@ -973,6 +995,7 @@ class CloudSyncService {
                 baseUrl: baseUrl,
                 imageUrl: imageUrl,
                 cloudKey: cloudKey,
+                companyIdentity: companyIdentity,
               );
               if (p.id != null) {
                 try {
@@ -1003,11 +1026,13 @@ class CloudSyncService {
       }
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
         'products': payloadProducts,
         if (deletedCodes.isNotEmpty) 'deletedProducts': deletedCodes.toList(),
+        'mirrorProducts': true,
       };
 
       final api = ApiClient(baseUrl: baseUrl);
@@ -1028,6 +1053,7 @@ class CloudSyncService {
           'Cloud products sync failed status=${response.statusCode} baseUrl=$baseUrl body=$body',
           module: 'cloud_sync',
         );
+        _recordSyncFailure('HTTP ${response.statusCode}: $body');
         return false;
       }
 
@@ -1037,6 +1063,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud products sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -1095,6 +1122,7 @@ class CloudSyncService {
           .toList(growable: false);
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -1114,6 +1142,7 @@ class CloudSyncService {
           'Cloud clients sync failed status=${response.statusCode}',
           module: 'cloud_sync',
         );
+        _recordSyncFailure('HTTP ${response.statusCode}');
         return false;
       }
 
@@ -1123,6 +1152,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud clients sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -1176,6 +1206,7 @@ class CloudSyncService {
           .toList(growable: false);
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -1195,6 +1226,7 @@ class CloudSyncService {
           'Cloud categories sync failed status=${response.statusCode}',
           module: 'cloud_sync',
         );
+        _recordSyncFailure('HTTP ${response.statusCode}');
         return false;
       }
 
@@ -1204,6 +1236,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud categories sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -1259,6 +1292,7 @@ class CloudSyncService {
           .toList(growable: false);
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -1278,6 +1312,7 @@ class CloudSyncService {
           'Cloud suppliers sync failed status=${response.statusCode}',
           module: 'cloud_sync',
         );
+        _recordSyncFailure('HTTP ${response.statusCode}');
         return false;
       }
 
@@ -1287,6 +1322,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud suppliers sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -1339,7 +1375,15 @@ class CloudSyncService {
 
       for (final s in localSales) {
         if (s.id == null) continue;
-        if (s.deletedAtMs != null) continue;
+        // Excluir ventas eliminadas, EXCEPTO las que tienen status REFUNDED:
+        // las ventas completamente reembolsadas se marcan como eliminadas (soft-delete)
+        // en local, pero el backend necesita conocer su estado final REFUNDED.
+        final statusForDeleteCheck = s.status.toString();
+        if (s.deletedAtMs != null &&
+            statusForDeleteCheck != 'REFUNDED' &&
+            statusForDeleteCheck != 'PARTIAL_REFUND') {
+          continue;
+        }
 
         // Mantener consistencia con el reporte local (invoice + sale).
         if (s.kind != 'invoice' && s.kind != 'sale') continue;
@@ -1455,6 +1499,7 @@ class CloudSyncService {
               );
 
         final payload = {
+          ...await _companyIdentityPayload(settings),
           if (rnc.isNotEmpty) 'companyRnc': rnc,
           if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
             'companyCloudId': cloudCompanyId,
@@ -1474,6 +1519,7 @@ class CloudSyncService {
             'Cloud sales sync failed reason=$reason status=${response.statusCode} response=${response.body}',
             module: 'cloud_sync',
           );
+          _recordSyncFailure('HTTP ${response.statusCode}');
           return false;
         }
 
@@ -1535,6 +1581,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud sales sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -1681,6 +1728,7 @@ class CloudSyncService {
         );
 
         final payload = {
+          ...await _companyIdentityPayload(settings),
           if (rnc.isNotEmpty) 'companyRnc': rnc,
           if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
             'companyCloudId': cloudCompanyId,
@@ -1700,6 +1748,7 @@ class CloudSyncService {
             'Cloud payments sync failed status=${response.statusCode}',
             module: 'cloud_sync',
           );
+          _recordSyncFailure('HTTP ${response.statusCode}');
           return false;
         }
       }
@@ -1710,6 +1759,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud payments sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -1848,6 +1898,7 @@ class CloudSyncService {
         );
 
         final payload = {
+          ...await _companyIdentityPayload(settings),
           if (rnc.isNotEmpty) 'companyRnc': rnc,
           if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
             'companyCloudId': cloudCompanyId,
@@ -1867,6 +1918,7 @@ class CloudSyncService {
             'Cloud returns sync failed status=${response.statusCode}',
             module: 'cloud_sync',
           );
+          _recordSyncFailure('HTTP ${response.statusCode}');
           return false;
         }
 
@@ -1885,6 +1937,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud returns sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -2100,6 +2153,7 @@ class CloudSyncService {
       }).toList();
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -2120,6 +2174,7 @@ class CloudSyncService {
           'Cloud cash sync failed status=${response.statusCode}',
           module: 'cloud_sync',
         );
+        _recordSyncFailure('HTTP ${response.statusCode}');
         return false;
       }
 
@@ -2129,6 +2184,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud cash sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -2231,6 +2287,7 @@ class CloudSyncService {
         );
 
         final payload = {
+          ...await _companyIdentityPayload(settings),
           if (rnc.isNotEmpty) 'companyRnc': rnc,
           if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
             'companyCloudId': cloudCompanyId,
@@ -2249,6 +2306,7 @@ class CloudSyncService {
             'Cloud quotes sync failed status=${response.statusCode}',
             module: 'cloud_sync',
           );
+          _recordSyncFailure('HTTP ${response.statusCode}');
           return false;
         }
       }
@@ -2259,6 +2317,7 @@ class CloudSyncService {
       );
       return true;
     } catch (e) {
+      _recordSyncFailure(e.toString());
       await AppLogger.instance.logWarn(
         'Cloud quotes sync error: ${e.toString()}',
         module: 'cloud_sync',
@@ -2288,6 +2347,7 @@ class CloudSyncService {
       }
 
       final payload = {
+        ...await _companyIdentityPayload(settings),
         if (rnc.isNotEmpty) 'companyRnc': rnc,
         if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
           'companyCloudId': cloudCompanyId,
@@ -2331,6 +2391,7 @@ class CloudSyncService {
     final logoUrl = _normalizeUrl(settings.logoPath);
 
     return <String, dynamic>{
+      ...await _companyIdentityPayload(settings),
       if (rnc.isNotEmpty) 'companyRnc': rnc,
       if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
         'companyCloudId': cloudCompanyId,
@@ -2471,10 +2532,9 @@ class CloudSyncService {
   Future<String?> _uploadProductImage({
     required String baseUrl,
     required String filePath,
+    required CloudCompanyIdentity companyIdentity,
     String? oldImageUrl,
     String? cloudKey,
-    String? companyRnc,
-    String? companyCloudId,
   }) async {
     try {
       final file = File(filePath);
@@ -2486,14 +2546,21 @@ class CloudSyncService {
       if (cloudKey != null && cloudKey.isNotEmpty) {
         request.headers['x-cloud-key'] = cloudKey;
       }
+      request.headers['x-company-tenant-key'] = companyIdentity.companyTenantKey;
+      if (companyIdentity.companyCloudId != null &&
+          companyIdentity.companyCloudId!.isNotEmpty) {
+        request.headers['x-company-cloud-id'] = companyIdentity.companyCloudId!;
+      }
+      final identityPayload = companyIdentity.toPayload();
+      for (final entry in identityPayload.entries) {
+        final value = entry.value;
+        if (value == null) continue;
+        final asText = value.toString().trim();
+        if (asText.isEmpty) continue;
+        request.fields[entry.key] = asText;
+      }
       if (oldImageUrl != null && oldImageUrl.isNotEmpty) {
         request.fields['oldImageUrl'] = oldImageUrl;
-      }
-      if (companyRnc != null && companyRnc.isNotEmpty) {
-        request.fields['companyRnc'] = companyRnc;
-      }
-      if (companyCloudId != null && companyCloudId.isNotEmpty) {
-        request.fields['companyCloudId'] = companyCloudId;
       }
       final lower = filePath.toLowerCase();
       MediaType contentType;
@@ -2540,6 +2607,7 @@ class CloudSyncService {
   Future<void> _deleteProductImage({
     required String baseUrl,
     required String imageUrl,
+    required CloudCompanyIdentity companyIdentity,
     String? cloudKey,
   }) async {
     try {
@@ -2553,9 +2621,24 @@ class CloudSyncService {
       if (cloudKey != null && cloudKey.isNotEmpty) {
         headers['x-cloud-key'] = cloudKey;
       }
+      headers['x-company-tenant-key'] = companyIdentity.companyTenantKey;
+      if (companyIdentity.companyCloudId != null &&
+          companyIdentity.companyCloudId!.isNotEmpty) {
+        headers['x-company-cloud-id'] = companyIdentity.companyCloudId!;
+      }
+      final queryParams = <String, String>{};
+      final identityPayload = companyIdentity.toPayload();
+      for (final entry in identityPayload.entries) {
+        final value = entry.value;
+        if (value == null) continue;
+        final asText = value.toString().trim();
+        if (asText.isEmpty) continue;
+        queryParams[entry.key] = asText;
+      }
+      final query = Uri(queryParameters: queryParams).query;
       final api = ApiClient(baseUrl: baseUrl);
       await api.delete(
-        '/api/uploads/product-image/$filename',
+        '/api/uploads/product-image/$filename${query.isNotEmpty ? '?$query' : ''}',
         headers: headers,
         timeout: const Duration(seconds: 8),
       );
