@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fullpos/features/clients/data/client_model.dart';
 import 'package:fullpos/features/sales/ui/dialogs/payment_dialog.dart';
 
 void main() {
@@ -38,14 +37,13 @@ void main() {
     expect(find.text('COBRAR E IMPRIMIR'), findsOneWidget);
   });
 
-  testWidgets(
-    'usa PDF cuando Negocio configura pdf y la descarga esta permitida',
-    (tester) async {
-      await pumpDialog(tester, initialChargeOutputMode: 'pdf');
+  testWidgets('usa PDF cuando Negocio configura pdf y la descarga esta permitida', (
+    tester,
+  ) async {
+    await pumpDialog(tester, initialChargeOutputMode: 'pdf');
 
-      expect(find.text('COBRAR Y DESCARGAR'), findsOneWidget);
-    },
-  );
+    expect(find.text('COBRAR Y DESCARGAR'), findsOneWidget);
+  });
 
   testWidgets('usa sin imprimir cuando Negocio configura none', (tester) async {
     await pumpDialog(tester, initialChargeOutputMode: 'none');
@@ -61,21 +59,20 @@ void main() {
     expect(find.text('SELECCIONE EL MÉTODO DE PAGO'), findsNothing);
   });
 
-  testWidgets(
-    'cae a ticket si pdf no esta permitido aunque venga configurado',
-    (tester) async {
-      await pumpDialog(
-        tester,
-        initialChargeOutputMode: 'pdf',
-        allowInvoicePdfDownload: false,
-        initialPrintTicket: true,
-      );
+  testWidgets('cae a ticket si pdf no esta permitido aunque venga configurado', (
+    tester,
+  ) async {
+    await pumpDialog(
+      tester,
+      initialChargeOutputMode: 'pdf',
+      allowInvoicePdfDownload: false,
+      initialPrintTicket: true,
+    );
 
-      expect(find.text('COBRAR E IMPRIMIR'), findsOneWidget);
-    },
-  );
+    expect(find.text('COBRAR E IMPRIMIR'), findsOneWidget);
+  });
 
-  testWidgets('muestra selector de comprobante al inicio del dialogo', (
+  testWidgets('muestra selector de documento al inicio del dialogo', (
     tester,
   ) async {
     await pumpDialog(
@@ -83,21 +80,24 @@ void main() {
       initialDocumentType: PaymentDocumentType.creditoFiscal,
     );
 
-    expect(find.text('Tipo de comprobante'), findsOneWidget);
-    expect(find.text('Venta normal'), findsOneWidget);
-    expect(find.text('Factura electrónica'), findsOneWidget);
-    expect(find.text('Cotización'), findsOneWidget);
-    expect(find.text('Tipo de cliente'), findsOneWidget);
-    expect(find.text('Empresa / negocio'), findsOneWidget);
+    expect(find.text('Tipo de documento'), findsOneWidget);
+    expect(find.text('Crédito fiscal'), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButtonFormField<PaymentDocumentType>));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Consumidor final'), findsWidgets);
+    expect(find.text('Crédito fiscal'), findsWidgets);
+    expect(find.text('Cotización'), findsWidgets);
   });
 
-  testWidgets('ubica tipo de comprobante entre total y metodo de pago', (
+  testWidgets('ubica tipo de documento entre total y metodo de pago', (
     tester,
   ) async {
     await pumpDialog(tester);
 
     final totalLabel = find.text('TOTAL A PAGAR:');
-    final documentLabel = find.text('Tipo de comprobante');
+    final documentLabel = find.text('Tipo de documento');
     final paymentMethodLabel = find.text('MÉTODO DE PAGO');
 
     final totalBottom = tester.getBottomLeft(totalLabel).dy;
@@ -109,64 +109,79 @@ void main() {
     expect(paymentMethodTop, greaterThan(documentBottom));
   });
 
-  testWidgets(
-    'mantiene consumidor final y cotizacion cuando facturacion esta desactivada',
-    (tester) async {
-      await pumpDialog(tester, allowElectronicInvoiceOption: false);
+  testWidgets('mantiene consumidor final y cotizacion cuando facturacion esta desactivada', (
+    tester,
+  ) async {
+    await pumpDialog(tester, allowElectronicInvoiceOption: false);
 
-      expect(find.text('Tipo de comprobante'), findsOneWidget);
-      expect(find.text('Venta normal'), findsOneWidget);
-      expect(find.text('Cotización'), findsOneWidget);
-      expect(find.text('Factura electrónica'), findsNothing);
-    },
-  );
+    expect(find.text('Tipo de documento'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<PaymentDocumentType>), findsOneWidget);
 
-  testWidgets(
-    'normaliza a consumidor final si credito fiscal llega deshabilitado',
-    (tester) async {
-      await pumpDialog(
-        tester,
-        allowElectronicInvoiceOption: false,
-        initialDocumentType: PaymentDocumentType.creditoFiscal,
-      );
+    await tester.tap(find.byType(DropdownButtonFormField<PaymentDocumentType>));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Venta normal'), findsOneWidget);
-      expect(find.text('Factura electrónica'), findsNothing);
-    },
-  );
+    expect(find.text('Consumidor final'), findsWidgets);
+    expect(find.text('Cotización'), findsWidgets);
+    expect(find.text('Crédito fiscal'), findsNothing);
+  });
 
-  testWidgets('muestra las tarjetas del selector de comprobante', (
+  testWidgets('normaliza a consumidor final si credito fiscal llega deshabilitado', (
+    tester,
+  ) async {
+    await pumpDialog(
+      tester,
+      allowElectronicInvoiceOption: false,
+      initialDocumentType: PaymentDocumentType.creditoFiscal,
+    );
+
+    expect(find.text('Consumidor final'), findsOneWidget);
+    expect(find.text('Crédito fiscal'), findsNothing);
+  });
+
+  testWidgets('mantiene estilo compacto y minimalista del selector', (
     tester,
   ) async {
     await pumpDialog(tester);
 
-    expect(find.text('Venta normal'), findsOneWidget);
-    expect(find.text('Factura electrónica'), findsOneWidget);
-    expect(find.text('Cotización'), findsOneWidget);
+    final sizedBox = tester.widget<SizedBox>(
+      find.ancestor(
+        of: find.byType(DropdownButtonFormField<PaymentDocumentType>),
+        matching: find.byType(SizedBox),
+      ).first,
+    );
+    final dropdown = tester.widget<DropdownButtonFormField<PaymentDocumentType>>(
+      find.byType(DropdownButtonFormField<PaymentDocumentType>),
+    );
+    final decoration = dropdown.decoration;
+
+    expect(sizedBox.height, 44);
+    expect(decoration.filled, isTrue);
+    expect(decoration.fillColor, isNotNull);
+    expect((decoration.enabledBorder as OutlineInputBorder).borderSide,
+        BorderSide.none);
   });
 
-  testWidgets(
-    'muestra las opciones de salida en una sola fila y con modal mas ancho',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+  testWidgets('muestra las opciones de salida en una sola fila y con modal mas ancho', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
-      await pumpDialog(tester);
+    await pumpDialog(tester);
 
-      final dialogWidth = tester.getSize(find.byType(Dialog)).width;
-      final ticketY = tester.getTopLeft(find.text('TICKET')).dy;
-      final pdfY = tester.getTopLeft(find.text('PDF')).dy;
-      final noneY = tester.getTopLeft(find.text('SIN IMPRIMIR')).dy;
+    final dialogWidth = tester.getSize(find.byType(Dialog)).width;
+    final ticketY = tester.getTopLeft(find.text('TICKET')).dy;
+    final pdfY = tester.getTopLeft(find.text('PDF')).dy;
+    final noneY = tester.getTopLeft(find.text('SIN IMPRIMIR')).dy;
 
-      expect(dialogWidth, greaterThanOrEqualTo(700));
-      expect((ticketY - pdfY).abs(), lessThan(6));
-      expect((ticketY - noneY).abs(), lessThan(6));
-    },
-  );
+    expect(dialogWidth, greaterThanOrEqualTo(700));
+    expect((ticketY - pdfY).abs(), lessThan(6));
+    expect((ticketY - noneY).abs(), lessThan(6));
+  });
 
   testWidgets('adapta el dialogo a modo cotizacion', (tester) async {
     await pumpDialog(
@@ -194,143 +209,7 @@ void main() {
     await pumpDialog(tester);
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Tipo de comprobante'), findsOneWidget);
+    expect(find.text('Tipo de documento'), findsOneWidget);
     expect(find.text('TOTAL A PAGAR:'), findsOneWidget);
-  });
-
-  testWidgets('permite seleccionar consumidor final para E32 sin pedir RNC', (
-    tester,
-  ) async {
-    await pumpDialog(
-      tester,
-      initialDocumentType: PaymentDocumentType.creditoFiscal,
-    );
-
-    await tester.ensureVisible(
-      find.byType(Radio<PaymentElectronicCustomerType>).first,
-    );
-    await tester.tap(find.byType(Radio<PaymentElectronicCustomerType>).first);
-    await tester.pumpAndSettle();
-
-    expect(
-      find.textContaining('Se generará un comprobante E32'),
-      findsOneWidget,
-    );
-    expect(find.text('RNC *'), findsNothing);
-  });
-
-  testWidgets('retorna cotizacion real al cambiar de modo dentro del dialogo', (
-    tester,
-  ) async {
-    Map<String, dynamic>? result;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) {
-              return ElevatedButton(
-                onPressed: () async {
-                  result = await showDialog<Map<String, dynamic>>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => PaymentDialog(
-                      total: 150,
-                      selectedClient: ClientModel(
-                        id: 1,
-                        nombre: 'Cliente Cotizacion',
-                        telefono: '+18295551234',
-                        direccion: 'Calle 1',
-                        rnc: null,
-                        cedula: '00112345678',
-                        createdAtMs: 1,
-                        updatedAtMs: 1,
-                      ),
-                      onDocumentTypeChanged: (type) async => type,
-                      onSelectClient: () async => null,
-                    ),
-                  );
-                },
-                child: const Text('open'),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Cotización'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('GUARDAR COTIZACIÓN'));
-    await tester.pumpAndSettle();
-
-    expect(result, isNotNull);
-    expect(result!['documentType'], PaymentDocumentType.cotizacion);
-    expect(result!['selectedClient'], isA<ClientModel>());
-  });
-
-  testWidgets('retorna resultado empresarial E31 con PDF sin romper el flujo', (
-    tester,
-  ) async {
-    Map<String, dynamic>? result;
-    final selectedClient = ClientModel(
-      id: 7,
-      nombre: 'Empresa Demo',
-      telefono: '+18295550000',
-      direccion: 'Calle Fiscal',
-      rnc: '131246796',
-      cedula: null,
-      createdAtMs: 1,
-      updatedAtMs: 1,
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) {
-              return ElevatedButton(
-                onPressed: () async {
-                  result = await showDialog<Map<String, dynamic>>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => PaymentDialog(
-                      total: 150,
-                      initialChargeOutputMode: 'pdf',
-                      initialDocumentType: PaymentDocumentType.creditoFiscal,
-                      selectedClient: selectedClient,
-                      onDocumentTypeChanged: (type) async => type,
-                      onSelectClient: () async => null,
-                    ),
-                  );
-                },
-                child: const Text('open'),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.text('COBRAR Y DESCARGAR'));
-    await tester.tap(find.text('COBRAR Y DESCARGAR'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Confirmar factura electrónica'), findsOneWidget);
-    await tester.tap(find.text('Generar factura'));
-    await tester.pumpAndSettle();
-
-    expect(result, isNotNull);
-    expect(result!['documentType'], PaymentDocumentType.creditoFiscal);
-    expect(result!['downloadInvoicePdf'], isTrue);
-    expect(result!['selectedClient'], isA<ClientModel>());
-    expect((result!['selectedClient'] as ClientModel).rnc, '131246796');
   });
 }

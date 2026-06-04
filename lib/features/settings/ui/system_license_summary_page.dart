@@ -90,7 +90,7 @@ class _SystemLicenseSummaryPageState extends State<SystemLicenseSummaryPage> {
       await _licenseStorage.clearAll();
     } catch (_) {}
     try {
-      await BusinessIdentityStorage().clearAll();
+      await BusinessIdentityStorage().clearProfile();
     } catch (_) {}
     try {
       await PendingRegistrationQueue().clear();

@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../../core/constants/app_sizes.dart';
@@ -12,20 +15,22 @@ import '../../../core/window/window_service.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../license_config.dart';
 import '../services/business_license_sync.dart';
+import '../services/license_controller.dart';
 import '../services/license_storage.dart';
 import '../services/license_gate_refresh.dart';
 
-class LicenseBlockedPage extends StatefulWidget {
+class LicenseBlockedPage extends ConsumerStatefulWidget {
   const LicenseBlockedPage({super.key});
 
   @override
-  State<LicenseBlockedPage> createState() => _LicenseBlockedPageState();
+  ConsumerState<LicenseBlockedPage> createState() => _LicenseBlockedPageState();
 }
 
-class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
+class _LicenseBlockedPageState extends ConsumerState<LicenseBlockedPage> {
   StreamSubscription<String>? _sseSub;
   HttpClient? _httpClient;
   bool _disposed = false;
+  String? _licenseFileStatus;
 
   @override
   void initState() {
@@ -53,7 +58,8 @@ class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
   }
 
   Future<void> _startListening() async {
-    final businessId = (await BusinessIdentityStorage().getBusinessId())?.trim();
+    final businessId = (await BusinessIdentityStorage().getBusinessId())
+        ?.trim();
     if (businessId == null || businessId.isEmpty) return;
 
     // Reintentos simples: mientras la pantalla esté montada.
@@ -101,7 +107,9 @@ class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
       }
     }
 
-    if (response == null || response.statusCode < 200 || response.statusCode >= 300) {
+    if (response == null ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300) {
       throw Exception('SSE connect failed');
     }
 
@@ -147,6 +155,123 @@ class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
       bumpLicenseGateRefresh();
       if (mounted) setState(() {}); // para refrescar el motivo en pantalla
     }
+  }
+
+  Future<void> _verifyNow() async {
+    final controller = ref.read(licenseControllerProvider.notifier);
+    await controller.syncBusinessLicenseNow();
+    if (!mounted) return;
+    final state = ref.read(licenseControllerProvider);
+    if (state.info?.isActive == true && state.info?.isExpired == false) {
+      context.go('/login');
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'La licencia aún no está activa. Intenta de nuevo en unos momentos.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndApplyLicenseFile() async {
+    final controller = ref.read(licenseControllerProvider.notifier);
+    final result = await WindowService.runWithSystemDialog(
+      () => FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['json', 'dat', 'fulllicense'],
+        withData: true,
+        lockParentWindow: true,
+      ),
+    );
+    if (!mounted) return;
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.single;
+    String raw;
+    if (file.bytes != null) {
+      raw = utf8.decode(file.bytes!, allowMalformed: true);
+    } else if (file.path != null && file.path!.trim().isNotEmpty) {
+      raw = await File(file.path!).readAsString();
+    } else {
+      setState(() {
+        _licenseFileStatus = 'No se pudo leer el archivo seleccionado.';
+      });
+      return;
+    }
+
+    raw = raw.trimLeft();
+    if (raw.startsWith('\uFEFF')) {
+      raw = raw.substring(1);
+    }
+
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(raw);
+    } catch (_) {
+      setState(() {
+        _licenseFileStatus = 'El archivo no tiene formato JSON válido.';
+      });
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) {
+      setState(() {
+        _licenseFileStatus = 'Formato inválido: se esperaba un objeto JSON.';
+      });
+      return;
+    }
+
+    final normalized = _normalizeUploadedLicenseFile(decoded);
+    if (normalized == null) {
+      setState(() {
+        _licenseFileStatus = 'Formato inválido: faltan payload y signature.';
+      });
+      return;
+    }
+
+    await controller.applyOfflineLicenseFile(normalized);
+    final state = ref.read(licenseControllerProvider);
+    if (!mounted) return;
+    setState(() {
+      _licenseFileStatus = state.error?.trim().isNotEmpty == true
+          ? state.error
+          : (state.info?.isActive == true && state.info?.isExpired == false)
+          ? 'Licencia aplicada correctamente.'
+          : 'Archivo validado. Verifica el estado.';
+    });
+    if (state.info?.isActive == true &&
+        state.info?.isExpired == false &&
+        mounted) {
+      context.go('/login');
+    }
+  }
+
+  Map<String, dynamic>? _normalizeUploadedLicenseFile(
+    Map<String, dynamic> input,
+  ) {
+    final payload = input['payload'];
+    final signature = (input['signature'] ?? '').toString().trim();
+    if (payload is Map && signature.isNotEmpty) {
+      return {
+        'payload': payload.cast<String, dynamic>(),
+        'signature': signature,
+        'alg': (input['alg'] ?? 'Ed25519').toString().trim(),
+      };
+    }
+    final nested = input['license'];
+    if (nested is Map<String, dynamic>) {
+      final nestedPayload = nested['payload'];
+      final nestedSignature = (nested['signature'] ?? '').toString().trim();
+      if (nestedPayload is Map && nestedSignature.isNotEmpty) {
+        return {
+          'payload': nestedPayload.cast<String, dynamic>(),
+          'signature': nestedSignature,
+          'alg': (nested['alg'] ?? 'Ed25519').toString().trim(),
+        };
+      }
+    }
+    return null;
   }
 
   static const String _supportPhoneDisplay = '8295319442';
@@ -295,7 +420,7 @@ class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            'Su cuenta ha sido detenida temporalmente',
+                            'Tu licencia FullPOS requiere renovación',
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: onSurface,
                               fontWeight: FontWeight.w800,
@@ -303,8 +428,7 @@ class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            'Por el momento no es posible utilizar el sistema.\n'
-                            'Si cree que se trata de un error, contacte con soporte.',
+                            'Compra más tiempo, verifica una activación ya pagada o carga un archivo de licencia válido para continuar.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: mutedText,
                               height: 1.35,
@@ -355,6 +479,40 @@ class _LicenseBlockedPageState extends State<LicenseBlockedPage> {
                               ],
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          FilledButton.icon(
+                            onPressed: () => context.go('/license/purchase'),
+                            icon: const Icon(Icons.shopping_cart_checkout),
+                            label: const Text('Comprar ahora'),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: _verifyNow,
+                                icon: const Icon(Icons.verified_outlined),
+                                label: const Text(
+                                  'Ya pagué, verificar licencia',
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _pickAndApplyLicenseFile,
+                                icon: const Icon(Icons.upload_file_outlined),
+                                label: const Text('Subir archivo de licencia'),
+                              ),
+                            ],
+                          ),
+                          if (_licenseFileStatus != null) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              _licenseFileStatus!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: mutedText,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           Container(
                             padding: const EdgeInsets.all(14),

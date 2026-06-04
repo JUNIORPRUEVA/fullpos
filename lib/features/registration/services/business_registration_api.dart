@@ -24,13 +24,13 @@ class BusinessRegistrationException implements Exception {
 class BusinessRegistrationApi {
   BusinessRegistrationApi();
 
-  Future<void> register({
+  Future<Map<String, dynamic>?> register({
     required String baseUrl,
     required Map<String, dynamic> payload,
   }) async {
     final api = ApiClient(baseUrl: baseUrl);
 
-    Future<void> postAndValidate(String path) async {
+    Future<Map<String, dynamic>?> postAndValidate(String path) async {
       final res = await api.postJson(
         path,
         body: payload,
@@ -63,12 +63,16 @@ class BusinessRegistrationApi {
           existingBusinessId: decoded['existing_business_id']?.toString(),
         );
       }
+
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return null;
     }
 
     // Spec primary path: /businesses/register
     try {
-      await postAndValidate('/businesses/register');
-      return;
+      return await postAndValidate('/businesses/register');
     } on BusinessRegistrationException catch (e) {
       // For business failures (409, 422, etc), preserve exact backend error.
       // Only fallback to /api when endpoint is not found.
@@ -79,6 +83,6 @@ class BusinessRegistrationApi {
       // Try /api variant for base URLs with a mounted API prefix.
     }
 
-    await postAndValidate('/api/businesses/register');
+    return await postAndValidate('/api/businesses/register');
   }
 }

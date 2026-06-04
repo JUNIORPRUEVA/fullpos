@@ -29,10 +29,10 @@ class _AppShellState extends State<AppShell> {
     // Sidebar más estrecho para una estética corporativa limpia.
     // Mantiene ancho consistente en resoluciones comunes.
     if (maxWidth < 1360) {
-      return 208.0;
+      return 182.0;
     }
-    final proportional = maxWidth * 0.148;
-    return proportional.clamp(208.0, 234.0);
+    final proportional = maxWidth * 0.128;
+    return proportional.clamp(182.0, 198.0);
   }
 
   void _updateResponsive(BoxConstraints constraints) {
@@ -110,7 +110,11 @@ class _AppShellState extends State<AppShell> {
             ? SafeArea(child: contentColumn)
             : Row(
                 children: [
-                  Sidebar(customWidth: sidebarWidth, scale: sidebarScale),
+                  Sidebar(
+                    forcedCollapsed: false,
+                    customWidth: sidebarWidth,
+                    scale: sidebarScale,
+                  ),
                   Expanded(child: contentColumn),
                 ],
               );

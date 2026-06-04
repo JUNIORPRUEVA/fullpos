@@ -5,7 +5,7 @@ import '../session/session_manager.dart';
 class CloudCompanyIdentity {
   final String? companyRnc;
   final String? companyCloudId;
-  final String companyTenantKey;
+  final String? companyTenantKey;
   final String businessId;
   final String terminalId;
   final String companyName;
@@ -21,7 +21,8 @@ class CloudCompanyIdentity {
 
   Map<String, dynamic> toPayload() {
     return {
-      'companyTenantKey': companyTenantKey,
+      if (companyTenantKey != null && companyTenantKey!.trim().isNotEmpty)
+        'companyTenantKey': companyTenantKey,
       'businessId': businessId,
       'deviceId': terminalId,
       'terminalId': terminalId,
@@ -55,21 +56,25 @@ class CloudCompanyIdentityService {
     final rnc = settings.rnc?.trim();
     final normalizedRnc = normalizeRnc(rnc);
     final companyCloudId = settings.cloudCompanyId?.trim();
-    final businessId = await BusinessIdentityStorage().ensureBusinessId();
+    final businessIdStorage = BusinessIdentityStorage();
+    final businessId = (await businessIdStorage.getBusinessId()) ?? '';
     final terminalId = await SessionManager.ensureTerminalId();
     final companyName = settings.businessName.trim().isNotEmpty
         ? settings.businessName.trim()
         : 'FULLPOS';
 
-    final fiscalPart = normalizedRnc.isNotEmpty
-        ? normalizedRnc
-        : _normalizeKeyPart(companyCloudId ?? 'sin-rnc');
-    final tenantKey = [
-      'fp',
-      fiscalPart,
-      _normalizeKeyPart(businessId),
-      _normalizeKeyPart(terminalId),
-    ].where((part) => part.trim().isNotEmpty).join('-');
+    // En instalaciones múltiples de la misma empresa, incluir businessId/terminalId
+    // en tenantKey provoca conflictos de identidad entre PCs. Si hay RNC o
+    // cloudCompanyId, dejamos que backend resuelva por esos localizadores.
+    String? tenantKey;
+    if (normalizedRnc.isEmpty && (companyCloudId ?? '').isEmpty) {
+      tenantKey = [
+        'fp',
+        'sin-rnc',
+        _normalizeKeyPart(businessId),
+        _normalizeKeyPart(terminalId),
+      ].where((part) => part.trim().isNotEmpty).join('-');
+    }
 
     return CloudCompanyIdentity(
       companyRnc: rnc != null && rnc.isNotEmpty ? rnc : null,

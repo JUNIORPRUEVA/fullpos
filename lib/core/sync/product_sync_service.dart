@@ -376,9 +376,10 @@ class ProductSyncService {
     final companyRnc = settings.rnc?.trim() ?? '';
     final companyCloudId = settings.cloudCompanyId?.trim() ?? '';
     final companyIdentity = await CloudCompanyIdentityService.resolve(settings);
+    final companyTenantKey = companyIdentity.companyTenantKey?.trim() ?? '';
     if (companyRnc.isEmpty &&
         companyCloudId.isEmpty &&
-        companyIdentity.companyTenantKey.isEmpty) {
+        companyTenantKey.isEmpty) {
       throw StateError('Cloud company not configured');
     }
 
@@ -679,9 +680,10 @@ class ProductSyncService {
     final companyRnc = settings.rnc?.trim() ?? '';
     final companyCloudId = settings.cloudCompanyId?.trim() ?? '';
     final companyIdentity = await CloudCompanyIdentityService.resolve(settings);
+    final companyTenantKey = companyIdentity.companyTenantKey?.trim() ?? '';
     if (companyRnc.isEmpty &&
         companyCloudId.isEmpty &&
-        companyIdentity.companyTenantKey.isEmpty) {
+        companyTenantKey.isEmpty) {
       _disposeSocket();
       return;
     }

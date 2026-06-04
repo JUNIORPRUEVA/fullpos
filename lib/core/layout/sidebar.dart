@@ -123,12 +123,12 @@ class _SidebarState extends ConsumerState<Sidebar>
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
     final screenSize = MediaQuery.of(context).size;
 
-    final sidebarBaseColor = tokens.sidebarBackground;
-    final sidebarTextColor = ColorUtils.ensureReadableColor(
-      tokens.sidebarText,
-      sidebarBaseColor,
-      minRatio: 4.5,
-    );
+    final sidebarBaseColor = theme.brightness == Brightness.dark
+        ? const Color(0xFF0A1422)
+        : const Color(0xFF0E2033);
+    final sidebarTextColor = theme.brightness == Brightness.dark
+        ? const Color(0xFFE7EEF8)
+        : const Color(0xFFEAF1FB);
     Color sidebarHighlight(double opacity) => Color.alphaBlend(
       sidebarTextColor.withOpacity(opacity),
       sidebarBaseColor,
@@ -144,14 +144,12 @@ class _SidebarState extends ConsumerState<Sidebar>
       sidebarBaseColor,
     );
     final sidebarHoverColor = Color.alphaBlend(
-      tokens.tileHover.withOpacity(0.72),
+      const Color(0xFF85BFFF).withOpacity(0.12),
       sidebarBaseColor,
     );
-    final sidebarActiveColor = ColorUtils.ensureReadableColor(
-      tokens.sidebarActive,
-      sidebarBaseColor,
-      minRatio: 3.0,
-    );
+    final sidebarActiveColor = theme.brightness == Brightness.dark
+        ? const Color(0xFF77C7FF)
+        : const Color(0xFF69B6FF);
     final sidebarActiveTopColor = Color.alphaBlend(
       sidebarHighlight(0.10),
       sidebarActiveColor,
@@ -169,22 +167,22 @@ class _SidebarState extends ConsumerState<Sidebar>
       minRatio: 4.5,
     );
     final sidebarBorderColor = Color.alphaBlend(
-      tokens.outline.withOpacity(
-        theme.brightness == Brightness.dark ? 0.32 : 0.5,
-      ),
+      const Color(
+        0xFFB9C9DC,
+      ).withOpacity(theme.brightness == Brightness.dark ? 0.14 : 0.18),
       sidebarBaseColor,
     );
     final currentRoute = _safeCurrentPath(context);
 
     final baseScale = widget.scale.clamp(0.65, 1.12);
-    final adaptiveExpandedWidth = (screenSize.width * 0.152).clamp(
-      204.0,
-      236.0,
+    final adaptiveExpandedWidth = (screenSize.width * 0.124).clamp(
+      176.0,
+      194.0,
     );
     final targetWidth = widget.customWidth ?? adaptiveExpandedWidth;
     final collapsedWidth = (screenSize.width * 0.05 * baseScale).clamp(
-      60.0,
-      76.0,
+      58.0,
+      68.0,
     );
     final topbarHeight = (AppSizes.topbarHeight * baseScale).clamp(52.0, 72.0);
     final padM = AppSizes.paddingM * baseScale;
@@ -200,6 +198,7 @@ class _SidebarState extends ConsumerState<Sidebar>
             targetWidth + ((collapsedWidth - targetWidth) * collapse);
 
         return Container(
+          height: double.infinity,
           width: currentWidth,
           clipBehavior: Clip.none,
           decoration: BoxDecoration(
@@ -209,10 +208,10 @@ class _SidebarState extends ConsumerState<Sidebar>
             ),
             boxShadow: [
               BoxShadow(
-                color: sidebarShadow(0.34),
-                blurRadius: 30,
-                spreadRadius: -16,
-                offset: const Offset(10, 0),
+                color: Colors.black.withOpacity(0.14),
+                blurRadius: 22,
+                spreadRadius: -14,
+                offset: const Offset(8, 0),
               ),
             ],
           ),
@@ -227,11 +226,11 @@ class _SidebarState extends ConsumerState<Sidebar>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          sidebarHighlight(0.035),
+                          sidebarHighlight(0.04),
                           Colors.transparent,
-                          sidebarShadow(0.22),
+                          const Color(0xFF071320),
                         ],
-                        stops: const [0.0, 0.34, 1.0],
+                        stops: const [0.0, 0.38, 1.0],
                       ),
                     ),
                   ),
@@ -244,19 +243,19 @@ class _SidebarState extends ConsumerState<Sidebar>
                   final navScale = (baseScale * (constraints.maxHeight / 860))
                       .clamp(0.72, 1.0);
                   final railPaddingH = visualCollapsed
-                      ? (10 * navScale).clamp(8.0, 12.0)
-                      : (16 * navScale).clamp(14.0, 18.0);
+                      ? (8 * navScale).clamp(7.0, 10.0)
+                      : (12 * navScale).clamp(10.0, 14.0);
                   final railPaddingV = visualCollapsed
-                      ? (14 * navScale).clamp(12.0, 16.0)
-                      : (9 * navScale).clamp(8.0, 11.0);
+                      ? (12 * navScale).clamp(10.0, 14.0)
+                      : (8 * navScale).clamp(6.0, 10.0);
                   final expandedContentMaxWidth = visualCollapsed
-                      ? 74.0
-                      : (194 * navScale).clamp(184.0, 202.0);
-                  final showHeaderSubtitle = !compactHeight;
+                      ? 64.0
+                      : (168 * navScale).clamp(158.0, 176.0);
+                  final showHeaderSubtitle = !compactHeight && !visualCollapsed;
                   final showSectionLabels = !ultraCompactHeight;
                   final headerHeight = compactHeight
-                      ? (topbarHeight - (4 * baseScale)).clamp(
-                          48.0,
+                      ? (topbarHeight - (8 * baseScale)).clamp(
+                          44.0,
                           topbarHeight,
                         )
                       : topbarHeight;
@@ -483,13 +482,13 @@ class _SidebarState extends ConsumerState<Sidebar>
                         availableWidth - (horizontalPad * 2),
                       );
                       final desiredBrandSize = visualCollapsed
-                          ? (44 * baseScale).clamp(36.0, 48.0)
-                          : (40 * baseScale).clamp(34.0, 44.0);
+                          ? (40 * baseScale).clamp(34.0, 44.0)
+                          : (34 * baseScale).clamp(30.0, 38.0);
                       final brandSize = math.min(
                         desiredBrandSize,
                         contentWidth,
                       );
-                      final desiredBtnSize = (40 * baseScale).clamp(32.0, 44.0);
+                      final desiredBtnSize = (34 * baseScale).clamp(30.0, 38.0);
                       final btnSize = math.min(desiredBtnSize, contentWidth);
 
                       Widget brandIconShell() {
@@ -500,7 +499,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                           width: brandSize,
                           height: brandSize,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(14),
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
@@ -518,17 +517,17 @@ class _SidebarState extends ConsumerState<Sidebar>
                             border: Border.all(color: sidebarBorderColor),
                             boxShadow: [
                               BoxShadow(
-                                color: sidebarShadow(0.18),
-                                blurRadius: 18,
+                                color: sidebarShadow(0.16),
+                                blurRadius: 14,
                                 spreadRadius: -10,
-                                offset: const Offset(0, 8),
+                                offset: const Offset(0, 6),
                               ),
                             ],
                           ),
                           child: Center(
                             child: SizedBox(
-                              width: (28 * baseScale).clamp(24.0, 30.0),
-                              height: (28 * baseScale).clamp(24.0, 30.0),
+                              width: (24 * baseScale).clamp(22.0, 28.0),
+                              height: (24 * baseScale).clamp(22.0, 28.0),
                               child: Stack(
                                 clipBehavior: Clip.none,
                                 alignment: Alignment.center,
@@ -537,7 +536,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                     PhosphorIcons.receipt(
                                       PhosphorIconsStyle.regular,
                                     ),
-                                    size: (23 * baseScale).clamp(20.0, 24.0),
+                                    size: (19 * baseScale).clamp(17.0, 21.0),
                                     color: sidebarTextColor,
                                   ),
                                   Positioned(
@@ -547,7 +546,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                                       PhosphorIcons.creditCard(
                                         PhosphorIconsStyle.fill,
                                       ),
-                                      size: (10.6 * baseScale).clamp(9.0, 12.0),
+                                      size: (9.6 * baseScale).clamp(8.0, 11.0),
                                       color: sidebarActiveColor,
                                     ),
                                   ),
@@ -611,7 +610,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                           height: headerHeight,
                           child: Center(
                             child: Tooltip(
-                              message: 'Mostrar menu POS',
+                              message: 'Mostrar menu',
                               child: Material(
                                 color: Colors.transparent,
                                 child: InkWell(
@@ -680,20 +679,20 @@ class _SidebarState extends ConsumerState<Sidebar>
                                                       style: TextStyle(
                                                         color: sidebarTextColor,
                                                         fontWeight:
-                                                            FontWeight.w800,
+                                                            FontWeight.w700,
                                                         fontSize:
-                                                            (14.8 * baseScale)
+                                                            (13.6 * baseScale)
                                                                 .clamp(
-                                                                  12.5,
-                                                                  15.8,
+                                                                  11.8,
+                                                                  14.2,
                                                                 ),
-                                                        letterSpacing: 0.28,
+                                                        letterSpacing: 0.44,
                                                       ),
                                                     ),
                                                     if (showHeaderSubtitle) ...[
                                                       const SizedBox(height: 3),
                                                       Text(
-                                                        'Enterprise POS',
+                                                        'Sistema comercial',
                                                         maxLines: 1,
                                                         overflow: TextOverflow
                                                             .ellipsis,
@@ -701,14 +700,14 @@ class _SidebarState extends ConsumerState<Sidebar>
                                                           color:
                                                               sidebarMutedTextColor,
                                                           fontWeight:
-                                                              FontWeight.w600,
+                                                              FontWeight.w500,
                                                           fontSize:
-                                                              (11.0 * baseScale)
+                                                              (10.0 * baseScale)
                                                                   .clamp(
-                                                                    9.5,
-                                                                    12.0,
+                                                                    8.8,
+                                                                    10.8,
                                                                   ),
-                                                          letterSpacing: 0.18,
+                                                          letterSpacing: 0.22,
                                                         ),
                                                       ),
                                                     ],
@@ -777,9 +776,9 @@ class _SidebarState extends ConsumerState<Sidebar>
                               text.toUpperCase(),
                               style: TextStyle(
                                 color: sidebarMutedTextColor.withOpacity(0.92),
-                                fontSize: (9.3 * navScale).clamp(8.4, 10.4),
+                                fontSize: (8.4 * navScale).clamp(7.8, 9.4),
                                 fontWeight: FontWeight.w700,
-                                letterSpacing: 1.18,
+                                letterSpacing: 1.45,
                               ),
                             ),
                           ),
@@ -790,9 +789,9 @@ class _SidebarState extends ConsumerState<Sidebar>
 
                   return Column(
                     children: [
-                      SizedBox(height: (8 * navScale).clamp(6.0, 10.0)),
+                      SizedBox(height: (6 * navScale).clamp(4.0, 8.0)),
                       header,
-                      SizedBox(height: (8 * navScale).clamp(6.0, 10.0)),
+                      SizedBox(height: (6 * navScale).clamp(4.0, 8.0)),
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(
@@ -1227,7 +1226,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final collapse = widget.collapseProgress.clamp(0.0, 1.0);
     final expanded = Curves.easeOutCubic.transform(1.0 - collapse);
     final visuallyCollapsed = collapse > 0.9;
-    final itemRadius = BorderRadius.circular((10 * s).clamp(8.0, 10.0));
+    final itemRadius = BorderRadius.circular((9 * s).clamp(7.0, 9.0));
     final contentOpacity =
         (!visuallyCollapsed && widget.lowEmphasis && !_isHover && !isActive)
         ? 0.6
@@ -1257,7 +1256,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     final iconColor = isActive
         ? fgColor
         : widget.textColor.withOpacity(_isHover ? 0.98 : 0.86);
-    final collapsedIconShellSize = (36 * s).clamp(34.0, 40.0);
+    final collapsedIconShellSize = (32 * s).clamp(30.0, 36.0);
     final collapsedShellBase = isActive
         ? widget.activeGradientEnd
         : Color.alphaBlend(
@@ -1274,8 +1273,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
     );
     final tooltipGap = (14 * s).clamp(12.0, 16.0);
     final rowHeight = visuallyCollapsed
-        ? (48 * s).clamp(46.0, 52.0)
-        : (44 * s).clamp(40.0, 48.0);
+        ? (42 * s).clamp(40.0, 46.0)
+        : (38 * s).clamp(35.0, 42.0);
 
     Widget buildSubmenuBadge() {
       return Container(
@@ -1375,8 +1374,8 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
         child: Padding(
           padding: EdgeInsets.only(
             bottom: visuallyCollapsed
-                ? (10 * s).clamp(8.0, 12.0)
-                : (6 * s).clamp(4.0, 8.0),
+                ? (8 * s).clamp(6.0, 10.0)
+                : (5 * s).clamp(3.0, 6.0),
           ),
           child: MouseRegion(
             cursor: isEnabled
@@ -1407,10 +1406,10 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                     padding: EdgeInsets.symmetric(
                       horizontal: visuallyCollapsed
                           ? 0
-                          : (14 * s).clamp(12.0, 16.0),
+                          : (11 * s).clamp(9.0, 13.0),
                       vertical: visuallyCollapsed
                           ? 0
-                          : (6.5 * s).clamp(5.0, 8.0),
+                          : (4.5 * s).clamp(3.0, 6.0),
                     ),
                     decoration: BoxDecoration(
                       color: isActive
@@ -1569,9 +1568,9 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                                 ? 1.0
                                                                 : 0.98,
                                                           ),
-                                                size: (22.5 * s).clamp(
-                                                  21.5,
-                                                  24.0,
+                                                size: (19.5 * s).clamp(
+                                                  18.0,
+                                                  21.0,
                                                 ),
                                               ),
                                               if (widget.showSubmenuBadge)
@@ -1599,7 +1598,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                             ? widget.activeIcon
                                             : widget.outlineIcon,
                                         color: iconColor,
-                                        size: (23 * s).clamp(22.0, 24.0),
+                                        size: (19.5 * s).clamp(18.0, 21.0),
                                       ),
                                       if (widget.showSubmenuBadge)
                                         Positioned(
@@ -1619,10 +1618,7 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                             opacity: expanded,
                                             child: Padding(
                                               padding: EdgeInsets.only(
-                                                left: (12 * s).clamp(
-                                                  10.0,
-                                                  14.0,
-                                                ),
+                                                left: (12 * s).clamp(8.0, 11.0),
                                               ),
                                               child: Row(
                                                 children: [
@@ -1631,11 +1627,11 @@ class _PremiumNavItemState extends State<PremiumNavItem> {
                                                       widget.title,
                                                       style: TextStyle(
                                                         color: fgColor,
-                                                        fontSize: (13.2 * s)
-                                                            .clamp(12.0, 14.0),
+                                                        fontSize: (12.1 * s)
+                                                            .clamp(11.0, 12.8),
                                                         fontWeight:
-                                                            FontWeight.w600,
-                                                        letterSpacing: 0.06,
+                                                            FontWeight.w700,
+                                                        letterSpacing: 0.12,
                                                       ),
                                                       maxLines: 1,
                                                       overflow:

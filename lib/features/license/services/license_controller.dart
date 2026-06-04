@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/session/session_manager.dart';
 import '../license_config.dart';
+import '../../registration/services/business_identity_guard.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../../registration/services/business_registration_service.dart';
 import '../../registration/services/pending_registration_queue.dart';
@@ -255,9 +256,24 @@ class LicenseController extends StateNotifier<LicenseState> {
         await identityStorage.getBusinessId(),
       );
       final cachedBusinessId = _resolveBusinessIdValue(last?.businessId);
+
+      // Usar el guardia central para validar businessId del cache
       if (localBusinessId == null && cachedBusinessId != null) {
-        await identityStorage.setBusinessId(cachedBusinessId);
-        localBusinessId = cachedBusinessId;
+        // Restaurar desde cache solo si el guardia lo permite
+        try {
+          final resolved = await BusinessIdentityGuard.resolveAndApply(
+            storage: identityStorage,
+            incomingBusinessId: cachedBusinessId,
+            source: 'license_cache_load',
+            allowInitialSet: false,
+            allowRestoreWhenLocalMissing: true,
+            allowOverwrite: false,
+          );
+          localBusinessId = resolved;
+        } on BusinessIdentityConflictException {
+          // No restaurar, dejar localBusinessId como null
+          localBusinessId = null;
+        }
       }
 
       // Intentar refrescar clave pública de firma (no bloqueante).
@@ -756,6 +772,7 @@ class LicenseController extends StateNotifier<LicenseState> {
         phone: telefono,
         email: null,
       );
+      await identityStorage.setOnboardingCompleted(true);
 
       const appVersion = String.fromEnvironment(
         'FULLPOS_APP_VERSION',
@@ -863,16 +880,19 @@ class LicenseController extends StateNotifier<LicenseState> {
       String? resolvedBusinessId;
       if (payloadBusinessId.isNotEmpty) {
         final identity = BusinessIdentityStorage();
-        final local = await identity.getBusinessId();
-        if (local == null || local.trim().isEmpty) {
-          await identity.setBusinessId(payloadBusinessId);
-          resolvedBusinessId = payloadBusinessId;
-        } else if (local.trim() != payloadBusinessId) {
+        try {
+          resolvedBusinessId = await BusinessIdentityGuard.resolveAndApply(
+            storage: identity,
+            incomingBusinessId: payloadBusinessId,
+            source: 'offline_license_file',
+            allowInitialSet: true,
+            allowRestoreWhenLocalMissing: true,
+            allowOverwrite: false,
+          );
+        } on BusinessIdentityConflictException {
           throw const LicenseApiException(
             message: 'Este archivo no corresponde a este negocio',
           );
-        } else {
-          resolvedBusinessId = local.trim();
         }
       }
       resolvedBusinessId ??= _resolveBusinessIdValue(
@@ -1108,9 +1128,9 @@ class LicenseController extends StateNotifier<LicenseState> {
         await storage.clearAll();
       } catch (_) {}
 
-      // 3) Identidad/TRIAL (prefs)
+      // 3) Identidad/TRIAL (prefs) - NO borrar businessId, solo perfil y trial
       try {
-        await BusinessIdentityStorage().clearAll();
+        await BusinessIdentityStorage().clearProfile();
       } catch (_) {}
 
       // 4) Registro pendiente offline

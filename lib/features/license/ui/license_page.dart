@@ -1,42 +1,37 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
-import 'package:go_router/go_router.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher_string.dart';
-
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import '../../../core/constants/app_sizes.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher_string.dart';
+
 import '../../../core/config/app_config.dart';
 import '../../../core/window/window_service.dart';
 import '../../registration/services/business_identity_storage.dart';
-import '../license_config.dart';
+import '../../settings/data/business_settings_model.dart';
+import '../../settings/data/business_settings_repository.dart';
 import '../data/license_models.dart';
-import '../models/license_ui_error.dart';
-import '../services/license_support_message.dart';
+import '../license_config.dart';
 import '../services/license_controller.dart';
+import '../services/license_support_message.dart';
 
-const _licensePageBackground = Color(0xFFE8F0FB);
-const _licensePanelColor = Color(0xFF445468);
-const _licensePanelColorTop = Color(0xFF506178);
-const _licensePanelColorBottom = Color(0xFF3F4D60);
-const _licensePrimaryBlue = Color(0xFF1D4ED8);
-const _licenseAccentSky = Color(0xFF7CB7FF);
-const _licenseAccentCyan = Color(0xFF84D8E8);
-const _licensePanelText = Color(0xFFFFFFFF);
-const _licensePanelMutedText = Color(0xCCFFFFFF);
-const _licenseInputBackground = Color(0xFFFFFFFF);
-const _licenseInputText = Color(0xFF000000);
-const _licenseInputHint = Color(0xFF6B7280);
-const _licenseCardShadow = BoxShadow(
-  color: Color(0x220D1B2A),
-  blurRadius: 36,
-  offset: Offset(0, 18),
-);
+const _bgTop = Color(0xFFF8FBFF);
+const _bgBottom = Color(0xFFEAF1F8);
+const _ink = Color(0xFF142033);
+const _muted = Color(0xFF637188);
+const _soft = Color(0xFF97A4B8);
+const _line = Color(0xFFD9E2EE);
+const _panel = Color(0xFFFDFEFF);
+const _panelSoft = Color(0xFFF5F8FC);
+const _primary = Color(0xFF153E75);
+const _primaryBright = Color(0xFF2563EB);
+const _primaryTint = Color(0xFFEAF2FF);
+const _accent = Color(0xFFB96534);
+const _warning = Color(0xFFD97706);
+const _danger = Color(0xFFD14343);
 
 class LicensePage extends ConsumerStatefulWidget {
   const LicensePage({super.key});
@@ -46,135 +41,215 @@ class LicensePage extends ConsumerStatefulWidget {
 }
 
 class _LicensePageState extends ConsumerState<LicensePage> {
-  static const String _supportPhoneDisplay = '8295319442';
   static const String _supportPhoneWhatsapp = '18295319442';
 
-  final _demoNombreNegocioCtrl = TextEditingController();
-  final _demoRolNegocioCtrl = TextEditingController();
-  final _demoContactoNombreCtrl = TextEditingController();
-  final _demoContactoTelefonoCtrl = TextEditingController();
+  final _businessNameCtrl = TextEditingController();
+  final _businessNicheCtrl = TextEditingController();
+  final _ownerNameCtrl = TextEditingController();
+  final _whatsappCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _rncCtrl = TextEditingController();
 
-  String? _demoRolNegocioSelected;
-
-  _LicenseSection _section = _LicenseSection.demo;
-
-  String? _licenseFileName;
-  String? _licenseFileStatus;
-
-  bool _showSupportDetails = false;
-  bool _showQuickGuide = false;
-  bool _activationNavigationScheduled = false;
+  final _identityStorage = BusinessIdentityStorage();
+  final _businessSettingsRepo = BusinessSettingsRepository();
 
   String? _businessId;
-  DateTime? _lastBusinessIdFetchAt;
+  String? _selectedNiche;
+  String? _licenseFileName;
+  String? _licenseFileStatus;
+  bool _loadingProfile = true;
+  bool _onboardingCompleted = false;
+  bool _trialUsed = false;
+  DateTime? _trialStartedAt;
+  bool _hasMinimumProfileData = false;
+  bool _navigatedToApp = false;
+  int _selectedTab = 0;
 
-  bool _hasActiveLicense(LicenseInfo? info) {
-    return info?.isActive == true && info?.isExpired == false;
-  }
-
-  String? _resolvedBusinessId(LicenseInfo? info) {
-    final fromInfo = (info?.businessId ?? '').trim();
-    if (fromInfo.isNotEmpty) return fromInfo;
-
-    final fromLocal = (_businessId ?? '').trim();
-    return fromLocal.isEmpty ? null : fromLocal;
-  }
-
-  void _redirectToAppIfLicenseReady() {
-    if (_activationNavigationScheduled || !mounted) return;
-
-    final path = GoRouterState.of(context).uri.path;
-    if (path != '/license' && path != '/license-blocked') return;
-
-    _activationNavigationScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.go('/sales');
-    });
-  }
-
-  String _maskKey(String input) {
-    final s = input.trim();
-    if (s.isEmpty) return '';
-    if (s.length <= 8) return '****';
-    final start = s.substring(0, 4);
-    final end = s.substring(s.length - 4);
-    return '$start…$end';
-  }
+  static const _nicheOptions = <String>[
+    'Colmado',
+    'Mini market',
+    'Supermercado',
+    'Ferretería',
+    'Farmacia',
+    'Tienda de ropa',
+    'Tienda de electrónicos',
+    'Licorería',
+    'Papelería',
+    'Panadería',
+    'Restaurante',
+    'Otro',
+  ];
 
   @override
   void initState() {
     super.initState();
-
-    final currentRole = _demoRolNegocioCtrl.text.trim();
-    if (currentRole.isNotEmpty) {
-      _demoRolNegocioSelected = currentRole;
-    }
-
-    unawaited(_refreshBusinessId(force: true, ensureExists: true));
-  }
-
-  Future<void> _refreshBusinessId({
-    bool force = false,
-    bool ensureExists = false,
-  }) async {
-    final last = _lastBusinessIdFetchAt;
-    if (!force && last != null) {
-      if (DateTime.now().difference(last) < const Duration(seconds: 10)) return;
-    }
-    _lastBusinessIdFetchAt = DateTime.now();
-
-    try {
-      final storage = BusinessIdentityStorage();
-      final licenseState = ref.read(licenseControllerProvider);
-      final canonicalBusinessId = (licenseState.info?.businessId ?? '').trim();
-
-      if (canonicalBusinessId.isNotEmpty) {
-        final localBusinessId = (await storage.getBusinessId() ?? '').trim();
-        if (localBusinessId.isEmpty) {
-          await storage.setBusinessId(canonicalBusinessId);
-        }
-        if (!mounted) return;
-        setState(() {
-          _businessId = canonicalBusinessId;
-        });
-        return;
-      }
-
-      final id = ensureExists
-          ? await storage.ensureBusinessId()
-          : await storage.getBusinessId();
-      if (!mounted) return;
-      final normalized = (id ?? '').trim();
-      setState(() {
-        _businessId = normalized.isEmpty ? null : normalized;
-      });
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  String _formatLocalDateTime(DateTime? dt) {
-    if (dt == null) return '-';
-    final d = dt.toLocal();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
-  }
-
-  String _licenseTypeLabel(LicenseInfo? info) {
-    final t = (info?.tipo ?? '').toString().trim();
-    if (t.isNotEmpty) return t.toUpperCase();
-    final code = (info?.code ?? '').toString().trim();
-    return code.isNotEmpty ? code.toUpperCase() : '-';
+    _loadProfile();
   }
 
   @override
   void dispose() {
-    _demoNombreNegocioCtrl.dispose();
-    _demoRolNegocioCtrl.dispose();
-    _demoContactoNombreCtrl.dispose();
-    _demoContactoTelefonoCtrl.dispose();
+    _businessNameCtrl.dispose();
+    _businessNicheCtrl.dispose();
+    _ownerNameCtrl.dispose();
+    _whatsappCtrl.dispose();
+    _emailCtrl.dispose();
+    _rncCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _identityStorage.getOnboardingProfile();
+    final settings = await _businessSettingsRepo.loadSettings();
+    final trialUsed = await _identityStorage.isDemoConsumed();
+    final onboardingCompleted = await _identityStorage.isOnboardingCompleted();
+    final businessId = await _identityStorage.getBusinessId();
+
+    _seedFields(settings, profile);
+
+    final inferredCompleted =
+        onboardingCompleted ||
+        trialUsed ||
+        (businessId ?? '').trim().isNotEmpty ||
+        (profile?.hasMinimumData ?? false);
+    if (inferredCompleted && !onboardingCompleted) {
+      await _identityStorage.setOnboardingCompleted(true);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      final normalizedBusinessId = (businessId ?? '').trim();
+      _businessId = normalizedBusinessId.isEmpty ? null : normalizedBusinessId;
+      _onboardingCompleted = inferredCompleted;
+      _trialUsed = trialUsed || profile?.trialStart != null;
+      _trialStartedAt = profile?.trialStart;
+      _hasMinimumProfileData = profile?.hasMinimumData == true;
+      _loadingProfile = false;
+    });
+  }
+
+  void _seedFields(
+    BusinessSettings settings,
+    BusinessOnboardingProfile? profile,
+  ) {
+    final businessName = profile?.businessName.trim().isNotEmpty == true
+        ? profile!.businessName.trim()
+        : settings.businessName.trim();
+    final niche = profile?.role.trim().isNotEmpty == true
+        ? profile!.role.trim()
+        : '';
+    final ownerName = profile?.ownerName.trim().isNotEmpty == true
+        ? profile!.ownerName.trim()
+        : '';
+    final phone = profile?.phone.trim().isNotEmpty == true
+        ? profile!.phone.trim()
+        : (settings.phone ?? '').trim();
+    final email = profile?.email?.trim().isNotEmpty == true
+        ? profile!.email!.trim()
+        : (settings.email ?? '').trim();
+    final rnc = (settings.rnc ?? '').trim();
+
+    _businessNameCtrl.text = businessName;
+    _businessNicheCtrl.text = niche;
+    _ownerNameCtrl.text = ownerName;
+    _whatsappCtrl.text = phone;
+    _emailCtrl.text = email;
+    _rncCtrl.text = rnc;
+    _selectedNiche = _nicheOptions.contains(niche) ? niche : null;
+  }
+
+  Future<bool> _saveOnboarding({
+    bool requireFullFields = true,
+    bool showSuccessMessage = true,
+  }) async {
+    final businessName = _businessNameCtrl.text.trim();
+    final niche = _businessNicheCtrl.text.trim();
+    final ownerName = _ownerNameCtrl.text.trim();
+    final whatsapp = _whatsappCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final rnc = _rncCtrl.text.trim();
+
+    final missingRequired =
+        businessName.isEmpty ||
+        ownerName.isEmpty ||
+        whatsapp.isEmpty ||
+        (requireFullFields && niche.isEmpty);
+    if (missingRequired) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            requireFullFields
+                ? 'Completa negocio, tipo, representante y WhatsApp.'
+                : 'Completa negocio, representante y WhatsApp.',
+          ),
+        ),
+      );
+      return false;
+    }
+
+    await _identityStorage.saveBusinessProfile(
+      businessName: businessName,
+      role: niche.isEmpty ? 'Otro' : niche,
+      ownerName: ownerName,
+      phone: whatsapp,
+      email: email.isEmpty ? null : email,
+    );
+    await _identityStorage.setOnboardingCompleted(true);
+
+    final currentSettings = await _businessSettingsRepo.loadSettings();
+    final updatedSettings = currentSettings.copyWith(
+      businessName:
+          currentSettings.businessName.trim() == 'FULLPOS' ||
+              currentSettings.businessName.trim().isEmpty
+          ? businessName
+          : currentSettings.businessName,
+      phone: (currentSettings.phone ?? '').trim().isEmpty
+          ? whatsapp
+          : currentSettings.phone,
+      email: (currentSettings.email ?? '').trim().isEmpty && email.isNotEmpty
+          ? email
+          : currentSettings.email,
+      rnc: (currentSettings.rnc ?? '').trim().isEmpty && rnc.isNotEmpty
+          ? rnc
+          : currentSettings.rnc,
+    );
+    await _businessSettingsRepo.saveSettings(updatedSettings);
+
+    if (!mounted) return false;
+    setState(() {
+      _onboardingCompleted = true;
+      _hasMinimumProfileData = true;
+    });
+    if (showSuccessMessage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Datos iniciales guardados correctamente.'),
+        ),
+      );
+    }
+    return true;
+  }
+
+  Future<void> _startTrial(LicenseController controller) async {
+    final saved = await _saveOnboarding();
+    if (!saved) return;
+    final ok = await controller.startLocalTrialOfflineFirst(
+      nombreNegocio: _businessNameCtrl.text,
+      rolNegocio: _businessNicheCtrl.text,
+      contactoNombre: _ownerNameCtrl.text.trim().isEmpty
+          ? _businessNameCtrl.text
+          : _ownerNameCtrl.text,
+      contactoTelefono: _whatsappCtrl.text,
+    );
+    if (!ok || !mounted) return;
+    await _loadProfile();
+    if (!mounted) return;
+    context.go('/login');
+  }
+
+  Future<void> _verifyLicense(LicenseController controller) async {
+    await controller.syncBusinessLicenseNow();
+    if (!mounted) return;
+    await _loadProfile();
   }
 
   Future<void> _pickAndApplyLicenseFile(LicenseController controller) async {
@@ -185,7 +260,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final result = await WindowService.runWithSystemDialog(
       () => FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: const ['json'],
+        allowedExtensions: const ['json', 'dat', 'fulllicense'],
         withData: true,
         lockParentWindow: true,
       ),
@@ -207,7 +282,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     } else {
       if (!mounted) return;
       setState(() {
-        _licenseFileStatus = 'No se pudo leer el archivo seleccionado';
+        _licenseFileStatus = 'No se pudo leer el archivo seleccionado.';
       });
       return;
     }
@@ -223,179 +298,156 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _licenseFileStatus = 'El archivo no es un JSON válido';
-      });
-      return;
-    }
-    if (decoded is! Map) {
-      if (!mounted) return;
-      setState(() {
-        _licenseFileStatus = 'Formato inválido: se esperaba un objeto JSON';
+        _licenseFileStatus =
+            'El archivo no tiene formato JSON válido para la activación manual.';
       });
       return;
     }
 
-    final normalizedFile = _normalizeUploadedLicenseFile(
-      decoded.cast<String, dynamic>(),
-    );
-    if (normalizedFile == null) {
+    if (decoded is! Map<String, dynamic>) {
+      if (!mounted) return;
+      setState(() {
+        _licenseFileStatus = 'Formato inválido: se esperaba un objeto JSON.';
+      });
+      return;
+    }
+
+    final normalized = _normalizeUploadedLicenseFile(decoded);
+    if (normalized == null) {
       if (!mounted) return;
       setState(() {
         _licenseFileStatus =
-            'Formato inválido: el JSON debe incluir payload y signature';
+            'Formato inválido: el archivo debe incluir payload y signature.';
       });
       return;
     }
 
-    setState(() {
-      _licenseFileStatus = 'Verificando archivo...';
-    });
-
-    await controller.applyOfflineLicenseFile(normalizedFile);
-
+    await controller.applyOfflineLicenseFile(normalized);
+    final nextState = ref.read(licenseControllerProvider);
     if (!mounted) return;
-
-    final st = ref.read(licenseControllerProvider);
-    final info = st.info;
     setState(() {
-      if (st.error != null && st.error!.trim().isNotEmpty) {
-        _licenseFileStatus = st.error;
-      } else if (info?.ok == true && info?.isExpired == false) {
-        _licenseFileStatus = 'Licencia aplicada y activa';
+      if (nextState.error != null && nextState.error!.trim().isNotEmpty) {
+        _licenseFileStatus = nextState.error;
+      } else if (nextState.info?.isActive == true &&
+          nextState.info?.isExpired == false) {
+        _licenseFileStatus = 'Licencia aplicada y activa.';
       } else {
-        _licenseFileStatus = 'Archivo verificado. Verifica el estado.';
+        _licenseFileStatus = 'Archivo validado. Verifica el estado.';
       }
     });
-
-    if (!mounted) return;
-    final isSuccess =
-        st.error == null &&
-        st.uiError == null &&
-        info?.ok == true &&
-        info?.isExpired == false;
-    if (isSuccess) {
-      unawaited(_refreshBusinessId(force: true, ensureExists: true));
-      _redirectToAppIfLicenseReady();
-    }
   }
 
   Map<String, dynamic>? _normalizeUploadedLicenseFile(
     Map<String, dynamic> input,
   ) {
-    final directPayload = input['payload'];
-    final directSignature = (input['signature'] ?? '').toString().trim();
-    if (directPayload is Map && directSignature.isNotEmpty) {
+    final payload = input['payload'];
+    final signature = (input['signature'] ?? '').toString().trim();
+    if (payload is Map && signature.isNotEmpty) {
       return {
-        'payload': directPayload.cast<String, dynamic>(),
-        'signature': directSignature,
+        'payload': payload.cast<String, dynamic>(),
+        'signature': signature,
         'alg': (input['alg'] ?? 'Ed25519').toString().trim(),
       };
     }
 
     final nested = input['license'];
-    if (nested is Map) {
-      final nestedMap = nested.cast<String, dynamic>();
-      final payload = nestedMap['payload'];
-      final signature = (nestedMap['signature'] ?? '').toString().trim();
-      if (payload is Map && signature.isNotEmpty) {
+    if (nested is Map<String, dynamic>) {
+      final nestedPayload = nested['payload'];
+      final nestedSignature = (nested['signature'] ?? '').toString().trim();
+      if (nestedPayload is Map && nestedSignature.isNotEmpty) {
         return {
-          'payload': payload.cast<String, dynamic>(),
-          'signature': signature,
-          'alg': (nestedMap['alg'] ?? input['alg'] ?? 'Ed25519')
-              .toString()
-              .trim(),
+          'payload': nestedPayload.cast<String, dynamic>(),
+          'signature': nestedSignature,
+          'alg': (nested['alg'] ?? 'Ed25519').toString().trim(),
         };
       }
     }
-
     return null;
   }
 
-  Future<void> _openWhatsapp({String? supportCode}) async {
-    final st = ref.read(licenseControllerProvider);
-    final info = st.info;
-
-    final businessId = await BusinessIdentityStorage().getBusinessId();
-
-    final deviceId = (info?.deviceId ?? '').trim();
-    final licenseKey = (info?.licenseKey ?? '').trim();
-    final projectCode = (info?.projectCode ?? kFullposProjectCode).trim();
-    final estado = (info?.estado ?? '').trim();
-
-    final negocio = _demoNombreNegocioCtrl.text.trim();
-    final tipoNegocio = _demoRolNegocioCtrl.text.trim();
-    final contacto = _demoContactoNombreCtrl.text.trim();
-    final telefono = _demoContactoTelefonoCtrl.text.trim();
-
+  Future<void> _openSupportWhatsapp(
+    LicenseInfo? info, {
+    String? supportCode,
+  }) async {
+    final businessId = await _identityStorage.getBusinessId();
     final message = LicenseSupportMessage.build(
-      supportCode: (supportCode ?? st.uiError?.supportCode ?? 'LIC-HELP-00')
-          .trim(),
+      supportCode: (supportCode ?? 'LIC-HELP-00').trim(),
       businessId: businessId,
-      deviceId: deviceId,
-      licenseKey: licenseKey,
-      projectCode: projectCode.isNotEmpty ? projectCode : kFullposProjectCode,
-      status: estado,
+      deviceId: info?.deviceId,
+      licenseKey: info?.licenseKey,
+      projectCode: info?.projectCode ?? kFullposProjectCode,
+      status: info?.estado,
     );
 
-    final fullMessage = <String>[
-      message,
-      if (negocio.isNotEmpty) 'Negocio: $negocio',
-      if (tipoNegocio.isNotEmpty) 'Tipo negocio: $tipoNegocio',
-      if (contacto.isNotEmpty) 'Contacto: $contacto',
-      if (telefono.isNotEmpty) 'Teléfono: $telefono',
+    final extra = <String>[
+      if (_businessNameCtrl.text.trim().isNotEmpty)
+        'Negocio: ${_businessNameCtrl.text.trim()}',
+      if (_businessNicheCtrl.text.trim().isNotEmpty)
+        'Nicho: ${_businessNicheCtrl.text.trim()}',
+      if (_whatsappCtrl.text.trim().isNotEmpty)
+        'WhatsApp cliente: ${_whatsappCtrl.text.trim()}',
     ].join('\n');
 
+    final fullMessage = extra.isEmpty ? message : '$message\n$extra';
     final uri = Uri.parse(
       '${AppConfig.whatsappBaseUrl}/$_supportPhoneWhatsapp',
     ).replace(queryParameters: {'text': fullMessage});
-    final url = uri.toString();
 
     await WindowService.runWithExternalApplication(() async {
-      // Requisito: minimizar primero, luego abrir WhatsApp.
       await WindowService.minimize();
       await Future<void>.delayed(const Duration(milliseconds: 150));
-
       final ok = await launchUrlString(
-        url,
+        uri.toString(),
         mode: LaunchMode.externalApplication,
       );
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir WhatsApp')),
+          const SnackBar(content: Text('No se pudo abrir WhatsApp.')),
         );
       }
     });
   }
 
-  Widget _sectionButton({
-    required _LicenseSection value,
-    required String label,
-    required IconData icon,
-    bool expand = true,
-  }) {
-    final selected = _section == value;
-    final onPressed = selected
-        ? null
-        : () {
-            setState(() {
-              _section = value;
-            });
-          };
+  Future<void> _copyBusinessId() async {
+    final businessId = (_businessId ?? '').trim();
+    if (businessId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business ID no disponible todavía.')),
+      );
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: businessId));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Business ID copiado.')));
+  }
 
-    final button = selected
-        ? FilledButton.icon(
-            onPressed: () {},
-            icon: Icon(icon),
-            label: Text(label),
-          )
-        : OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon),
-            label: Text(label),
-          );
+  bool _hasActiveLicense(LicenseInfo? info) =>
+      info?.isActive == true && info?.isExpired == false;
 
-    if (!expand) return button;
-    return Expanded(child: button);
+  bool _shouldShowTrialSection(LicenseInfo? info) {
+    if (_hasActiveLicense(info) || info?.isBlocked == true) return false;
+    if (_trialUsed || _trialStartedAt != null) return false;
+    return true;
+  }
+
+  bool _shouldShowOnboardingSection(LicenseInfo? info) {
+    if (_hasActiveLicense(info)) return false;
+    if (_onboardingCompleted || _hasMinimumProfileData || _trialUsed) {
+      return false;
+    }
+    if ((_businessId ?? '').trim().isNotEmpty) return false;
+    return true;
+  }
+
+  void _redirectToAppIfReady(LicenseInfo? info) {
+    if (_navigatedToApp || !_hasActiveLicense(info) || !mounted) return;
+    _navigatedToApp = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go('/sales');
+    });
   }
 
   @override
@@ -403,1239 +455,1081 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     final state = ref.watch(licenseControllerProvider);
     final controller = ref.read(licenseControllerProvider.notifier);
     final info = state.info;
-    final trialDays = kLocalTrialDuration.inDays;
+    final showOnboarding = _shouldShowOnboardingSection(info);
+    final showTrial = _shouldShowTrialSection(info);
+    final businessId = (_businessId ?? info?.businessId ?? '').trim();
+    final isExpired = info?.isExpired == true;
+    final isBlocked = info?.isBlocked == true;
 
-    // Keep business_id updated (best-effort) without regenerating it on each rebuild.
-    unawaited(_refreshBusinessId(ensureExists: false));
+    if (_hasActiveLicense(info)) {
+      _redirectToAppIfReady(info);
+    }
 
     ref.listen(licenseControllerProvider, (prev, next) {
-      // Si ya se consumió la DEMO en este equipo/cliente, llevar a soporte.
-      if (next.errorCode == 'DEMO_ALREADY_USED' &&
-          _section != _LicenseSection.support) {
-        setState(() {
-          _section = _LicenseSection.support;
-        });
-      }
-
-      final prevActive = _hasActiveLicense(prev?.info);
-      final nextActive = _hasActiveLicense(next.info);
-      if (!prevActive && nextActive) {
-        unawaited(_refreshBusinessId(force: true, ensureExists: false));
-        if (mounted) {
-          setState(() {
-            _licenseFileStatus = 'Licencia aplicada y activa';
-          });
-        }
-        _redirectToAppIfLicenseReady();
+      if (_hasActiveLicense(next.info)) {
+        _redirectToAppIfReady(next.info);
       }
     });
 
-    final theme = Theme.of(context);
-    final cardBorder = Colors.white.withOpacity(0.18);
-    final visualTheme = theme.copyWith(
-      scaffoldBackgroundColor: _licensePageBackground,
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: _licensePrimaryBlue,
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: _licensePrimaryBlue,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+    final title = isBlocked
+        ? 'Licencia bloqueada'
+        : isExpired
+        ? 'Licencia vencida'
+        : 'Activación FullPOS';
+    final subtitle = isBlocked
+        ? 'Verifica o reactiva tu licencia para continuar.'
+        : isExpired
+        ? 'Renueva tu acceso para volver a entrar.'
+        : 'Completa solo lo necesario para comenzar.';
+
+    return Scaffold(
+      backgroundColor: _bgTop,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [_bgTop, _bgBottom],
           ),
         ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _licensePanelText,
-          backgroundColor: Colors.white.withOpacity(0.07),
-          side: BorderSide(color: Colors.white.withOpacity(0.18)),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: ButtonStyle(
-          foregroundColor: const WidgetStatePropertyAll(_licensePrimaryBlue),
-          overlayColor: WidgetStatePropertyAll(
-            _licensePrimaryBlue.withOpacity(0.10),
-          ),
-          textStyle: WidgetStateProperty.resolveWith<TextStyle?>((states) {
-            return TextStyle(
-              fontWeight: FontWeight.w700,
-              decoration: states.contains(WidgetState.hovered)
-                  ? TextDecoration.underline
-                  : TextDecoration.none,
-            );
-          }),
-          shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: _licenseInputBackground,
-        labelStyle: const TextStyle(color: _licenseInputHint),
-        floatingLabelStyle: const TextStyle(
-          color: _licensePrimaryBlue,
-          fontWeight: FontWeight.w700,
-        ),
-        hintStyle: const TextStyle(color: _licenseInputHint),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _licensePrimaryBlue, width: 1.6),
-        ),
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: _licensePanelColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      ),
-    );
-
-    final uiError = state.uiError;
-
-    Widget content;
-    switch (_section) {
-      case _LicenseSection.demo:
-        content = _buildDemoSection(context, info);
-        break;
-      case _LicenseSection.activate:
-        content = _buildActivationSection(context, info);
-        break;
-      case _LicenseSection.support:
-        content = _buildSupportSection(
-          context,
-          uiError,
-          info: info,
-          controller: controller,
-        );
-        break;
-    }
-
-    final licenseActive = _hasActiveLicense(info);
-
-    final headerTitle = licenseActive
-        ? 'Tu acceso está listo para continuar'
-        : 'Activa tu demo de $trialDays días';
-    final headerSubtitle = licenseActive
-        ? 'Puedes continuar al sistema.'
-        : 'Llena los datos a continuación';
-
-    ({String label, IconData icon, Future<void> Function()? onPressed})
-    primaryAction;
-    switch (_section) {
-      case _LicenseSection.demo:
-        primaryAction = (
-          label: licenseActive ? 'Continuar' : 'Iniciar prueba',
-          icon: licenseActive ? Icons.login : Icons.play_arrow,
-          onPressed: licenseActive
-              ? () async {
-                  context.go('/login');
-                }
-              : () async {
-                  final ok = await controller.startLocalTrialOfflineFirst(
-                    nombreNegocio: _demoNombreNegocioCtrl.text,
-                    rolNegocio: _demoRolNegocioCtrl.text,
-                    contactoNombre: _demoContactoNombreCtrl.text,
-                    contactoTelefono: _demoContactoTelefonoCtrl.text,
-                  );
-
-                  if (ok && context.mounted) {
-                    context.go('/login');
-                  }
-                },
-        );
-        break;
-      case _LicenseSection.activate:
-        primaryAction = (
-          label: 'Seleccionar archivo',
-          icon: Icons.upload_file,
-          onPressed: () async {
-            await _pickAndApplyLicenseFile(controller);
-          },
-        );
-        break;
-      case _LicenseSection.support:
-        primaryAction = (
-          label: 'Abrir WhatsApp',
-          icon: Icons.chat_bubble_outline,
-          onPressed: () async {
-            await _openWhatsapp(supportCode: uiError?.supportCode);
-          },
-        );
-        break;
-    }
-
-    return Theme(
-      data: visualTheme,
-      child: Scaffold(
-        backgroundColor: _licensePageBackground,
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFF3F8FF), Color(0xFFE4EEFB), Color(0xFFD6E5F8)],
-            ),
-          ),
-          child: SafeArea(
-            child: Stack(
-              children: [
-                Positioned(
-                  top: -80,
-                  left: -30,
-                  child: _buildBackgroundGlow(_licenseAccentSky, 220),
-                ),
-                Positioned(
-                  right: -70,
-                  top: 120,
-                  child: _buildBackgroundGlow(_licenseAccentCyan, 260),
-                ),
-                Positioned(
-                  bottom: -110,
-                  left: 80,
-                  child: _buildBackgroundGlow(_licensePrimaryBlue, 240),
-                ),
-                Center(
+        child: SafeArea(
+          child: _loadingProfile
+              ? const Center(child: CircularProgressIndicator())
+              : Center(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(AppSizes.paddingL),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 18,
+                    ),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: AbsorbPointer(
-                        absorbing: state.loading,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(28),
-                            boxShadow: const [_licenseCardShadow],
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.7),
                           ),
-                          child: Card(
-                            margin: EdgeInsets.zero,
-                            color: Colors.transparent,
-                            elevation: 0,
-                            shadowColor: Colors.transparent,
-                            surfaceTintColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(28),
-                              side: BorderSide(color: cardBorder),
-                            ),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(28),
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    _licensePanelColorTop,
-                                    _licensePanelColor,
-                                    _licensePanelColorBottom,
-                                  ],
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final compact = constraints.maxWidth < 520;
-
-                                    final sectionButtons = <Widget>[
-                                      _sectionButton(
-                                        value: _LicenseSection.demo,
-                                        label: 'Prueba',
-                                        icon: Icons.play_circle_outline,
-                                        expand: !compact,
-                                      ),
-                                      _sectionButton(
-                                        value: _LicenseSection.activate,
-                                        label: 'Activar',
-                                        icon: Icons.upload_file_outlined,
-                                        expand: !compact,
-                                      ),
-                                      _sectionButton(
-                                        value: _LicenseSection.support,
-                                        label: 'Soporte',
-                                        icon: Icons.support_agent,
-                                        expand: !compact,
-                                      ),
-                                    ];
-
-                                    return Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        Text(
-                                          headerTitle,
-                                          textAlign: TextAlign.center,
-                                          style: theme.textTheme.titleLarge
-                                              ?.copyWith(
-                                                color: _licensePanelText,
-                                                fontWeight: FontWeight.w800,
-                                                height: 1.1,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          headerSubtitle,
-                                          textAlign: TextAlign.center,
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: _licensePanelMutedText,
-                                                fontWeight: FontWeight.w600,
-                                                height: 1.35,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        if (uiError != null) ...[
-                                          _buildErrorCard(
-                                            context,
-                                            uiError,
-                                            info: info,
-                                            controller: controller,
-                                          ),
-                                          const SizedBox(height: 16),
-                                        ],
-                                        if (compact)
-                                          Wrap(
-                                            spacing: 10,
-                                            runSpacing: 10,
-                                            children: sectionButtons,
-                                          )
-                                        else
-                                          Row(
-                                            children: [
-                                              sectionButtons[0],
-                                              const SizedBox(width: 8),
-                                              sectionButtons[1],
-                                              const SizedBox(width: 8),
-                                              sectionButtons[2],
-                                            ],
-                                          ),
-                                        const SizedBox(height: 16),
-                                        Container(
-                                          padding: const EdgeInsets.all(16),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(
-                                              0.09,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withOpacity(
-                                                0.12,
-                                              ),
-                                            ),
-                                          ),
-                                          child: content,
-                                        ),
-                                        const SizedBox(height: 16),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: FilledButton.icon(
-                                            onPressed: state.loading
-                                                ? null
-                                                : () async {
-                                                    await primaryAction
-                                                        .onPressed
-                                                        ?.call();
-                                                  },
-                                            icon: Icon(primaryAction.icon),
-                                            label: Text(primaryAction.label),
-                                          ),
-                                        ),
-                                        if (kDebugMode) ...[
-                                          const SizedBox(height: 12),
-                                          Container(
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(
-                                                0.10,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                              border: Border.all(
-                                                color: Colors.white.withOpacity(
-                                                  0.16,
-                                                ),
-                                              ),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                Text(
-                                                  'Debug',
-                                                  style: theme
-                                                      .textTheme
-                                                      .titleSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                        color:
-                                                            _licensePanelText,
-                                                      ),
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Text(
-                                                  'Borra TRIAL y licencia local en esta PC (solo debug).',
-                                                  style: theme
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        color:
-                                                            _licensePanelMutedText,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                ),
-                                                const SizedBox(height: 10),
-                                                OutlinedButton.icon(
-                                                  onPressed: () async {
-                                                    final ok = await showDialog<bool>(
-                                                      context: context,
-                                                      builder: (context) {
-                                                        return AlertDialog(
-                                                          title: const Text(
-                                                            'Reset licencia (debug)',
-                                                          ),
-                                                          content: const Text(
-                                                            'Esto borrará el TRIAL, la identidad del negocio, la cola de registro y el archivo license.dat en esta PC.\n\nSolo funciona en modo debug.',
-                                                          ),
-                                                          actions: [
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  Navigator.pop(
-                                                                    context,
-                                                                    false,
-                                                                  ),
-                                                              child: const Text(
-                                                                'Cancelar',
-                                                              ),
-                                                            ),
-                                                            FilledButton(
-                                                              onPressed: () =>
-                                                                  Navigator.pop(
-                                                                    context,
-                                                                    true,
-                                                                  ),
-                                                              child: const Text(
-                                                                'Borrar',
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        );
-                                                      },
-                                                    );
-                                                    if (ok != true) return;
-
-                                                    await controller
-                                                        .debugResetLicensingOnThisDevice();
-                                                    if (!context.mounted) {
-                                                      return;
-                                                    }
-                                                    setState(() {
-                                                      _licenseFileStatus = null;
-                                                      _licenseFileName = null;
-                                                      _section =
-                                                          _LicenseSection.demo;
-                                                    });
-                                                    ScaffoldMessenger.of(
-                                                      context,
-                                                    ).showSnackBar(
-                                                      const SnackBar(
-                                                        content: Text(
-                                                          'Licencia/TRIAL borrados (debug).',
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons
-                                                        .delete_forever_outlined,
-                                                  ),
-                                                  label: const Text(
-                                                    'Reset licencia (debug)',
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                        if (state.loading) ...[
-                                          const SizedBox(height: 16),
-                                          const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
-                                        ],
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFEFFFFFF), Color(0xFFF8FBFF)],
                           ),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x120E1A2B),
+                              blurRadius: 26,
+                              offset: Offset(0, 12),
+                            ),
+                          ],
+                        ),
+                        child: _buildWorkspace(
+                          state: state,
+                          controller: controller,
+                          info: info,
+                          businessId: businessId,
+                          showOnboarding: showOnboarding,
+                          showTrial: showTrial,
+                          isExpired: isExpired,
+                          isBlocked: isBlocked,
+                          title: title,
+                          subtitle: subtitle,
                         ),
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
 
-  Widget _buildErrorCard(
-    BuildContext context,
-    LicenseUiError uiError, {
-    required LicenseInfo? info,
+  Widget _buildWorkspace({
+    required LicenseState state,
     required LicenseController controller,
+    required LicenseInfo? info,
+    required String businessId,
+    required bool showOnboarding,
+    required bool showTrial,
+    required bool isExpired,
+    required bool isBlocked,
+    required String title,
+    required String subtitle,
   }) {
-    final theme = Theme.of(context);
-
-    final bg = uiError.isBlocking
-        ? const Color(0x33DC2626)
-        : Colors.white.withOpacity(0.10);
-    const fg = _licensePanelText;
-
-    IconData iconFor(LicenseErrorType t) {
-      return switch (t) {
-        LicenseErrorType.offline => Icons.wifi_off,
-        LicenseErrorType.timeout => Icons.timer_outlined,
-        LicenseErrorType.dns => Icons.public_off,
-        LicenseErrorType.ssl => Icons.security,
-        LicenseErrorType.serverDown => Icons.cloud_off,
-        LicenseErrorType.unauthorized => Icons.lock_outline,
-        LicenseErrorType.notActivated => Icons.hourglass_bottom,
-        LicenseErrorType.invalidLicenseFile => Icons.insert_drive_file_outlined,
-        LicenseErrorType.expired => Icons.event_busy,
-        LicenseErrorType.corruptedLocalFile => Icons.broken_image_outlined,
-        LicenseErrorType.unknown => Icons.info_outline,
-      };
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: uiError.isBlocking
-              ? const Color(0x66F87171)
-              : Colors.white.withOpacity(0.16),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(iconFor(uiError.type), color: fg),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  uiError.title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: fg,
-                  ),
-                ),
+          _buildCompactHeader(title: title, subtitle: subtitle),
+          const SizedBox(height: 12),
+          _buildTabsHeader(),
+          const SizedBox(height: 12),
+          if (state.uiError != null) ...[
+            _buildErrorBanner(state.uiError!.title, state.uiError!.message),
+            const SizedBox(height: 12),
+          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: Container(
+              key: ValueKey(_selectedTab),
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _line.withOpacity(0.95)),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            uiError.message,
-            style: theme.textTheme.bodyMedium?.copyWith(color: fg),
-          ),
-          const SizedBox(height: 10),
-          _buildPrimaryActionsRow(
-            context,
-            uiError,
-            info: info,
-            controller: controller,
+              padding: const EdgeInsets.all(16),
+              child: switch (_selectedTab) {
+                0 => _buildTrialTabContent(
+                  state: state,
+                  controller: controller,
+                  info: info,
+                  businessId: businessId,
+                  showOnboarding: showOnboarding,
+                  showTrial: showTrial,
+                ),
+                1 => _buildActivateTabContent(
+                  state: state,
+                  controller: controller,
+                  info: info,
+                  businessId: businessId,
+                ),
+                _ => _buildSupportTabContent(
+                  info: info,
+                  businessId: businessId,
+                ),
+              },
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPrimaryActionsRow(
-    BuildContext context,
-    LicenseUiError uiError, {
-    required LicenseInfo? info,
-    required LicenseController controller,
+  Widget _buildCompactHeader({
+    required String title,
+    required String subtitle,
   }) {
-    final actions = uiError.actions;
-    final hasRetry = actions.contains(LicenseAction.retry);
-    final hasRepair = actions.contains(LicenseAction.repairAndRetry);
-    if (!hasRetry && !hasRepair) {
-      // Aún así damos acceso a Soporte.
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: () {
-            setState(() {
-              _section = _LicenseSection.support;
-              _showSupportDetails = true;
-            });
-          },
-          icon: const Icon(Icons.support_agent),
-          label: const Text('Ir a Soporte'),
-        ),
-      );
-    }
-
-    Future<void> onRetry() async {
-      if (uiError.type == LicenseErrorType.notActivated) {
-        await controller.syncBusinessLicenseNow();
-        if (!mounted) return;
-        return;
-      }
-      if (uiError.type == LicenseErrorType.corruptedLocalFile) {
-        await controller.repairAndRetrySync();
-        if (!mounted) return;
-        return;
-      }
-      await controller.check();
-      if (!mounted) return;
-    }
-
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasRetry)
-          FilledButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Reintentar'),
+        Text(
+          title,
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 21,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
           ),
-        if (hasRepair)
-          FilledButton.icon(
-            onPressed: () async {
-              await controller.repairAndRetrySync();
-              if (!mounted) return;
-            },
-            icon: const Icon(Icons.build_circle_outlined),
-            label: const Text('Reparar y reintentar'),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 12.8,
+            height: 1.4,
+            fontWeight: FontWeight.w500,
           ),
-        OutlinedButton.icon(
-          onPressed: () {
-            setState(() {
-              _section = _LicenseSection.support;
-              _showSupportDetails = true;
-            });
-          },
-          icon: const Icon(Icons.support_agent),
-          label: const Text('Ir a Soporte'),
         ),
       ],
     );
   }
 
-  Widget _buildSupportSection(
-    BuildContext context,
-    LicenseUiError? uiError, {
-    required LicenseInfo? info,
+  Widget _buildTabsHeader() {
+    const items = [
+      (icon: Icons.rocket_launch_rounded, label: 'Prueba'),
+      (icon: Icons.key_rounded, label: 'Activar'),
+      (icon: Icons.headset_mic_rounded, label: 'Soporte'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        children: List.generate(items.length, (index) {
+          final item = items[index];
+          final active = _selectedTab == index;
+          return Expanded(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              decoration: BoxDecoration(
+                color: active ? _ink : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: active
+                    ? const [
+                        BoxShadow(
+                          color: Color(0x14122033),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedTab = index),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        item.icon,
+                        size: 15,
+                        color: active ? Colors.white : _muted,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        item.label,
+                        style: TextStyle(
+                          color: active ? Colors.white : _muted,
+                          fontSize: 12.5,
+                          fontWeight: active
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildTrialTabContent({
+    required LicenseState state,
     required LicenseController controller,
+    required LicenseInfo? info,
+    required String businessId,
+    required bool showOnboarding,
+    required bool showTrial,
   }) {
-    final theme = Theme.of(context);
-
-    final code = (uiError?.supportCode ?? 'LIC-HELP-00').trim();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Soporte',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-            color: _licensePanelText,
+        _buildSectionLabel(showTrial ? 'Prueba gratis de 5 días' : 'Prueba'),
+        const SizedBox(height: 12),
+        if (showOnboarding || showTrial) ...[
+          _buildBusinessFormCard(
+            showIdentityHint: false,
+            businessId: businessId,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (showTrial)
+          _buildPrimaryCta(
+            icon: state.loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.rocket_launch_rounded, size: 18),
+            label: state.loading
+                ? 'Iniciando demo...'
+                : 'Iniciar prueba gratis',
+            helper: null,
+            onPressed: state.loading ? null : () => _startTrial(controller),
+          )
+        else
+          _buildSoftNotice(
+            tone: _warning,
+            title: 'Prueba no disponible',
+            body: _trialUsed
+                ? 'Esta instalación ya consumió la prueba gratis.'
+                : 'La prueba gratis ya no está disponible.',
+            actionLabel: 'Ir a activar licencia',
+            onPressed: () => setState(() => _selectedTab = 1),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildActivateTabContent({
+    required LicenseState state,
+    required LicenseController controller,
+    required LicenseInfo? info,
+    required String businessId,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionLabel('Activación'),
+        const SizedBox(height: 12),
+        _buildPurchaseHighlightCard(),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _metaTile(
+              icon: Icons.badge_rounded,
+              label: 'Business ID',
+              value: businessId.isEmpty ? 'Pendiente' : businessId,
+              onCopy: businessId.isEmpty ? null : _copyBusinessId,
+            ),
+            _metaTile(
+              icon: Icons.computer_rounded,
+              label: 'Device ID',
+              value: info?.deviceId ?? '-',
+            ),
+          ],
+        ),
+        if (_licenseFileName != null || _licenseFileStatus != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _panelSoft,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Archivo seleccionado',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_licenseFileName != null)
+                  Text(
+                    _licenseFileName!,
+                    style: const TextStyle(color: _muted, fontSize: 13.5),
+                  ),
+                if (_licenseFileStatus != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _licenseFileStatus!,
+                    style: const TextStyle(color: _soft, fontSize: 12.5),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        _actionRow(
+          primary: _buildWideButton(
+            icon: Icons.upload_file_rounded,
+            label: 'Subir archivo de licencia',
+            onPressed: state.loading
+                ? null
+                : () => _pickAndApplyLicenseFile(controller),
+            primary: true,
+          ),
+          secondary: _buildWideButton(
+            icon: Icons.verified_user_rounded,
+            label: 'Verificar licencia',
+            onPressed: state.loading ? null : () => _verifyLicense(controller),
+            primary: false,
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Aquí tienes ayuda, contacto y los datos que soporte puede pedirte para asistirte rápido.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: _licensePanelMutedText,
-          ),
+        _buildWideButton(
+          icon: Icons.support_agent_rounded,
+          label: 'Pedir activación virtual',
+          onPressed: () => _openSupportWhatsapp(info),
+          primary: false,
         ),
+      ],
+    );
+  }
+
+  Widget _buildPurchaseHighlightCard() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.985, end: 1),
+      duration: const Duration(milliseconds: 1600),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(scale: value, child: child);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFFF2E8), Color(0xFFFFFBF7)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFF1D7C8)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x18B96534),
+              blurRadius: 22,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.local_fire_department_rounded, color: _accent, size: 18),
+                SizedBox(width: 8),
+                Text(
+                  'Comprar licencia',
+                  style: TextStyle(
+                    color: _ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14.5,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Activa o renueva con PayPal desde 3 meses en adelante.',
+              style: TextStyle(
+                color: _muted,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 1800),
+              curve: Curves.easeOutCubic,
+              builder: (context, glow, child) {
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0x33B96534).withOpacity(0.18 + (glow * 0.18)),
+                        blurRadius: 18 + (glow * 10),
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: child,
+                );
+              },
+              child: _buildWideButton(
+                icon: Icons.shopping_cart_checkout_rounded,
+                label: 'Comprar ahora',
+                onPressed: () async {
+                  final saved = await _saveOnboarding(
+                    requireFullFields: false,
+                    showSuccessMessage: false,
+                  );
+                  if (!saved || !mounted) return;
+                  context.go('/license/purchase');
+                },
+                primary: true,
+                tone: _accent,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSupportTabContent({
+    required LicenseInfo? info,
+    required String businessId,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSectionLabel('Soporte'),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.10),
+            color: _panelSoft,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.16)),
+            border: Border.all(color: _line),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.support_agent, color: _licensePanelText),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Soporte',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: _licensePanelText,
-                      ),
-                    ),
+                  Icon(
+                    Icons.chat_bubble_rounded,
+                    color: _primaryBright,
+                    size: 18,
                   ),
+                  SizedBox(width: 8),
                   Text(
-                    code,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: _licensePanelMutedText,
+                    'Contacto directo',
+                    style: TextStyle(
+                      color: _ink,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
+              const Text(
+                'WhatsApp: 829-531-9442',
+                style: TextStyle(
+                  color: _primary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
               Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  if (info?.deviceId.trim().isNotEmpty == true)
-                    _supportInfoPill(
-                      context,
-                      label: 'Device ID',
-                      value: info!.deviceId.trim(),
-                    ),
-                  _supportInfoPill(
-                    context,
-                    label: 'WhatsApp',
-                    value: _supportPhoneDisplay,
+                  _metaTile(
+                    icon: Icons.badge_rounded,
+                    label: 'Business ID',
+                    value: businessId.isEmpty ? '-' : businessId,
+                  ),
+                  _metaTile(
+                    icon: Icons.computer_rounded,
+                    label: 'Device ID',
+                    value: info?.deviceId ?? '-',
+                  ),
+                  _metaTile(
+                    icon: Icons.vpn_key_rounded,
+                    label: 'Proyecto',
+                    value: info?.projectCode ?? kFullposProjectCode,
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () async {
-                      await _openWhatsapp(supportCode: code);
-                      if (!context.mounted) return;
-                    },
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    label: const Text('WhatsApp soporte'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      await _copySupportCode(context, code);
-                      if (!context.mounted) return;
-                    },
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copiar código'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() => _showQuickGuide = !_showQuickGuide);
-                    },
-                    icon: const Icon(Icons.help_outline),
-                    label: Text(
-                      _showQuickGuide ? 'Ocultar guía' : 'Guía rápida',
-                    ),
-                  ),
-                ],
-              ),
-              if (uiError != null) ...[
-                const SizedBox(height: 10),
-                _buildSupportDetails(context, uiError, info: info),
-              ] else if (_showQuickGuide) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.16)),
-                  ),
-                  child: Text(
-                    'Guía rápida:\n'
-                    '• Intenta de nuevo en 1 minuto.\n'
-                    '• Si persiste, contacta soporte.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: _licensePanelMutedText,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSupportDetails(
-    BuildContext context,
-    LicenseUiError uiError, {
-    required LicenseInfo? info,
-  }) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_showQuickGuide) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.16)),
-            ),
-            child: Text(
-              'Guía rápida:\n'
-              '• Intenta de nuevo en 1 minuto.\n'
-              '• Si persiste, contacta soporte.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: _licensePanelMutedText,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: () {
-            setState(() => _showSupportDetails = !_showSupportDetails);
-          },
-          child: Row(
-            children: [
-              Icon(
-                _showSupportDetails ? Icons.expand_less : Icons.expand_more,
-                size: 20,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Detalles para soporte',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: _licensePanelText,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '(opcional)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: _licensePanelMutedText,
-                ),
               ),
             ],
           ),
-        ),
-        if (_showSupportDetails) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.16)),
-            ),
-            child: DefaultTextStyle(
-              style: theme.textTheme.bodySmall!.copyWith(
-                color: _licensePanelMutedText,
-                height: 1.35,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Código soporte: ${uiError.supportCode}'),
-                  if (uiError.endpoint != null)
-                    Text('Endpoint: ${uiError.endpoint}'),
-                  if (uiError.httpStatusCode != null)
-                    Text('HTTP: ${uiError.httpStatusCode}'),
-                  if (uiError.technicalSummary != null &&
-                      uiError.technicalSummary!.trim().isNotEmpty)
-                    Text('Resumen: ${uiError.technicalSummary}'),
-                  if (info != null && info.deviceId.trim().isNotEmpty)
-                    Text('Device ID: ${info.deviceId.trim()}'),
-                  if (info != null && info.licenseKey.trim().isNotEmpty)
-                    Text('Licencia: ${_maskKey(info.licenseKey)}'),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Future<void> _copySupportCode(BuildContext context, String code) async {
-    await Clipboard.setData(ClipboardData(text: code));
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Código copiado.')));
-  }
-
-  Future<void> _copyBusinessId(BuildContext context, String? businessId) async {
-    final resolved = (businessId ?? '').trim();
-    if (resolved.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Business ID no disponible todavía.')),
-      );
-      return;
-    }
-
-    await Clipboard.setData(ClipboardData(text: resolved));
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Business ID copiado.')));
-  }
-
-  Widget _buildBusinessIdCopyIcon(
-    BuildContext context, {
-    required String? businessId,
-    Color? color,
-  }) {
-    final resolved = (businessId ?? '').trim();
-    final enabled = resolved.isNotEmpty;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: enabled
-          ? () async {
-              await _copyBusinessId(context, resolved);
-            }
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(
-          Icons.copy_rounded,
-          size: 15,
-          color: enabled ? color : (color ?? Colors.white).withOpacity(0.45),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDemoSection(BuildContext context, LicenseInfo? info) {
-    final active = info?.isActive == true && info?.isExpired == false;
-
-    InputDecoration fieldDecoration(String label, {String? hint}) {
-      return InputDecoration(
-        labelText: label,
-        hintText: hint,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
-        ),
-        labelStyle: const TextStyle(color: _licenseInputHint),
-        floatingLabelStyle: const TextStyle(
-          color: _licensePrimaryBlue,
-          fontWeight: FontWeight.w700,
-        ),
-        hintStyle: const TextStyle(color: _licenseInputHint),
-        filled: true,
-        fillColor: _licenseInputBackground,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _licensePrimaryBlue, width: 1.6),
-        ),
-      );
-    }
-
-    const rolesNegocio = <String>[
-      'Colmado',
-      'Mini market',
-      'Supermercado',
-      'Ferretería',
-      'Farmacia',
-      'Tienda de ropa',
-      'Boutique',
-      'Tienda de electrónicos',
-      'Tienda de celulares',
-      'Repuestos / Autopartes',
-      'Licorería',
-      'Papelería',
-      'Panadería',
-      'Carnicería',
-      'Perfumería',
-      'Hogar / Decoración',
-      'Otro',
-    ];
-
-    if (active) {
-      final isTrial = (info?.code ?? '').toUpperCase() == 'TRIAL';
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            isTrial ? 'Prueba gratis activa' : 'Licencia activa',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          _kv('Tipo', _licenseTypeLabel(info)),
-          if (!isTrial) _kv('Device ID', info?.deviceId ?? '-'),
-          _kv('Vence', _formatLocalDateTime(info?.fechaFin)),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final twoColumns = constraints.maxWidth >= 620;
-            final fields = <Widget>[
-              TextField(
-                controller: _demoNombreNegocioCtrl,
-                style: const TextStyle(color: _licenseInputText),
-                cursorColor: _licensePrimaryBlue,
-                decoration: fieldDecoration(
-                  'Nombre del negocio',
-                  hint: 'Ejemplo: Comercial Ana',
-                ),
-              ),
-              DropdownButtonFormField<String>(
-                value: rolesNegocio.contains(_demoRolNegocioSelected)
-                    ? _demoRolNegocioSelected
-                    : null,
-                decoration: fieldDecoration(
-                  '',
-                  hint: 'Selecciona tipo de negocio',
-                ).copyWith(labelText: null),
-                isExpanded: true,
-                dropdownColor: _licenseInputBackground,
-                style: const TextStyle(color: _licenseInputText),
-                icon: const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: _licenseInputHint,
-                ),
-                hint: const Text(
-                  'Selecciona tipo de negocio',
-                  style: TextStyle(color: _licenseInputHint),
-                ),
-                items: rolesNegocio
-                    .map(
-                      (role) => DropdownMenuItem<String>(
-                        value: role,
-                        child: Text(
-                          role,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: _licenseInputText),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _demoRolNegocioSelected = value;
-                    _demoRolNegocioCtrl.text = value ?? '';
-                  });
-                },
-              ),
-              TextField(
-                controller: _demoContactoNombreCtrl,
-                style: const TextStyle(color: _licenseInputText),
-                cursorColor: _licensePrimaryBlue,
-                decoration: fieldDecoration(
-                  'Nombre de contacto',
-                  hint: 'Persona responsable',
-                ),
-              ),
-              TextField(
-                controller: _demoContactoTelefonoCtrl,
-                style: const TextStyle(color: _licenseInputText),
-                cursorColor: _licensePrimaryBlue,
-                decoration: fieldDecoration('Teléfono', hint: '809 000 0000'),
-                keyboardType: TextInputType.phone,
-              ),
-            ];
-
-            if (!twoColumns) {
-              return Column(
-                children: [
-                  for (var index = 0; index < fields.length; index++) ...[
-                    fields[index],
-                    if (index != fields.length - 1) const SizedBox(height: 12),
-                  ],
-                ],
-              );
-            }
-
-            return Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: fields[0]),
-                    const SizedBox(width: 12),
-                    Expanded(child: fields[1]),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: fields[2]),
-                    const SizedBox(width: 12),
-                    Expanded(child: fields[3]),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActivationSection(BuildContext context, LicenseInfo? info) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Sube tu archivo de licencia para activar esta instalación de forma rápida y segura.',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: _licensePanelMutedText),
         ),
         const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.12)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.upload_file_outlined,
-                      color: _licensePanelText,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Activación por archivo',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: _licensePanelText,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _kv('Proyecto', kFullposProjectCode),
-              _kv(
-                'Business ID',
-                _resolvedBusinessId(info) ?? 'Generando...',
-                trailing: _buildBusinessIdCopyIcon(
-                  context,
-                  businessId: _resolvedBusinessId(info),
-                  color: _licensePanelText,
-                ),
-              ),
-              _kv('Device ID', info?.deviceId ?? '-'),
-              if (_licenseFileName != null) _kv('Archivo', _licenseFileName!),
-            ],
-          ),
+        _buildWideButton(
+          icon: Icons.chat_rounded,
+          label: 'Abrir WhatsApp',
+          onPressed: () => _openSupportWhatsapp(info),
+          primary: true,
         ),
-        if (_licenseFileStatus != null) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.12)),
-            ),
-            child: Text(
-              _licenseFileStatus!,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: _licensePanelText),
-            ),
-          ),
-        ],
+        const SizedBox(height: 8),
+        _buildWideButton(
+          icon: Icons.info_outline_rounded,
+          label: 'Solicitar código de soporte',
+          onPressed: () =>
+              _openSupportWhatsapp(info, supportCode: 'LIC-HELP-01'),
+          primary: false,
+        ),
       ],
     );
   }
 
-  Widget _buildBackgroundGlow(Color color, double size) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color.withOpacity(0.22), color.withOpacity(0.0)],
-          ),
-        ),
+  Widget _buildBusinessFormCard({
+    required bool showIdentityHint,
+    required String businessId,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showIdentityHint) ...[
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _metaTile(
+                  icon: Icons.apartment_rounded,
+                  label: 'Business ID',
+                  value: businessId.isEmpty
+                      ? 'Se generará o reutilizará'
+                      : businessId,
+                  onCopy: businessId.isEmpty ? null : _copyBusinessId,
+                ),
+                _metaTile(
+                  icon: Icons.workspace_premium_rounded,
+                  label: 'Estado',
+                  value: _onboardingCompleted
+                      ? 'Datos existentes'
+                      : 'Primera configuración',
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+          _buildBusinessForm(),
+        ],
       ),
     );
   }
 
-  Widget _supportInfoPill(
-    BuildContext context, {
+  Widget _buildBusinessForm() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 580;
+        final fields = <Widget>[
+          _buildTextField(
+            controller: _businessNameCtrl,
+            label: 'Nombre del negocio',
+            hint: 'Ej: Comercial Núcleo',
+            icon: Icons.storefront_rounded,
+          ),
+          _buildNicheDropdown(),
+          _buildTextField(
+            controller: _ownerNameCtrl,
+            label: 'Nombre de contacto',
+            hint: 'Responsable principal',
+            icon: Icons.person_outline_rounded,
+          ),
+          _buildTextField(
+            controller: _whatsappCtrl,
+            label: 'WhatsApp',
+            hint: '809 555 5555',
+            icon: Icons.phone_rounded,
+            keyboardType: TextInputType.phone,
+          ),
+          _buildTextField(
+            controller: _emailCtrl,
+            label: 'Correo electrónico',
+            hint: 'Opcional',
+            icon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          _buildTextField(
+            controller: _rncCtrl,
+            label: 'RNC',
+            hint: 'Opcional',
+            icon: Icons.badge_outlined,
+          ),
+        ];
+
+        if (!wide) {
+          return Column(
+            children: [
+              for (var i = 0; i < fields.length; i++) ...[
+                fields[i],
+                if (i != fields.length - 1) const SizedBox(height: 14),
+              ],
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: fields[0]),
+                const SizedBox(width: 14),
+                Expanded(child: fields[1]),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(child: fields[2]),
+                const SizedBox(width: 14),
+                Expanded(child: fields[3]),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(child: fields[4]),
+                const SizedBox(width: 14),
+                Expanded(child: fields[5]),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
     required String label,
-    required String value,
-    Widget? trailing,
+    required String hint,
+    required IconData icon,
+    TextInputType? keyboardType,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      cursorColor: _primaryBright,
+      style: const TextStyle(
+        color: _ink,
+        fontSize: 14.5,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: _inputDecoration(label: label, hint: hint, icon: icon),
+    );
+  }
+
+  Widget _buildNicheDropdown() {
+    return DropdownButtonFormField<String>(
+      value: _selectedNiche,
+      borderRadius: BorderRadius.circular(18),
+      dropdownColor: Colors.white,
+      icon: const Icon(Icons.expand_more_rounded, color: _soft),
+      style: const TextStyle(
+        color: _ink,
+        fontSize: 14.5,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: _inputDecoration(
+        label: 'Tipo de negocio',
+        hint: 'Selecciona una categoría',
+        icon: Icons.category_outlined,
+      ),
+      items: _nicheOptions
+          .map(
+            (niche) =>
+                DropdownMenuItem<String>(value: niche, child: Text(niche)),
+          )
+          .toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedNiche = value;
+          _businessNicheCtrl.text = value ?? '';
+        });
+      },
+    );
+  }
+
+  InputDecoration _inputDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Icon(icon, size: 18, color: _soft),
+      ),
+      prefixIconConstraints: const BoxConstraints(minWidth: 46),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      labelStyle: const TextStyle(
+        color: _muted,
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
+      ),
+      hintStyle: const TextStyle(
+        color: _soft,
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _primaryBright, width: 1.6),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryCta({
+    required Widget icon,
+    required String label,
+    required String? helper,
+    required VoidCallback? onPressed,
   }) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 140, maxWidth: 280),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF173B70), Color(0xFF2254A4)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33173B70),
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            onPressed: onPressed,
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: _primary,
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+              textStyle: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.1,
+              ),
+            ),
+            icon: icon,
+            label: Text(label),
+          ),
+          if (helper != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              helper,
+              style: const TextStyle(
+                color: Color(0xD9FFFFFF),
+                fontSize: 12,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSoftNotice({
+    required Color tone,
+    required String title,
+    required String body,
+    String? actionLabel,
+    VoidCallback? onPressed,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Color.lerp(tone, Colors.white, 0.9),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Color.lerp(tone, Colors.white, 0.72)!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: tone, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: tone,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            body,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 13.5,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (actionLabel != null && onPressed != null) ...[
+            const SizedBox(height: 14),
+            _buildWideButton(
+              icon: Icons.arrow_forward_rounded,
+              label: actionLabel,
+              onPressed: onPressed,
+              primary: false,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(String title) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorBanner(String title, String message) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4F4),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF4CFCF)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded, size: 20, color: _danger),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: _danger,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: _danger,
+                    fontSize: 12.8,
+                    height: 1.45,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWideButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    required bool primary,
+    Color? tone,
+  }) {
+    final color = tone ?? _primary;
+    final style = primary
+        ? FilledButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            elevation: 0,
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          )
+        : OutlinedButton.styleFrom(
+            foregroundColor: _ink,
+            side: const BorderSide(color: _line),
+            backgroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          );
+
+    final button = primary
+        ? FilledButton.icon(
+            onPressed: onPressed,
+            style: style,
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            style: style,
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+          );
+
+    return SizedBox(width: double.infinity, child: button);
+  }
+
+  Widget _actionRow({required Widget primary, required Widget secondary}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 580) {
+          return Column(
+            children: [primary, const SizedBox(height: 12), secondary],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: primary),
+            const SizedBox(width: 12),
+            Expanded(child: secondary),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _metaTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    Future<void> Function()? onCopy,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
+        border: Border.all(color: _line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: _primaryTint,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: _primaryBright, size: 15),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1643,57 +1537,39 @@ class _LicensePageState extends ConsumerState<LicensePage> {
               children: [
                 Text(
                   label,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: _licensePanelMutedText,
+                  style: const TextStyle(
+                    color: _soft,
+                    fontSize: 10.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: _licensePanelText,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 11.8,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing],
-        ],
-      ),
-    );
-  }
-
-  Widget _kv(String k, String v, {Widget? trailing}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(
-              '$k:',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: _licensePanelText,
+          if (onCopy != null) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: onCopy,
+              borderRadius: BorderRadius.circular(999),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.copy_rounded, size: 15, color: _soft),
               ),
             ),
-          ),
-          Expanded(
-            child: Text(
-              v,
-              style: const TextStyle(color: _licensePanelMutedText),
-            ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+          ],
         ],
       ),
     );
   }
-}
 
-enum _LicenseSection { demo, activate, support }
+}

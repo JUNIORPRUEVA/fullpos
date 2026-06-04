@@ -14,6 +14,8 @@ function Find-Iscc {
   if ($cmd) { return $cmd.Source }
 
   $candidates = @(
+    'C:\Program Files\Inno Setup 7\ISCC.exe',
+    'C:\Program Files (x86)\Inno Setup 7\ISCC.exe',
     'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
     'C:\Program Files\Inno Setup 6\ISCC.exe',
     'C:\Program Files (x86)\Inno Setup 5\ISCC.exe',
@@ -30,9 +32,11 @@ function Find-Iscc {
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $pubspec = Join-Path $projectRoot 'pubspec.yaml'
 $setupIss = Join-Path $projectRoot 'installer\setup.iss'
+$packScript = Join-Path $projectRoot 'tool\pack_windows_release.ps1'
 
 if (!(Test-Path $pubspec)) { throw "No existe pubspec.yaml en: $pubspec" }
 if (!(Test-Path $setupIss)) { throw "No existe setup.iss en: $setupIss" }
+if (!(Test-Path $packScript)) { throw "No existe pack_windows_release.ps1 en: $packScript" }
 
 $versionLine = Select-String -Path $pubspec -Pattern '^version:\s*(.+)\s*$' -ErrorAction Stop | Select-Object -First 1
 if (-not $versionLine) { throw 'No se encontró la línea version: en pubspec.yaml' }
@@ -47,6 +51,10 @@ Write-Host "Version detectada: $version" -ForegroundColor Cyan
 
 Push-Location $projectRoot
 try {
+  Write-Host 'flutter clean...' -ForegroundColor Cyan
+  flutter clean
+  Assert-LastExitCode 'flutter clean'
+
   Write-Host 'flutter pub get...' -ForegroundColor Cyan
   flutter pub get
   Assert-LastExitCode 'flutter pub get'
@@ -68,6 +76,10 @@ try {
       throw "Build incompleto: falta '$p'."
     }
   }
+
+  Write-Host 'Empaquetando release distribuible...' -ForegroundColor Cyan
+  & powershell -ExecutionPolicy Bypass -File $packScript
+  Assert-LastExitCode 'pack_windows_release.ps1'
 
   $iscc = Find-Iscc
   Write-Host "Compilando instalador con ISCC: $iscc" -ForegroundColor Cyan

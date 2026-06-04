@@ -73,6 +73,60 @@ class CloudSyncService {
     _lastSyncFailureMessage = message;
   }
 
+  bool _isCompanyLocatorConflict(int statusCode, String body) {
+    if (statusCode != 404 && statusCode != 409) return false;
+    final normalized = body.toUpperCase();
+    return normalized.contains('COMPANY_TENANT_LOCATOR_CONFLICT') ||
+        normalized.contains('COMPANY_TENANT_IDENTITY_CONFLICT') ||
+        normalized.contains('COMPANY_TENANT_NOT_LINKED') ||
+        normalized.contains('COMPANY_RNC_AMBIGUOUS');
+  }
+
+  Future<http.Response> _postByRncWithIdentityFallback({
+    required String baseUrl,
+    required String endpoint,
+    required Map<String, String> headers,
+    required Map<String, dynamic> payload,
+    required Duration timeout,
+    required String reason,
+  }) async {
+    final api = ApiClient(baseUrl: baseUrl);
+    final response = await api.postJson(
+      endpoint,
+      headers: headers,
+      body: payload,
+      timeout: timeout,
+    );
+
+    final hasRnc = (payload['companyRnc']?.toString().trim().isNotEmpty ?? false);
+    final hasCloudId =
+        (payload['companyCloudId']?.toString().trim().isNotEmpty ?? false);
+    if (!hasRnc || !hasCloudId) {
+      return response;
+    }
+
+    final body = response.body;
+    if (!_isCompanyLocatorConflict(response.statusCode, body)) {
+      return response;
+    }
+
+    final retryPayload = Map<String, dynamic>.from(payload)
+      ..remove('companyCloudId')
+      ..remove('companyTenantKey');
+
+    await AppLogger.instance.logWarn(
+      'Cloud sync locator conflict, retrying without companyCloudId reason=$reason endpoint=$endpoint status=${response.statusCode} body=$body',
+      module: 'cloud_sync',
+    );
+
+    return api.postJson(
+      endpoint,
+      headers: headers,
+      body: retryPayload,
+      timeout: timeout,
+    );
+  }
+
   /// Devuelve la URL efectiva usada para nube (considera `cloudEndpoint` si existe).
   ///
   /// Útil para diagnóstico en UI.
@@ -88,7 +142,7 @@ class CloudSyncService {
   }
 
   static const int _historyDaysToSync = 90;
-  static const int _chunkSize = 200;
+  static const int _chunkSize = 50;
 
   static const Set<CloudSyncTarget> _enabledTargets = {
     CloudSyncTarget.users,
@@ -408,7 +462,18 @@ class CloudSyncService {
           final duration = DateTime.now().millisecondsSinceEpoch - startedAt;
 
           if (success) {
-            await _outbox.markSuccess(target.value, durationMs: duration);
+            final marked = await _outbox.markSuccess(
+              target.value,
+              durationMs: duration,
+            );
+            if (!marked) {
+              await AppLogger.instance.logInfo(
+                'Sync success target=${target.value} durationMs=$duration pending_queued_during_sync=true',
+                module: 'cloud_sync',
+              );
+              _kickOutboxDispatcher();
+              continue;
+            }
             await AppLogger.instance.logInfo(
               'Sync success target=${target.value} durationMs=$duration',
               module: 'cloud_sync',
@@ -418,12 +483,20 @@ class CloudSyncService {
 
           final attempts = (await _outbox.getAttemptCount(target.value)) + 1;
           final retryDelay = _retryDelayForAttempt(attempts);
-          await _outbox.markFailure(
+          final markedFailure = await _outbox.markFailure(
             target.value,
             error: _lastSyncFailureMessage ?? 'sync_failed',
             attemptCount: attempts,
             retryDelay: retryDelay,
           );
+          if (!markedFailure) {
+            await AppLogger.instance.logInfo(
+              'Sync failed target=${target.value} attempts=$attempts failure_deferred_because_pending=true',
+              module: 'cloud_sync',
+            );
+            _kickOutboxDispatcher();
+            continue;
+          }
           await AppLogger.instance.logWarn(
             'Sync failed target=${target.value} attempts=$attempts retryInMs=${retryDelay.inMilliseconds}',
             // error detail already logged inside each syncX function
@@ -1035,12 +1108,13 @@ class CloudSyncService {
         'mirrorProducts': true,
       };
 
-      final api = ApiClient(baseUrl: baseUrl);
-      final response = await api.postJson(
-        '/api/products/sync/by-rnc',
+      final response = await _postByRncWithIdentityFallback(
+        baseUrl: baseUrl,
+        endpoint: '/api/products/sync/by-rnc',
         headers: headers,
-        body: payload,
+        payload: payload,
         timeout: const Duration(seconds: 12),
+        reason: 'products_sync',
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1129,12 +1203,13 @@ class CloudSyncService {
         'clients': payloadClients,
       };
 
-      final api = ApiClient(baseUrl: baseUrl);
-      final response = await api.postJson(
-        '/api/clients/sync/by-rnc',
+      final response = await _postByRncWithIdentityFallback(
+        baseUrl: baseUrl,
+        endpoint: '/api/clients/sync/by-rnc',
         headers: headers,
-        body: payload,
+        payload: payload,
         timeout: const Duration(seconds: 15),
+        reason: 'clients_sync',
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1213,12 +1288,13 @@ class CloudSyncService {
         'categories': payloadCategories,
       };
 
-      final api = ApiClient(baseUrl: baseUrl);
-      final response = await api.postJson(
-        '/api/categories/sync/by-rnc',
+      final response = await _postByRncWithIdentityFallback(
+        baseUrl: baseUrl,
+        endpoint: '/api/categories/sync/by-rnc',
         headers: headers,
-        body: payload,
+        payload: payload,
         timeout: const Duration(seconds: 15),
+        reason: 'categories_sync',
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1299,12 +1375,13 @@ class CloudSyncService {
         'suppliers': payloadSuppliers,
       };
 
-      final api = ApiClient(baseUrl: baseUrl);
-      final response = await api.postJson(
-        '/api/suppliers/sync/by-rnc',
+      final response = await _postByRncWithIdentityFallback(
+        baseUrl: baseUrl,
+        endpoint: '/api/suppliers/sync/by-rnc',
         headers: headers,
-        body: payload,
+        payload: payload,
         timeout: const Duration(seconds: 15),
+        reason: 'suppliers_sync',
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1421,6 +1498,9 @@ class CloudSyncService {
           'itbisAmount': sale.itbisAmount,
           'total': sale.total,
           'paymentMethod': sale.paymentMethod,
+          'paymentCashAmount': sale.paymentCashAmount,
+          'paymentCardAmount': sale.paymentCardAmount,
+          'paymentTransferAmount': sale.paymentTransferAmount,
           'paidAmount': sale.paidAmount,
           'changeAmount': sale.changeAmount,
           'creditInterestRate': sale.creditInterestRate,
@@ -1506,12 +1586,13 @@ class CloudSyncService {
           'sales': chunk,
         };
 
-        final api = ApiClient(baseUrl: baseUrl);
-        final response = await api.postJson(
-          '/api/sales/sync/by-rnc',
+        final response = await _postByRncWithIdentityFallback(
+          baseUrl: baseUrl,
+          endpoint: '/api/sales/sync/by-rnc',
           headers: headers,
-          body: payload,
+          payload: payload,
           timeout: const Duration(seconds: 20),
+          reason: 'sales_sync_$reason',
         );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1735,12 +1816,13 @@ class CloudSyncService {
           'payments': chunk,
         };
 
-        final api = ApiClient(baseUrl: baseUrl);
-        final response = await api.postJson(
-          '/api/payments/sync/by-rnc',
+        final response = await _postByRncWithIdentityFallback(
+          baseUrl: baseUrl,
+          endpoint: '/api/payments/sync/by-rnc',
           headers: headers,
-          body: payload,
+          payload: payload,
           timeout: const Duration(seconds: 20),
+          reason: 'payments_sync',
         );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1905,12 +1987,13 @@ class CloudSyncService {
           'returns': chunk,
         };
 
-        final api = ApiClient(baseUrl: baseUrl);
-        final response = await api.postJson(
-          '/api/returns/sync/by-rnc',
+        final response = await _postByRncWithIdentityFallback(
+          baseUrl: baseUrl,
+          endpoint: '/api/returns/sync/by-rnc',
           headers: headers,
-          body: payload,
+          payload: payload,
           timeout: const Duration(seconds: 20),
+          reason: 'returns_sync',
         );
 
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -2161,12 +2244,13 @@ class CloudSyncService {
         'movements': movements,
       };
 
-      final api = ApiClient(baseUrl: baseUrl);
-      final response = await api.postJson(
-        '/api/cash/sync/by-rnc',
+      final response = await _postByRncWithIdentityFallback(
+        baseUrl: baseUrl,
+        endpoint: '/api/cash/sync/by-rnc',
         headers: headers,
-        body: payload,
+        payload: payload,
         timeout: const Duration(seconds: 20),
+        reason: 'cash_sync',
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -2294,12 +2378,13 @@ class CloudSyncService {
           'quotes': chunk,
         };
 
-        final api = ApiClient(baseUrl: baseUrl);
-        final response = await api.postJson(
-          '/api/quotes/sync/by-rnc',
+        final response = await _postByRncWithIdentityFallback(
+          baseUrl: baseUrl,
+          endpoint: '/api/quotes/sync/by-rnc',
           headers: headers,
-          body: payload,
+          payload: payload,
           timeout: const Duration(seconds: 20),
+          reason: 'quotes_sync',
         );
         if (response.statusCode < 200 || response.statusCode >= 300) {
           await AppLogger.instance.logWarn(
@@ -2546,7 +2631,10 @@ class CloudSyncService {
       if (cloudKey != null && cloudKey.isNotEmpty) {
         request.headers['x-cloud-key'] = cloudKey;
       }
-      request.headers['x-company-tenant-key'] = companyIdentity.companyTenantKey;
+      final tenantKey = companyIdentity.companyTenantKey?.trim();
+      if (tenantKey != null && tenantKey.isNotEmpty) {
+        request.headers['x-company-tenant-key'] = tenantKey;
+      }
       if (companyIdentity.companyCloudId != null &&
           companyIdentity.companyCloudId!.isNotEmpty) {
         request.headers['x-company-cloud-id'] = companyIdentity.companyCloudId!;
@@ -2621,7 +2709,10 @@ class CloudSyncService {
       if (cloudKey != null && cloudKey.isNotEmpty) {
         headers['x-cloud-key'] = cloudKey;
       }
-      headers['x-company-tenant-key'] = companyIdentity.companyTenantKey;
+      final tenantKey = companyIdentity.companyTenantKey?.trim();
+      if (tenantKey != null && tenantKey.isNotEmpty) {
+        headers['x-company-tenant-key'] = tenantKey;
+      }
       if (companyIdentity.companyCloudId != null &&
           companyIdentity.companyCloudId!.isNotEmpty) {
         headers['x-company-cloud-id'] = companyIdentity.companyCloudId!;

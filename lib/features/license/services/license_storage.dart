@@ -12,6 +12,8 @@ class LicenseStorage {
   static const _kLastInfoSource = 'license.lastInfoSource';
   static const _kCloudDeniedAtIso = 'license.cloudDeniedAtIso_v1';
   static const _kSigningPubKeyB64 = 'license_signing_pubkey_b64_v1';
+  static const _kLastRenewalOrderId = 'license.lastRenewalOrderId_v1';
+  static const _kLastPaypalOrderId = 'license.lastPaypalOrderId_v1';
 
   /// Valores:
   /// - 'cloud': cache actualizado desde /businesses/:id/license
@@ -123,6 +125,8 @@ class LicenseStorage {
     await sp.remove(_kLastInfo);
     await sp.remove(_kLastInfoSource);
     await sp.remove(_kCloudDeniedAtIso);
+    await sp.remove(_kLastRenewalOrderId);
+    await sp.remove(_kLastPaypalOrderId);
   }
 
   Future<String?> getOfflineSigningPublicKeyB64() async {
@@ -136,6 +140,38 @@ class LicenseStorage {
   Future<void> setOfflineSigningPublicKeyB64(String value) async {
     final sp = await SharedPreferences.getInstance();
     await sp.setString(_kSigningPubKeyB64, value.trim());
+  }
+
+  Future<String?> getLastRenewalOrderId() async {
+    final sp = await SharedPreferences.getInstance();
+    final v = (sp.getString(_kLastRenewalOrderId) ?? '').trim();
+    return v.isEmpty ? null : v;
+  }
+
+  Future<void> setLastRenewalOrderId(String? value) async {
+    final sp = await SharedPreferences.getInstance();
+    final normalized = (value ?? '').trim();
+    if (normalized.isEmpty) {
+      await sp.remove(_kLastRenewalOrderId);
+      return;
+    }
+    await sp.setString(_kLastRenewalOrderId, normalized);
+  }
+
+  Future<String?> getLastPaypalOrderId() async {
+    final sp = await SharedPreferences.getInstance();
+    final v = (sp.getString(_kLastPaypalOrderId) ?? '').trim();
+    return v.isEmpty ? null : v;
+  }
+
+  Future<void> setLastPaypalOrderId(String? value) async {
+    final sp = await SharedPreferences.getInstance();
+    final normalized = (value ?? '').trim();
+    if (normalized.isEmpty) {
+      await sp.remove(_kLastPaypalOrderId);
+      return;
+    }
+    await sp.setString(_kLastPaypalOrderId, normalized);
   }
 
   /// Determina si hay una licencia activa según lo último guardado localmente.

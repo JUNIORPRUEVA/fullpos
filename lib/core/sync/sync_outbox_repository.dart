@@ -89,8 +89,8 @@ class SyncOutboxRepository {
     });
   }
 
-  Future<void> markSyncing(String target) async {
-    await _withRecoveredDb((db) async {
+  Future<int> markSyncing(String target) async {
+    return _withRecoveredDb((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
       await db.update(
         DbTables.syncOutbox,
@@ -98,13 +98,14 @@ class SyncOutboxRepository {
         where: 'target = ?',
         whereArgs: [target],
       );
+      return now;
     });
   }
 
-  Future<void> markSuccess(String target, {int? durationMs}) async {
-    await _withRecoveredDb((db) async {
+  Future<bool> markSuccess(String target, {int? durationMs}) async {
+    return _withRecoveredDb((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      await db.update(
+      final changed = await db.update(
         DbTables.syncOutbox,
         {
           'status': 'synced',
@@ -115,21 +116,22 @@ class SyncOutboxRepository {
           'updated_at_ms': now,
           if (durationMs != null) 'last_duration_ms': durationMs,
         },
-        where: 'target = ?',
-        whereArgs: [target],
+        where: 'target = ? AND status = ?',
+        whereArgs: [target, 'syncing'],
       );
+      return changed > 0;
     });
   }
 
-  Future<void> markFailure(
+  Future<bool> markFailure(
     String target, {
     required String error,
     required int attemptCount,
     required Duration retryDelay,
   }) async {
-    await _withRecoveredDb((db) async {
+    return _withRecoveredDb((db) async {
       final now = DateTime.now().millisecondsSinceEpoch;
-      await db.update(
+      final changed = await db.update(
         DbTables.syncOutbox,
         {
           'status': 'failed',
@@ -138,9 +140,10 @@ class SyncOutboxRepository {
           'last_error': error,
           'updated_at_ms': now,
         },
-        where: 'target = ?',
-        whereArgs: [target],
+        where: 'target = ? AND status = ?',
+        whereArgs: [target, 'syncing'],
       );
+      return changed > 0;
     });
   }
 

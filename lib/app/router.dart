@@ -50,6 +50,7 @@ import '../features/tools/ui/electronic_invoicing_page.dart';
 import '../features/tools/ui/tools_page.dart';
 import '../features/license/ui/license_page.dart';
 import '../features/license/ui/license_blocked_page.dart';
+import '../features/license/ui/license_purchase_page.dart';
 import '../features/license/services/license_storage.dart';
 import '../features/license/services/license_api.dart';
 import '../features/license/services/business_license_sync.dart';
@@ -58,6 +59,7 @@ import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
 import '../features/settings/data/user_model.dart';
+import '../features/registration/services/business_identity_guard.dart';
 import '../features/registration/services/business_identity_storage.dart';
 
 Future<_LicenseGateDecision>? _licenseGateInFlight;
@@ -127,6 +129,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnLogin = path == '/login';
       final isOnForceChangePassword = path == '/force-change-password';
       final isOnPublicLicense = path == '/license';
+      final isOnLicensePurchase = path == '/license/purchase';
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
       final isOnCashGate = path == '/cash-gate';
@@ -196,12 +199,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Si está BLOQUEADA: no permitir hacer nada, solo mostrar pantalla de bloqueo.
       if (gate.isBlocked) {
-        return isOnBlocked ? null : '/license-blocked';
+        return (isOnBlocked || isOnLicensePurchase) ? null : '/license-blocked';
       }
 
       // Sin licencia válida (revocada/eliminada/vencida/etc): mostrar pantalla normal.
       if (!gate.isActive) {
-        return isOnPublicLicense ? null : '/license';
+        return (isOnPublicLicense || isOnLicensePurchase) ? null : '/license';
       }
 
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
@@ -209,6 +212,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return isLoggedIn ? await privateLanding() : '/login';
       }
       if (isOnPublicLicense) {
+        return isLoggedIn ? await privateLanding() : '/login';
+      }
+      if (isOnLicensePurchase) {
         return isLoggedIn ? await privateLanding() : '/login';
       }
       if (isOnSettingsLicense) {
@@ -287,6 +293,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/license',
         builder: (context, state) =>
             const FullposBrandScope(child: LicensePage()),
+      ),
+      GoRoute(
+        path: '/license/purchase',
+        builder: (context, state) =>
+            const FullposBrandScope(child: LicensePurchasePage()),
       ),
       GoRoute(
         path: '/license-blocked',
@@ -781,8 +792,19 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   var resolvedBusinessId = (businessId ?? '').trim();
   final cachedBusinessId = (cached?.businessId ?? '').trim();
   if (resolvedBusinessId.isEmpty && cachedBusinessId.isNotEmpty) {
-    await identityStorage.setBusinessId(cachedBusinessId);
-    resolvedBusinessId = cachedBusinessId;
+    try {
+      final restored = await BusinessIdentityGuard.resolveAndApply(
+        storage: identityStorage,
+        incomingBusinessId: cachedBusinessId,
+        source: 'router_license_gate',
+        allowInitialSet: false,
+        allowRestoreWhenLocalMissing: true,
+        allowOverwrite: false,
+      );
+      resolvedBusinessId = restored.trim();
+    } on BusinessIdentityConflictException {
+      resolvedBusinessId = '';
+    }
   }
   final hasBusinessId = resolvedBusinessId.isNotEmpty;
   final canonicalBusinessId = hasBusinessId ? resolvedBusinessId : null;

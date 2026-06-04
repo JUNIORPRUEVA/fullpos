@@ -1,6 +1,7 @@
 import '../../../features/license/license_config.dart';
 import '../../license/services/license_storage.dart';
 import '../../../core/utils/id_utils.dart';
+import 'business_identity_guard.dart';
 import 'business_identity_storage.dart';
 import 'business_registration_api.dart';
 import 'pending_registration_queue.dart';
@@ -21,27 +22,37 @@ class BusinessRegistrationService {
        api = api ?? BusinessRegistrationApi(),
        licenseStorage = licenseStorage ?? LicenseStorage();
 
-  Future<String> _resolveCanonicalBusinessId() async {
-    final localBusinessId = (await identityStorage.getBusinessId() ?? '')
-        .trim();
+  /// Resuelve el businessId canónico de forma segura.
+  ///
+  /// Reglas:
+  /// - Si local existe y cache coincide → usar local.
+  /// - Si local existe y cache vacío → usar local.
+  /// - Si local existe y cache diferente → BLOQUEAR (conflicto).
+  /// - Si local vacío y cache existe → restaurar desde cache (allowRestoreWhenLocalMissing).
+  /// - Si ambos vacíos → lanzar excepción (no generar UUID).
+  Future<String?> _resolveCanonicalBusinessId() async {
+    final localBusinessId = await identityStorage.getBusinessId();
     final cachedLicenseBusinessId =
         ((await licenseStorage.getLastInfo())?.businessId ?? '').trim();
 
-    if (cachedLicenseBusinessId.isNotEmpty) {
-      if (localBusinessId != cachedLicenseBusinessId) {
-        await identityStorage.setBusinessId(
-          cachedLicenseBusinessId,
-          overwrite: true,
-        );
-      }
-      return cachedLicenseBusinessId;
+    if ((localBusinessId ?? '').trim().isEmpty &&
+        cachedLicenseBusinessId.isEmpty) {
+      return null;
     }
 
-    if (localBusinessId.isNotEmpty) {
-      return localBusinessId;
-    }
+    // Usar el guardia central para validar
+    final result = await BusinessIdentityGuard.resolveAndApply(
+      storage: identityStorage,
+      incomingBusinessId: cachedLicenseBusinessId.isNotEmpty
+          ? cachedLicenseBusinessId
+          : null,
+      source: 'license_cache',
+      allowInitialSet: false,
+      allowRestoreWhenLocalMissing: cachedLicenseBusinessId.isNotEmpty,
+      allowOverwrite: false,
+    );
 
-    return identityStorage.ensureBusinessId();
+    return result;
   }
 
   Future<Map<String, dynamic>> buildPayload({
@@ -55,7 +66,8 @@ class BusinessRegistrationService {
   }) async {
     final businessId = await _resolveCanonicalBusinessId();
     return {
-      'business_id': businessId,
+      if (businessId != null && businessId.trim().isNotEmpty)
+        'business_id': businessId,
       'business_name': businessName.trim(),
       'role': role.trim(),
       'owner_name': ownerName.trim(),
@@ -129,10 +141,21 @@ class BusinessRegistrationService {
     Map<String, dynamic> payloadToSend,
   ) async {
     try {
-      await api.register(
+      final response = await api.register(
         baseUrl: kLicenseBackendBaseUrl,
         payload: payloadToSend,
       );
+      final backendBusinessId = (response?['business_id'] ?? '').toString().trim();
+      if (backendBusinessId.isNotEmpty) {
+        await BusinessIdentityGuard.resolveAndApply(
+          storage: identityStorage,
+          incomingBusinessId: backendBusinessId,
+          source: 'backend_registration_success',
+          allowInitialSet: true,
+          allowRestoreWhenLocalMissing: true,
+          allowOverwrite: false,
+        );
+      }
       return;
     } on BusinessRegistrationException catch (e) {
       final backendCode = (e.code ?? '').trim().toUpperCase();
@@ -140,16 +163,18 @@ class BusinessRegistrationService {
 
       if (backendCode == 'BUSINESS_ID_CONFLICT' &&
           existingBusinessId.isNotEmpty) {
-        await identityStorage.setBusinessId(
-          existingBusinessId,
-          overwrite: true,
+        // NO sobrescribir automáticamente. El conflicto debe resolverse manualmente.
+        // Lanzar excepción clara para que el flujo de registro falle y muestre error.
+        throw BusinessIdentityConflictException(
+          currentBusinessId: await identityStorage.getBusinessId(),
+          incomingBusinessId: existingBusinessId,
+          source: 'backend',
+          reason:
+              'BUSINESS_ID_CONFLICT: El backend reporta que este negocio ya tiene '
+              'un business_id diferente ($existingBusinessId). '
+              'No se puede sobrescribir automáticamente. '
+              'Debe desvincular la empresa actual o contactar a soporte.',
         );
-        payloadToSend['business_id'] = existingBusinessId;
-        await api.register(
-          baseUrl: kLicenseBackendBaseUrl,
-          payload: payloadToSend,
-        );
-        return;
       }
       rethrow;
     }

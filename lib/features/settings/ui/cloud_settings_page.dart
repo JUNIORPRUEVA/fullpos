@@ -27,9 +27,11 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final settings = ref.read(businessSettingsProvider);
       _settings = settings;
       _cloudHealthFuture = _loadCloudHealth();
+      if (!mounted) return;
       setState(() => _loading = false);
     });
   }
@@ -97,6 +99,7 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
   }
 
   Future<void> _reloadSyncStatus() async {
+    if (!mounted) return;
     setState(() {
       _cloudHealthFuture = _loadCloudHealth();
     });
