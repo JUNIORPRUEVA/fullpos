@@ -335,6 +335,14 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
     await _identityStorage.setOnboardingCompleted(true);
   }
 
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go('/license');
+  }
+
   @override
   Widget build(BuildContext context) {
     final billing = _billingInfo;
@@ -358,212 +366,222 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
         child: SafeArea(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 18,
+              : _buildLoadedContent(
+                  billing: billing,
+                  visiblePlans: visiblePlans,
+                  total: total,
+                  pendingOrder: pendingOrder,
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadedContent({
+    required LicenseBillingInfo? billing,
+    required List<int> visiblePlans,
+    required double? total,
+    required LicensePaymentOrder? pendingOrder,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 36),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _purchasePanel,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white.withOpacity(0.8)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x120E1A2B),
+                        blurRadius: 24,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
                   ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 680),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: _purchasePanel,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.8),
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x120E1A2B),
-                              blurRadius: 24,
-                              offset: Offset(0, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: _goBack,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: _purchaseInk,
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
+                            icon: const Icon(Icons.arrow_back_rounded),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                IconButton(
-                                  onPressed: () => context.pop(),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: _purchaseInk,
+                                Text(
+                                  'Comprar licencia',
+                                  style: TextStyle(
+                                    color: _purchaseInk,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.4,
                                   ),
-                                  icon: const Icon(Icons.arrow_back_rounded),
                                 ),
-                                const SizedBox(width: 10),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Comprar licencia',
-                                        style: TextStyle(
-                                          color: _purchaseInk,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: -0.4,
-                                        ),
-                                      ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'Elige el tiempo, paga y luego verifica tu activación.',
-                                        style: TextStyle(
-                                          color: _purchaseMuted,
-                                          fontSize: 12.8,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
+                                SizedBox(height: 4),
+                                Text(
+                                  'Elige el tiempo, paga y luego verifica tu activaci?n.',
+                                  style: TextStyle(
+                                    color: _purchaseMuted,
+                                    fontSize: 12.8,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 14),
-                            if (_error != null) ...[
-                              _buildErrorBanner(_error!),
-                              const SizedBox(height: 12),
-                            ],
-                            _buildCard(
-                              title: 'Datos obligatorios',
-                              subtitle:
-                                  'Negocio, tipo de negocio, representante y WhatsApp.',
-                              child: Column(
-                                children: [
-                                  _buildTextField(
-                                    controller: _businessNameCtrl,
-                                    label: 'Nombre del negocio',
-                                    hint: 'Ej: Comercial Núcleo',
-                                    icon: Icons.storefront_rounded,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _buildBusinessTypeDropdown(),
-                                  const SizedBox(height: 10),
-                                  _buildTextField(
-                                    controller: _ownerNameCtrl,
-                                    label: 'Representante',
-                                    hint: 'Nombre del responsable',
-                                    icon: Icons.person_outline_rounded,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _buildTextField(
-                                    controller: _phoneCtrl,
-                                    label: 'WhatsApp',
-                                    hint: '809 555 5555',
-                                    icon: Icons.phone_rounded,
-                                    keyboardType: TextInputType.phone,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _buildTextField(
-                                    controller: _emailCtrl,
-                                    label: 'Correo electrónico opcional',
-                                    hint: 'Opcional',
-                                    icon: Icons.email_outlined,
-                                    keyboardType: TextInputType.emailAddress,
-                                  ),
-                                ],
-                              ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      if (_error != null) ...[
+                        _buildErrorBanner(_error!),
+                        const SizedBox(height: 12),
+                      ],
+                      _buildCard(
+                        title: 'Datos obligatorios',
+                        subtitle:
+                            'Negocio, tipo de negocio, representante y WhatsApp.',
+                        child: Column(
+                          children: [
+                            _buildTextField(
+                              controller: _businessNameCtrl,
+                              label: 'Nombre del negocio',
+                              hint: 'Ej: Comercial N?cleo',
+                              icon: Icons.storefront_rounded,
                             ),
-                            const SizedBox(height: 12),
-                            _buildCard(
-                              title: 'Identidad de compra',
-                              child: Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _dataChip(
-                                    'Business ID',
-                                    _businessId ?? 'Pendiente',
-                                  ),
-                                  _dataChip(
-                                    'Device ID',
-                                    _deviceId ?? 'Pendiente',
-                                  ),
-                                  _dataChip(
-                                    'Proyecto',
-                                    billing?.projectCode ?? kFullposProjectCode,
-                                  ),
-                                ],
-                              ),
+                            const SizedBox(height: 10),
+                            _buildBusinessTypeDropdown(),
+                            const SizedBox(height: 10),
+                            _buildTextField(
+                              controller: _ownerNameCtrl,
+                              label: 'Representante',
+                              hint: 'Nombre del responsable',
+                              icon: Icons.person_outline_rounded,
                             ),
-                            const SizedBox(height: 12),
-                            _buildCard(
-                              title: 'Planes disponibles',
-                              subtitle: billing == null
-                                  ? 'No se pudo consultar la configuración del proyecto.'
-                                  : 'Compra mínima: ${billing.minPurchaseMonths} meses.',
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Wrap(
-                                    spacing: 10,
-                                    runSpacing: 10,
-                                    children: visiblePlans
-                                        .map(
-                                          (months) => _buildPlanOption(
-                                            months: months,
-                                            selected: _selectedMonths == months,
-                                            monthlyPrice: billing?.monthlyPrice,
-                                            currency: billing?.currency ?? 'USD',
-                                            onTap: () {
-                                              setState(() {
-                                                _selectedMonths = months;
-                                              });
-                                            },
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                  if (billing != null) ...[
-                                    const SizedBox(height: 14),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: _purchasePrimaryTint,
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              'Precio mensual: ${billing.monthlyPrice.toStringAsFixed(2)} ${billing.currency}',
-                                              style: const TextStyle(
-                                                color: _purchaseMuted,
-                                                fontSize: 12.5,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          Text(
-                                            'Total: ${total!.toStringAsFixed(2)} ${billing.currency}',
-                                            style: const TextStyle(
-                                              color: _purchaseInk,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
+                            const SizedBox(height: 10),
+                            _buildTextField(
+                              controller: _phoneCtrl,
+                              label: 'WhatsApp',
+                              hint: '809 555 5555',
+                              icon: Icons.phone_rounded,
+                              keyboardType: TextInputType.phone,
                             ),
-                            const SizedBox(height: 12),
-                            _buildPurchaseCtaCard(pendingOrder),
+                            const SizedBox(height: 10),
+                            _buildTextField(
+                              controller: _emailCtrl,
+                              label: 'Correo electr?nico opcional',
+                              hint: 'Opcional',
+                              icon: Icons.email_outlined,
+                              keyboardType: TextInputType.emailAddress,
+                            ),
                           ],
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      _buildCard(
+                        title: 'Identidad de compra',
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _dataChip('Business ID', _businessId ?? 'Pendiente'),
+                            _dataChip('Device ID', _deviceId ?? 'Pendiente'),
+                            _dataChip(
+                              'Proyecto',
+                              billing?.projectCode ?? kFullposProjectCode,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildCard(
+                        title: 'Planes disponibles',
+                        subtitle: billing == null
+                            ? 'No se pudo consultar la configuraci?n del proyecto.'
+                            : 'Compra m?nima: ${billing.minPurchaseMonths} meses.',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: visiblePlans
+                                  .map(
+                                    (months) => _buildPlanOption(
+                                      months: months,
+                                      selected: _selectedMonths == months,
+                                      monthlyPrice: billing?.monthlyPrice,
+                                      currency: billing?.currency ?? 'USD',
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedMonths = months;
+                                        });
+                                      },
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                            if (billing != null) ...[
+                              const SizedBox(height: 14),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _purchasePrimaryTint,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Precio mensual: ${billing.monthlyPrice.toStringAsFixed(2)} ${billing.currency}',
+                                        style: const TextStyle(
+                                          color: _purchaseMuted,
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      'Total: ${total!.toStringAsFixed(2)} ${billing.currency}',
+                                      style: const TextStyle(
+                                        color: _purchaseInk,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildPurchaseCtaCard(pendingOrder),
+                    ],
                   ),
                 ),
-        ),
-      ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -934,11 +934,11 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                 icon: Icons.shopping_cart_checkout_rounded,
                 label: 'Comprar ahora',
                 onPressed: () async {
-                  final saved = await _saveOnboarding(
+                  await _saveOnboarding(
                     requireFullFields: false,
                     showSuccessMessage: false,
                   );
-                  if (!saved || !mounted) return;
+                  if (!mounted) return;
                   context.go('/license/purchase');
                 },
                 primary: true,
