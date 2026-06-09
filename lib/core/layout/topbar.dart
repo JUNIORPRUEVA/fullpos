@@ -19,6 +19,7 @@ import '../session/ui_preferences.dart';
 import '../theme/app_status_theme.dart';
 import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
+import 'topbar_action_bus.dart';
 
 /// Topbar principal de FullPOS.
 ///
@@ -491,7 +492,7 @@ class _TopbarState extends ConsumerState<Topbar>
           minRatio: 3.0,
         );
         final statusColor = isOpen
-            ? (status?.success ?? const Color(0xFF16A34A))
+            ? const Color(0xFF10B981)
             : (status?.error ?? scheme.error);
         final profileName = (_displayName ?? _username ?? 'Usuario').trim();
         final username = (_username ?? 'usuario').trim();
@@ -678,6 +679,13 @@ class _TopbarState extends ConsumerState<Topbar>
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      _TopbarQuickActionButton(
+                        scale: s,
+                        icon: Icons.swap_horiz_rounded,
+                        label: 'Movimiento',
+                        onTap: TopbarActionBus.toggleSalesMovementPanel,
+                      ),
+                      SizedBox(width: (10 * s).clamp(8.0, 12.0)),
                       _CashRegisterStatusChip(
                         scale: s,
                         visibleLabel: showCashLabel,
@@ -715,12 +723,9 @@ class _TopbarState extends ConsumerState<Topbar>
                             scale: s,
                             accentColor: brandAccent,
                             borderColor: chromeBorderColor,
-                            backgroundColor: Color.alphaBlend(
-                              brandAccent.withOpacity(0.05),
-                              Colors.white,
-                            ),
+                            backgroundColor: Colors.white,
                             displayName: profileName,
-                            subtitle: isOpen ? 'Cajero activo' : 'Caja pendiente',
+                            subtitle: 'Usuario activo',
                             showDetails: showUserDetails,
                             showSubtitle: showUserSubtitle,
                             imagePath: _profileImagePath,
@@ -763,12 +768,13 @@ class _CashRegisterStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background = Color.alphaBlend(
-      statusColor.withOpacity(isOpen ? 0.10 : 0.08),
-      Colors.white,
-    );
-    final borderColor = statusColor.withOpacity(isOpen ? 0.30 : 0.22);
-    final shadowOpacity = isOpen ? 0.12 + (pulseValue * 0.10) : 0.06;
+    final background = isOpen
+        ? const Color(0xFFEFFBF7)
+        : const Color(0xFFF8FAFC);
+    final borderColor = isOpen
+        ? const Color(0xFFBEE7D8)
+        : const Color(0xFFDCE5EF);
+    final shadowOpacity = isOpen ? 0.10 + (pulseValue * 0.06) : 0.04;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -783,9 +789,9 @@ class _CashRegisterStatusChip extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: statusColor.withOpacity(shadowOpacity),
-            blurRadius: isOpen ? 18 : 10,
-            spreadRadius: -9,
-            offset: const Offset(0, 6),
+            blurRadius: isOpen ? 14 : 8,
+            spreadRadius: -8,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -814,25 +820,29 @@ class _CashRegisterStatusChip extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isOpen ? 'Caja abierta' : 'Caja cerrada',
+                  'Estado de caja',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: statusColor,
-                    fontSize: (10.5 * scale).clamp(9.5, 11.5),
-                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF64748B),
+                    fontSize: (9.9 * scale).clamp(9.0, 10.8),
+                    fontWeight: FontWeight.w700,
                     height: 1,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  openSessionId == null ? label : '$label #$openSessionId',
+                  isOpen
+                      ? (openSessionId != null
+                            ? 'Caja abierta #$openSessionId'
+                            : label)
+                      : 'Caja cerrada',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _TopbarState._strongTextColor,
-                    fontSize: (12.5 * scale).clamp(11.0, 13.5),
-                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0F172A),
+                    fontSize: (12.4 * scale).clamp(11.0, 13.4),
+                    fontWeight: FontWeight.w800,
                     height: 1,
                   ),
                 ),
@@ -840,6 +850,65 @@ class _CashRegisterStatusChip extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _TopbarQuickActionButton extends StatelessWidget {
+  const _TopbarQuickActionButton({
+    required this.scale,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final double scale;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: (42 * scale).clamp(38.0, 46.0),
+          padding: EdgeInsets.symmetric(
+            horizontal: (14 * scale).clamp(12.0, 16.0),
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFDCE5EF)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A0F172A),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: const Color(0xFF0F172A)),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: const Color(0xFF0F172A),
+                  fontSize: (12.2 * scale).clamp(11.0, 13.0),
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -879,14 +948,14 @@ class _TopbarUserMenuButton extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.08),
-            blurRadius: 12,
+            color: const Color(0x0A0F172A),
+            blurRadius: 8,
             spreadRadius: -8,
-            offset: const Offset(0, 6),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -907,31 +976,31 @@ class _TopbarUserMenuButton extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: _TopbarState._strongTextColor,
-                      fontSize: (13.2 * scale).clamp(12.0, 14.2),
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
                   if (showSubtitle) ...[
-                    const SizedBox(height: 4),
                     Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: _TopbarState._softTextColor,
-                        fontSize: (10.5 * scale).clamp(9.5, 11.5),
+                        fontSize: (9.8 * scale).clamp(9.0, 10.8),
                         fontWeight: FontWeight.w700,
                         height: 1,
                       ),
                     ),
+                    const SizedBox(height: 4),
                   ],
+                  Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _TopbarState._strongTextColor,
+                      fontSize: (12.8 * scale).clamp(11.8, 13.8),
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
                 ],
               ),
             ),

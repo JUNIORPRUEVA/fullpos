@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class FooterTicketTabData {
@@ -14,7 +15,7 @@ class FooterTicketTabData {
   final bool canDelete;
 }
 
-class FooterTicketController {
+class FooterTicketController extends ChangeNotifier {
   void Function()? _onAdd;
   void Function(int index)? _onSelect;
   Future<void> Function(int index)? _onRename;
@@ -36,10 +37,12 @@ class FooterTicketController {
 
   void updateTabs(List<FooterTicketTabData> nextTabs) {
     tabs = List<FooterTicketTabData>.unmodifiable(nextTabs);
+    notifyListeners();
   }
 
   void clear() {
     tabs = const <FooterTicketTabData>[];
+    notifyListeners();
   }
 
   void add() => _onAdd?.call();
@@ -51,6 +54,7 @@ class FooterTicketController {
   void delete(int index) => _onDelete?.call(index);
 }
 
-final footerTicketControllerProvider = Provider<FooterTicketController>((ref) {
+final footerTicketControllerProvider =
+    ChangeNotifierProvider<FooterTicketController>((ref) {
   return FooterTicketController();
 });

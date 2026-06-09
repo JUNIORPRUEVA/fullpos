@@ -60,7 +60,6 @@ class _AppShellState extends State<AppShell> {
       builder: (context, constraints) {
         _updateResponsive(constraints);
 
-        final isNarrow = _isNarrow;
         final isShort = _isShort;
         final showFooter = !isShort;
         final sidebarWidth = _sidebarWidthFor(constraints.maxWidth);
@@ -72,24 +71,18 @@ class _AppShellState extends State<AppShell> {
 
         final isDesktop =
             Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-        final double topbarInnerTopPadding = (!isNarrow && isDesktop)
+        final double topbarInnerTopPadding = isDesktop
             ? AppSizes.paddingXS
             : 0.0;
 
-        Widget topbarWidget = Topbar(
-          scale: topbarScale,
-          topPadding: topbarInnerTopPadding,
+        final topbarWidget = Builder(
+          builder: (context) => Topbar(
+            scale: topbarScale,
+            topPadding: topbarInnerTopPadding,
+            showMenuButton: true,
+            onMenuPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         );
-        if (isNarrow) {
-          topbarWidget = Builder(
-            builder: (context) => Topbar(
-              scale: topbarScale,
-              topPadding: topbarInnerTopPadding,
-              showMenuButton: true,
-              onMenuPressed: () => Scaffold.of(context).openDrawer(),
-            ),
-          );
-        }
 
         final contentColumn = Column(
           children: [
@@ -106,35 +99,21 @@ class _AppShellState extends State<AppShell> {
           ],
         );
 
-        final baseBody = isNarrow
-            ? SafeArea(child: contentColumn)
-            : Row(
-                children: [
-                  Sidebar(
-                    forcedCollapsed: false,
-                    customWidth: sidebarWidth,
-                    scale: sidebarScale,
-                  ),
-                  Expanded(child: contentColumn),
-                ],
-              );
-
         return Scaffold(
           backgroundColor: Colors.transparent,
-          drawer: isNarrow
-              ? Drawer(
-                  backgroundColor: Colors.transparent,
-                  surfaceTintColor: Colors.transparent,
-                  child: SafeArea(
-                    child: Sidebar(
-                      forcedCollapsed: false,
-                      customWidth: sidebarWidth,
-                      scale: sidebarScale,
-                    ),
-                  ),
-                )
-              : null,
-          body: baseBody,
+          drawer: Drawer(
+            width: sidebarWidth,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            child: SafeArea(
+              child: Sidebar(
+                forcedCollapsed: false,
+                customWidth: sidebarWidth,
+                scale: sidebarScale,
+              ),
+            ),
+          ),
+          body: SafeArea(child: contentColumn),
         );
       },
     );

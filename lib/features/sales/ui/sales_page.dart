@@ -4797,45 +4797,17 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 42),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 160),
-                              child: isHovered || _isQuickSalePressed
-                                  ? Text(
-                                      key: const ValueKey('quick-sale-hint'),
-                                      'Vende sin necesidad de\ncrear un producto.',
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: const Color(0xFF475569)
-                                            .withOpacity(
-                                              _isQuickSalePressed ? 0.96 : 0.88,
-                                            ),
-                                        fontSize: 13.8,
-                                        fontWeight: FontWeight.w400,
-                                        height: 1.28,
-                                      ),
-                                    )
-                                  : Text(
-                                      key: const ValueKey('quick-sale-title'),
-                                      'Venta simple',
-                                      textAlign: TextAlign.center,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: scheme.onSurface.withOpacity(
-                                          0.98,
-                                        ),
-                                        fontSize: 16.8,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1.08,
-                                      ),
-                                    ),
-                            ),
-                          ],
+                        child: Text(
+                          'Venta simple',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: scheme.onSurface.withOpacity(0.98),
+                            fontSize: 16.8,
+                            fontWeight: FontWeight.w900,
+                            height: 1.08,
+                          ),
                         ),
                       ),
                     ],
@@ -5310,17 +5282,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     child: Row(
                       children: [
                         buildIconButton(
-                          icon: Icons.search,
+                          icon: Icons.inventory_2_rounded,
                           onTap: () => _searchFocusNode.requestFocus(),
                           borderRadius: const BorderRadius.only(
                             topLeft: Radius.circular(4),
                             bottomLeft: Radius.circular(4),
                           ),
-                        ),
-                        buildIconButton(
-                          icon: Icons.qr_code_scanner_rounded,
-                          onTap: () => _searchFocusNode.requestFocus(),
-                          borderRadius: BorderRadius.zero,
                         ),
                         Expanded(
                           child: SizedBox(
@@ -5633,8 +5600,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   // Botón único: Guardar como cotización
                   _buildQuoteHeaderIconAction(
                     id: 'save-quote-header',
-                    icon: Icons.request_quote_outlined,
-                    tooltip: 'Guardar como cotización',
+                    icon: Icons.description_outlined,
+                    tooltip: 'Documento de venta',
                     onTap: _currentCart.items.isEmpty
                         ? null
                         : () => unawaited(_saveQuoteFromHeaderAndShowDialog()),
