@@ -1720,13 +1720,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final screenSize = MediaQuery.sizeOf(context);
     final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
     final panelMargin = screenSize.width < 1150 ? 10.0 : 14.0;
-    final panelGap = screenSize.width < 1180 ? 14.0 : 18.0;
-    final dialogWidth = math.min(404.0, screenSize.width - 32);
-    final rightOffset = ticketPanelConstraints.maxWidth + 2;
+    final panelGap = screenSize.width < 1180 ? 8.0 : 10.0;
+    final dialogWidth = math.min(430.0, screenSize.width - 30);
+    final rightOffset = ticketPanelConstraints.maxWidth + 6;
     final blurRightInset =
-        ticketPanelConstraints.maxWidth + panelGap + panelMargin + 2;
-    const blurTopOffset = 58.0;
-    final topOffset = math.max(78.0, screenSize.height * 0.18);
+        ticketPanelConstraints.maxWidth + panelGap + panelMargin;
+    const blurTopOffset = 52.0;
+    final topOffset = math.max(70.0, screenSize.height * 0.12);
 
     final result = await showGeneralDialog<SaleItemModel>(
       context: context,
@@ -1745,9 +1745,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 right: blurRightInset,
                 child: ClipRect(
                   child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+                    filter: ui.ImageFilter.blur(sigmaX: 9, sigmaY: 9),
                     child: Container(
-                      color: const Color(0xFFF4F7FB).withOpacity(0.22),
+                      color: const Color(0xFFF4F7FB).withOpacity(0.34),
                     ),
                   ),
                 ),
@@ -1775,7 +1775,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           opacity: curved,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0.08, 0),
+              begin: const Offset(0.10, -0.02),
               end: Offset.zero,
             ).animate(curved),
             child: child,
@@ -4634,7 +4634,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 height: 1.1,
                               ),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 3),
                             SizedBox(
                               height: 30,
                               child: Text(
@@ -4652,7 +4652,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 1),
+                            const SizedBox(height: 0),
                             Text(
                               displayPrice,
                               textAlign: TextAlign.center,
@@ -4667,7 +4667,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 height: 1,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 3),
                           ],
                         ),
                       ],
@@ -4841,7 +4841,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 42),
                         child: Text(
-                          'Venta simple',
+                          'Venta común',
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -6932,7 +6932,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
               id: 'manual-sale',
               icon: Icons.edit_note,
               onTap: _showQuickItemDialog,
-              tooltip: 'Venta manual',
+              tooltip: 'Venta común',
             ),
           ],
         );

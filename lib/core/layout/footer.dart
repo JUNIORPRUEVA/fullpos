@@ -14,39 +14,38 @@ class Footer extends ConsumerWidget {
     final tabs = controller.tabs;
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFD6DEE8),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF6F0D8),
         border: Border(
-          top: BorderSide(color: const Color(0xFFB6C3D3), width: 2.5),
+          top: BorderSide(color: Color(0xFFD3C7A5), width: 2.0),
         ),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 8 * scale),
-              itemCount: tabs.length,
-              separatorBuilder: (context, index) =>
-                  SizedBox(width: 1 * scale),
-              itemBuilder: (context, index) {
-                final tab = tabs[index];
-                return _FooterSaleTab(
-                  tab: tab,
-                  scale: scale,
-                  onTap: () => controller.select(index),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.only(left: 6 * scale, right: 10 * scale),
-            child: _FooterAddButton(
-              scale: scale,
-              onTap: controller.add,
-            ),
-          ),
-        ],
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 0),
+        itemCount: tabs.length + 1,
+        separatorBuilder: (context, index) => SizedBox(width: 1 * scale),
+        itemBuilder: (context, index) {
+          if (index == tabs.length) {
+            return Padding(
+              padding: EdgeInsets.only(left: 0, right: 10 * scale),
+              child: _FooterAddButton(
+                scale: scale,
+                onTap: controller.add,
+              ),
+            );
+          }
+
+          final tab = tabs[index];
+          return _FooterSaleTab(
+            index: index,
+            tab: tab,
+            scale: scale,
+            onTap: () => controller.select(index),
+            onRename: () => controller.rename(index),
+            onDelete: tab.canDelete ? () => controller.delete(index) : null,
+          );
+        },
       ),
     );
   }
@@ -54,62 +53,78 @@ class Footer extends ConsumerWidget {
 
 class _FooterSaleTab extends StatelessWidget {
   const _FooterSaleTab({
+    required this.index,
     required this.tab,
     required this.scale,
     required this.onTap,
+    required this.onRename,
+    this.onDelete,
   });
 
+  final int index;
   final FooterTicketTabData tab;
   final double scale;
   final VoidCallback onTap;
+  final Future<void>? Function() onRename;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final isActive = tab.isActive;
-    const activeColor = Color(0xFF17B5B0);
-    const textColor = Color(0xFF334155);
-    const activeTextColor = Color(0xFF1E293B);
+    const activeColor = Color(0xFF16A3A6);
+    const inactiveBackground = Color(0xFFF8FAFC);
+    const borderColor = Color(0xFFD0D5DD);
+    const textColor = Color(0xFF344256);
+    const activeTextColor = Color(0xFF1F3147);
 
     return Material(
-      color: isActive ? Colors.white : const Color(0xFFF8FAFC),
+      color: isActive ? Colors.white : inactiveBackground,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          constraints: BoxConstraints(minWidth: 148 * scale, maxWidth: 176 * scale),
+          constraints: BoxConstraints(
+            minWidth: 152 * scale,
+            maxWidth: 184 * scale,
+          ),
           padding: EdgeInsets.symmetric(horizontal: 12 * scale),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: isActive ? activeColor : Colors.transparent,
-                width: 2,
+                color: isActive ? activeColor : const Color(0xFFD8D0B6),
+                width: isActive ? 2.4 : 1.4,
               ),
-              right: BorderSide(color: const Color(0xFFD9E2F1)),
+              bottom: const BorderSide(color: borderColor),
+              right: const BorderSide(color: borderColor),
+              left: index == 0
+                  ? const BorderSide(color: borderColor)
+                  : BorderSide.none,
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Icon(
                 Icons.shopping_bag_outlined,
-                size: 14 * scale,
+                size: 15 * scale,
                 color: isActive ? activeColor : textColor,
               ),
-              SizedBox(width: 8 * scale),
+              SizedBox(width: 7 * scale),
               Expanded(
                 child: Text(
                   tab.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11.2 * scale,
-                    fontWeight: FontWeight.w500,
-                    height: 0.95,
+                    fontSize: 13.1 * scale,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                    height: 1.16,
                     color: isActive ? activeTextColor : textColor,
-                    letterSpacing: -0.1,
+                    letterSpacing: -0.08,
                   ),
                 ),
               ),
               if (tab.showAlertDot) ...[
-                SizedBox(width: 8 * scale),
+                SizedBox(width: 7 * scale),
                 Container(
                   width: 6 * scale,
                   height: 6 * scale,
@@ -119,11 +134,54 @@ class _FooterSaleTab extends StatelessWidget {
                   ),
                 ),
               ],
-              SizedBox(width: 8 * scale),
-              Icon(
-                Icons.more_vert,
-                size: 15 * scale,
-                color: const Color(0xFF64748B),
+              SizedBox(width: 2 * scale),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                tooltip: 'Opciones de la venta',
+                position: PopupMenuPosition.under,
+                onSelected: (value) async {
+                  if (value == 'rename') {
+                    await onRename();
+                    return;
+                  }
+                  if (value == 'delete') {
+                    onDelete?.call();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<String>(
+                    value: 'rename',
+                    child: Row(
+                      children: [
+                        Icon(Icons.drive_file_rename_outline, size: 18),
+                        SizedBox(width: 10),
+                        Text('Renombrar venta'),
+                      ],
+                    ),
+                  ),
+                  if (onDelete != null)
+                    const PopupMenuItem<String>(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, size: 18),
+                          SizedBox(width: 10),
+                          Text('Eliminar venta'),
+                        ],
+                      ),
+                    ),
+                ],
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 4 * scale,
+                    vertical: 8 * scale,
+                  ),
+                  child: Icon(
+                    Icons.more_vert,
+                    size: 16 * scale,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
               ),
             ],
           ),
@@ -151,11 +209,12 @@ class _FooterAddButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(6 * scale),
         child: Container(
-          width: 34 * scale,
-          height: 34 * scale,
+          width: 36 * scale,
+          height: 36 * scale,
+          margin: EdgeInsets.only(top: 4 * scale),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6 * scale),
-            border: Border.all(color: const Color(0xFFD9E2F1)),
+            border: Border.all(color: const Color(0xFFD0D5DD)),
           ),
           child: Icon(
             Icons.add,
