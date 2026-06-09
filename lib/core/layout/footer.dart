@@ -104,33 +104,34 @@ class _FooterSaleTab extends StatelessWidget {
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
-                size: 16 * scale,
+            children: [
               Icon(
                 Icons.shopping_cart_checkout_rounded,
-              SizedBox(width: 4 * scale),
+                size: 16 * scale,
                 color: isActive ? activeColor : textColor,
               ),
-                  padding: EdgeInsets.symmetric(vertical: 2 * scale),
+              SizedBox(width: 4 * scale),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 3 * scale),
+                  padding: EdgeInsets.symmetric(vertical: 2 * scale),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         tab.label,
-                          fontSize: 14.4 * scale,
-                          fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 13.6 * scale,
-                          fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                          height: 1.15,
+                          fontSize: 14.4 * scale,
+                          fontWeight:
+                              isActive ? FontWeight.w800 : FontWeight.w700,
+                          height: 1.1,
                           color: isActive ? activeTextColor : textColor,
-                      SizedBox(height: 1 * scale),
+                          letterSpacing: -0.1,
                         ),
                       ),
-                      SizedBox(height: 2 * scale),
+                      SizedBox(height: 1 * scale),
                       SizedBox(
                         height: 6 * scale,
                         child: Align(

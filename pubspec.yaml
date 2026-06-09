@@ -152,6 +152,9 @@ flutter:
     - assets/
     - assets/fonts/
     - assets/imagen/
+    - assets/imagen/iconos/
+    - assets/imagen/iconos/editar-texto.png
+    - assets/imagen/iconos/eliminar.png
     - assets/imagen/lonchericon.png
 
   fonts:

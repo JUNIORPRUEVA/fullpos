@@ -205,6 +205,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final FocusNode _clientFocusNode = FocusNode();
+  final TextEditingController _clientSearchController =
+      TextEditingController();
+  final FocusNode _clientSearchFocusNode = FocusNode();
+  final LayerLink _clientSearchLayerLink = LayerLink();
+  final GlobalKey _clientSearchFieldKey = GlobalKey();
+  OverlayEntry? _clientSearchOverlay;
+  String _clientSearchQuery = '';
   final ScrollController _ticketItemsScrollController = ScrollController();
   Timer? _cartPersistenceTimer;
   bool _cartPersistenceInFlight = false;
@@ -517,6 +524,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     _globalShortcutHandler = _handleGlobalShortcutKey;
     HardwareKeyboard.instance.addHandler(_globalShortcutHandler);
     RawKeyboard.instance.addListener(_handleScannerKey);
+    _clientSearchFocusNode.addListener(_handleClientSearchFocus);
   }
 
   Future<void> _loadAccess() async {
@@ -527,6 +535,91 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   void _handleScannerKey(RawKeyEvent event) {
     _scanner?.handleKeyEvent(event);
+  }
+
+  void _handleClientSearchFocus() {
+    if (_clientSearchFocusNode.hasFocus) {
+      _openClientSearchOverlay();
+    } else {
+      _closeClientSearchOverlay();
+      _syncClientFieldText();
+    }
+  }
+
+  void _syncClientFieldText({bool forceQuery = false}) {
+    if (forceQuery || _clientSearchFocusNode.hasFocus) return;
+    final client = _currentCart.selectedClient;
+    final clientName = client?.nombre.trim().isNotEmpty == true
+        ? client!.nombre.trim()
+        : '';
+    final clientMeta = client == null
+        ? ''
+        : (client.rnc?.trim().isNotEmpty == true
+              ? client.rnc!.trim()
+              : (client.cedula?.trim().isNotEmpty == true
+                    ? client.cedula!.trim()
+                    : (client.telefono?.trim().isNotEmpty == true
+                          ? client.telefono!.trim()
+                          : '')));
+    final display = clientName.isEmpty
+        ? ''
+        : (clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)');
+
+    if (_clientSearchController.text != display) {
+      _clientSearchController.text = display;
+      _clientSearchController.selection = TextSelection.collapsed(
+        offset: display.length,
+      );
+    }
+  }
+
+  void _openClientSearchOverlay() {
+    if (_clientSearchOverlay != null) return;
+
+    _clientSearchOverlay = OverlayEntry(
+      builder: (context) {
+        final renderBox = _clientSearchFieldKey.currentContext
+            ?.findRenderObject() as RenderBox?;
+        final fieldSize = renderBox?.size;
+        final width = fieldSize?.width ?? 320;
+        final height = fieldSize?.height ?? 48;
+
+        return Positioned.fill(
+          child: Stack(
+            children: [
+              GestureDetector(
+                onTap: _closeClientSearchOverlay,
+                behavior: HitTestBehavior.translucent,
+                child: const SizedBox.expand(),
+              ),
+              CompositedTransformFollower(
+                link: _clientSearchLayerLink,
+                showWhenUnlinked: false,
+                offset: Offset(0, height + 6),
+                child: Material(
+                  color: Colors.transparent,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: width,
+                      minWidth: width,
+                      maxHeight: 320,
+                    ),
+                    child: _buildClientSearchDropdown(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    Overlay.of(context, rootOverlay: true).insert(_clientSearchOverlay!);
+  }
+
+  void _closeClientSearchOverlay() {
+    _clientSearchOverlay?.remove();
+    _clientSearchOverlay = null;
   }
 
   bool _handleGlobalShortcutKey(KeyEvent event) {
@@ -3753,6 +3846,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     _searchController.dispose();
     _searchFocusNode.dispose();
     _clientFocusNode.dispose();
+    _clientSearchOverlay?.remove();
+    _clientSearchController.dispose();
+    _clientSearchFocusNode.removeListener(_handleClientSearchFocus);
+    _clientSearchFocusNode.dispose();
     _ticketItemsScrollController.dispose();
     _inlineQtyController.dispose();
     _inlineLineDiscountController.dispose();
@@ -5716,14 +5813,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildPanelDocumentTypeDropdown(),
-              const SizedBox(height: 8),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: _buildPanelClientControl(),
-                  ),
+                  Expanded(child: _buildPanelDocumentTypeDropdown()),
+                  const SizedBox(width: 10),
+                  Expanded(child: _buildPanelClientControl()),
                   const SizedBox(width: 8),
                   SizedBox(width: 118, child: _buildPanelNewClientButton()),
                 ],
@@ -6659,7 +6754,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
     return Builder(
       builder: (fieldContext) => _buildProfessionalDropdownField(
-        supportingText: 'Normal / general',
+        supportingText: 'Tipo de factura',
         value: _salesDocumentTypeLabel(currentType),
         onTap: () => unawaited(
           _showAnchoredPopover<void>(
@@ -6694,31 +6789,207 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
   Widget _buildPanelClientControl() {
     final client = _currentCart.selectedClient;
-    final clientName = client?.nombre.trim().isNotEmpty == true
-        ? client!.nombre.trim()
-        : 'Consumidor Final';
-    final clientHint = client?.id != null
-        ? 'Cliente ${client!.id}'
-        : 'Cliente general';
-    final clientMeta = client == null
-        ? ''
-        : (client.rnc?.trim().isNotEmpty == true
-              ? client.rnc!.trim()
-              : (client.cedula?.trim().isNotEmpty == true
-                    ? client.cedula!.trim()
-                    : ''));
+    _syncClientFieldText();
 
-    return Builder(
-      builder: (fieldContext) => _buildProfessionalDropdownField(
-        supportingText: clientHint,
-        value: clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)',
-        onTap: () => unawaited(_showClientDropdownPopover(fieldContext, client)),
-        suffix: client != null
-            ? _buildInlineClientIcon(
+    return CompositedTransformTarget(
+      link: _clientSearchLayerLink,
+      child: Container(
+        key: _clientSearchFieldKey,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _clientSearchFocusNode.hasFocus
+                ? const Color(0xFF1A56DB)
+                : const Color(0xFFD6E0EA),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0F172A).withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _clientSearchController,
+                focusNode: _clientSearchFocusNode,
+                onTap: _openClientSearchOverlay,
+                onChanged: (value) {
+                  _clientSearchQuery = value;
+                  if (_clientSearchOverlay == null) {
+                    _openClientSearchOverlay();
+                  }
+                  _clientSearchOverlay?.markNeedsBuild();
+                },
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  labelText: 'Cliente',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  hintText: 'Buscar o seleccionar cliente',
+                  labelStyle: TextStyle(
+                    color: Color(0xFF6B7A92),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  hintStyle: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                style: TextStyle(
+                  color: salesDetailTextColor,
+                  fontSize: 14.0,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (client != null) ...[
+              _buildInlineClientIcon(
+                icon: Icons.edit_outlined,
+                onTap: _showClientPicker,
+              ),
+              const SizedBox(width: 4),
+              _buildInlineClientIcon(
                 icon: Icons.close_rounded,
-                onTap: _removeClient,
-              )
-            : null,
+                onTap: () {
+                  _removeClient();
+                  _clientSearchController.clear();
+                  _clientSearchQuery = '';
+                  _clientSearchOverlay?.markNeedsBuild();
+                },
+              ),
+            ],
+            const SizedBox(width: 2),
+            InkWell(
+              onTap: () {
+                _clientSearchFocusNode.requestFocus();
+                _openClientSearchOverlay();
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: salesDetailMutedTextColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClientSearchDropdown() {
+    final client = _currentCart.selectedClient;
+    final normalizedQuery = _clientSearchQuery.trim().toLowerCase();
+    final filteredClients = _clients.where((option) {
+      if (normalizedQuery.isEmpty) return true;
+      final name = option.nombre.toLowerCase();
+      final phone = option.telefono?.toLowerCase() ?? '';
+      final rnc = option.rnc?.toLowerCase() ?? '';
+      final cedula = option.cedula?.toLowerCase() ?? '';
+      return name.contains(normalizedQuery) ||
+          phone.contains(normalizedQuery) ||
+          rnc.contains(normalizedQuery) ||
+          cedula.contains(normalizedQuery);
+    }).toList();
+
+    return _buildProfessionalDropdownSurface(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 320),
+        child: Material(
+          color: Colors.transparent,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            shrinkWrap: true,
+            itemCount: filteredClients.isEmpty ? 1 : filteredClients.length + 1,
+            separatorBuilder: (context, index) => const Divider(
+              height: 1,
+              indent: 14,
+              endIndent: 14,
+            ),
+            itemBuilder: (context, index) {
+              if (filteredClients.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+                  child: Text(
+                    'No se encontraron clientes',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF6B7C8E),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }
+
+              if (index == 0) {
+                final selected = client == null;
+                return _buildDropdownOptionTile(
+                  title: 'Consumidor Final',
+                  subtitle: 'Cliente general',
+                  selected: selected,
+                  onTap: () {
+                    _closeClientSearchOverlay();
+                    _clientSearchFocusNode.unfocus();
+                    _removeClient();
+                    _clientSearchQuery = '';
+                    _clientSearchController.clear();
+                  },
+                );
+              }
+
+              final option = filteredClients[index - 1];
+              final optionMeta =
+                  (option.telefono?.trim().isNotEmpty ?? false)
+                      ? option.telefono!.trim()
+                      : ((option.rnc?.trim().isNotEmpty ?? false)
+                          ? option.rnc!.trim()
+                          : ((option.cedula?.trim().isNotEmpty ?? false)
+                              ? option.cedula!.trim()
+                              : ''));
+              final selected = option.id == client?.id;
+
+              return _buildDropdownOptionTile(
+                title: option.nombre,
+                subtitle: optionMeta.isEmpty ? null : '($optionMeta)',
+                selected: selected,
+                onTap: () async {
+                  _closeClientSearchOverlay();
+                  _clientSearchFocusNode.unfocus();
+                  await _applySelectedClient(option);
+                  _clientSearchQuery = '';
+                  _syncClientFieldText();
+                },
+                trailing: InkWell(
+                  onTap: () async {
+                    _closeClientSearchOverlay();
+                    await _showClientPicker();
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -6886,24 +7157,24 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
   Widget _buildPanelNewClientButton() {
     return SizedBox(
-      height: 50,
+      height: 44,
       child: ElevatedButton.icon(
         onPressed: _showCreateClientFromSales,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFE2EBFF),
+          backgroundColor: const Color(0xFFF1F5FF),
           foregroundColor: const Color(0xFF1A56DB),
           elevation: 0,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFFC9D8FB)),
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Color(0xFFC7D2FE), width: 1),
           ),
         ),
         icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
         label: const Text(
           'Nuevo',
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 12.8, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -6919,14 +7190,14 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          height: supportingText == null ? 46 : 54,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          height: supportingText == null ? 42 : 48,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFCAD7EB)),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFD6E0EA), width: 1),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF0F172A).withOpacity(0.025),
@@ -6952,9 +7223,9 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: const Color(0xFF6B7A92),
-                          fontSize: 10.8,
-                          fontWeight: FontWeight.w700,
-                          height: 1.0,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.05,
                         ),
                       ),
                     Text(
@@ -6963,9 +7234,9 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: salesDetailTextColor,
-                        fontSize: 14.8,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
+                        fontSize: 14.0,
+                        fontWeight: FontWeight.w600,
+                        height: 1.1,
                         letterSpacing: -0.1,
                       ),
                     ),
@@ -7487,13 +7758,6 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
             _setHoverStateDeferred(_hoveredCartItemIndexes, index, false),
         child: InkWell(
           onTap: () => setState(() => _selectedCartItemIndex = index),
-          onDoubleTap: () => unawaited(
-            _showItemEditPopover(
-              rowContext,
-              index,
-              focus: _InlineItemFocus.qty,
-            ),
-          ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -7623,14 +7887,20 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                         opacity: showActions ? 1 : 0,
                         child: IgnorePointer(
                           ignoring: !showActions,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
                               _buildCartRowActionButton(
                                 id: 'edit-$index',
-                                icon: Icons.edit_outlined,
-                                color: const Color(0xFF172033),
-                                tooltip: 'Editar en esta venta',
+                                icon: Image.asset(
+                                  'assets/imagen/iconos/editar-texto.png',
+                                  width: 22,
+                                  height: 22,
+                                  fit: BoxFit.contain,
+                                ),
+                                tooltip: 'Editar',
                                 onTap: () => unawaited(
                                   _showItemEditPopover(
                                     rowContext,
@@ -7642,8 +7912,12 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                               const SizedBox(width: 10),
                               _buildCartRowActionButton(
                                 id: 'delete-$index',
-                                icon: Icons.delete_outline_rounded,
-                                color: const Color(0xFF172033),
+                                icon: Image.asset(
+                                  'assets/imagen/iconos/eliminar.png',
+                                  width: 22,
+                                  height: 22,
+                                  fit: BoxFit.contain,
+                                ),
                                 tooltip: 'Eliminar',
                                 onTap: () => _updateCurrentCart(() {
                                   if (_inlineEditCartItemIndex == index) {
@@ -7655,7 +7929,8 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                                   _currentCart.removeItem(index);
                                 }),
                               ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -7672,8 +7947,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
   Widget _buildCartRowActionButton({
     required String id,
-    required IconData icon,
-    required Color color,
+    required Widget icon,
     required String tooltip,
     required VoidCallback onTap,
   }) {
@@ -7737,19 +8011,10 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                   width: buttonSize,
                   height: buttonSize,
                   decoration: BoxDecoration(
-                    color: isHovered
-                        ? const Color(0xFFF1F5F9)
-                        : Colors.transparent,
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isHovered
-                          ? const Color(0xFFCBD5E1)
-                          : const Color(0xFFE2E8F0),
-                    ),
                   ),
-                  child: Center(
-                    child: Icon(icon, size: 22, color: color),
-                  ),
+                  child: Center(child: icon),
                 ),
               ),
             ),
