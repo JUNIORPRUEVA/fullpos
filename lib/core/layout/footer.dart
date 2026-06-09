@@ -76,6 +76,7 @@ class _FooterSaleTab extends StatelessWidget {
     const borderColor = Color(0xFFD0D5DD);
     const textColor = Color(0xFF344256);
     const activeTextColor = Color(0xFF1F3147);
+    const dotColor = Color(0xFFEF4444);
 
     return Material(
       color: isActive ? Colors.white : inactiveBackground,
@@ -83,10 +84,10 @@ class _FooterSaleTab extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: BoxConstraints(
-            minWidth: 152 * scale,
-            maxWidth: 184 * scale,
+            minWidth: 150 * scale,
+            maxWidth: 176 * scale,
           ),
-          padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+          padding: EdgeInsets.symmetric(horizontal: 10 * scale),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
@@ -104,37 +105,52 @@ class _FooterSaleTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Icon(
-                Icons.shopping_bag_outlined,
-                size: 15 * scale,
+                Icons.shopping_cart_checkout_rounded,
+                size: 17.5 * scale,
                 color: isActive ? activeColor : textColor,
               ),
-              SizedBox(width: 7 * scale),
+              SizedBox(width: 6 * scale),
               Expanded(
-                child: Text(
-                  tab.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.1 * scale,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                    height: 1.16,
-                    color: isActive ? activeTextColor : textColor,
-                    letterSpacing: -0.08,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 5 * scale),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tab.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.2 * scale,
+                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                          height: 1.25,
+                          color: isActive ? activeTextColor : textColor,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                      SizedBox(height: 3 * scale),
+                      SizedBox(
+                        height: 6 * scale,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: tab.showAlertDot
+                              ? Container(
+                                  width: 6 * scale,
+                                  height: 6 * scale,
+                                  decoration: const BoxDecoration(
+                                    color: dotColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              if (tab.showAlertDot) ...[
-                SizedBox(width: 7 * scale),
-                Container(
-                  width: 6 * scale,
-                  height: 6 * scale,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-              SizedBox(width: 2 * scale),
+              SizedBox(width: 1 * scale),
               PopupMenuButton<String>(
                 padding: EdgeInsets.zero,
                 tooltip: 'Opciones de la venta',
@@ -173,12 +189,12 @@ class _FooterSaleTab extends StatelessWidget {
                 ],
                 child: Padding(
                   padding: EdgeInsets.symmetric(
-                    horizontal: 4 * scale,
-                    vertical: 8 * scale,
+                    horizontal: 2 * scale,
+                    vertical: 7 * scale,
                   ),
                   child: Icon(
                     Icons.more_vert,
-                    size: 16 * scale,
+                    size: 18 * scale,
                     color: const Color(0xFF64748B),
                   ),
                 ),
@@ -202,24 +218,35 @@ class _FooterAddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final size = 34.0 * scale;
+    final radius = 8.0 * scale;
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(6 * scale),
+      borderRadius: BorderRadius.circular(radius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(6 * scale),
+        borderRadius: BorderRadius.circular(radius),
         child: Container(
-          width: 36 * scale,
-          height: 36 * scale,
-          margin: EdgeInsets.only(top: 4 * scale),
+          width: size,
+          height: size,
+          margin: EdgeInsets.symmetric(vertical: 4 * scale),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6 * scale),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(color: const Color(0xFFD0D5DD)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
+          alignment: Alignment.center,
           child: Icon(
             Icons.add,
-            size: 18 * scale,
-            color: const Color(0xFF64748B),
+            size: 20 * scale,
+            color: const Color(0xFF334155),
           ),
         ),
       ),

@@ -11,6 +11,7 @@
     "dart.flutterRememberSelectedDevice": true,
     "dart.flutterSelectDeviceWhenConnected": false,
     "dart.flutterShowEmulators": "never",
+    "debug.defaultLaunchConfiguration": "FULLPOS Windows",
     "dart.hotReloadProgress": "statusBar",
     "dart.openDevTools": "flutter",
     "dart.previewHotReloadOnSaveWatcher": true,

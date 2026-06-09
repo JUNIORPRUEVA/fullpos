@@ -5665,9 +5665,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           style: TextStyle(
                             color: salesDetailTextColor,
                             fontSize: 17,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w500,
                             height: 1.2,
-                            letterSpacing: -0.2,
+                            letterSpacing: -0.3,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -5710,21 +5710,26 @@ class _SalesPageState extends ConsumerState<SalesPage>
       ),
 
       Padding(
-        padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-        child: _buildPanelDocumentTypeDropdown(),
-      ),
-      // ── Client section ─────────────────────────────────────────
-      Padding(
-        padding: const EdgeInsets.fromLTRB(22, 10, 22, 0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: _buildPanelClientControl(),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(width: 112, child: _buildPanelNewClientButton()),
-          ],
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildPanelDocumentTypeDropdown(),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: _buildPanelClientControl(),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 118, child: _buildPanelNewClientButton()),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     ],
@@ -6881,23 +6886,24 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
   Widget _buildPanelNewClientButton() {
     return SizedBox(
-      height: 42,
+      height: 50,
       child: ElevatedButton.icon(
         onPressed: _showCreateClientFromSales,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFDBE5FF),
+          backgroundColor: const Color(0xFFE2EBFF),
           foregroundColor: const Color(0xFF1A56DB),
           elevation: 0,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0xFFC9D8FB)),
           ),
         ),
         icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
         label: const Text(
           'Nuevo',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -6913,14 +6919,21 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          height: supportingText == null ? 42 : 50,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          height: supportingText == null ? 46 : 54,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFCBD5E1)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFCAD7EB)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withOpacity(0.025),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -6938,9 +6951,9 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: salesDetailMutedTextColor,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF6B7A92),
+                          fontSize: 10.8,
+                          fontWeight: FontWeight.w700,
                           height: 1.0,
                         ),
                       ),
@@ -6950,9 +6963,10 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: salesDetailTextColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 14.8,
+                        fontWeight: FontWeight.w800,
                         height: 1.0,
+                        letterSpacing: -0.1,
                       ),
                     ),
                   ],
@@ -7499,17 +7513,18 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                       Text(
                         item.productNameSnapshot,
                         style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
                           color: Color(0xFF0F172A),
-                          height: 1.05,
+                          height: 1.15,
+                          letterSpacing: -0.2,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 7),
                       Text(
-                        'RD\$${CurrencyDisplay.format(item.unitPrice, decimalDigits: 2)}',
+                        'RD\$${CurrencyDisplay.formatPlain(item.unitPrice, decimalDigits: 2)}',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -7557,7 +7572,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                             : item.qty.toStringAsFixed(2),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: 14.5,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF0F172A),
                           height: 1.0,
@@ -7592,11 +7607,11 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                         child: IgnorePointer(
                           ignoring: showActions,
                           child: Text(
-                            'RD\$${CurrencyDisplay.format(subtotal, decimalDigits: 2)}',
+                            'RD\$${CurrencyDisplay.formatPlain(subtotal, decimalDigits: 2)}',
                             textAlign: TextAlign.right,
                             style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
                               color: Color(0xFF0F172A),
                               height: 1.0,
                             ),
@@ -7663,25 +7678,39 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
     required VoidCallback onTap,
   }) {
     final isHovered = _hoveredCartRowActions.contains(id);
+    const buttonSize = 32.0;
+    const labelGap = 8.0;
 
     return MouseRegion(
       onEnter: (_) => _setHoverStateDeferred(_hoveredCartRowActions, id, true),
       onExit: (_) => _setHoverStateDeferred(_hoveredCartRowActions, id, false),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 120),
-            child: isHovered
-                ? Container(
-                    key: ValueKey<String>('label-$id'),
-                    height: 34,
-                    margin: const EdgeInsets.only(right: 6),
+      child: SizedBox(
+        width: buttonSize,
+        height: buttonSize,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Positioned(
+              right: buttonSize + labelGap,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 120),
+                opacity: isHovered ? 1 : 0,
+                child: IgnorePointer(
+                  ignoring: !isHovered,
+                  child: Container(
+                    height: 32,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       color: const Color(0xFF172033),
-                      borderRadius: BorderRadius.circular(9),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.16),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Center(
                       child: Text(
@@ -7690,27 +7719,42 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12.5,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           height: 1.0,
                         ),
                       ),
                     ),
-                  )
-                : const SizedBox.shrink(key: ValueKey<String>('empty-label')),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(10),
-              child: SizedBox(
-                width: 26,
-                height: 26,
-                child: Center(child: Icon(icon, size: 21, color: color)),
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(12),
+                child: Ink(
+                  width: buttonSize,
+                  height: buttonSize,
+                  decoration: BoxDecoration(
+                    color: isHovered
+                        ? const Color(0xFFF1F5F9)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isHovered
+                          ? const Color(0xFFCBD5E1)
+                          : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Center(
+                    child: Icon(icon, size: 22, color: color),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
