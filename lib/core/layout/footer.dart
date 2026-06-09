@@ -71,7 +71,7 @@ class _FooterSaleTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isActive = tab.isActive;
-    const activeColor = Color(0xFF16A3A6);
+    const activeColor = Color(0xFF1A56DB);
     const inactiveBackground = Color(0xFFF8FAFC);
     const borderColor = Color(0xFFD0D5DD);
     const textColor = Color(0xFF344256);

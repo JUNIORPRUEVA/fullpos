@@ -38,7 +38,8 @@ import '../../cash/ui/cash_movement_dialog.dart';
 import '../../cash/ui/cash_open_dialog.dart';
 import '../../clients/data/client_model.dart';
 import '../../clients/data/clients_repository.dart';
-import '../../clients/ui/client_form_dialog.dart';
+import '../../clients/utils/phone_validator.dart';
+import '../../clients/utils/rnc_validator.dart';
 import '../../products/data/categories_repository.dart';
 import '../../products/data/products_repository.dart';
 import '../../products/models/category_model.dart';
@@ -1670,15 +1671,60 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Future<ClientModel?> _showCreateClientFromSales() async {
-    final dialogSize = _salesPanelDialogSize();
-    final result = await _presentDialog<ClientModel>(
-      builder: (context) => ClientFormDialog(
-        dialogWidth: dialogSize.width,
-        dialogHeight: dialogSize.height,
-        insetPadding: EdgeInsets.zero,
-        alignment: Alignment.centerRight,
-        borderRadius: BorderRadius.zero,
-      ),
+    final screenSize = MediaQuery.sizeOf(context);
+    final panelWidth = _ticketPanelConstraints(screenSize.width).maxWidth;
+    final result = await showGeneralDialog<ClientModel>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withOpacity(0.08),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                    child: Container(color: Colors.white.withOpacity(0.04)),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox(
+                  width: panelWidth,
+                  height: double.infinity,
+                  child: _SalesClientSidePanel(
+                    onClose: () => Navigator.of(dialogContext).pop(),
+                    onSaved: (client) =>
+                        Navigator.of(dialogContext).pop(client),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.08, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
     );
 
     if (!mounted || result == null) return null;
@@ -1697,6 +1743,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       _currentCart.selectedClient = result;
       _currentCart.name = result.nombre;
     });
+    await _applyDefaultDocumentTypeForClient(result);
     if (_currentCart.ticketId != null) {
       final ticketId = _currentCart.ticketId!;
       await ErrorHandler.instance.runSafe<void>(
@@ -1710,6 +1757,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
         module: 'sales/ticket_name',
       );
     }
+  }
+
+  Future<void> _applyDefaultDocumentTypeForClient(ClientModel client) async {
+    if (!mounted) return;
+    if (client.normalizedRnc != null &&
+        _isElectronicInvoicingFeatureEnabled) {
+      await _setSalesDocumentType(_SalesDocumentType.creditoFiscal);
+      return;
+    }
+    await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
   }
 
   Future<void> _showQuickItemDialog() async {
@@ -2725,6 +2782,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       _currentCart.selectedClient = null;
       _currentCart.name = 'Ticket ${ticketIndex + 1}';
     });
+    unawaited(_setSalesDocumentType(_SalesDocumentType.consumidorFinal));
   }
 
   Future<void> _addProductToCart(ProductModel product) async {
@@ -3825,23 +3883,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           ),
           NewClientIntent: CallbackAction<NewClientIntent>(
             onInvoke: (_) async {
-              final dialogSize = _salesPanelDialogSize();
-              final result = await _presentDialog<ClientModel>(
-                builder: (context) => ClientFormDialog(
-                  dialogWidth: dialogSize.width,
-                  dialogHeight: dialogSize.height,
-                  insetPadding: EdgeInsets.zero,
-                  alignment: Alignment.centerRight,
-                  borderRadius: BorderRadius.zero,
-                ),
-              );
-              if (!mounted || result == null) return null;
-              setState(() {
-                _clients.add(result);
-              });
-              _updateCurrentCart(() {
-                _currentCart.selectedClient = result;
-              });
+              await _showCreateClientFromSales();
               return null;
             },
           ),
@@ -5563,7 +5605,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
         Expanded(child: _buildItemsListCard()),
         Divider(height: 1, color: dividerColor),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
           child: _buildTotalAndActionsCard(embedded: true),
         ),
       ],
@@ -5667,51 +5709,19 @@ class _SalesPageState extends ConsumerState<SalesPage>
         ),
       ),
 
-      // ── Price list & numbering ─────────────────────────────────
       Padding(
         padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-        child: Row(
-          children: [
-            Expanded(
-              child: _buildPanelLabeledControl(
-                label: 'Lista de precio',
-                child: _buildPanelStaticDropdown('General'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildPanelLabeledControl(
-                label: 'Numeración',
-                child: _buildPanelDocumentTypeDropdown(),
-              ),
-            ),
-          ],
-        ),
+        child: _buildPanelDocumentTypeDropdown(),
       ),
-
       // ── Client section ─────────────────────────────────────────
       Padding(
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 0),
+        padding: const EdgeInsets.fromLTRB(22, 10, 22, 0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(
-              width: 58,
-              height: 40,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Cliente',
-                  style: TextStyle(
-                    color: salesDetailTextColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
+            Expanded(
+              child: _buildPanelClientControl(),
             ),
-            const SizedBox(width: 8),
-            Expanded(child: _buildPanelClientControl()),
             const SizedBox(width: 12),
             SizedBox(width: 112, child: _buildPanelNewClientButton()),
           ],
@@ -5763,159 +5773,304 @@ void _showQuickDiscountMenu() {
     );
     return;
   }
-
+  final screenSize = MediaQuery.sizeOf(context);
+  final panelWidth = _ticketPanelConstraints(screenSize.width).maxWidth;
+  final discountController = TextEditingController(
+    text: (_currentCart.discountTotalValue ?? 0) > 0
+        ? (_currentCart.discountTotalValue!).toStringAsFixed(2)
+        : '',
+  );
   final subtotal = _currentCart.calculateSubtotal();
-  final renderBox = context.findRenderObject() as RenderBox?;
-  if (renderBox == null) return;
-  final overlay = Overlay.of(context);
-  final position = renderBox.localToGlobal(
-    const Offset(0, 0),
-    ancestor: overlay.context.findRenderObject(),
-  );
+  final currentIsPercent = _currentCart.discountTotalType == 'percent';
 
-  showMenu<String>(
+  showGeneralDialog<void>(
     context: context,
-    position: RelativeRect.fromLTRB(
-      position.dx + 200,
-      position.dy + 80,
-      position.dx + 200,
-      position.dy + 80,
-    ),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(14),
-    ),
-    color: Colors.white,
-    elevation: 8,
-    shadowColor: Colors.black.withOpacity(0.12),
-    items: [
-      const PopupMenuItem<String>(
-        enabled: false,
-        height: 36,
-        child: Padding(
-          padding: EdgeInsets.only(left: 8),
-          child: Text(
-            'Descuento rápido',
-            style: TextStyle(
-              color: Color(0xFF64748B),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, animation, secondaryAnimation) {
+      var isPercent = currentIsPercent;
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          Widget quickChip(String label, double percent) {
+            return InkWell(
+              onTap: () {
+                isPercent = true;
+                discountController.text = percent.toStringAsFixed(0);
+                setLocalState(() {});
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Ink(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF2FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBFD1F7)),
+                ),
+                child: Text(
+                  '$label%',
+                  style: const TextStyle(
+                    color: Color(0xFF1A56DB),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          Future<void> applyDiscount() async {
+            final value = double.tryParse(discountController.text.trim()) ?? 0;
+            if (value <= 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Indica un descuento válido.'),
+                  backgroundColor: status.error,
+                ),
+              );
+              return;
+            }
+            if (isPercent) {
+              if (value > 100) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'El porcentaje no puede ser mayor a 100%.',
+                    ),
+                    backgroundColor: status.error,
+                  ),
+                );
+                return;
+              }
+              _updateCurrentCart(() {
+                _currentCart.discountTotalType = 'percent';
+                _currentCart.discountTotalValue = value;
+              });
+            } else {
+              if (value >= subtotal) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'El monto debe ser menor al total de la venta.',
+                    ),
+                    backgroundColor: status.error,
+                  ),
+                );
+                return;
+              }
+              _updateCurrentCart(() {
+                _currentCart.discountTotalType = 'amount';
+                _currentCart.discountTotalValue = value;
+              });
+            }
+            if (mounted) Navigator.of(dialogContext).pop();
+          }
+
+          return Material(
+            color: Colors.transparent,
+            child: Stack(
+              children: [
+                Positioned(
+                  right: 12,
+                  top: 92,
+                  width: math.min(320.0, panelWidth - 18),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFDCE5F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 30,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.flash_on_rounded,
+                              color: Color(0xFF1A56DB),
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Descuento',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF17324D),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(),
+                              icon: const Icon(Icons.close),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDiscountPanelTypeChip(
+                                label: 'Porcentaje',
+                                selected: isPercent,
+                                onTap: () => setLocalState(() {
+                                  isPercent = true;
+                                }),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildDiscountPanelTypeChip(
+                                label: 'Monto fijo',
+                                selected: !isPercent,
+                                onTap: () => setLocalState(() {
+                                  isPercent = false;
+                                }),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            quickChip('5', 5),
+                            quickChip('10', 10),
+                            quickChip('15', 15),
+                            quickChip('20', 20),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: discountController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d*\.?\d{0,2}'),
+                            ),
+                          ],
+                          decoration: InputDecoration(
+                            labelText: isPercent
+                                ? 'Porcentaje de descuento'
+                                : 'Monto de descuento',
+                            prefixText: isPercent ? '' : 'RD\$ ',
+                            suffixText: isPercent ? '%' : null,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Total actual: ${CurrencyDisplay.format(_currentCart.calculateTotal(), decimalDigits: 2)}',
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            if ((_currentCart.discountTotalValue ?? 0) > 0)
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    _removeQuickDiscount();
+                                    Navigator.of(dialogContext).pop();
+                                  },
+                                  child: const Text('Quitar descuento'),
+                                ),
+                              ),
+                            if ((_currentCart.discountTotalValue ?? 0) > 0)
+                              const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: applyDiscount,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1A56DB),
+                                ),
+                                child: const Text('Aplicar descuento'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
+          );
+        },
+      );
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.12, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
         ),
-      ),
-      const PopupMenuDivider(height: 1),
-      PopupMenuItem<String>(
-        value: '5',
-        height: 42,
-        child: _buildDiscountMenuItem('5%', Icons.looks_one_outlined),
-      ),
-      PopupMenuItem<String>(
-        value: '10',
-        height: 42,
-        child: _buildDiscountMenuItem('10%', Icons.looks_two_outlined),
-      ),
-      PopupMenuItem<String>(
-        value: '15',
-        height: 42,
-        child: _buildDiscountMenuItem('15%', Icons.looks_3_outlined),
-      ),
-      const PopupMenuDivider(height: 1),
-      PopupMenuItem<String>(
-        value: 'manual',
-        height: 42,
-        child: _buildDiscountMenuItem(
-          'Monto manual',
-          Icons.edit_outlined,
-        ),
-      ),
-      PopupMenuItem<String>(
-        value: 'remove',
-        height: 42,
-        child: _buildDiscountMenuItem(
-          'Quitar descuento',
-          Icons.remove_circle_outline_rounded,
-          isDestructive: true,
-        ),
-      ),
-    ],
-  ).then((value) {
-    if (value == null || !mounted) return;
-
-    switch (value) {
-      case '5':
-      case '10':
-      case '15':
-        final percent = double.parse(value);
-        final discountAmount = subtotal * (percent / 100);
-        _applyQuickDiscount(discountAmount, percent: percent);
-        break;
-      case 'manual':
-        _showManualDiscountDialog();
-        break;
-      case 'remove':
-        _removeQuickDiscount();
-        break;
-    }
-  });
+      );
+    },
+  ).whenComplete(discountController.dispose);
 }
 
-Widget _buildDiscountMenuItem(
-  String label,
-  IconData icon, {
-  bool isDestructive = false,
+Widget _buildDiscountPanelTypeChip({
+  required String label,
+  required bool selected,
+  required VoidCallback onTap,
 }) {
-  const fullposBlue = Color(0xFF1A56DB);
-  final color = isDestructive ? const Color(0xFFDC2626) : fullposBlue;
-
-  return Row(
-    children: [
-      Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(8),
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(12),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xFFEAF2FF) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected
+              ? const Color(0xFF1A56DB)
+              : const Color(0xFFD7E0EA),
         ),
-        child: Icon(icon, size: 16, color: color),
       ),
-      const SizedBox(width: 12),
-      Text(
+      child: Text(
         label,
+        textAlign: TextAlign.center,
         style: TextStyle(
-          color: isDestructive
-              ? const Color(0xFFDC2626)
-              : const Color(0xFF0F172A),
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
+          color: selected
+              ? const Color(0xFF1A56DB)
+              : const Color(0xFF5E7186),
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
         ),
       ),
-    ],
-  );
-}
-
-void _applyQuickDiscount(double discountAmount, {double? percent}) {
-  if (discountAmount <= 0) return;
-  if (discountAmount >= _currentCart.calculateSubtotal()) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('El descuento no puede ser mayor que el subtotal.'),
-        backgroundColor: status.error,
-      ),
-    );
-    return;
-  }
-
-  _updateCurrentCart(() {
-    _currentCart.discountTotalType = 'amount';
-    _currentCart.discountTotalValue = discountAmount;
-  });
-
-  final label = percent != null
-      ? 'Descuento aplicado: ${percent.toStringAsFixed(0)}%'
-      : 'Descuento aplicado: ${CurrencyDisplay.format(discountAmount)}';
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(label), backgroundColor: status.success),
+    ),
   );
 }
 
@@ -5930,114 +6085,6 @@ void _removeQuickDiscount() {
       backgroundColor: status.success,
     ),
   );
-}
-
-Future<void> _showManualDiscountDialog() async {
-  final controller = TextEditingController();
-  final result = await showDialog<double>(
-    context: context,
-    builder: (context) {
-      const fullposBlue = Color(0xFF1A56DB);
-      return AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.edit_outlined, size: 22, color: fullposBlue),
-            SizedBox(width: 8),
-            Text(
-              'Descuento manual',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 280,
-          child: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-            ],
-            decoration: InputDecoration(
-              hintText: 'Monto de descuento',
-              prefixText: 'RD\$ ',
-              prefixStyle: const TextStyle(
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: fullposBlue, width: 1.5),
-              ),
-            ),
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: Color(0xFF64748B)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final amount = double.tryParse(controller.text.trim());
-              Navigator.pop(context, amount);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: fullposBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('Aplicar'),
-          ),
-        ],
-      );
-    },
-  );
-
-  if (result == null || !mounted) return;
-
-  if (result <= 0) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Monto de descuento inválido.'),
-        backgroundColor: status.error,
-      ),
-    );
-    return;
-  }
-
-  final subtotal = _currentCart.calculateSubtotal();
-  if (result >= subtotal) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('El descuento no puede ser mayor que el subtotal.'),
-        backgroundColor: status.error,
-      ),
-    );
-    return;
-  }
-
-  _applyQuickDiscount(result);
 }
 
 Widget _buildQuoteHeaderIconAction({
@@ -6148,11 +6195,39 @@ Future<void> _saveQuoteFromHeaderAndShowDialog() async {
     _rebuildQtyIndexForCurrentCart();
   });
 
-  await _showQuoteSavedActionsDialog();
+  await _showQuoteSavedActionsDialog(result?.quoteId);
 }
 
-Future<void> _showQuoteSavedActionsDialog() async {
-  await _showQuoteSavedOptionsDialog();
+Future<void> _showQuoteSavedActionsDialog(int? quoteId) async {
+  await _showQuoteSavedOptionsDialog(quoteId: quoteId);
+}
+
+Future<void> _openSavedQuotePdfPreview(int quoteId) async {
+  final quoteDetail = await QuotesRepository().getQuoteById(quoteId);
+  if (!mounted) return;
+
+  if (quoteDetail == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('No se pudo cargar la cotización guardada.'),
+        backgroundColor: status.error,
+      ),
+    );
+    return;
+  }
+
+  final business = await SettingsRepository.getBusinessInfo();
+  if (!mounted) return;
+
+  await QuotePrinter.showPreview(
+    context: context,
+    quote: quoteDetail.quote,
+    items: quoteDetail.items,
+    clientName: quoteDetail.clientName,
+    clientPhone: quoteDetail.clientPhone,
+    clientRnc: quoteDetail.clientRnc,
+    business: business,
+  );
 }
 
 Future<bool?> _confirmQuoteClientBeforeSaving() async {
@@ -6406,13 +6481,13 @@ Future<bool?> _confirmQuoteClientBeforeSaving() async {
   );
 }
 
-Future<void> _showQuoteSavedOptionsDialog() async {
+Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
   if (!mounted) return;
 
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (context) {
+    builder: (dialogContext) {
       return Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -6479,15 +6554,17 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                 width: double.infinity,
                 height: 44,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-
-                    // Por ahora abre la pantalla existente.
-                    // Luego se puede cambiar por la vista exacta del PDF de la cotización guardada.
-                    _openFacturaPage();
-                  },
+                  onPressed: quoteId == null
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted) return;
+                            unawaited(_openSavedQuotePdfPreview(quoteId));
+                          });
+                        },
                   icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                  label: const Text('Ver cotización PDF'),
+                  label: const Text('Ver cotización'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A56DB),
                     foregroundColor: Colors.white,
@@ -6511,7 +6588,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                 height: 44,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.of(context).pop();
+                    Navigator.of(dialogContext).pop();
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -6547,7 +6624,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                 width: double.infinity,
                 height: 42,
                 child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF64748B),
                     textStyle: const TextStyle(
@@ -6566,57 +6643,6 @@ Future<void> _showQuoteSavedOptionsDialog() async {
   );
 }
 
-  Widget _buildPanelLabeledControl({
-    required String label,
-    required Widget child,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: salesDetailTextColor,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        child,
-      ],
-    );
-  }
-
-  Widget _buildPanelStaticDropdown(String value) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: salesDetailTextColor,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: salesDetailMutedTextColor,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPanelDocumentTypeDropdown() {
     final currentType = _currentSalesDocumentType;
     final availableTypes = <_SalesDocumentType>[
@@ -6626,40 +6652,36 @@ Future<void> _showQuoteSavedOptionsDialog() async {
       _SalesDocumentType.cotizacion,
     ];
 
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<_SalesDocumentType>(
-          value: currentType,
-          isExpanded: true,
-          borderRadius: BorderRadius.circular(14),
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: salesDetailMutedTextColor,
-          ),
-          style: TextStyle(
-            color: salesDetailTextColor,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
-          items: availableTypes
-              .map(
-                (type) => DropdownMenuItem<_SalesDocumentType>(
-                  value: type,
-                  child: Text(_salesDocumentTypeLabel(type)),
+    return Builder(
+      builder: (fieldContext) => _buildProfessionalDropdownField(
+        supportingText: 'Normal / general',
+        value: _salesDocumentTypeLabel(currentType),
+        onTap: () => unawaited(
+          _showAnchoredPopover<void>(
+            anchorContext: fieldContext,
+            width: 300,
+            maxHeight: 260,
+            childBuilder: (dialogContext, close) {
+              return _buildProfessionalDropdownSurface(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shrinkWrap: true,
+                  children: [
+                    _buildDropdownGroupHeader('No electrónicas'),
+                    for (final type in availableTypes)
+                      _buildDropdownOptionTile(
+                        title: _salesDocumentTypeLabel(type),
+                        selected: type == currentType,
+                        onTap: () {
+                          close();
+                          unawaited(_setSalesDocumentType(type));
+                        },
+                      ),
+                  ],
                 ),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value == null) return;
-            unawaited(_setSalesDocumentType(value));
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -6670,6 +6692,9 @@ Future<void> _showQuoteSavedOptionsDialog() async {
     final clientName = client?.nombre.trim().isNotEmpty == true
         ? client!.nombre.trim()
         : 'Consumidor Final';
+    final clientHint = client?.id != null
+        ? 'Cliente ${client!.id}'
+        : 'Cliente general';
     final clientMeta = client == null
         ? ''
         : (client.rnc?.trim().isNotEmpty == true
@@ -6678,48 +6703,163 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                     ? client.cedula!.trim()
                     : ''));
 
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: _showClientPicker,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: salesDetailTextColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (client != null) ...[
-            _buildInlineClientIcon(
-              icon: Icons.edit_outlined,
-              onTap: _showClientPicker,
-            ),
-            const SizedBox(width: 2),
-            _buildInlineClientIcon(
-              icon: Icons.close_rounded,
-              onTap: _removeClient,
-            ),
-          ],
-        ],
+    return Builder(
+      builder: (fieldContext) => _buildProfessionalDropdownField(
+        supportingText: clientHint,
+        value: clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)',
+        onTap: () => unawaited(_showClientDropdownPopover(fieldContext, client)),
+        suffix: client != null
+            ? _buildInlineClientIcon(
+                icon: Icons.close_rounded,
+                onTap: _removeClient,
+              )
+            : null,
       ),
     );
+  }
+
+  Future<void> _showClientDropdownPopover(
+    BuildContext fieldContext,
+    ClientModel? client,
+  ) async {
+    final searchController = TextEditingController();
+    var query = '';
+
+    try {
+      await _showAnchoredPopover<void>(
+        anchorContext: fieldContext,
+        width: 340,
+        maxHeight: 340,
+        childBuilder: (dialogContext, close) {
+          return StatefulBuilder(
+            builder: (context, setPopoverState) {
+              final normalizedQuery = query.trim().toLowerCase();
+              final filteredClients = _clients.where((option) {
+                if (normalizedQuery.isEmpty) return true;
+                final name = option.nombre.toLowerCase();
+                final phone = option.telefono?.toLowerCase() ?? '';
+                final rnc = option.rnc?.toLowerCase() ?? '';
+                final cedula = option.cedula?.toLowerCase() ?? '';
+                return name.contains(normalizedQuery) ||
+                    phone.contains(normalizedQuery) ||
+                    rnc.contains(normalizedQuery) ||
+                    cedula.contains(normalizedQuery);
+              }).toList();
+
+              return _buildProfessionalDropdownSurface(
+                child: SizedBox(
+                  height: 340,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                        child: TextField(
+                          controller: searchController,
+                          autofocus: true,
+                          onChanged: (value) {
+                            setPopoverState(() => query = value);
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Buscar cliente por nombre',
+                            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                            isDense: true,
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFDCE5F0),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFDCE5F0),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF1A56DB),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shrinkWrap: true,
+                          itemCount: filteredClients.length + 1,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1, indent: 14, endIndent: 14),
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              final selected = client == null;
+                              return _buildDropdownOptionTile(
+                                title: 'Consumidor Final',
+                                subtitle: 'Cliente general',
+                                selected: selected,
+                                onTap: () {
+                                  close();
+                                  _removeClient();
+                                },
+                              );
+                            }
+
+                            final option = filteredClients[index - 1];
+                            final optionMeta =
+                                (option.telefono?.trim().isNotEmpty ?? false)
+                                ? option.telefono!.trim()
+                                : ((option.rnc?.trim().isNotEmpty ?? false)
+                                      ? option.rnc!.trim()
+                                      : ((option.cedula?.trim().isNotEmpty ?? false)
+                                            ? option.cedula!.trim()
+                                            : ''));
+                            final selected = option.id == client?.id;
+                            return _buildDropdownOptionTile(
+                              title: option.nombre,
+                              subtitle: optionMeta.isEmpty ? null : '($optionMeta)',
+                              selected: selected,
+                              onTap: () async {
+                                close();
+                                await _applySelectedClient(option);
+                              },
+                              trailing: InkWell(
+                                onTap: () async {
+                                  close();
+                                  await _showClientPicker();
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      searchController.dispose();
+    }
   }
 
   Widget _buildInlineClientIcon({
@@ -6741,7 +6881,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
 
   Widget _buildPanelNewClientButton() {
     return SizedBox(
-      height: 40,
+      height: 42,
       child: ElevatedButton.icon(
         onPressed: _showCreateClientFromSales,
         style: ElevatedButton.styleFrom(
@@ -6758,6 +6898,188 @@ Future<void> _showQuoteSavedOptionsDialog() async {
         label: const Text(
           'Nuevo',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfessionalDropdownField({
+    String? supportingText,
+    required String value,
+    required VoidCallback onTap,
+    Widget? suffix,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          height: supportingText == null ? 42 : 50,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: supportingText == null
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (supportingText != null)
+                      Text(
+                        supportingText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: salesDetailMutedTextColor,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.0,
+                        ),
+                      ),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: salesDetailTextColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (suffix != null) ...[
+                const SizedBox(width: 6),
+                suffix,
+              ],
+              const SizedBox(width: 4),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: salesDetailMutedTextColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfessionalDropdownSurface({required Widget child}) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFDCE5F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.10),
+              blurRadius: 24,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildDropdownGroupHeader(String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Divider(height: 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropdownOptionTile({
+    required String title,
+    String? subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          color: selected ? const Color(0xFFF4F8FF) : Colors.transparent,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                        color: const Color(0xFF17324D),
+                      ),
+                    ),
+                    if (subtitle != null && subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF6B7C8E),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (selected)
+                const Padding(
+                  padding: EdgeInsets.only(left: 10),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    size: 18,
+                    color: Color(0xFF1A56DB),
+                  ),
+                ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing,
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -7160,7 +7482,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
           ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: rowBackground,
               border: Border(
@@ -7168,7 +7490,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
               ),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Column(
@@ -7177,20 +7499,22 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                       Text(
                         item.productNameSnapshot,
                         style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
                           color: Color(0xFF0F172A),
+                          height: 1.05,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 7),
                       Text(
                         'RD\$${CurrencyDisplay.format(item.unitPrice, decimalDigits: 2)}',
                         style: const TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w400,
+                          fontWeight: FontWeight.w500,
                           color: Color(0xFF64748B),
+                          height: 1.0,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -7198,135 +7522,125 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 18),
                 SizedBox(
-                  width: 132,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        InkWell(
-                          onTap: () {
-                            if (item.qty > 1) {
-                              _updateCurrentCart(
-                                () => _currentCart.updateQuantity(
-                                  index,
-                                  item.qty - 1,
-                                ),
-                              );
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: Icon(
-                              Icons.remove,
-                              size: 18,
-                              color: Color(0xFF94A3B8),
-                            ),
+                  width: 118,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          if (item.qty > 1) {
+                            _updateCurrentCart(
+                              () => _currentCart.updateQuantity(
+                                index,
+                                item.qty - 1,
+                              ),
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Icon(
+                            Icons.remove,
+                            size: 18,
+                            color: Color(0xFFC1C9D6),
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        Text(
-                          '${item.qty.toInt()}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF0F172A),
+                      ),
+                      const SizedBox(width: 14),
+                      Text(
+                        item.qty == item.qty.roundToDouble()
+                            ? item.qty.toStringAsFixed(0)
+                            : item.qty.toStringAsFixed(2),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF0F172A),
+                          height: 1.0,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      InkWell(
+                        onTap: () => _incrementCartItemQty(item, index),
+                        borderRadius: BorderRadius.circular(8),
+                        child: const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Icon(
+                            Icons.add,
+                            size: 18,
+                            color: Color(0xFFC1C9D6),
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        InkWell(
-                          onTap: () => _incrementCartItemQty(item, index),
-                          borderRadius: BorderRadius.circular(8),
-                          child: const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: Icon(
-                              Icons.add,
-                              size: 18,
-                              color: Color(0xFF94A3B8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Stack(
-                    alignment: Alignment.topRight,
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 182,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 120),
-                          opacity: showActions ? 1 : 0,
-                          child: IgnorePointer(
-                            ignoring: !showActions,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildCartRowActionButton(
-                                  id: 'edit-$index',
-                                  icon: Icons.edit_rounded,
-                                  color: const Color(0xFF172033),
-                                  tooltip: 'Editar producto',
-                                  onTap: () => unawaited(
-                                    _showItemEditPopover(
-                                      rowContext,
-                                      index,
-                                      focus: _InlineItemFocus.qty,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _buildCartRowActionButton(
-                                  id: 'delete-$index',
-                                  icon: Icons.delete_forever_rounded,
-                                  color: const Color(0xFF172033),
-                                  tooltip: 'Eliminar producto',
-                                  onTap: () => _updateCurrentCart(() {
-                                    if (_inlineEditCartItemIndex == index) {
-                                      _inlineEditCartItemIndex = null;
-                                    }
-                                    if (_selectedCartItemIndex == index) {
-                                      _selectedCartItemIndex = null;
-                                    }
-                                    _currentCart.removeItem(index);
-                                  }),
-                                ),
-                              ],
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 120),
+                        opacity: showActions ? 0 : 1,
+                        child: IgnorePointer(
+                          ignoring: showActions,
+                          child: Text(
+                            'RD\$${CurrencyDisplay.format(subtotal, decimalDigits: 2)}',
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              height: 1.0,
                             ),
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 1),
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 120),
-                          opacity: showActions ? 0 : 1,
-                          child: IgnorePointer(
-                            ignoring: showActions,
-                            child: Align(
-                              alignment: Alignment.topRight,
-                              child: Text(
-                                CurrencyDisplay.format(
-                                  subtotal,
-                                  decimalDigits: 2,
-                                ),
-                                textAlign: TextAlign.right,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0F172A),
+                      AnimatedOpacity(
+                        duration: const Duration(milliseconds: 120),
+                        opacity: showActions ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: !showActions,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              _buildCartRowActionButton(
+                                id: 'edit-$index',
+                                icon: Icons.edit_outlined,
+                                color: const Color(0xFF172033),
+                                tooltip: 'Editar en esta venta',
+                                onTap: () => unawaited(
+                                  _showItemEditPopover(
+                                    rowContext,
+                                    index,
+                                    focus: _InlineItemFocus.qty,
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 10),
+                              _buildCartRowActionButton(
+                                id: 'delete-$index',
+                                icon: Icons.delete_outline_rounded,
+                                color: const Color(0xFF172033),
+                                tooltip: 'Eliminar',
+                                onTap: () => _updateCurrentCart(() {
+                                  if (_inlineEditCartItemIndex == index) {
+                                    _inlineEditCartItemIndex = null;
+                                  }
+                                  if (_selectedCartItemIndex == index) {
+                                    _selectedCartItemIndex = null;
+                                  }
+                                  _currentCart.removeItem(index);
+                                }),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -7355,18 +7669,19 @@ Future<void> _showQuoteSavedOptionsDialog() async {
       onExit: (_) => _setHoverStateDeferred(_hoveredCartRowActions, id, false),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 120),
             child: isHovered
                 ? Container(
                     key: ValueKey<String>('label-$id'),
-                    height: 32,
+                    height: 34,
                     margin: const EdgeInsets.only(right: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       color: const Color(0xFF172033),
-                      borderRadius: BorderRadius.circular(7),
+                      borderRadius: BorderRadius.circular(9),
                     ),
                     child: Center(
                       child: Text(
@@ -7374,7 +7689,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                         maxLines: 1,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 12,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w800,
                           height: 1.0,
                         ),
@@ -7389,9 +7704,9 @@ Future<void> _showQuoteSavedOptionsDialog() async {
               onTap: onTap,
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
-                width: 38,
-                height: 38,
-                child: Center(child: Icon(icon, size: 26, color: color)),
+                width: 26,
+                height: 26,
+                child: Center(child: Icon(icon, size: 21, color: color)),
               ),
             ),
           ),
@@ -7433,7 +7748,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
@@ -7460,7 +7775,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                     const SizedBox(height: 7),
                     _buildSummaryRow(
                       'Descuento',
-                      discountsCombined,
+                      -discountsCombined,
                       false,
                       color: scheme.error,
                     ),
@@ -7475,12 +7790,12 @@ Future<void> _showQuoteSavedOptionsDialog() async {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
           child: Row(
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 46,
+                  height: 58,
                   child: ElevatedButton(
                     onPressed: canSell
                         ? () => _processPayment(
@@ -7490,9 +7805,9 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                         : null,
                     style:
                         ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           elevation: 0,
                           shadowColor: Colors.transparent,
@@ -7513,22 +7828,31 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                           ),
                         ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Vender',
-                          style: TextStyle(
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w700,
-                            height: 1.0,
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 1),
+                          child: Text(
+                            'Cobrar',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                              height: 1.0,
+                              letterSpacing: -0.2,
+                            ),
                           ),
                         ),
-                        Text(
-                          totalLabel,
-                          style: const TextStyle(
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w700,
-                            height: 1.0,
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 1),
+                          child: Text(
+                            totalLabel,
+                            style: const TextStyle(
+                              fontSize: 20.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                              letterSpacing: -0.35,
+                            ),
                           ),
                         ),
                       ],
@@ -7541,13 +7865,13 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: _openFacturaPage,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   child: Container(
-                    width: 46,
-                    height: 46,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.receipt_long_outlined,
@@ -7561,7 +7885,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
@@ -8751,4 +9075,279 @@ class _ShineSweepPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ShineSweepPainter oldDelegate) =>
       oldDelegate.progress != progress || oldDelegate.color != color;
+}
+
+class _SalesClientSidePanel extends StatefulWidget {
+  const _SalesClientSidePanel({
+    required this.onClose,
+    required this.onSaved,
+  });
+
+  final VoidCallback onClose;
+  final ValueChanged<ClientModel> onSaved;
+
+  @override
+  State<_SalesClientSidePanel> createState() => _SalesClientSidePanelState();
+}
+
+class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _taxIdController = TextEditingController();
+  final _addressController = TextEditingController();
+  bool _isSaving = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _taxIdController.dispose();
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final rawPhone = _phoneController.text.trim();
+      final normalizedPhone = rawPhone.isEmpty
+          ? null
+          : PhoneValidator.normalizeRDPhone(rawPhone);
+      final rawTaxId = _taxIdController.text.trim();
+      final normalizedTaxDigits = rawTaxId.replaceAll(RegExp(r'\D'), '');
+      final rnc = normalizedTaxDigits.length == 9
+          ? RncValidator.normalize(normalizedTaxDigits)
+          : null;
+      final cedula = normalizedTaxDigits.isNotEmpty && rnc == null
+          ? normalizedTaxDigits
+          : null;
+
+      final client = ClientModel(
+        nombre: _nameController.text.trim(),
+        telefono: normalizedPhone,
+        direccion: _addressController.text.trim().isEmpty
+            ? null
+            : _addressController.text.trim(),
+        rnc: rnc,
+        cedula: cedula,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      final clientId = await ClientsRepository.create(client);
+      final createdClient = await ClientsRepository.getById(clientId);
+      if (!mounted) return;
+      widget.onSaved(createdClient ?? client.copyWith(id: clientId));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Invalid argument(s): ', '')),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE9F1FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: Color(0xFF1A56DB),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Nuevo cliente',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF17324D),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Crea un cliente rápido para esta factura',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6B7C8E),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _nameController,
+                        decoration: _panelFieldDecoration(
+                          'Nombre o razón social *',
+                          Icons.person_outline,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'El nombre es obligatorio';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: _panelFieldDecoration(
+                          'Teléfono',
+                          Icons.phone_outlined,
+                        ),
+                        validator: (value) {
+                          final phone = value?.trim() ?? '';
+                          final taxId = _taxIdController.text.trim();
+                          if (phone.isEmpty && taxId.isEmpty) {
+                            return 'Indica teléfono o RNC/Cédula';
+                          }
+                          if (phone.isNotEmpty &&
+                              PhoneValidator.normalizeRDPhone(phone) == null) {
+                            return 'Teléfono inválido';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _taxIdController,
+                        decoration: _panelFieldDecoration(
+                          'RNC o Cédula',
+                          Icons.badge_outlined,
+                        ),
+                        validator: (value) {
+                          final taxId = value?.trim() ?? '';
+                          final phone = _phoneController.text.trim();
+                          if (taxId.isEmpty && phone.isEmpty) {
+                            return 'Indica teléfono o RNC/Cédula';
+                          }
+                          final digits = taxId.replaceAll(RegExp(r'\D'), '');
+                          if (digits.isNotEmpty &&
+                              digits.length != 9 &&
+                              digits.length != 11) {
+                            return 'Usa 9 dígitos para RNC o 11 para cédula';
+                          }
+                          if (digits.length == 9 &&
+                              !RncValidator.isValidBasic(digits)) {
+                            return 'RNC inválido';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _addressController,
+                        maxLines: 2,
+                        decoration: _panelFieldDecoration(
+                          'Dirección',
+                          Icons.location_on_outlined,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isSaving ? null : widget.onClose,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _isSaving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: const Color(0xFF1A56DB),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Guardar cliente'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _panelFieldDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+    );
+  }
 }
