@@ -1,124 +1,30 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "Prepare FULLPOS Windows Hot Reload",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAssetsWin = Join-Path $PWD 'build\\native_assets\\windows'; $windowsBuild = Join-Path $PWD 'build\\windows'; Remove-Item -LiteralPath $nativeAssetsWin -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $windowsBuild -Recurse -Force -ErrorAction SilentlyContinue; exit 0"
-			],
-			"options": {
-				"cwd": "${workspaceFolder}"
-			},
-			"problemMatcher": []
-		},
-		{
-			"label": "Run FULLPOS Debug Windows",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAssetsWin = Join-Path $PWD 'build\\native_assets\\windows'; $windowsBuild = Join-Path $PWD 'build\\windows'; Remove-Item -LiteralPath $nativeAssetsWin -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $windowsBuild -Recurse -Force -ErrorAction SilentlyContinue; & 'C:\\src\\flutter\\bin\\flutter.bat' run -d windows --debug"
-			],
-			"options": {
-				"cwd": "${workspaceFolder}",
-				"env": {
-					"PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
-				}
-			},
-			"isBackground": false,
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": true,
-				"panel": "dedicated",
-				"clear": true
-			}
-		},
-		{
-			"label": "Run FULLPOS Debug Windows 2",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAssetsWin = Join-Path $PWD 'build\\native_assets\\windows'; $windowsBuild = Join-Path $PWD 'build\\windows'; Remove-Item -LiteralPath $nativeAssetsWin -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $windowsBuild -Recurse -Force -ErrorAction SilentlyContinue; & 'C:\\src\\flutter\\bin\\flutter.bat' run -d windows --debug"
-			],
-			"options": {
-				"cwd": "${workspaceFolder}",
-				"env": {
-					"PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
-				}
-			},
-			"isBackground": false,
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": true,
-				"panel": "dedicated",
-				"clear": true
-			}
-		},
-		{
-			"label": "Run FULLPOS Manual Hot Reload",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAssetsWin = Join-Path $PWD 'build\\native_assets\\windows'; $windowsBuild = Join-Path $PWD 'build\\windows'; Remove-Item -LiteralPath $nativeAssetsWin -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $windowsBuild -Recurse -Force -ErrorAction SilentlyContinue; & 'C:\\src\\flutter\\bin\\flutter.bat' run -d windows --debug"
-			],
-			"options": {
-				"cwd": "${workspaceFolder}",
-				"env": {
-					"PATH": "C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
-				}
-			},
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": true,
-				"panel": "dedicated",
-				"clear": true
-			}
-		},
-		{
-			"label": "Run FULLPOS Manual Hot Restart",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-Command",
-				"Get-Process fullpos,dart,flutter_tester -ErrorAction SilentlyContinue | Stop-Process -Force; $nativeAssetsWin = Join-Path $PWD 'build\\native_assets\\windows'; $windowsBuild = Join-Path $PWD 'build\\windows'; Remove-Item -LiteralPath $nativeAssetsWin -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $windowsBuild -Recurse -Force -ErrorAction SilentlyContinue; & 'C:\\src\\flutter\\bin\\flutter.bat' run -d windows --debug"
-			],
-			"options": {
-				"cwd": "${workspaceFolder}",
-				"env": {
-					"PATH": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}",
-					"ComSpec": "C:\\Windows\\System32\\cmd.exe"
-				}
-			},
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": true,
-				"panel": "dedicated",
-				"clear": true
-			}
-		}
-	]
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Flutter Clean",
+            "type": "shell",
+            "command": "flutter",
+            "args": [
+                "clean"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Flutter Pub Get",
+            "type": "shell",
+            "command": "flutter",
+            "args": [
+                "pub",
+                "get"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ]
 }

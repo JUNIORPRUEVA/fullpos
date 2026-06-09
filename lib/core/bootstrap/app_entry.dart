@@ -8,23 +8,17 @@ import '../../features/auth/ui/splash_page.dart';
 import '../session/session_manager.dart';
 import '../services/cloud_sync_service.dart';
 import '../sync/product_sync_service.dart';
-import 'app_bootstrap_controller.dart';
 import '../window/window_startup_controller.dart';
+import 'app_bootstrap_controller.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
-  if (Platform.isWindows) {
-    // En Windows, la ventana se mantiene oculta durante el bootstrap.
-    // No necesitamos un delay artificial para un arranque “pro”.
-    return;
-  }
-  // Mantener el splash visible un mínimo para un arranque "POS" profesional.
-  await Future<void>.delayed(const Duration(seconds: 5));
+  await Future<void>.delayed(
+    Platform.isWindows
+        ? const Duration(milliseconds: 2200)
+        : const Duration(milliseconds: 2600),
+  );
 });
 
-/// Gate visual del arranque.
-///
-/// - Mantiene un Splash/Error estable mientras se ejecuta el bootstrap.
-/// - Evita “rebotes” de navegación durante init (no hay push/pop/replaces).
 class AppEntry extends ConsumerStatefulWidget {
   const AppEntry({super.key, required this.child});
 
@@ -99,16 +93,13 @@ class _AppEntryState extends ConsumerState<AppEntry> {
     final delay = ref.watch(_minSplashDelayProvider);
 
     final showSplash =
-        boot.status != BootStatus.ready ||
-        (!Platform.isWindows && delay.isLoading);
+        boot.status != BootStatus.ready || delay.isLoading;
 
     final switchDuration = Platform.isWindows
-      ? Duration.zero
-      : const Duration(milliseconds: 350);
+        ? Duration.zero
+        : const Duration(milliseconds: 350);
 
-    final body = showSplash
-        ? const SplashPage()
-        : widget.child;
+    final body = showSplash ? const SplashPage() : widget.child;
 
     return AnimatedSwitcher(
       duration: switchDuration,

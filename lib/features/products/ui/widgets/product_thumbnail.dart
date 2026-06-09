@@ -189,13 +189,17 @@ class ProductThumbnail extends StatelessWidget {
   }
 
   Widget _buildPlaceholder(Color color, Color surface) {
-    return Container(
+    final effectiveSize = width ?? size;
+    // Icono más grande y elegante: entre 40% y 50% del contenedor, con mínimo 40px
+    final iconSize = (effectiveSize * 0.48).clamp(56.0, 64.0);
+    return ColoredBox(
       color: surface,
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.sell_outlined,
-        color: Colors.blueGrey.shade200,
-        size: ((width ?? size) * 0.34).clamp(24.0, 44.0),
+      child: Center(
+        child: Icon(
+          Icons.sell_outlined,
+          color: const Color(0xFFCBD5E1),
+          size: iconSize,
+        ),
       ),
     );
   }

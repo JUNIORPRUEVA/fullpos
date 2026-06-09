@@ -107,9 +107,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
   static const Color _allegraTextSecondaryColor = Color(0xFF6B7A8C);
   static const Color _allegraAccentColor = Color(0xFF1A56DB);
   static const double _productCardWidth = 220.0;
-  static const double _productCardHeight = 258.0;
-  static const double _productHorizontalMargin = 10.0;
-  static const double _productVerticalMargin = 14.0;
+  static const double _productCardHeight = 254.0;
+  static const double _productHorizontalMargin = 12.0;
+  static const double _productVerticalMargin = 10.0;
 
   _ProductGridMetrics _productGridMetricsFor(double availableWidth) {
     if (!availableWidth.isFinite || availableWidth <= 0) {
@@ -4547,7 +4547,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final tealAccent = isOutOfStock ? scheme.error : _allegraAccentColor;
     final stockLabel = isOutOfStock
         ? 'Sin stock'
-        : 'Inv. ${effectiveStock.toInt()}';
+        : 'Disp. ${effectiveStock.toInt()}';
     final displayPrice = 'RD\$$formattedPrice';
     final cardBorderColor = isSelected ? tealAccent : const Color(0xFFE2E8F0);
     final cardShadowColor = tealAccent.withOpacity(isHovered ? 0.16 : 0.08);
@@ -4586,22 +4586,37 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 child: SizedBox(
                   height: cardSize,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        const SizedBox(height: 4),
                         Expanded(
-                          child: Center(
-                            child: ProductThumbnail.fromProduct(
-                              product,
-                              size: 92,
-                              width: 92,
-                              height: 92,
-                              borderRadius: BorderRadius.circular(12),
-                              showBorder: false,
-                              showShadow: false,
-                              placeholderBackgroundColor: Colors.transparent,
-                            ),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 118,
+                                    height: 118,
+                                    child: Center(
+                                      child: ProductThumbnail.fromProduct(
+                                        product,
+                                        size: 112,
+                                        width: 112,
+                                        height: 112,
+                                        borderRadius: BorderRadius.circular(16),
+                                        showBorder: false,
+                                        showShadow: false,
+                                        placeholderBackgroundColor:
+                                            Colors.transparent,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                           ),
                         ),
                         Column(
@@ -4614,14 +4629,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: isOutOfStock ? stockColor : tealAccent,
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w500,
                                 height: 1.1,
                               ),
                             ),
-                            const SizedBox(height: 1),
+                            const SizedBox(height: 2),
                             SizedBox(
-                              height: 24,
+                              height: 30,
                               child: Text(
                                 product.name,
                                 textAlign: TextAlign.center,
@@ -4631,13 +4646,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   color: nameColor.withOpacity(
                                     isOutOfStock ? 0.62 : 1,
                                   ),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w400,
-                                  height: 1.15,
+                                  fontSize: 13.2,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.2,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 0),
+                            const SizedBox(height: 1),
                             Text(
                               displayPrice,
                               textAlign: TextAlign.center,
@@ -4647,12 +4662,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 color: priceColorResolved.withOpacity(
                                   isOutOfStock ? 0.72 : 1,
                                 ),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w600,
                                 height: 1,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                           ],
                         ),
                       ],
@@ -7080,48 +7095,79 @@ Future<void> _showQuoteSavedOptionsDialog() async {
     final rowDividerColor = salesDetailBorderColor;
     final showActions = isHovered;
     final rowBackground = Colors.white;
+    final isNewItem = animationToken > 0;
 
     return TweenAnimationBuilder<double>(
       key: ValueKey<String>('cart-row-$index-$animationToken'),
       tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
       builder: (context, value, child) {
-        final slideOffset = (1 - value) * -28;
+        // Animación de entrada: slide desde la izquierda + fade + scale
+        final slideOffset = (1 - value) * -120;
+        final opacity = value.clamp(0.0, 1.0);
+        final scale = 0.85 + (value * 0.15);
+
         return Opacity(
-          opacity: value.clamp(0.0, 1.0),
+          opacity: opacity,
           child: Transform.translate(
             offset: Offset(slideOffset, 0),
-            child: child,
+            child: Transform.scale(
+              scale: scale,
+              alignment: Alignment.centerLeft,
+              child: child,
+            ),
           ),
         );
       },
-      child: Builder(
-        builder: (rowContext) => MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) =>
-              _setHoverStateDeferred(_hoveredCartItemIndexes, index, true),
-          onExit: (_) =>
-              _setHoverStateDeferred(_hoveredCartItemIndexes, index, false),
-          child: InkWell(
-            onTap: () => setState(() => _selectedCartItemIndex = index),
-            onDoubleTap: () => unawaited(
-              _showItemEditPopover(
-                rowContext,
-                index,
-                focus: _InlineItemFocus.qty,
+      child: isNewItem
+          ? _AnimatedNewItemHighlight(
+              child: _buildCartItemContent(
+                item, index, rowBackground, rowDividerColor,
+                showActions, subtotal,
+              ),
+            )
+          : _buildCartItemContent(
+              item, index, rowBackground, rowDividerColor,
+              showActions, subtotal,
+            ),
+    );
+  }
+
+  Widget _buildCartItemContent(
+    SaleItemModel item,
+    int index,
+    Color rowBackground,
+    Color rowDividerColor,
+    bool showActions,
+    double subtotal,
+  ) {
+    return Builder(
+      builder: (rowContext) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) =>
+            _setHoverStateDeferred(_hoveredCartItemIndexes, index, true),
+        onExit: (_) =>
+            _setHoverStateDeferred(_hoveredCartItemIndexes, index, false),
+        child: InkWell(
+          onTap: () => setState(() => _selectedCartItemIndex = index),
+          onDoubleTap: () => unawaited(
+            _showItemEditPopover(
+              rowContext,
+              index,
+              focus: _InlineItemFocus.qty,
+            ),
+          ),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: rowBackground,
+              border: Border(
+                bottom: BorderSide(color: rowDividerColor, width: 1),
               ),
             ),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: rowBackground,
-                border: Border(
-                  bottom: BorderSide(color: rowDividerColor, width: 1),
-                ),
-              ),
-              child: Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
@@ -7288,7 +7334,6 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                   ),
                 ),
               ],
-            ),
             ),
           ),
         ),
@@ -8560,4 +8605,150 @@ class IncreaseQuantityIntent extends Intent {
 
 class DecreaseQuantityIntent extends Intent {
   const DecreaseQuantityIntent();
+}
+
+/// Widget que envuelve un nuevo item del carrito y le aplica un efecto
+/// de "barrido de brillo" (shine sweep) que recorre de izquierda a derecha,
+/// combinado con un sutil fondo de color que aparece y desaparece.
+class _AnimatedNewItemHighlight extends StatefulWidget {
+  const _AnimatedNewItemHighlight({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_AnimatedNewItemHighlight> createState() =>
+      _AnimatedNewItemHighlightState();
+}
+
+class _AnimatedNewItemHighlightState
+    extends State<_AnimatedNewItemHighlight>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _shineAnimation;
+  late final Animation<double> _bgFadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+
+    // Animación del brillo: arranca rápido, termina suave
+    _shineAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: const Cubic(0.0, 0.0, 0.2, 1.0),
+    );
+
+    // Animación del fondo: aparece rápido y se desvanece lentamente
+    _bgFadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
+      ),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            // Fondo azul muy suave que se desvanece
+            color: Color.alphaBlend(
+              const Color(0xFF1A56DB).withOpacity(
+                _bgFadeAnimation.value * 0.08,
+              ),
+              Colors.white,
+            ),
+            // Borde izquierdo con color que se desvanece
+            border: Border(
+              left: BorderSide(
+                color: const Color(0xFF1A56DB).withOpacity(
+                  _bgFadeAnimation.value * 0.5,
+                ),
+                width: 3,
+              ),
+            ),
+          ),
+          child: Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              // Efecto de brillo (shine sweep)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ClipRect(
+                    child: CustomPaint(
+                      painter: _ShineSweepPainter(
+                        progress: _shineAnimation.value,
+                        color: Colors.white.withOpacity(0.35),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// Painter que dibuja un barrido de brillo diagonal que cruza de izquierda
+/// a derecha, simulando un "shine" o "reflejo" que recorre el elemento.
+class _ShineSweepPainter extends CustomPainter {
+  _ShineSweepPainter({
+    required this.progress,
+    required this.color,
+  });
+
+  final double progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0 || progress >= 1) return;
+
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          color.withOpacity(0),
+          color.withOpacity(0.6),
+          color.withOpacity(0),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    // El brillo viaja de izquierda (progress=0) a derecha (progress=1)
+    // con un ancho de ~40% del contenedor
+    final bandWidth = size.width * 0.45;
+    final centerX = progress * (size.width + bandWidth) - bandWidth * 0.5;
+
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(
+      Rect.fromLTWH(centerX - bandWidth * 0.5, 0, bandWidth, size.height),
+      paint,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_ShineSweepPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.color != color;
 }

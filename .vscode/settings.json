@@ -3,12 +3,12 @@
     "dart.flutterSdkPath": "C:/src/flutter",
     "dart.sdkPath": "C:/src/flutter/bin/cache/dart-sdk",
     "dart.addSdkToTerminalPath": true,
-    "dart.flutterHotReloadOnSave": "allIfDirty",
+    "dart.flutterHotReloadOnSave": "all",
     "dart.flutterRunAdditionalArgs": [
         "-d",
         "windows"
     ],
-    "dart.flutterRememberSelectedDevice": false,
+    "dart.flutterRememberSelectedDevice": true,
     "dart.flutterSelectDeviceWhenConnected": false,
     "dart.flutterShowEmulators": "never",
     "dart.hotReloadProgress": "statusBar",
