@@ -12,7 +12,6 @@ class AppShell extends StatefulWidget {
 
   const AppShell({super.key, required this.child});
 
-  static const double _drawerBreakpointWidth = 1200;
   static const double _shortHeightBreakpoint = 560;
 
   @override
@@ -22,7 +21,6 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   static const double _breakpointHysteresis = 40;
   bool _didInitResponsive = false;
-  bool _isNarrow = false;
   bool _isShort = false;
 
   double _sidebarWidthFor(double maxWidth) {
@@ -38,15 +36,9 @@ class _AppShellState extends State<AppShell> {
   void _updateResponsive(BoxConstraints constraints) {
     if (!_didInitResponsive) {
       _didInitResponsive = true;
-      _isNarrow = constraints.maxWidth < AppShell._drawerBreakpointWidth;
       _isShort = constraints.maxHeight < AppShell._shortHeightBreakpoint;
       return;
     }
-
-    final narrowLower = AppShell._drawerBreakpointWidth - _breakpointHysteresis;
-    final narrowUpper = AppShell._drawerBreakpointWidth + _breakpointHysteresis;
-    if (constraints.maxWidth < narrowLower) _isNarrow = true;
-    if (constraints.maxWidth > narrowUpper) _isNarrow = false;
 
     final shortLower = AppShell._shortHeightBreakpoint - _breakpointHysteresis;
     final shortUpper = AppShell._shortHeightBreakpoint + _breakpointHysteresis;

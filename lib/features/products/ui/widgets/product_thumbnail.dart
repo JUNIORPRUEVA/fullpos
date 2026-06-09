@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/utils/color_utils.dart';
 import '../../models/product_model.dart';
 
-/// Miniatura reusable para productos (imagen o placeholder por color).
+/// Miniatura reusable para productos (imagen o placeholder limpio con icono).
 class ProductThumbnail extends StatelessWidget {
   static const Set<String> _blockedRemoteImageUrls = {
     'https://images.unsplash.com/photo-1454991727061-2868c0807f7f?auto=format&fit=crop&w=800&q=80&sig=7',
@@ -99,6 +99,7 @@ class ProductThumbnail extends StatelessWidget {
       effectiveHex,
       fallback: const Color(0xFF546E7A),
     );
+    final placeholderSurface = placeholderBackgroundColor ?? Colors.transparent;
 
     return Container(
       width: w,
@@ -108,7 +109,7 @@ class ProductThumbnail extends StatelessWidget {
         border: showBorder
             ? Border.all(color: Colors.grey.shade300, width: 1)
             : null,
-        color: shouldShowImage ? Colors.grey.shade100 : bgColor,
+        color: shouldShowImage ? Colors.grey.shade100 : placeholderSurface,
         boxShadow: showShadow
             ? [
                 BoxShadow(
@@ -132,8 +133,8 @@ class ProductThumbnail extends StatelessWidget {
           if (shouldShowImage)
             _buildImage(normalizedImagePath, normalizedImageUrl)
           else
-            _buildPlaceholder(bgColor),
-          if (overlay != null) overlay!,
+            _buildPlaceholder(bgColor, placeholderSurface),
+          if (overlay != null) ...<Widget>[overlay!],
         ],
       ),
     );
@@ -149,6 +150,7 @@ class ProductThumbnail extends StatelessWidget {
             placeholderColorHex,
             fallback: const Color(0xFF546E7A),
           ),
+          placeholderBackgroundColor ?? Colors.transparent,
         ),
       );
     }
@@ -162,6 +164,7 @@ class ProductThumbnail extends StatelessWidget {
             placeholderColorHex,
             fallback: const Color(0xFF546E7A),
           ),
+          placeholderBackgroundColor ?? Colors.transparent,
         );
       },
       errorBuilder: (context, error, stackTrace) => _buildPlaceholder(
@@ -169,6 +172,7 @@ class ProductThumbnail extends StatelessWidget {
           placeholderColorHex,
           fallback: const Color(0xFF546E7A),
         ),
+        placeholderBackgroundColor ?? Colors.transparent,
       ),
     );
   }
@@ -184,36 +188,15 @@ class ProductThumbnail extends StatelessWidget {
     return normalized;
   }
 
-  Widget _buildPlaceholder(Color color) {
-    final initials = _getInitials(name);
+  Widget _buildPlaceholder(Color color, Color surface) {
     return Container(
-      color: placeholderBackgroundColor ?? color,
+      color: surface,
       alignment: Alignment.center,
-      child: Text(
-        initials,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 20,
-          letterSpacing: 0.5,
-        ),
+      child: Icon(
+        Icons.sell_outlined,
+        color: Colors.blueGrey.shade200,
+        size: ((width ?? size) * 0.34).clamp(24.0, 44.0),
       ),
     );
-  }
-
-  String _getInitials(String value) {
-    final parts = value
-        .trim()
-        .split(RegExp(r'\\s+'))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) {
-      final word = parts.first;
-      return word.length >= 2
-          ? word.substring(0, 2).toUpperCase()
-          : word.substring(0, 1).toUpperCase();
-    }
-    return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
   }
 }

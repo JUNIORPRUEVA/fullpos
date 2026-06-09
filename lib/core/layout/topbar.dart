@@ -5,27 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/auth/data/auth_repository.dart';
-import '../../features/auth/services/logout_flow_service.dart';
 import '../../features/cash/data/operation_flow_service.dart';
-import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../../features/license/data/license_models.dart';
 import '../../features/license/services/license_storage.dart';
-import '../../features/settings/providers/business_settings_provider.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
-import '../theme/app_status_theme.dart';
 import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
-import 'topbar_action_bus.dart';
 
 /// Topbar principal de FullPOS.
 ///
-/// Muestra el título de la pantalla, el estado de caja y un menú de usuario/
-/// empresa limpio con accesos a perfil, licencia, seguridad, configuración,
-/// cortes, soporte y cierre de sesión.
+/// Diseño compacto estilo POS/SaaS:
+/// - Chip azul tecnológico con usuario activo/en línea.
+/// - Accesos rápidos compactos para corte, licencia y configuración.
+/// - Botón de cuenta/caja alineado al extremo derecho.
+/// - Menú desplegable solo con Perfil, Licencia, Seguridad y Configuración.
 class Topbar extends ConsumerStatefulWidget {
   const Topbar({
     super.key,
@@ -53,11 +49,8 @@ enum _UserMenuAction {
   license,
   security,
   settings,
-  finishShift,
   viewCurrentCut,
-  cutHistory,
   support,
-  logout,
 }
 
 class _TopbarState extends ConsumerState<Topbar>
@@ -71,19 +64,13 @@ class _TopbarState extends ConsumerState<Topbar>
   StreamSubscription<void>? _sessionSub;
   StreamSubscription<void>? _uiPrefsSub;
 
-  final LicenseStorage _licenseStorage = LicenseStorage();
-
   String? _username;
   String? _displayName;
   String? _role;
   String? _terminalId;
   String? _profileImagePath;
   LicenseInfo? _licenseInfo;
-
-  bool _canAccessCash = false;
-  bool _canViewCashHistory = false;
-  bool _canCloseShift = false;
-  bool _canOpenCashbox = false;
+  final LicenseStorage _licenseStorage = LicenseStorage();
   bool _loadingOpenCashSessionId = false;
   int? _openCashSessionId;
 
@@ -125,7 +112,6 @@ class _TopbarState extends ConsumerState<Topbar>
   void _refreshTopbarData() {
     unawaited(_loadUserSummary());
     unawaited(_loadProfileImage());
-    unawaited(_loadCashAccess());
     unawaited(_loadOpenCashSessionId());
     unawaited(_loadLicenseInfo());
   }
@@ -166,43 +152,6 @@ class _TopbarState extends ConsumerState<Topbar>
     setState(() => _profileImagePath = path);
   }
 
-  Future<void> _loadCashAccess() async {
-    try {
-      final permissions = await AuthRepository.getCurrentPermissions();
-      final isAdmin = await AuthRepository.isAdmin();
-
-      if (!mounted) return;
-      setState(() {
-        _canAccessCash =
-            isAdmin || permissions.canOpenCash || permissions.canCloseCash;
-        _canViewCashHistory = isAdmin || permissions.canViewCashHistory;
-        _canCloseShift =
-            isAdmin || permissions.canCloseShift || permissions.canCloseCash;
-        _canOpenCashbox =
-            isAdmin || permissions.canOpenCashbox || permissions.canOpenCash;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _canAccessCash = false;
-        _canViewCashHistory = false;
-        _canCloseShift = false;
-        _canOpenCashbox = false;
-      });
-    }
-  }
-
-  Future<void> _loadLicenseInfo() async {
-    try {
-      final info = await _licenseStorage.getLastInfo();
-      if (!mounted) return;
-      setState(() => _licenseInfo = info);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _licenseInfo = null);
-    }
-  }
-
   Future<void> _loadOpenCashSessionId() async {
     if (_loadingOpenCashSessionId) return;
     _loadingOpenCashSessionId = true;
@@ -219,6 +168,82 @@ class _TopbarState extends ConsumerState<Topbar>
     } finally {
       _loadingOpenCashSessionId = false;
     }
+  }
+
+  Future<void> _loadLicenseInfo() async {
+    try {
+      final info = await _licenseStorage.getLastInfo();
+      if (!mounted) return;
+      setState(() => _licenseInfo = info);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _licenseInfo = null);
+    }
+  }
+
+  String _licenseBadgeTitle() {
+    final info = _licenseInfo;
+    if (info == null) return 'Licencia pendiente';
+    if (info.isBlocked) return 'Licencia bloqueada';
+    if (info.isExpired) return 'Licencia vencida';
+    if (info.isActive) return 'Licencia activa';
+    return 'Licencia pendiente';
+  }
+
+  String _licenseBadgeSubtitle() {
+    final info = _licenseInfo;
+    if (info == null) return 'Verifica tu licencia';
+    if (info.isBlocked) return 'Contacta soporte';
+    if (info.isExpired) return 'Renovación requerida';
+
+    final end = info.fechaFin;
+    if (end == null) {
+      return info.isActive ? 'Sin vencimiento visible' : 'Pendiente de validar';
+    }
+
+    final today = DateTime.now();
+    final baseDate = DateTime(today.year, today.month, today.day);
+    final days = end.difference(baseDate).inDays;
+    if (days < 0) return 'Licencia vencida';
+    if (days == 0) return 'Vence hoy';
+    if (days == 1) return 'Vence en 1 día';
+    return 'Vence en $days días';
+  }
+
+  Color _licenseBadgeColor(ColorScheme scheme) {
+    final info = _licenseInfo;
+    if (info == null) return const Color(0xFFF59E0B);
+    if (info.isExpired || info.isBlocked) return scheme.error;
+    if (info.isActive) return const Color(0xFF16A34A);
+    return const Color(0xFFF59E0B);
+  }
+
+  Future<void> _showLicenseDetailsDialog() async {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final accent = ColorUtils.ensureReadableColor(
+      tokens.buttonPrimary,
+      Colors.white,
+      minRatio: 3.0,
+    );
+    final badgeColor = _licenseBadgeColor(scheme);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return _LicenseDetailsDialog(
+          title: _licenseBadgeTitle(),
+          subtitle: _licenseBadgeSubtitle(),
+          badgeColor: badgeColor,
+          accentColor: accent,
+          onOpenLicense: () {
+            Navigator.of(dialogContext).pop();
+            context.go('/settings/license');
+          },
+        );
+      },
+    );
   }
 
   static String? _cleanText(String? value) {
@@ -260,42 +285,6 @@ class _TopbarState extends ConsumerState<Topbar>
     return 'Caja $compact';
   }
 
-  String _licenseBadgeTitle() {
-    final info = _licenseInfo;
-    if (info == null) return 'Licencia pendiente';
-    if (info.isBlocked) return 'Licencia bloqueada';
-    if (info.isExpired) return 'Licencia vencida';
-    if (info.isActive) return 'Licencia activa';
-    return 'Licencia pendiente';
-  }
-
-  String _licenseBadgeSubtitle() {
-    final info = _licenseInfo;
-    if (info == null) return 'Verifica tu licencia';
-    if (info.isBlocked) return 'Contacta soporte';
-    if (info.isExpired) return 'Renovación requerida';
-
-    final end = info.fechaFin;
-    if (end == null) {
-      return info.isActive ? 'Sin vencimiento visible' : 'Pendiente de validar';
-    }
-
-    final now = DateTime.now();
-    final days = end.difference(DateTime(now.year, now.month, now.day)).inDays;
-    if (days < 0) return 'Licencia vencida';
-    if (days == 0) return 'Vence hoy';
-    if (days == 1) return 'Vence en 1 día';
-    return 'Vence en $days días';
-  }
-
-  Color _licenseBadgeColor(ColorScheme scheme, AppStatusTheme? status) {
-    final info = _licenseInfo;
-    if (info == null) return status?.warning ?? scheme.tertiary;
-    if (info.isExpired || info.isBlocked) return status?.error ?? scheme.error;
-    if (info.isActive) return status?.success ?? scheme.primary;
-    return status?.warning ?? scheme.tertiary;
-  }
-
   void _showSnack(String message, {Color? backgroundColor}) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(content: Text(message), backgroundColor: backgroundColor),
@@ -316,22 +305,6 @@ class _TopbarState extends ConsumerState<Topbar>
       case _UserMenuAction.settings:
         context.go('/settings');
         return;
-      case _UserMenuAction.finishShift:
-        final sessionId = _openCashSessionId;
-        if (sessionId == null) {
-          _showSnack('No hay turno abierto.');
-          return;
-        }
-
-        await CashCloseDialog.show(
-          context,
-          sessionId: sessionId,
-          logoutAfterClose: true,
-          autoCloseImmediately: true,
-        );
-        if (!mounted) return;
-        unawaited(_loadOpenCashSessionId());
-        return;
       case _UserMenuAction.viewCurrentCut:
         final sessionId = _openCashSessionId;
         if (sessionId == null) {
@@ -343,27 +316,8 @@ class _TopbarState extends ConsumerState<Topbar>
         if (!mounted) return;
         unawaited(_loadOpenCashSessionId());
         return;
-      case _UserMenuAction.cutHistory:
-        context.go('/cash/history');
-        return;
       case _UserMenuAction.support:
         _showSnack('Soporte estará disponible pronto.');
-        return;
-      case _UserMenuAction.logout:
-        if (_openCashSessionId != null) {
-          _showSnack('Finaliza el turno antes de cerrar sesión.');
-          return;
-        }
-
-        try {
-          await LogoutFlowService.defaultPerformLogout(context);
-        } catch (e) {
-          if (!mounted) return;
-          _showSnack(
-            'No se pudo cerrar sesión: $e',
-            backgroundColor: Theme.of(context).colorScheme.error,
-          );
-        }
         return;
     }
   }
@@ -382,34 +336,32 @@ class _TopbarState extends ConsumerState<Topbar>
 
     return PopupMenuItem<_UserMenuAction>(
       value: value,
-      height: 46,
+      height: 44,
       padding: EdgeInsets.zero,
       child: SizedBox(
         width: width,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           child: DecoratedBox(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 children: [
                   Container(
-                    width: 30,
-                    height: 30,
+                    width: 28,
+                    height: 28,
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
-                        itemColor.withOpacity(0.10),
+                        itemColor.withOpacity(0.08),
                         Colors.white,
                       ),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: itemColor.withOpacity(0.12),
-                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: itemColor.withOpacity(0.10)),
                     ),
-                    child: Icon(icon, size: 17, color: itemColor),
+                    child: Icon(icon, size: 16, color: itemColor),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       label,
@@ -421,7 +373,7 @@ class _TopbarState extends ConsumerState<Topbar>
                           scheme.surface,
                           minRatio: 4.0,
                         ),
-                        fontSize: 13.5,
+                        fontSize: 13,
                         fontWeight: fontWeight,
                         height: 1.1,
                       ),
@@ -429,8 +381,8 @@ class _TopbarState extends ConsumerState<Topbar>
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
-                    size: 18,
-                    color: itemColor.withOpacity(0.45),
+                    size: 17,
+                    color: itemColor.withOpacity(0.42),
                   ),
                 ],
               ),
@@ -445,9 +397,7 @@ class _TopbarState extends ConsumerState<Topbar>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final status = theme.extension<AppStatusTheme>();
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-    final businessName = ref.watch(businessSettingsProvider).businessName.trim();
 
     final appBarFg = ColorUtils.ensureReadableColor(
       tokens.topbarText,
@@ -471,62 +421,31 @@ class _TopbarState extends ConsumerState<Topbar>
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 900;
         final s = widget.scale.clamp(0.85, 1.12);
-        final topbarHeight = ((AppSizes.topbarHeight + 8) * s).clamp(
-          56.0,
-          70.0,
-        );
+        final topbarHeight = (AppSizes.topbarHeight * s).clamp(48.0, 56.0);
         final topInset = (widget.topPadding * s).clamp(0.0, 12.0);
         final padM = AppSizes.paddingM * s;
         final padL = AppSizes.paddingL * s;
         final spaceS = AppSizes.spaceS * s;
-        final spaceM = AppSizes.spaceM * s;
-        final horizontalPad = ((isCompact ? padM : padL) * 0.75).clamp(
-          10.0,
-          20.0,
+        final horizontalPad = ((isCompact ? padM : padL) * 0.55).clamp(
+          8.0,
+          14.0,
         );
 
-        final isOpen = _openCashSessionId != null;
         final brandAccent = ColorUtils.ensureReadableColor(
           tokens.buttonPrimary,
           _topbarBackground,
           minRatio: 3.0,
         );
-        final statusColor = isOpen
-            ? const Color(0xFF10B981)
-            : (status?.error ?? scheme.error);
         final profileName = (_displayName ?? _username ?? 'Usuario').trim();
         final username = (_username ?? 'usuario').trim();
-        final companyLabel = businessName.isEmpty ? 'FULLPOS' : businessName;
-        final showCashLabel = constraints.maxWidth >= 720;
-        final showUserDetails = constraints.maxWidth >= 820;
-        final showUserSubtitle = constraints.maxWidth >= 1024;
-        final canCash = _canAccessCash;
-        final canHistory = _canViewCashHistory || canCash;
-        final canFinishShift = _canCloseShift;
-        final canViewCurrentCut = canCash || _canCloseShift || _canOpenCashbox;
-        final hasShift = _openCashSessionId != null;
-        final menuWidth = constraints.maxWidth < 430 ? 286.0 : 324.0;
+        final showUserLabel = constraints.maxWidth >= 620;
+        final showUserDetails = constraints.maxWidth >= 720;
+        final accountTriggerLabel = _openCashSessionId == null
+            ? profileName
+            : _cashChipLabel();
+        final menuWidth = constraints.maxWidth < 430 ? 230.0 : 254.0;
 
         final menuItems = <PopupMenuEntry<_UserMenuAction>>[
-          PopupMenuItem<_UserMenuAction>(
-            enabled: false,
-            height: 0,
-            padding: EdgeInsets.zero,
-            child: SizedBox(
-              width: menuWidth,
-              child: _TopbarMenuHeader(
-                companyName: companyLabel,
-                displayName: profileName,
-                roleLabel: _roleLabel(),
-                licenseTitle: _licenseBadgeTitle(),
-                licenseSubtitle: _licenseBadgeSubtitle(),
-                accentColor: brandAccent,
-                badgeColor: _licenseBadgeColor(scheme, status),
-                imagePath: _profileImagePath,
-              ),
-            ),
-          ),
-          const PopupMenuDivider(height: 1),
           _buildMenuItem(
             context,
             value: _UserMenuAction.profile,
@@ -554,51 +473,6 @@ class _TopbarState extends ConsumerState<Topbar>
             icon: Icons.settings_outlined,
             label: 'Configuración',
             width: menuWidth,
-          ),
-          if (canViewCurrentCut || canHistory || (canFinishShift && hasShift))
-            const PopupMenuDivider(height: 1),
-          if (canViewCurrentCut)
-            _buildMenuItem(
-              context,
-              value: _UserMenuAction.viewCurrentCut,
-              icon: Icons.receipt_long_outlined,
-              label: 'Ver corte actual',
-              width: menuWidth,
-            ),
-          if (canHistory)
-            _buildMenuItem(
-              context,
-              value: _UserMenuAction.cutHistory,
-              icon: Icons.history_rounded,
-              label: 'Historial de cortes',
-              width: menuWidth,
-            ),
-          if (canFinishShift && hasShift)
-            _buildMenuItem(
-              context,
-              value: _UserMenuAction.finishShift,
-              icon: Icons.flag_outlined,
-              label: 'Finalizar turno',
-              width: menuWidth,
-              color: status?.warning ?? scheme.tertiary,
-              fontWeight: FontWeight.w800,
-            ),
-          const PopupMenuDivider(height: 1),
-          _buildMenuItem(
-            context,
-            value: _UserMenuAction.support,
-            icon: Icons.support_agent_outlined,
-            label: 'Soporte',
-            width: menuWidth,
-          ),
-          _buildMenuItem(
-            context,
-            value: _UserMenuAction.logout,
-            icon: Icons.logout_rounded,
-            label: 'Cerrar sesión',
-            width: menuWidth,
-            color: scheme.error,
-            fontWeight: FontWeight.w800,
           ),
         ];
 
@@ -673,70 +547,91 @@ class _TopbarState extends ConsumerState<Topbar>
                 ),
               ),
               SizedBox(width: spaceS * 0.6),
-              AnimatedBuilder(
-                animation: _cashPulseController,
-                builder: (context, _) {
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _TopbarQuickActionButton(
-                        scale: s,
-                        icon: Icons.swap_horiz_rounded,
-                        label: 'Movimiento',
-                        onTap: TopbarActionBus.toggleSalesMovementPanel,
+              Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _UserStatusChip(
+                      scale: s,
+                      visibleLabel: showUserLabel,
+                      color: brandAccent,
+                      label: profileName,
+                      roleLabel: _roleLabel(),
+                      pulseValue: _cashPulseController.value,
+                    ),
+                    SizedBox(width: (8 * s).clamp(6.0, 9.0)),
+                    _TurnCutAction(
+                      scale: s,
+                      visibleLabel: constraints.maxWidth >= 760,
+                      accentColor: brandAccent,
+                      borderColor: chromeBorderColor,
+                      isOpen: _openCashSessionId != null,
+                      onTap: () => unawaited(
+                        _handleUserMenuAction(_UserMenuAction.viewCurrentCut),
                       ),
-                      SizedBox(width: (10 * s).clamp(8.0, 12.0)),
-                      _CashRegisterStatusChip(
+                    ),
+                    SizedBox(width: (5 * s).clamp(4.0, 7.0)),
+                    _TopbarIconAction(
+                      scale: s,
+                      icon: Icons.workspace_premium_outlined,
+                      tooltip: 'Ver licencia',
+                      color: _licenseBadgeColor(scheme),
+                      borderColor: chromeBorderColor,
+                      onTap: () => unawaited(_showLicenseDetailsDialog()),
+                    ),
+                    if (!isCompact) ...[
+                      SizedBox(width: (5 * s).clamp(4.0, 7.0)),
+                      _TopbarIconAction(
                         scale: s,
-                        visibleLabel: showCashLabel,
-                        isOpen: isOpen,
-                        accentColor: brandAccent,
-                        statusColor: statusColor,
-                        label: _cashChipLabel(),
-                        openSessionId: _openCashSessionId,
-                        pulseValue: isOpen ? _cashPulseController.value : 0,
-                      ),
-                      SizedBox(width: (10 * s).clamp(8.0, 12.0)),
-                      PopupMenuButton<_UserMenuAction>(
-                        tooltip: 'Cuenta y empresa',
-                        position: PopupMenuPosition.under,
-                        offset: const Offset(0, 10),
-                        constraints: BoxConstraints(
-                          minWidth: menuWidth,
-                          maxWidth: menuWidth,
-                        ),
-                        elevation: 14,
-                        color: _topbarBackground,
-                        surfaceTintColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          side: BorderSide(
-                            color: brandAccent.withOpacity(0.14),
-                          ),
-                        ),
-                        onSelected: _handleUserMenuAction,
-                        itemBuilder: (_) => menuItems,
-                        child: Tooltip(
-                          message: '$profileName · @$username',
-                          waitDuration: const Duration(milliseconds: 350),
-                          child: _TopbarUserMenuButton(
-                            scale: s,
-                            accentColor: brandAccent,
-                            borderColor: chromeBorderColor,
-                            backgroundColor: Colors.white,
-                            displayName: profileName,
-                            subtitle: 'Usuario activo',
-                            showDetails: showUserDetails,
-                            showSubtitle: showUserSubtitle,
-                            imagePath: _profileImagePath,
-                          ),
+                        icon: Icons.apps_rounded,
+                        tooltip: 'Configuración',
+                        color: _softTextColor,
+                        borderColor: chromeBorderColor,
+                        onTap: () => unawaited(
+                          _handleUserMenuAction(_UserMenuAction.settings),
                         ),
                       ),
                     ],
-                  );
-                },
+                    SizedBox(width: (8 * s).clamp(6.0, 9.0)),
+                    PopupMenuButton<_UserMenuAction>(
+                      tooltip: 'Cuenta y empresa',
+                      position: PopupMenuPosition.under,
+                      offset: const Offset(0, 8),
+                      constraints: BoxConstraints(
+                        minWidth: menuWidth,
+                        maxWidth: menuWidth,
+                      ),
+                      elevation: 10,
+                      color: _topbarBackground,
+                      surfaceTintColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(color: brandAccent.withOpacity(0.12)),
+                      ),
+                      onSelected: _handleUserMenuAction,
+                      itemBuilder: (_) => menuItems,
+                      child: Tooltip(
+                        message: '$profileName · @$username',
+                        waitDuration: const Duration(milliseconds: 350),
+                        child: _TopbarUserMenuButton(
+                          scale: s,
+                          accentColor: brandAccent,
+                          borderColor: chromeBorderColor,
+                          backgroundColor: Color.alphaBlend(
+                            brandAccent.withOpacity(0.04),
+                            Colors.white,
+                          ),
+                          displayName: accountTriggerLabel,
+                          subtitle: _roleLabel(),
+                          showDetails: showUserDetails,
+                          imagePath: _profileImagePath,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              SizedBox(width: spaceM),
             ],
           ),
         );
@@ -745,108 +640,134 @@ class _TopbarState extends ConsumerState<Topbar>
   }
 }
 
-class _CashRegisterStatusChip extends StatelessWidget {
-  const _CashRegisterStatusChip({
+class _UserStatusChip extends StatelessWidget {
+  const _UserStatusChip({
     required this.scale,
     required this.visibleLabel,
-    required this.isOpen,
-    required this.accentColor,
-    required this.statusColor,
+    required this.color,
     required this.label,
-    required this.openSessionId,
+    required this.roleLabel,
     required this.pulseValue,
   });
 
   final double scale;
   final bool visibleLabel;
-  final bool isOpen;
-  final Color accentColor;
-  final Color statusColor;
+  final Color color;
   final String label;
-  final int? openSessionId;
+  final String roleLabel;
   final double pulseValue;
 
   @override
   Widget build(BuildContext context) {
-    final background = isOpen
-        ? const Color(0xFFEFFBF7)
-        : const Color(0xFFF8FAFC);
-    final borderColor = isOpen
-        ? const Color(0xFFBEE7D8)
-        : const Color(0xFFDCE5EF);
-    final shadowOpacity = isOpen ? 0.10 + (pulseValue * 0.06) : 0.04;
+    final displayLabel = label.trim().isEmpty ? 'Usuario activo' : label.trim();
+    final normalizedRole = roleLabel.trim().isEmpty ? 'Operando ahora' : roleLabel.trim();
+    final pulseOpacity = 0.18 + (pulseValue * 0.18);
+    final background = Color.alphaBlend(color.withOpacity(0.075), Colors.white);
+    final borderColor = color.withOpacity(0.28 + (pulseValue * 0.10));
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      height: (42 * scale).clamp(38.0, 46.0),
+      duration: const Duration(milliseconds: 180),
+      height: (36 * scale).clamp(34.0, 38.0),
       padding: EdgeInsets.symmetric(
-        horizontal: visibleLabel ? (13 * scale).clamp(11.0, 15.0) : 10,
+        horizontal: visibleLabel ? (10 * scale).clamp(9.0, 12.0) : 8,
       ),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: statusColor.withOpacity(shadowOpacity),
-            blurRadius: isOpen ? 14 : 8,
+            color: color.withOpacity(0.08 + (pulseValue * 0.05)),
+            blurRadius: 12,
             spreadRadius: -8,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: (25 * scale).clamp(22.0, 28.0),
-            height: (25 * scale).clamp(22.0, 28.0),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.14),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isOpen
-                  ? Icons.point_of_sale_rounded
-                  : Icons.lock_outline_rounded,
-              size: (15 * scale).clamp(13.0, 17.0),
-              color: statusColor,
-            ),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: (23 * scale).clamp(21.0, 25.0),
+                height: (23 * scale).clamp(21.0, 25.0),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(pulseOpacity),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              Container(
+                width: (17 * scale).clamp(16.0, 19.0),
+                height: (17 * scale).clamp(16.0, 19.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color.withOpacity(0.28)),
+                ),
+                child: Icon(
+                  Icons.support_agent_rounded,
+                  size: (11.5 * scale).clamp(10.0, 13.0),
+                  color: color,
+                ),
+              ),
+              Positioned(
+                right: 1,
+                bottom: 1,
+                child: Container(
+                  width: (7.5 * scale).clamp(6.5, 8.5),
+                  height: (7.5 * scale).clamp(6.5, 8.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF22C55E),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.2),
+                  ),
+                ),
+              ),
+            ],
           ),
           if (visibleLabel) ...[
-            SizedBox(width: (8 * scale).clamp(6.0, 10.0)),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Estado de caja',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: const Color(0xFF64748B),
-                    fontSize: (9.9 * scale).clamp(9.0, 10.8),
-                    fontWeight: FontWeight.w700,
-                    height: 1,
+            SizedBox(width: (7 * scale).clamp(5.0, 8.0)),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 162),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      displayLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _TopbarState._strongTextColor,
+                        fontSize: (12.2 * scale).clamp(11.5, 13.0),
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  isOpen
-                      ? (openSessionId != null
-                            ? 'Caja abierta #$openSessionId'
-                            : label)
-                      : 'Caja cerrada',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: const Color(0xFF0F172A),
-                    fontSize: (12.4 * scale).clamp(11.0, 13.4),
-                    fontWeight: FontWeight.w800,
-                    height: 1,
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      normalizedRole,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: (9.7 * scale).clamp(9.0, 10.5),
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ],
@@ -855,58 +776,134 @@ class _CashRegisterStatusChip extends StatelessWidget {
   }
 }
 
-class _TopbarQuickActionButton extends StatelessWidget {
-  const _TopbarQuickActionButton({
+class _TurnCutAction extends StatelessWidget {
+  const _TurnCutAction({
+    required this.scale,
+    required this.visibleLabel,
+    required this.accentColor,
+    required this.borderColor,
+    required this.isOpen,
+    required this.onTap,
+  });
+
+  final double scale;
+  final bool visibleLabel;
+  final Color accentColor;
+  final Color borderColor;
+  final bool isOpen;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = (34 * scale).clamp(32.0, 38.0);
+    final bg = Color.alphaBlend(accentColor.withOpacity(0.10), Colors.white);
+
+    return Tooltip(
+      message: isOpen ? 'Ver corte actual' : 'Abrir módulo de caja',
+      waitDuration: const Duration(milliseconds: 350),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(9),
+          child: Ink(
+            height: height,
+            padding: EdgeInsets.symmetric(
+              horizontal: visibleLabel ? (10 * scale).clamp(9.0, 12.0) : 0,
+            ),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: accentColor.withOpacity(0.34)),
+              boxShadow: [
+                BoxShadow(
+                  color: accentColor.withOpacity(0.14),
+                  blurRadius: 12,
+                  spreadRadius: -8,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: (22 * scale).clamp(20.0, 24.0),
+                  height: (22 * scale).clamp(20.0, 24.0),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(
+                    Icons.receipt_long_rounded,
+                    size: (14.5 * scale).clamp(13.0, 16.0),
+                    color: accentColor,
+                  ),
+                ),
+                if (visibleLabel) ...[
+                  SizedBox(width: (7 * scale).clamp(5.0, 8.0)),
+                  Text(
+                    'Corte',
+                    style: TextStyle(
+                      color: accentColor,
+                      fontSize: (12 * scale).clamp(11.2, 12.8),
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TopbarIconAction extends StatelessWidget {
+  const _TopbarIconAction({
     required this.scale,
     required this.icon,
-    required this.label,
+    required this.tooltip,
+    required this.color,
+    required this.borderColor,
     required this.onTap,
   });
 
   final double scale;
   final IconData icon;
-  final String label;
+  final String tooltip;
+  final Color color;
+  final Color borderColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          height: (42 * scale).clamp(38.0, 46.0),
-          padding: EdgeInsets.symmetric(
-            horizontal: (14 * scale).clamp(12.0, 16.0),
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFDCE5EF)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0A0F172A),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: const Color(0xFF0F172A)),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: const Color(0xFF0F172A),
-                  fontSize: (12.2 * scale).clamp(11.0, 13.0),
-                  fontWeight: FontWeight.w700,
-                  height: 1,
-                ),
-              ),
-            ],
+    final size = (34 * scale).clamp(32.0, 38.0);
+
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 350),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(9),
+          child: Ink(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: borderColor.withOpacity(0.70)),
+            ),
+            child: Icon(
+              icon,
+              size: (18 * scale).clamp(16.0, 19.0),
+              color: color,
+            ),
           ),
         ),
       ),
@@ -923,7 +920,6 @@ class _TopbarUserMenuButton extends StatelessWidget {
     required this.displayName,
     required this.subtitle,
     required this.showDetails,
-    required this.showSubtitle,
     required this.imagePath,
   });
 
@@ -934,81 +930,52 @@ class _TopbarUserMenuButton extends StatelessWidget {
   final String displayName;
   final String subtitle;
   final bool showDetails;
-  final bool showSubtitle;
   final String? imagePath;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      height: (44 * scale).clamp(40.0, 48.0),
+      duration: const Duration(milliseconds: 160),
+      height: (36 * scale).clamp(34.0, 40.0),
       padding: EdgeInsets.only(
-        left: (8 * scale).clamp(7.0, 10.0),
-        right: showDetails ? (10 * scale).clamp(8.0, 12.0) : 8,
+        left: showDetails ? (11 * scale).clamp(9.0, 12.0) : 7,
+        right: (8 * scale).clamp(7.0, 10.0),
       ),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0x0A0F172A),
-            blurRadius: 8,
-            spreadRadius: -8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor.withOpacity(0.85)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _UserAvatar(
-            size: (30 * scale).clamp(28.0, 34.0),
-            accentColor: accentColor,
-            name: displayName,
-            imagePath: imagePath,
-          ),
           if (showDetails) ...[
-            SizedBox(width: (9 * scale).clamp(7.0, 11.0)),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 150),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showSubtitle) ...[
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _TopbarState._softTextColor,
-                        fontSize: (9.8 * scale).clamp(9.0, 10.8),
-                        fontWeight: FontWeight.w700,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                  ],
-                  Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: _TopbarState._strongTextColor,
-                      fontSize: (12.8 * scale).clamp(11.8, 13.8),
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
-                ],
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Text(
+                displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _TopbarState._strongTextColor,
+                  fontSize: (12.8 * scale).clamp(12.0, 13.4),
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
               ),
             ),
+            SizedBox(width: (9 * scale).clamp(7.0, 10.0)),
           ],
-          SizedBox(width: (6 * scale).clamp(5.0, 8.0)),
+          _UserAvatar(
+            size: (25 * scale).clamp(23.0, 27.0),
+            accentColor: accentColor,
+            name: displayName.isEmpty ? subtitle : displayName,
+            imagePath: imagePath,
+          ),
+          SizedBox(width: (5 * scale).clamp(4.0, 6.0)),
           Icon(
             Icons.keyboard_arrow_down_rounded,
-            size: (20 * scale).clamp(18.0, 22.0),
+            size: (18 * scale).clamp(16.0, 20.0),
             color: _TopbarState._softTextColor,
           ),
         ],
@@ -1017,80 +984,209 @@ class _TopbarUserMenuButton extends StatelessWidget {
   }
 }
 
-class _TopbarMenuHeader extends StatelessWidget {
-  const _TopbarMenuHeader({
-    required this.companyName,
-    required this.displayName,
-    required this.roleLabel,
-    required this.licenseTitle,
-    required this.licenseSubtitle,
-    required this.accentColor,
+class _LicenseDetailsDialog extends StatelessWidget {
+  const _LicenseDetailsDialog({
+    required this.title,
+    required this.subtitle,
     required this.badgeColor,
-    required this.imagePath,
+    required this.accentColor,
+    required this.onOpenLicense,
   });
 
-  final String companyName;
-  final String displayName;
-  final String roleLabel;
-  final String licenseTitle;
-  final String licenseSubtitle;
-  final Color accentColor;
+  final String title;
+  final String subtitle;
   final Color badgeColor;
-  final String? imagePath;
+  final Color accentColor;
+  final VoidCallback onOpenLicense;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color.alphaBlend(accentColor.withOpacity(0.12), Colors.white),
-            Colors.white,
-          ],
-        ),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              _UserAvatar(
-                size: 46,
-                accentColor: accentColor,
-                name: displayName,
-                imagePath: imagePath,
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 390),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: accentColor.withOpacity(0.14)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.16),
+                blurRadius: 34,
+                spreadRadius: -14,
+                offset: const Offset(0, 18),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 14, 12),
+                child: Row(
                   children: [
-                    Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _TopbarState._strongTextColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1,
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            accentColor.withOpacity(0.14),
+                            badgeColor.withOpacity(0.12),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: accentColor.withOpacity(0.14)),
+                      ),
+                      child: Icon(
+                        Icons.workspace_premium_rounded,
+                        color: badgeColor,
+                        size: 24,
                       ),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      roleLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _TopbarState._softTextColor,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        height: 1,
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Licencia del cliente',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _TopbarState._strongTextColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              height: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Estado y vigencia del sistema',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _TopbarState._softTextColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                      color: _TopbarState._softTextColor,
+                      splashRadius: 20,
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Color.alphaBlend(badgeColor.withOpacity(0.075), Colors.white),
+                    borderRadius: BorderRadius.circular(17),
+                    border: Border.all(color: badgeColor.withOpacity(0.20)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: badgeColor.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          title.toLowerCase().contains('activa')
+                              ? Icons.verified_rounded
+                              : Icons.info_outline_rounded,
+                          color: badgeColor,
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: badgeColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                height: 1.1,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _TopbarState._softTextColor,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          side: BorderSide(color: accentColor.withOpacity(0.22)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cerrar',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: onOpenLicense,
+                        icon: const Icon(Icons.open_in_new_rounded, size: 17),
+                        label: const Text('Ver licencia'),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          backgroundColor: accentColor,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
                       ),
                     ),
                   ],
@@ -1098,88 +1194,7 @@ class _TopbarMenuHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.78),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: accentColor.withOpacity(0.12)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: accentColor.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.storefront_rounded,
-                    size: 18,
-                    color: accentColor,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        companyName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _TopbarState._strongTextColor,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w900,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        licenseSubtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _TopbarState._softTextColor,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          height: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: badgeColor.withOpacity(0.22)),
-                  ),
-                  child: Text(
-                    licenseTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: badgeColor,
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1217,14 +1232,6 @@ class _UserAvatar extends StatelessWidget {
             Color.alphaBlend(Colors.black.withOpacity(0.18), accentColor),
           ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withOpacity(0.20),
-            blurRadius: 12,
-            spreadRadius: -5,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: path != null
           ? Image.file(
@@ -1263,7 +1270,7 @@ class _InitialsText extends StatelessWidget {
         initials,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 13,
+          fontSize: 12.5,
           fontWeight: FontWeight.w900,
           height: 1,
         ),

@@ -5,7 +5,7 @@ class AppSizes {
   // Layout principal
   static const double sidebarWidth = 260.0;
   static const double topbarHeight = 52.0;
-  static const double footerHeight = 32.0;
+  static const double footerHeight = 44.0;
 
   // Padding y márgenes
   static const double paddingXS = 4.0;

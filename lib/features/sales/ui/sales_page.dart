@@ -214,6 +214,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
   // Optimización: índice de cantidades por producto para evitar O(n*m)
   // (cada tarjeta de producto recorriendo todos los items del carrito).
   Map<int, double> _qtyByProductId = const <int, double>{};
+  final Map<int, int> _cartItemAnimationTokens = <int, int>{};
 
   void _rebuildQtyIndexForCurrentCart() {
     if (_carts.isEmpty) {
@@ -227,6 +228,25 @@ class _SalesPageState extends ConsumerState<SalesPage>
       map[id] = (map[id] ?? 0) + item.qty;
     }
     _qtyByProductId = map;
+  }
+
+  void _triggerCartItemEntryAnimation(int index) {
+    _cartItemAnimationTokens[index] =
+        (_cartItemAnimationTokens[index] ?? 0) + 1;
+  }
+
+  Color _categorySidebarColor(int index) {
+    const palette = <Color>[
+      Color(0xFF1E3A8A),
+      Color(0xFF1D4ED8),
+      Color(0xFF0F766E),
+      Color(0xFF374151),
+      Color(0xFF111827),
+      Color(0xFF4C1D95),
+      Color(0xFF7C2D12),
+      Color(0xFF365314),
+    ];
+    return palette[index % palette.length];
   }
 
   double _qtyInCart(int? productId) {
@@ -2744,7 +2764,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
 
     try {
-      _updateCurrentCart(() => _currentCart.addProduct(product));
+      _updateCurrentCart(() {
+        _currentCart.addProduct(product);
+        final animatedIndex = _currentCart.items.lastIndexWhere(
+          (item) => item.productId == product.id,
+        );
+        if (animatedIndex >= 0) {
+          _triggerCartItemEntryAnimation(animatedIndex);
+        }
+      });
       assert(() {
         _dbgLog(
           'add_product_setstate_done',
@@ -5077,6 +5105,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 itemBuilder: (context, index) {
                   final category = _categories[index];
                   final isSelected = _selectedCategoryId == category.id;
+                  final avatarColor = _categorySidebarColor(index);
                   final normalizedPath = (category.imagePath ?? '').trim();
                   final hasImage =
                       normalizedPath.isNotEmpty &&
@@ -5111,6 +5140,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   imagePath: normalizedPath,
                                   initial: initial,
                                   isSelected: isSelected,
+                                  fillColor: avatarColor,
                                 ),
                               );
                             }
@@ -5128,6 +5158,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                         imagePath: normalizedPath,
                                         initial: initial,
                                         isSelected: isSelected,
+                                        fillColor: avatarColor,
                                       ),
                                     ),
                                   ),
@@ -5167,10 +5198,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
     required String imagePath,
     required String initial,
     required bool isSelected,
+    required Color fillColor,
   }) {
-    const fillColor = Color(0xFF1A56DB);
-    const selectedFillColor = Color(0xFF1443B0);
-    const ringColor = Color(0xFFA3C2FF);
+    final selectedFillColor = Color.alphaBlend(
+      Colors.black.withOpacity(0.18),
+      fillColor,
+    );
+    final ringColor = fillColor.withOpacity(0.34);
     const outerSize = 42.0;
     const innerSize = 34.0;
 
@@ -5595,7 +5629,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     ),
                   ),
 
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 6),
+
+                  // Botón rayo: Descuento rápido
+                  _buildQuickDiscountButton(),
+
+                  const SizedBox(width: 6),
 
                   // Botón único: Guardar como cotización
                   _buildQuoteHeaderIconAction(
@@ -5665,6 +5704,325 @@ class _SalesPageState extends ConsumerState<SalesPage>
       ),
     ],
   );
+}
+
+Widget _buildQuickDiscountButton() {
+  const fullposBlue = Color(0xFF1A56DB);
+  const softBlueBg = Color(0xFFDBE5FF);
+  const borderColor = Color(0xFFBFD1FF);
+
+  return Tooltip(
+    message: 'Descuento rápido',
+    waitDuration: const Duration(milliseconds: 350),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showQuickDiscountMenu(),
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: softBlueBg,
+            shape: BoxShape.circle,
+            border: Border.all(color: borderColor, width: 1),
+          ),
+          child: const Icon(
+            Icons.flash_on_rounded,
+            size: 18,
+            color: fullposBlue,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+void _showQuickDiscountMenu() {
+  if (_currentCart.items.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Agrega productos antes de aplicar descuento.'),
+        backgroundColor: status.warning,
+      ),
+    );
+    return;
+  }
+
+  final subtotal = _currentCart.calculateSubtotal();
+  final renderBox = context.findRenderObject() as RenderBox?;
+  if (renderBox == null) return;
+  final overlay = Overlay.of(context);
+  final position = renderBox.localToGlobal(
+    const Offset(0, 0),
+    ancestor: overlay.context.findRenderObject(),
+  );
+
+  showMenu<String>(
+    context: context,
+    position: RelativeRect.fromLTRB(
+      position.dx + 200,
+      position.dy + 80,
+      position.dx + 200,
+      position.dy + 80,
+    ),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+    ),
+    color: Colors.white,
+    elevation: 8,
+    shadowColor: Colors.black.withOpacity(0.12),
+    items: [
+      const PopupMenuItem<String>(
+        enabled: false,
+        height: 36,
+        child: Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Text(
+            'Descuento rápido',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+      ),
+      const PopupMenuDivider(height: 1),
+      PopupMenuItem<String>(
+        value: '5',
+        height: 42,
+        child: _buildDiscountMenuItem('5%', Icons.looks_one_outlined),
+      ),
+      PopupMenuItem<String>(
+        value: '10',
+        height: 42,
+        child: _buildDiscountMenuItem('10%', Icons.looks_two_outlined),
+      ),
+      PopupMenuItem<String>(
+        value: '15',
+        height: 42,
+        child: _buildDiscountMenuItem('15%', Icons.looks_3_outlined),
+      ),
+      const PopupMenuDivider(height: 1),
+      PopupMenuItem<String>(
+        value: 'manual',
+        height: 42,
+        child: _buildDiscountMenuItem(
+          'Monto manual',
+          Icons.edit_outlined,
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'remove',
+        height: 42,
+        child: _buildDiscountMenuItem(
+          'Quitar descuento',
+          Icons.remove_circle_outline_rounded,
+          isDestructive: true,
+        ),
+      ),
+    ],
+  ).then((value) {
+    if (value == null || !mounted) return;
+
+    switch (value) {
+      case '5':
+      case '10':
+      case '15':
+        final percent = double.parse(value);
+        final discountAmount = subtotal * (percent / 100);
+        _applyQuickDiscount(discountAmount, percent: percent);
+        break;
+      case 'manual':
+        _showManualDiscountDialog();
+        break;
+      case 'remove':
+        _removeQuickDiscount();
+        break;
+    }
+  });
+}
+
+Widget _buildDiscountMenuItem(
+  String label,
+  IconData icon, {
+  bool isDestructive = false,
+}) {
+  const fullposBlue = Color(0xFF1A56DB);
+  final color = isDestructive ? const Color(0xFFDC2626) : fullposBlue;
+
+  return Row(
+    children: [
+      Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 16, color: color),
+      ),
+      const SizedBox(width: 12),
+      Text(
+        label,
+        style: TextStyle(
+          color: isDestructive
+              ? const Color(0xFFDC2626)
+              : const Color(0xFF0F172A),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ],
+  );
+}
+
+void _applyQuickDiscount(double discountAmount, {double? percent}) {
+  if (discountAmount <= 0) return;
+  if (discountAmount >= _currentCart.calculateSubtotal()) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('El descuento no puede ser mayor que el subtotal.'),
+        backgroundColor: status.error,
+      ),
+    );
+    return;
+  }
+
+  _updateCurrentCart(() {
+    _currentCart.discountTotalType = 'amount';
+    _currentCart.discountTotalValue = discountAmount;
+  });
+
+  final label = percent != null
+      ? 'Descuento aplicado: ${percent.toStringAsFixed(0)}%'
+      : 'Descuento aplicado: ${CurrencyDisplay.format(discountAmount)}';
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(label), backgroundColor: status.success),
+  );
+}
+
+void _removeQuickDiscount() {
+  _updateCurrentCart(() {
+    _currentCart.discountTotalType = null;
+    _currentCart.discountTotalValue = null;
+  });
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const Text('Descuento eliminado.'),
+      backgroundColor: status.success,
+    ),
+  );
+}
+
+Future<void> _showManualDiscountDialog() async {
+  final controller = TextEditingController();
+  final result = await showDialog<double>(
+    context: context,
+    builder: (context) {
+      const fullposBlue = Color(0xFF1A56DB);
+      return AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.edit_outlined, size: 22, color: fullposBlue),
+            SizedBox(width: 8),
+            Text(
+              'Descuento manual',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 280,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+            ],
+            decoration: InputDecoration(
+              hintText: 'Monto de descuento',
+              prefixText: 'RD\$ ',
+              prefixStyle: const TextStyle(
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: fullposBlue, width: 1.5),
+              ),
+            ),
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final amount = double.tryParse(controller.text.trim());
+              Navigator.pop(context, amount);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: fullposBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Aplicar'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (result == null || !mounted) return;
+
+  if (result <= 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Monto de descuento inválido.'),
+        backgroundColor: status.error,
+      ),
+    );
+    return;
+  }
+
+  final subtotal = _currentCart.calculateSubtotal();
+  if (result >= subtotal) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('El descuento no puede ser mayor que el subtotal.'),
+        backgroundColor: status.error,
+      ),
+    );
+    return;
+  }
+
+  _applyQuickDiscount(result);
 }
 
 Widget _buildQuoteHeaderIconAction({
@@ -6717,37 +7075,53 @@ Future<void> _showQuoteSavedOptionsDialog() async {
 
   Widget _buildCartItemRow(SaleItemModel item, int index) {
     final isHovered = _hoveredCartItemIndexes.contains(index);
+    final animationToken = _cartItemAnimationTokens[index] ?? 0;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
     final rowDividerColor = salesDetailBorderColor;
     final showActions = isHovered;
     final rowBackground = Colors.white;
 
-    return Builder(
-      builder: (rowContext) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) =>
-            _setHoverStateDeferred(_hoveredCartItemIndexes, index, true),
-        onExit: (_) =>
-            _setHoverStateDeferred(_hoveredCartItemIndexes, index, false),
-        child: InkWell(
-          onTap: () => setState(() => _selectedCartItemIndex = index),
-          onDoubleTap: () => unawaited(
-            _showItemEditPopover(
-              rowContext,
-              index,
-              focus: _InlineItemFocus.qty,
-            ),
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<String>('cart-row-$index-$animationToken'),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        final slideOffset = (1 - value) * -28;
+        return Opacity(
+          opacity: value.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(slideOffset, 0),
+            child: child,
           ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: rowBackground,
-              border: Border(
-                bottom: BorderSide(color: rowDividerColor, width: 1),
+        );
+      },
+      child: Builder(
+        builder: (rowContext) => MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) =>
+              _setHoverStateDeferred(_hoveredCartItemIndexes, index, true),
+          onExit: (_) =>
+              _setHoverStateDeferred(_hoveredCartItemIndexes, index, false),
+          child: InkWell(
+            onTap: () => setState(() => _selectedCartItemIndex = index),
+            onDoubleTap: () => unawaited(
+              _showItemEditPopover(
+                rowContext,
+                index,
+                focus: _InlineItemFocus.qty,
               ),
             ),
-            child: Row(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: rowBackground,
+                border: Border(
+                  bottom: BorderSide(color: rowDividerColor, width: 1),
+                ),
+              ),
+              child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
@@ -6914,6 +7288,7 @@ Future<void> _showQuoteSavedOptionsDialog() async {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),
