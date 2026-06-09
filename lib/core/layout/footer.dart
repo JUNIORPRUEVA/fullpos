@@ -15,9 +15,9 @@ class Footer extends ConsumerWidget {
 
     return DecoratedBox(
       decoration: const BoxDecoration(
-        color: Color(0xFFF6F0D8),
+        color: Color(0xFFF8FAFC),
         border: Border(
-          top: BorderSide(color: Color(0xFFD3C7A5), width: 2.0),
+          top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0),
         ),
       ),
       child: ListView.separated(
@@ -72,10 +72,10 @@ class _FooterSaleTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final isActive = tab.isActive;
     const activeColor = Color(0xFF1A56DB);
-    const inactiveBackground = Color(0xFFF8FAFC);
-    const borderColor = Color(0xFFD0D5DD);
-    const textColor = Color(0xFF344256);
-    const activeTextColor = Color(0xFF1F3147);
+    const inactiveBackground = Color(0xFFF9FBFD);
+    const borderColor = Color(0xFFE2E8F0);
+    const textColor = Color(0xFF0B1220);
+    const activeTextColor = Color(0xFF0B1220);
     const dotColor = Color(0xFFEF4444);
 
     return Material(
@@ -84,15 +84,16 @@ class _FooterSaleTab extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: BoxConstraints(
-            minWidth: 150 * scale,
-            maxWidth: 176 * scale,
+            minWidth: 120 * scale,
+            maxWidth: 150 * scale,
+            minHeight: 38 * scale,
           ),
-          padding: EdgeInsets.symmetric(horizontal: 10 * scale),
+          padding: EdgeInsets.symmetric(horizontal: 6 * scale),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: isActive ? activeColor : const Color(0xFFD8D0B6),
-                width: isActive ? 2.4 : 1.4,
+                color: isActive ? activeColor : borderColor,
+                width: isActive ? 2.0 : 1.0,
               ),
               bottom: const BorderSide(color: borderColor),
               right: const BorderSide(color: borderColor),
@@ -103,33 +104,33 @@ class _FooterSaleTab extends StatelessWidget {
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+                size: 16 * scale,
               Icon(
                 Icons.shopping_cart_checkout_rounded,
-                size: 17.5 * scale,
+              SizedBox(width: 4 * scale),
                 color: isActive ? activeColor : textColor,
               ),
-              SizedBox(width: 6 * scale),
+                  padding: EdgeInsets.symmetric(vertical: 2 * scale),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 5 * scale),
+                  padding: EdgeInsets.symmetric(vertical: 3 * scale),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         tab.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                          fontSize: 14.4 * scale,
+                          fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
                         style: TextStyle(
-                          fontSize: 13.2 * scale,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                          height: 1.25,
+                          fontSize: 13.6 * scale,
+                          fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
+                          height: 1.15,
                           color: isActive ? activeTextColor : textColor,
-                          letterSpacing: -0.1,
+                      SizedBox(height: 1 * scale),
                         ),
                       ),
-                      SizedBox(height: 3 * scale),
+                      SizedBox(height: 2 * scale),
                       SizedBox(
                         height: 6 * scale,
                         child: Align(
@@ -218,10 +219,10 @@ class _FooterAddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = 34.0 * scale;
+    final size = 38.0 * scale;
     final radius = 8.0 * scale;
     return Material(
-      color: Colors.white,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(radius),
       child: InkWell(
         onTap: onTap,
@@ -229,24 +230,17 @@ class _FooterAddButton extends StatelessWidget {
         child: Container(
           width: size,
           height: size,
-          margin: EdgeInsets.symmetric(vertical: 4 * scale),
+          margin: EdgeInsets.symmetric(vertical: 2 * scale),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: const Color(0x00000000),
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: const Color(0xFFD0D5DD)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           alignment: Alignment.center,
           child: Icon(
-            Icons.add,
-            size: 20 * scale,
-            color: const Color(0xFF334155),
+            Icons.add_rounded,
+            size: 22 * scale,
+            color: const Color(0xFF1A56DB),
           ),
         ),
       ),
