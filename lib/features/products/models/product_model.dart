@@ -13,6 +13,7 @@ class ProductModel {
   final String placeholderType; // 'image' | 'color'
   final int? categoryId;
   final int? supplierId;
+  final bool isFeatured;
   final double purchasePrice;
   final double salePrice;
   final double stock;
@@ -43,6 +44,7 @@ class ProductModel {
     this.placeholderType = 'image',
     this.categoryId,
     this.supplierId,
+    this.isFeatured = false,
     this.purchasePrice = 0.0,
     this.salePrice = 0.0,
     this.stock = 0.0,
@@ -77,6 +79,7 @@ class ProductModel {
           'image',
       categoryId: map['category_id'] as int?,
       supplierId: map['supplier_id'] as int?,
+      isFeatured: (map['is_featured'] as int? ?? 0) == 1,
       purchasePrice: (map['purchase_price'] as num?)?.toDouble() ?? 0.0,
       salePrice: (map['sale_price'] as num?)?.toDouble() ?? 0.0,
       stock: (map['stock'] as num?)?.toDouble() ?? 0.0,
@@ -111,6 +114,7 @@ class ProductModel {
       'placeholder_type': placeholderType,
       'category_id': categoryId,
       'supplier_id': supplierId,
+      'is_featured': isFeatured ? 1 : 0,
       'purchase_price': purchasePrice,
       'sale_price': salePrice,
       'stock': stock,
@@ -144,6 +148,7 @@ class ProductModel {
     String? placeholderType,
     Object? categoryId = _unset,
     Object? supplierId = _unset,
+    bool? isFeatured,
     double? purchasePrice,
     double? salePrice,
     double? stock,
@@ -176,6 +181,7 @@ class ProductModel {
       placeholderType: placeholderType ?? this.placeholderType,
       categoryId: categoryId == _unset ? this.categoryId : categoryId as int?,
       supplierId: supplierId == _unset ? this.supplierId : supplierId as int?,
+      isFeatured: isFeatured ?? this.isFeatured,
       purchasePrice: purchasePrice ?? this.purchasePrice,
       salePrice: salePrice ?? this.salePrice,
       stock: stock ?? this.stock,

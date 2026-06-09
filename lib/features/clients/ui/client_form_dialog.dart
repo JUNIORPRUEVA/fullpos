@@ -13,12 +13,22 @@ class ClientFormDialog extends StatefulWidget {
   final Future<ClientModel?> Function(String phone)? getByPhone;
   final Future<ClientModel> Function(ClientModel client, bool isEditing)?
   saveClient;
+  final double? dialogWidth;
+  final double? dialogHeight;
+  final EdgeInsets? insetPadding;
+  final AlignmentGeometry? alignment;
+  final BorderRadius? borderRadius;
 
   const ClientFormDialog({
     super.key,
     this.client,
     this.getByPhone,
     this.saveClient,
+    this.dialogWidth,
+    this.dialogHeight,
+    this.insetPadding,
+    this.alignment,
+    this.borderRadius,
   });
 
   @override

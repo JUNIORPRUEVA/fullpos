@@ -322,6 +322,20 @@ class ProductsRepository {
     }
   }
 
+  Future<void> setFeatured(int productId, bool isFeatured) async {
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      DbTables.products,
+      {
+        'is_featured': isFeatured ? 1 : 0,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+  }
+
   /// Borra archivos en /product_images que ya no están referenciados en DB.
   /// Se ejecuta de forma defensiva tras cambios que pueden dejar huérfanos.
   Future<void> cleanupOrphanProductImages() async {

@@ -113,6 +113,12 @@ class ClientModel {
 
   bool get isBusiness => normalizedRnc != null;
 
+  String get name => nombre;
+
+  String? get phone => telefono;
+
+  String? get address => direccion;
+
   String get entityLabel => isBusiness ? 'Empresa' : 'Consumidor final';
 
   String? get documentLabel {

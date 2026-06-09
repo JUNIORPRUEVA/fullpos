@@ -2,6 +2,7 @@
 class CategoryModel {
   final int? id;
   final String name;
+  final String? imagePath;
   final bool isActive;
   final int? deletedAtMs;
   final int createdAtMs;
@@ -10,6 +11,7 @@ class CategoryModel {
   CategoryModel({
     this.id,
     required this.name,
+    this.imagePath,
     this.isActive = true,
     this.deletedAtMs,
     required this.createdAtMs,
@@ -21,6 +23,7 @@ class CategoryModel {
     return CategoryModel(
       id: map['id'] as int?,
       name: map['name'] as String,
+      imagePath: map['image_path'] as String?,
       isActive: (map['is_active'] as int) == 1,
       deletedAtMs: map['deleted_at_ms'] as int?,
       createdAtMs: map['created_at_ms'] as int,
@@ -33,6 +36,7 @@ class CategoryModel {
     return {
       if (id != null) 'id': id,
       'name': name,
+      'image_path': imagePath,
       'is_active': isActive ? 1 : 0,
       'deleted_at_ms': deletedAtMs,
       'created_at_ms': createdAtMs,
@@ -44,6 +48,7 @@ class CategoryModel {
   CategoryModel copyWith({
     int? id,
     String? name,
+    String? imagePath,
     bool? isActive,
     int? deletedAtMs,
     int? createdAtMs,
@@ -52,6 +57,7 @@ class CategoryModel {
     return CategoryModel(
       id: id ?? this.id,
       name: name ?? this.name,
+      imagePath: imagePath ?? this.imagePath,
       isActive: isActive ?? this.isActive,
       deletedAtMs: deletedAtMs ?? this.deletedAtMs,
       createdAtMs: createdAtMs ?? this.createdAtMs,

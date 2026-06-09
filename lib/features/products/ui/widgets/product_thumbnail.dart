@@ -22,6 +22,8 @@ class ProductThumbnail extends StatelessWidget {
   final double? height;
   final BorderRadius borderRadius;
   final bool showBorder;
+  final bool showShadow;
+  final Color? placeholderBackgroundColor;
   final Widget? overlay;
 
   const ProductThumbnail({
@@ -37,6 +39,8 @@ class ProductThumbnail extends StatelessWidget {
     this.height,
     this.borderRadius = const BorderRadius.all(Radius.circular(8)),
     this.showBorder = true,
+    this.showShadow = true,
+    this.placeholderBackgroundColor,
     this.overlay,
   });
 
@@ -50,6 +54,8 @@ class ProductThumbnail extends StatelessWidget {
     String? placeholderColorOverride,
     String? placeholderTypeOverride,
     bool showBorder = true,
+    bool showShadow = true,
+    Color? placeholderBackgroundColor,
   }) {
     return ProductThumbnail(
       name: product.name,
@@ -64,6 +70,8 @@ class ProductThumbnail extends StatelessWidget {
       height: height,
       borderRadius: borderRadius ?? const BorderRadius.all(Radius.circular(8)),
       showBorder: showBorder,
+      showShadow: showShadow,
+      placeholderBackgroundColor: placeholderBackgroundColor,
     );
   }
 
@@ -101,19 +109,21 @@ class ProductThumbnail extends StatelessWidget {
             ? Border.all(color: Colors.grey.shade300, width: 1)
             : null,
         color: shouldShowImage ? Colors.grey.shade100 : bgColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.white24,
-            blurRadius: 6,
-            offset: const Offset(-1, -1),
-            spreadRadius: -2,
-          ),
-        ],
+        boxShadow: showShadow
+            ? [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Colors.white24,
+                  blurRadius: 6,
+                  offset: const Offset(-1, -1),
+                  spreadRadius: -2,
+                ),
+              ]
+            : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -177,7 +187,7 @@ class ProductThumbnail extends StatelessWidget {
   Widget _buildPlaceholder(Color color) {
     final initials = _getInitials(name);
     return Container(
-      color: color,
+      color: placeholderBackgroundColor ?? color,
       alignment: Alignment.center,
       child: Text(
         initials,

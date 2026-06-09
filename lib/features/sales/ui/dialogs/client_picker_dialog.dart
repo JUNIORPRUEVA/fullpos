@@ -9,11 +9,21 @@ import '../../../clients/ui/client_form_dialog.dart';
 class ClientPickerDialog extends StatefulWidget {
   final List<ClientModel> clients;
   final Future<ClientModel?> Function()? onCreateClient;
+  final double? dialogWidth;
+  final double? dialogHeight;
+  final EdgeInsets? insetPadding;
+  final AlignmentGeometry? alignment;
+  final BorderRadius? borderRadius;
 
   const ClientPickerDialog({
     super.key,
     required this.clients,
     this.onCreateClient,
+    this.dialogWidth,
+    this.dialogHeight,
+    this.insetPadding,
+    this.alignment,
+    this.borderRadius,
   });
 
   @override
@@ -100,7 +110,9 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
     return DialogKeyboardShortcuts(
       child: AlertDialog(
         backgroundColor: scheme.surface,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
+        insetPadding:
+            widget.insetPadding ??
+            const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
         contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         titleTextStyle: theme.textTheme.titleLarge?.copyWith(
           color: scheme.onSurface,
@@ -109,7 +121,9 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
         contentTextStyle: theme.textTheme.bodyMedium?.copyWith(
           color: scheme.onSurface,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: widget.borderRadius ?? BorderRadius.circular(20),
+        ),
         title: Row(
           children: [
             Icon(Icons.person_search_rounded, color: scheme.primary),
@@ -136,7 +150,7 @@ class _ClientPickerDialogState extends State<ClientPickerDialog> {
           ],
         ),
         content: SizedBox(
-          width: 540,
+          width: widget.dialogWidth ?? 540,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
