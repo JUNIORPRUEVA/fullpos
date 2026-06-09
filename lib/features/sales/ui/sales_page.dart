@@ -1458,6 +1458,413 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     );
   }
 
+  void _showQuickDiscountMenu(BuildContext anchorContext) {
+    if (_currentCart.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Agrega productos antes de aplicar descuento.'),
+          backgroundColor: status.warning,
+        ),
+      );
+      return;
+    }
+
+    final subtotal = _currentCart.calculateSubtotal();
+    final hasDiscount = (_currentCart.discountTotalValue ?? 0.0) > 0.0;
+
+    showModalBottomSheet(
+      context: context,
+      barrierColor: Colors.transparent,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 80),
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                    border: Border.all(
+                      color: scheme.outlineVariant.withOpacity(0.6),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: scheme.outlineVariant.withOpacity(0.4),
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withOpacity(0.10),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.flash_on,
+                                size: 16,
+                                color: scheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Descuento rápido',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.onSurface,
+                              ),
+                            ),
+                            const Spacer(),
+                            InkWell(
+                              onTap: () => Navigator.pop(sheetContext),
+                              borderRadius: BorderRadius.circular(999),
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: scheme.surfaceContainerHighest
+                                      .withOpacity(0.5),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Options
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildQuickDiscountOption(
+                              icon: Icons.percent,
+                              label: '5%',
+                              subtitle: '${CurrencyDisplay.format(subtotal * 0.05)} de descuento',
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _applyQuickDiscount(5.0, DiscountType.percent);
+                              },
+                            ),
+                            _buildQuickDiscountOption(
+                              icon: Icons.percent,
+                              label: '10%',
+                              subtitle: '${CurrencyDisplay.format(subtotal * 0.10)} de descuento',
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _applyQuickDiscount(10.0, DiscountType.percent);
+                              },
+                            ),
+                            _buildQuickDiscountOption(
+                              icon: Icons.percent,
+                              label: '15%',
+                              subtitle: '${CurrencyDisplay.format(subtotal * 0.15)} de descuento',
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _applyQuickDiscount(15.0, DiscountType.percent);
+                              },
+                            ),
+                            Divider(
+                              height: 1,
+                              indent: 12,
+                              endIndent: 12,
+                              color: scheme.outlineVariant.withOpacity(0.4),
+                            ),
+                            _buildQuickDiscountOption(
+                              icon: Icons.edit_note,
+                              label: 'Monto manual',
+                              subtitle: 'Escribe un monto de descuento personalizado',
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _showManualDiscountDialog();
+                              },
+                            ),
+                            if (hasDiscount) ...[
+                              Divider(
+                                height: 1,
+                                indent: 12,
+                                endIndent: 12,
+                                color: scheme.outlineVariant.withOpacity(0.4),
+                              ),
+                              _buildQuickDiscountOption(
+                                icon: Icons.remove_circle_outline,
+                                label: 'Quitar descuento',
+                                subtitle: 'Eliminar descuento actual',
+                                iconColor: scheme.error,
+                                labelColor: scheme.error,
+                                onTap: () {
+                                  Navigator.pop(sheetContext);
+                                  _removeInlineTotalDiscount();
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildQuickDiscountOption({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? iconColor,
+    Color? labelColor,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      hoverColor: scheme.primary.withOpacity(0.05),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: (iconColor ?? scheme.primary).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                size: 16,
+                color: iconColor ?? scheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: labelColor ?? scheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: scheme.onSurfaceVariant.withOpacity(0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _applyQuickDiscount(double value, DiscountType type) async {
+    final subtotal = _currentCart.calculateSubtotal();
+    if (subtotal <= 0) return;
+
+    final result = DiscountResult(type: type, value: value);
+    await _applyTotalDiscountResult(result);
+  }
+
+  Future<void> _showManualDiscountDialog() async {
+    final subtotal = _currentCart.calculateSubtotal();
+    if (subtotal <= 0) return;
+
+    final controller = TextEditingController();
+    final focusNode = FocusNode();
+
+    final result = await showDialog<DiscountResult>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: scheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withOpacity(0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.flash_on,
+                  size: 16,
+                  color: scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Descuento manual',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Subtotal disponible: ${CurrencyDisplay.format(subtotal)}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d*\.?\d{0,2}'),
+                    ),
+                  ],
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Monto de descuento (RD\$)',
+                    prefixIcon: Icon(
+                      Icons.attach_money,
+                      color: scheme.primary,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: scheme.primary.withOpacity(0.5),
+                      ),
+                    ),
+                  ),
+                  onSubmitted: (value) {
+                    final amount = double.tryParse(value) ?? 0.0;
+                    if (amount <= 0 || amount >= subtotal) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Monto de descuento inválido.'),
+                          backgroundColor: scheme.error,
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.pop(
+                      dialogContext,
+                      DiscountResult(type: DiscountType.amount, value: amount),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final amount = double.tryParse(controller.text) ?? 0.0;
+                if (amount <= 0 || amount >= subtotal) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Monto de descuento inválido.'),
+                      backgroundColor: scheme.error,
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(
+                  dialogContext,
+                  DiscountResult(type: DiscountType.amount, value: amount),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Aplicar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    focusNode.dispose();
+    controller.dispose();
+
+    if (result != null) {
+      await _applyTotalDiscountResult(result);
+    }
+  }
+
   Future<void> _showTotalDiscountDialog(BuildContext anchorContext) async {
     if (_currentCart.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -5068,17 +5475,48 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: Column(
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Resumen de venta',
-                  style: TextStyle(
-                    color: salesDetailTextColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
+              Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Resumen de venta',
+                        style: TextStyle(
+                          color: salesDetailTextColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  Tooltip(
+                    message: 'Descuento rápido',
+                    waitDuration: const Duration(milliseconds: 350),
+                    child: InkWell(
+                      onTap: () => _showQuickDiscountMenu(context),
+                      borderRadius: BorderRadius.circular(999),
+                      hoverColor: scheme.primary.withOpacity(0.08),
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: scheme.primary.withOpacity(0.10),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: scheme.primary.withOpacity(0.25),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.flash_on,
+                          size: 15,
+                          color: scheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
             ],
