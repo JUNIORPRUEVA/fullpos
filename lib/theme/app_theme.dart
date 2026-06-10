@@ -49,7 +49,7 @@ class AppTheme {
         shadowColor: Colors.black.withOpacity(0.06),
       ),
       appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.chromeBackground,
+        backgroundColor: AppColors.topbarBackground,
         foregroundColor: AppColors.chromeText,
         elevation: 0,
         scrolledUnderElevation: 0,

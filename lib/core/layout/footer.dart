@@ -16,9 +16,7 @@ class Footer extends ConsumerWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: Color(0xFFF8FAFC),
-        border: Border(
-          top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1.0)),
       ),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
@@ -29,10 +27,7 @@ class Footer extends ConsumerWidget {
           if (index == tabs.length) {
             return Padding(
               padding: EdgeInsets.only(left: 0, right: 10 * scale),
-              child: _FooterAddButton(
-                scale: scale,
-                onTap: controller.add,
-              ),
+              child: _FooterAddButton(scale: scale, onTap: controller.add),
             );
           }
 
@@ -84,11 +79,11 @@ class _FooterSaleTab extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: BoxConstraints(
-            minWidth: 120 * scale,
-            maxWidth: 150 * scale,
-            minHeight: 38 * scale,
+            minWidth: index == 0 ? 108 * scale : 128 * scale,
+            maxWidth: index == 0 ? 228 * scale : 162 * scale,
+            minHeight: 42 * scale,
           ),
-          padding: EdgeInsets.symmetric(horizontal: 6 * scale),
+          padding: EdgeInsets.symmetric(horizontal: 8 * scale),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
@@ -105,54 +100,69 @@ class _FooterSaleTab extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
-                Icons.shopping_cart_checkout_rounded,
-                size: 16 * scale,
-                color: isActive ? activeColor : textColor,
+              SizedBox(
+                width: 24 * scale,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(
+                      Icons.shopping_cart_checkout_rounded,
+                      size: 19.5 * scale,
+                      color: isActive ? activeColor : textColor,
+                    ),
+                    if (tab.showAlertDot)
+                      Positioned(
+                        right: -1 * scale,
+                        top: 1 * scale,
+                        child: Container(
+                          width: 7 * scale,
+                          height: 7 * scale,
+                          decoration: BoxDecoration(
+                            color: dotColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isActive
+                                  ? Colors.white
+                                  : inactiveBackground,
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              SizedBox(width: 4 * scale),
+              SizedBox(width: 6 * scale),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 2 * scale),
+                  padding: EdgeInsets.symmetric(vertical: 3 * scale),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        tab.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14.4 * scale,
-                          fontWeight:
-                              isActive ? FontWeight.w800 : FontWeight.w700,
-                          height: 1.1,
-                          color: isActive ? activeTextColor : textColor,
-                          letterSpacing: -0.1,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          tab.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                          style: TextStyle(
+                            fontSize: 14.2 * scale,
+                            fontWeight: FontWeight.w500,
+                            height: 1.18,
+                            color: isActive ? activeTextColor : textColor,
+                            letterSpacing: -0.22,
+                          ),
                         ),
                       ),
                       SizedBox(height: 1 * scale),
-                      SizedBox(
-                        height: 6 * scale,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: tab.showAlertDot
-                              ? Container(
-                                  width: 6 * scale,
-                                  height: 6 * scale,
-                                  decoration: const BoxDecoration(
-                                    color: dotColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                      ),
                     ],
                   ),
                 ),
               ),
-              SizedBox(width: 1 * scale),
+              SizedBox(width: 3 * scale),
               PopupMenuButton<String>(
                 padding: EdgeInsets.zero,
                 tooltip: 'Opciones de la venta',
@@ -192,11 +202,11 @@ class _FooterSaleTab extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: 2 * scale,
-                    vertical: 7 * scale,
+                    vertical: 8 * scale,
                   ),
                   child: Icon(
                     Icons.more_vert,
-                    size: 18 * scale,
+                    size: 19 * scale,
                     color: const Color(0xFF64748B),
                   ),
                 ),
@@ -210,10 +220,7 @@ class _FooterSaleTab extends StatelessWidget {
 }
 
 class _FooterAddButton extends StatelessWidget {
-  const _FooterAddButton({
-    required this.scale,
-    required this.onTap,
-  });
+  const _FooterAddButton({required this.scale, required this.onTap});
 
   final double scale;
   final VoidCallback onTap;

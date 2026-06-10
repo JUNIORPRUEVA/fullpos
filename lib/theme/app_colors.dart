@@ -18,6 +18,7 @@ class AppColors {
   static const Color sidebarHover = Color(0xFFEFF6FF);
   static const Color sidebarText = Color(0xFF111827);
   static const Color chromeBackground = Color(0xFFFFFFFF);
+  static const Color topbarBackground = Color(0xFFF2F6F9);
   static const Color chromeText = Color(0xFF111827);
   static const Color gradientStart = Color(0xFFFFFFFF);
   static const Color gradientMid = Color(0xFFF8FAFC);

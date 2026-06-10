@@ -205,8 +205,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final FocusNode _clientFocusNode = FocusNode();
-  final TextEditingController _clientSearchController =
-      TextEditingController();
+  final TextEditingController _clientSearchController = TextEditingController();
   final FocusNode _clientSearchFocusNode = FocusNode();
   final LayerLink _clientSearchLayerLink = LayerLink();
   final GlobalKey _clientSearchFieldKey = GlobalKey();
@@ -282,6 +281,41 @@ class _SalesPageState extends ConsumerState<SalesPage>
     setState(() => _showMovementPanel = !_showMovementPanel);
   }
 
+  Future<void> _toggleRecentSalesPanel() async {
+    final shouldOpen = !_showRecentSalesPanel;
+    if (!mounted) return;
+    setState(() => _showRecentSalesPanel = shouldOpen);
+    if (shouldOpen) {
+      await _loadRecentSales();
+    }
+  }
+
+  void _closeRecentSalesPanel() {
+    if (!mounted || !_showRecentSalesPanel) return;
+    setState(() => _showRecentSalesPanel = false);
+  }
+
+  Future<void> _loadRecentSales() async {
+    if (_isLoadingRecentSales) return;
+    if (!mounted) return;
+    setState(() => _isLoadingRecentSales = true);
+    try {
+      final sales = await SalesRepository.listCompletedSales();
+      if (!mounted) return;
+      setState(() {
+        _recentSales
+          ..clear()
+          ..addAll(sales.take(8));
+      });
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingRecentSales = false);
+      }
+    }
+  }
+
   void _dbgLog(String message, {Map<String, Object?>? data}) {
     assert(() {
       unawaited(
@@ -328,7 +362,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
   final Set<String> _hoveredCartRowActions = <String>{};
   final Set<String> _hoveredTicketHeaderActions = <String>{};
   final Set<String> _processedPaymentRequestIds = <String>{};
+  bool _isFacturaActionHovered = false;
+  bool _isFacturaActionPressed = false;
   bool _isProcessingSaleExecution = false;
+  bool _isQuotePdfFlowRunning = false;
+  bool _showRecentSalesPanel = false;
+  bool _isLoadingRecentSales = false;
+  final List<legacy_sales.SaleModel> _recentSales = <legacy_sales.SaleModel>[];
+  final Set<int> _hoveredRecentSaleIds = <int>{};
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> _searchResults = [];
@@ -514,6 +555,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     TopbarActionBus.salesMovementToggle.addListener(_handleMovementPanelToggle);
     _loadAccess();
     _loadInitialData();
+    unawaited(_loadRecentSales());
     // Evitar modificar providers durante el build inicial (Riverpod lo prohíbe).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -578,8 +620,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
     _clientSearchOverlay = OverlayEntry(
       builder: (context) {
-        final renderBox = _clientSearchFieldKey.currentContext
-            ?.findRenderObject() as RenderBox?;
+        final renderBox =
+            _clientSearchFieldKey.currentContext?.findRenderObject()
+                as RenderBox?;
         final fieldSize = renderBox?.size;
         final width = fieldSize?.width ?? 320;
         final height = fieldSize?.height ?? 48;
@@ -919,6 +962,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
         }
         _isSearching = false;
       });
+
+      await _ensureDefaultCustomerSelected();
 
       debugPrint(
         '[SALES] sales-data-ready t=${DateTime.now().toIso8601String()} '
@@ -1764,6 +1809,22 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Future<ClientModel?> _showCreateClientFromSales() async {
+    final result = await _showClientFormFromSales();
+    if (!mounted || result == null) return result;
+    await _applySelectedClient(result);
+    return result;
+  }
+
+  Future<ClientModel?> _showEditClientFromSales(ClientModel client) async {
+    final result = await _showClientFormFromSales(initialClient: client);
+    if (!mounted || result == null) return result;
+    await _applySelectedClient(result);
+    return result;
+  }
+
+  Future<ClientModel?> _showClientFormFromSales({
+    ClientModel? initialClient,
+  }) async {
     final screenSize = MediaQuery.sizeOf(context);
     final panelWidth = _ticketPanelConstraints(screenSize.width).maxWidth;
     final result = await showGeneralDialog<ClientModel>(
@@ -1778,6 +1839,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
           child: Stack(
             children: [
               Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(dialogContext).pop(),
+                  behavior: HitTestBehavior.translucent,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              Positioned.fill(
                 child: IgnorePointer(
                   ignoring: true,
                   child: BackdropFilter(
@@ -1788,13 +1856,26 @@ class _SalesPageState extends ConsumerState<SalesPage>
               ),
               Align(
                 alignment: Alignment.centerRight,
-                child: SizedBox(
-                  width: panelWidth,
-                  height: double.infinity,
-                  child: _SalesClientSidePanel(
-                    onClose: () => Navigator.of(dialogContext).pop(),
-                    onSaved: (client) =>
-                        Navigator.of(dialogContext).pop(client),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Material(
+                    color: Colors.transparent,
+                    elevation: 24,
+                    shadowColor: Colors.black.withOpacity(0.24),
+                    borderRadius: BorderRadius.circular(18),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: SizedBox(
+                        width: panelWidth,
+                        height: double.infinity,
+                        child: _SalesClientSidePanel(
+                          initialClient: initialClient,
+                          onClose: () => Navigator.of(dialogContext).pop(),
+                          onSaved: (client) =>
+                              Navigator.of(dialogContext).pop(client),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1823,11 +1904,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
     if (!mounted || result == null) return null;
 
     setState(() {
-      _clients.removeWhere((client) => client.id == result.id);
+      _clients.removeWhere((item) => item.id == result.id);
       _clients.add(result);
     });
-
-    await _applySelectedClient(result);
     return result;
   }
 
@@ -1854,12 +1933,149 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Future<void> _applyDefaultDocumentTypeForClient(ClientModel client) async {
     if (!mounted) return;
-    if (client.normalizedRnc != null &&
-        _isElectronicInvoicingFeatureEnabled) {
+    if (client.normalizedRnc != null && _isElectronicInvoicingFeatureEnabled) {
       await _setSalesDocumentType(_SalesDocumentType.creditoFiscal);
       return;
     }
     await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
+  }
+
+  static const Set<String> _defaultClientNameTokens = <String>{
+    'consumidorfinal',
+    'clientegeneral',
+    'clientepordefecto',
+    'clientedefecto',
+    'clientecontado',
+    'generico',
+    'generico01',
+  };
+
+  String _normalizeClientLookupValue(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[áàäâ]'), 'a')
+        .replaceAll(RegExp(r'[éèëê]'), 'e')
+        .replaceAll(RegExp(r'[íìïî]'), 'i')
+        .replaceAll(RegExp(r'[óòöô]'), 'o')
+        .replaceAll(RegExp(r'[úùüû]'), 'u')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  bool _isDefaultClientName(String? name) {
+    if (name == null) return false;
+    final token = _normalizeClientLookupValue(name);
+    return _defaultClientNameTokens.contains(token);
+  }
+
+  ClientModel? _findDefaultClientIn(Iterable<ClientModel> clients) {
+    for (final client in clients) {
+      if (_isDefaultClientName(client.nombre) && client.id != null) {
+        return client;
+      }
+    }
+    return null;
+  }
+
+  ClientModel? _resolveKnownClient(ClientModel? candidate) {
+    if (candidate == null) return null;
+    if (candidate.id != null) {
+      final byId = _clients
+          .where((item) => item.id == candidate.id)
+          .firstOrNull;
+      return byId ?? candidate;
+    }
+
+    final normalizedName = _normalizeClientLookupValue(candidate.nombre);
+    final normalizedPhone = candidate.normalizedPhone;
+    final normalizedRnc = candidate.normalizedRnc;
+
+    for (final client in _clients) {
+      if (client.id == null) continue;
+      if (normalizedRnc != null && client.normalizedRnc == normalizedRnc) {
+        return client;
+      }
+      if (normalizedPhone != null &&
+          client.normalizedPhone == normalizedPhone) {
+        return client;
+      }
+      if (_normalizeClientLookupValue(client.nombre) == normalizedName) {
+        return client;
+      }
+    }
+    return null;
+  }
+
+  void _upsertClientInMemory(ClientModel client) {
+    final currentIndex = _clients.indexWhere((item) => item.id == client.id);
+    setState(() {
+      if (currentIndex >= 0) {
+        _clients[currentIndex] = client;
+      } else {
+        _clients.add(client);
+      }
+    });
+  }
+
+  Future<ClientModel?> _resolveOrCreateDefaultClient() async {
+    final cachedDefault = _findDefaultClientIn(_clients);
+    if (cachedDefault != null) return cachedDefault;
+
+    final clients = await ClientsRepository.getAll();
+    if (!mounted) return null;
+
+    final repoDefault = _findDefaultClientIn(clients);
+    if (repoDefault != null) {
+      _upsertClientInMemory(repoDefault);
+      return repoDefault;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final fallback = ClientModel(
+      nombre: 'Consumidor Final',
+      telefono: '8090000000',
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+
+    try {
+      final newId = await ClientsRepository.create(fallback);
+      final created = await ClientsRepository.getById(newId);
+      if (!mounted) return created ?? fallback.copyWith(id: newId);
+      final resolved = created ?? fallback.copyWith(id: newId);
+      _upsertClientInMemory(resolved);
+      return resolved;
+    } catch (_) {
+      final refreshed = await ClientsRepository.getAll();
+      if (!mounted) return _findDefaultClientIn(refreshed);
+      final restored = _findDefaultClientIn(refreshed);
+      if (restored != null) {
+        _upsertClientInMemory(restored);
+      }
+      return restored;
+    }
+  }
+
+  Future<ClientModel?> _ensureDefaultCustomerSelected() async {
+    final selected = _resolveKnownClient(_currentCart.selectedClient);
+    if (selected != null && selected.id != null) {
+      if (!identical(selected, _currentCart.selectedClient) ||
+          _currentCart.name != selected.nombre) {
+        _updateCurrentCart(() {
+          _currentCart.selectedClient = selected;
+          _currentCart.name = selected.nombre;
+        });
+      }
+      _syncClientFieldText();
+      return selected;
+    }
+
+    final fallback = await _resolveOrCreateDefaultClient();
+    if (!mounted || fallback == null || fallback.id == null) return null;
+
+    await _applySelectedClient(fallback);
+    _syncClientFieldText();
+    return fallback;
   }
 
   Future<void> _showQuickItemDialog() async {
@@ -2028,6 +2244,17 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
   }
 
+  String _salesDocumentTypeShortLabel(_SalesDocumentType type) {
+    switch (type) {
+      case _SalesDocumentType.consumidorFinal:
+        return 'General';
+      case _SalesDocumentType.creditoFiscal:
+        return 'Fiscal';
+      case _SalesDocumentType.cotizacion:
+        return 'Cotizacion';
+    }
+  }
+
   void _openFacturaPage() {
     AuthzService.guardedAction(
       context,
@@ -2037,6 +2264,66 @@ class _SalesPageState extends ConsumerState<SalesPage>
       resourceType: 'route',
       resourceId: '/factura',
     )();
+  }
+
+  Future<void> _printRecentSale(legacy_sales.SaleModel sale) async {
+    final saleId = sale.id;
+    if (saleId == null) return;
+    try {
+      final settings = await PrinterSettingsRepository.getOrCreate();
+      if (settings.selectedPrinterName == null ||
+          settings.selectedPrinterName!.trim().isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('No hay impresora configurada'),
+            backgroundColor: status.warning,
+          ),
+        );
+        return;
+      }
+
+      final items = await SalesRepository.getItemsBySaleId(saleId);
+      final cashierName = await SessionManager.displayName() ?? 'Cajero';
+      final result = await UnifiedTicketPrinter.printSaleTicket(
+        sale: sale,
+        items: items,
+        cashierName: cashierName,
+        overrideCopies: 1,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.success
+                ? 'Ticket enviado a impresión'
+                : 'No se pudo imprimir el ticket',
+          ),
+          backgroundColor: result.success ? status.success : status.error,
+        ),
+      );
+    } catch (e, st) {
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: () => _printRecentSale(sale),
+        module: 'sales/recent_sales/print',
+      );
+    }
+  }
+
+  String _recentSaleTitle(legacy_sales.SaleModel sale) {
+    final code = sale.localCode.trim();
+    final prefix = sale.electronicInvoiceEnabled == 1 ? 'e-Factura' : 'Factura';
+    return '$prefix $code';
+  }
+
+  String _recentSaleStatusLabel(legacy_sales.SaleModel sale) {
+    return sale.electronicInvoiceEnabled == 1
+        ? 'Electrónica'
+        : 'No electrónica';
   }
 
   Future<T?> _showAnchoredPopover<T>({
@@ -2399,8 +2686,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
     await _showAnchoredPopover<void>(
       anchorContext: anchorContext,
-      width: 420,
-      maxHeight: 220,
+      width: 480,
+      maxHeight: 260,
       childBuilder: (dialogContext, close) {
         return StatefulBuilder(
           builder: (context, setPopoverState) {
@@ -2477,14 +2764,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
             }
 
             return Material(
-              color: scheme.surface,
-              elevation: 8,
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white,
+              elevation: 16,
+              borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: scheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2497,10 +2784,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                               color: salesDetailTextColor,
-                              height: 1.1,
+                              height: 1.2,
                             ),
                           ),
                         ),
@@ -2508,31 +2795,31 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           onTap: close,
                           borderRadius: BorderRadius.circular(8),
                           child: SizedBox(
-                            width: 30,
-                            height: 30,
+                            width: 34,
+                            height: 34,
                             child: Icon(
                               Icons.close,
-                              size: 18,
+                              size: 20,
                               color: salesDetailMutedTextColor,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Text(
                           'Cantidad',
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                             color: salesDetailMutedTextColor,
                           ),
                         ),
                         const Spacer(),
                         SizedBox(
-                          height: 30,
+                          height: 36,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -2545,14 +2832,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                       item.qty;
                                   setQty((currentQty - 1).clamp(1.0, 999999));
                                 },
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(8),
                                 child: Container(
-                                  width: 30,
-                                  height: 30,
+                                  width: 34,
+                                  height: 34,
                                   decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHighest
-                                        .withOpacity(0.55),
-                                    borderRadius: BorderRadius.circular(10),
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E8F0),
+                                    ),
                                   ),
                                   child: Icon(
                                     Icons.remove,
@@ -2565,8 +2854,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               ),
                               const SizedBox(width: 6),
                               SizedBox(
-                                width: 80,
-                                height: 30,
+                                width: 90,
+                                height: 36,
                                 child: TextField(
                                   controller: _inlineQtyController,
                                   focusNode: _inlineQtyFocusNode,
@@ -2581,8 +2870,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     ),
                                   ],
                                   style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
                                     color: salesDetailTextColor,
                                     height: 1.0,
                                   ),
@@ -2590,24 +2879,26 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     isDense: true,
                                     contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 10,
-                                      vertical: 9,
+                                      vertical: 10,
                                     ),
+                                    filled: true,
+                                    fillColor: const Color(0xFFF8FAFC),
                                     border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                      borderSide: BorderSide(
-                                        color: scheme.outlineVariant,
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFFE2E8F0),
                                       ),
                                     ),
                                     enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                      borderSide: BorderSide(
-                                        color: scheme.outlineVariant,
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFFE2E8F0),
                                       ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(8),
                                       borderSide: BorderSide(
-                                        color: scheme.primary.withOpacity(0.45),
+                                        color: scheme.primary.withOpacity(0.55),
                                       ),
                                     ),
                                   ),
@@ -2626,14 +2917,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                       item.qty;
                                   setQty((currentQty + 1).clamp(1.0, 999999));
                                 },
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(8),
                                 child: Container(
-                                  width: 30,
-                                  height: 30,
+                                  width: 34,
+                                  height: 34,
                                   decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHighest
-                                        .withOpacity(0.55),
-                                    borderRadius: BorderRadius.circular(10),
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E8F0),
+                                    ),
                                   ),
                                   child: Icon(
                                     Icons.add,
@@ -2649,14 +2942,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Text(
                           'Descuento',
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                             color: salesDetailMutedTextColor,
                           ),
                         ),
@@ -2669,18 +2962,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             },
                             borderRadius: BorderRadius.circular(8),
                             child: SizedBox(
-                              width: 30,
-                              height: 30,
+                              width: 34,
+                              height: 34,
                               child: Icon(
                                 Icons.close,
-                                size: 18,
+                                size: 20,
                                 color: scheme.error.withOpacity(0.85),
                               ),
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         ToggleButtons(
@@ -2695,12 +2988,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   : DiscountType.amount;
                             });
                           },
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                           constraints: const BoxConstraints(
-                            minHeight: 30,
-                            minWidth: 52,
+                            minHeight: 34,
+                            minWidth: 56,
                           ),
-                          borderColor: scheme.outlineVariant,
+                          borderColor: const Color(0xFFE2E8F0),
                           selectedBorderColor: scheme.primary.withOpacity(0.35),
                           color: salesDetailMutedTextColor,
                           selectedColor: scheme.primary,
@@ -2708,18 +3001,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           children: const [
                             Text(
                               '%',
-                              style: TextStyle(fontWeight: FontWeight.w800),
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                             Text(
                               'RD\$',
-                              style: TextStyle(fontWeight: FontWeight.w800),
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ],
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: SizedBox(
-                            height: 30,
+                            height: 36,
                             child: TextField(
                               controller: _inlineLineDiscountController,
                               focusNode: _inlineLineDiscountFocusNode,
@@ -2734,8 +3027,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               ],
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                                 color: salesDetailTextColor,
                                 height: 1.0,
                               ),
@@ -2743,24 +3036,26 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 10,
-                                  vertical: 9,
+                                  vertical: 10,
                                 ),
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide(
-                                    color: scheme.outlineVariant,
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE2E8F0),
                                   ),
                                 ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: BorderSide(
-                                    color: scheme.outlineVariant,
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE2E8F0),
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide(
-                                    color: scheme.primary.withOpacity(0.45),
+                                    color: scheme.primary.withOpacity(0.55),
                                   ),
                                 ),
                               ),
@@ -2772,13 +3067,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         const SizedBox(width: 8),
                         InkWell(
                           onTap: () => unawaited(applyAndClose()),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                           child: Container(
-                            width: 30,
-                            height: 30,
+                            width: 34,
+                            height: 34,
                             decoration: BoxDecoration(
                               color: scheme.primary.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: scheme.primary.withOpacity(0.22),
                               ),
@@ -2870,12 +3165,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   void _removeClient() {
-    final ticketIndex = _carts.indexOf(_currentCart);
     _updateCurrentCart(() {
       _currentCart.selectedClient = null;
-      _currentCart.name = 'Ticket ${ticketIndex + 1}';
     });
-    unawaited(_setSalesDocumentType(_SalesDocumentType.consumidorFinal));
+    unawaited(_ensureDefaultCustomerSelected());
   }
 
   Future<void> _addProductToCart(ProductModel product) async {
@@ -3508,6 +3801,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
         _rebuildQtyIndexForCurrentCart();
       });
 
+      unawaited(_loadRecentSales());
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -4089,6 +4384,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   final ticketPanelConstraints = _ticketPanelConstraints(
                     constraints.maxWidth,
                   );
+                  final recentPanelWidth = ticketPanelConstraints.maxWidth;
+                  final showRecentSalesInline =
+                      _showRecentSalesPanel &&
+                      constraints.maxWidth >= (recentPanelWidth * 2) + 760;
                   const panelGap = 0.0;
                   final theme = Theme.of(context);
                   final salesProducts = theme.extension<SalesProductsTheme>();
@@ -4235,9 +4534,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                                                             if (index ==
                                                                                 0) {
                                                                               return Padding(
-                                                                                padding: const EdgeInsets.symmetric(
-                                                                                  horizontal: _productHorizontalMargin,
-                                                                                  vertical: _productVerticalMargin,
+                                                                                padding: const EdgeInsets.fromLTRB(
+                                                                                  _productHorizontalMargin,
+                                                                                  _productVerticalMargin +
+                                                                                      1,
+                                                                                  _productHorizontalMargin,
+                                                                                  _productVerticalMargin,
                                                                                 ),
                                                                                 child: Align(
                                                                                   alignment: Alignment.topCenter,
@@ -4252,9 +4554,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                                                               );
                                                                             }
                                                                             return Padding(
-                                                                              padding: const EdgeInsets.symmetric(
-                                                                                horizontal: _productHorizontalMargin,
-                                                                                vertical: _productVerticalMargin,
+                                                                              padding: const EdgeInsets.fromLTRB(
+                                                                                _productHorizontalMargin,
+                                                                                _productVerticalMargin +
+                                                                                    1,
+                                                                                _productHorizontalMargin,
+                                                                                _productVerticalMargin,
                                                                               ),
                                                                               child: Align(
                                                                                 alignment: Alignment.topCenter,
@@ -4321,10 +4626,57 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 ),
                               ),
                             ),
+                            if (showRecentSalesInline)
+                              SizedBox(width: panelGap),
+                            if (showRecentSalesInline)
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minWidth: recentPanelWidth,
+                                  maxWidth: recentPanelWidth,
+                                ),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: const Color(0xFFCBD5E1),
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
+                                  child: _buildRecentSalesPanel(),
+                                ),
+                              ),
                           ],
                         ),
                       ),
                       if (showCashClosedOverlay) _buildCashClosedOverlay(),
+                      if (_showRecentSalesPanel && !showRecentSalesInline)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: SizedBox(
+                            width: recentPanelWidth,
+                            child: Material(
+                              color: Colors.white,
+                              elevation: 16,
+                              shadowColor: Colors.black.withOpacity(0.14),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: Color(0xFFCBD5E1),
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+                                child: _buildRecentSalesPanel(),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   );
                 }
@@ -5221,9 +5573,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Widget _buildCategorySidebar() {
-    const collapsedWidth = 56.0;
-    const expandedWidth = 228.0;
-    const avatarLaneWidth = 56.0;
+    const collapsedWidth = 64.0;
+    const expandedWidth = 236.0;
+    const avatarLaneWidth = 60.0;
     final hasCategories = _categories.isNotEmpty;
     if (!hasCategories) {
       return const SizedBox.shrink();
@@ -5422,12 +5774,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
         const textSize = 16.0;
         const borderColor = Color(0xFF1A56DB);
         const buttonColor = Color(0xFF1A56DB);
+        const barcodeButtonColor = Color(0xFF111827);
         const hoverColor = Color(0xFF1443B0);
 
         Widget buildIconButton({
-          required IconData icon,
+          required Widget icon,
           required VoidCallback onTap,
           required BorderRadius borderRadius,
+          required Color backgroundColor,
         }) {
           return Material(
             color: Colors.transparent,
@@ -5440,10 +5794,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 width: iconButtonWidth,
                 height: barHeight,
                 decoration: BoxDecoration(
-                  color: buttonColor,
+                  color: backgroundColor,
                   borderRadius: borderRadius,
                 ),
-                child: Icon(icon, color: Colors.white, size: iconSize),
+                child: Center(child: icon),
               ),
             ),
           );
@@ -5470,12 +5824,31 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     child: Row(
                       children: [
                         buildIconButton(
-                          icon: Icons.inventory_2_rounded,
+                          icon: Image.asset(
+                            'assets/imagen/iconos/lupa.png',
+                            width: iconSize,
+                            height: iconSize,
+                            fit: BoxFit.contain,
+                            color: Colors.white,
+                          ),
                           onTap: () => _searchFocusNode.requestFocus(),
                           borderRadius: const BorderRadius.only(
                             topLeft: Radius.circular(4),
                             bottomLeft: Radius.circular(4),
                           ),
+                          backgroundColor: buttonColor,
+                        ),
+                        buildIconButton(
+                          icon: Image.asset(
+                            'assets/imagen/iconos/lectura-de-codigo-de-barras.png',
+                            width: iconSize,
+                            height: iconSize,
+                            fit: BoxFit.contain,
+                            color: Colors.white,
+                          ),
+                          onTap: () => _searchFocusNode.requestFocus(),
+                          borderRadius: BorderRadius.zero,
+                          backgroundColor: barcodeButtonColor,
                         ),
                         Expanded(
                           child: SizedBox(
@@ -5709,1039 +6082,2353 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
- Widget _buildInvoicePanelHeader() {
-  const headerBorderColor = Color(0xFFE2E8F0);
-  const fullposBlue = Color(0xFF1A56DB);
-  const softBlueBg = Color(0xFFDBE5FF);
+  Widget _buildRecentSalesPanel() {
+    const dividerColor = Color(0xFFE2E8F0);
 
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      // ── FULLPOS Brand Control Header ───────────────────────────
-      Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(bottom: BorderSide(color: headerBorderColor)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 3,
-              color: fullposBlue,
-            ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildRecentSalesPanelHeader(),
+        const SizedBox(height: 10),
+        const Divider(height: 1, color: dividerColor),
+        _buildRecentSalesTableHeader(),
+        Expanded(child: _buildRecentSalesTable()),
+        const Divider(height: 1, color: dividerColor),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: SizedBox(
+            height: 46,
+            child: OutlinedButton(
+              onPressed: _openFacturaPage,
+              style: OutlinedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF0F172A),
+                side: const BorderSide(color: Color(0xFFCBD5E1), width: 1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: softBlueBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.receipt_long_outlined,
-                      size: 18,
-                      color: fullposBlue,
+                  Text(
+                    'Ir al historial de ventas',
+                    style: TextStyle(
+                      fontSize: 14.2,
+                      fontWeight: FontWeight.w500,
+                      height: 1.1,
                     ),
                   ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Factura de venta',
-                          style: TextStyle(
-                            color: salesDetailTextColor,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w500,
-                            height: 1.2,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Controla cliente, numeración y líneas desde este panel',
-                          style: TextStyle(
-                            color: salesDetailMutedTextColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w400,
-                            height: 1.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 6),
-
-                  // Botón rayo: Descuento rápido
-                  _buildQuickDiscountButton(),
-
-                  const SizedBox(width: 6),
-
-                  // Botón único: Guardar como cotización
-                  _buildQuoteHeaderIconAction(
-                    id: 'save-quote-header',
-                    icon: Icons.description_outlined,
-                    tooltip: 'Documento de venta',
-                    onTap: _currentCart.items.isEmpty
-                        ? null
-                        : () => unawaited(_saveQuoteFromHeaderAndShowDialog()),
-                  ),
+                  SizedBox(width: 10),
+                  Icon(Icons.arrow_forward_rounded, size: 18),
                 ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentSalesPanelHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: const Color(0xFFDFF6F3),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.receipt_long_outlined,
+              size: 18,
+              color: Color(0xFF16A39A),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Ventas recientes',
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 17.5,
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+              ),
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _closeRecentSalesPanel,
+              borderRadius: BorderRadius.circular(10),
+              child: const SizedBox(
+                width: 34,
+                height: 34,
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: Color(0xFF475569),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentSalesTableHeader() {
+    const textStyle = TextStyle(
+      color: Color(0xFF0F172A),
+      fontSize: 13,
+      fontWeight: FontWeight.w500,
+      height: 1.1,
+    );
+
+    Widget cell(
+      String label, {
+      required int flex,
+      Alignment alignment = Alignment.centerLeft,
+      bool showRightDivider = true,
+    }) {
+      return Expanded(
+        flex: flex,
+        child: Container(
+          alignment: alignment,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: showRightDivider
+                ? const Border(
+                    right: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                  )
+                : null,
+          ),
+          child: Text(label, style: textStyle),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          cell('Venta', flex: 38),
+          cell('Total', flex: 26),
+          cell('Estado', flex: 34),
+          cell(
+            '',
+            flex: 12,
+            alignment: Alignment.center,
+            showRightDivider: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentSalesTable() {
+    if (_isLoadingRecentSales) {
+      return const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        ),
+      );
+    }
+
+    if (_recentSales.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(
+                Icons.receipt_long_outlined,
+                size: 40,
+                color: Color(0xFFB8C4D1),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'No hay ventas recientes',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      itemCount: _recentSales.length,
+      separatorBuilder: (_, index) =>
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+      itemBuilder: (context, index) {
+        return _buildRecentSaleRow(_recentSales[index], index);
+      },
+    );
+  }
+
+  Widget _buildRecentSaleRow(legacy_sales.SaleModel sale, int index) {
+    final saleId = sale.id ?? -1;
+    final isHovered = _hoveredRecentSaleIds.contains(saleId);
+    final isHighlighted = index == 0;
+    final backgroundColor = isHovered
+        ? const Color(0xFFEAF7FB)
+        : (isHighlighted ? const Color(0xFFF1FBFC) : Colors.white);
+
+    return MouseRegion(
+      onEnter: (_) =>
+          _setHoverStateDeferred(_hoveredRecentSaleIds, saleId, true),
+      onExit: (_) =>
+          _setHoverStateDeferred(_hoveredRecentSaleIds, saleId, false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        color: backgroundColor,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 38,
+              child: Text(
+                _recentSaleTitle(sale),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 13.8,
+                  fontWeight: FontWeight.w500,
+                  height: 1.15,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 26,
+              child: Text(
+                CurrencyDisplay.format(sale.total),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 13.8,
+                  fontWeight: FontWeight.w500,
+                  height: 1.15,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 34,
+              child: Text(
+                _recentSaleStatusLabel(sale),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w400,
+                  height: 1.15,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 12,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: sale.id == null
+                        ? null
+                        : () => unawaited(_printRecentSale(sale)),
+                    borderRadius: BorderRadius.circular(10),
+                    child: const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Icon(
+                        Icons.print_outlined,
+                        size: 18,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
-
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(child: _buildPanelDocumentTypeDropdown()),
-                  const SizedBox(width: 10),
-                  Expanded(child: _buildPanelClientControl()),
-                  const SizedBox(width: 8),
-                  SizedBox(width: 118, child: _buildPanelNewClientButton()),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    ],
-  );
-}
-
-Widget _buildQuickDiscountButton() {
-  const fullposBlue = Color(0xFF1A56DB);
-  const softBlueBg = Color(0xFFDBE5FF);
-  const borderColor = Color(0xFFBFD1FF);
-
-  return Tooltip(
-    message: 'Descuento rápido',
-    waitDuration: const Duration(milliseconds: 350),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _showQuickDiscountMenu(),
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: softBlueBg,
-            shape: BoxShape.circle,
-            border: Border.all(color: borderColor, width: 1),
-          ),
-          child: const Icon(
-            Icons.flash_on_rounded,
-            size: 18,
-            color: fullposBlue,
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-void _showQuickDiscountMenu() {
-  if (_currentCart.items.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Agrega productos antes de aplicar descuento.'),
-        backgroundColor: status.warning,
-      ),
     );
-    return;
-  }
-  final screenSize = MediaQuery.sizeOf(context);
-  final panelWidth = _ticketPanelConstraints(screenSize.width).maxWidth;
-  final discountController = TextEditingController(
-    text: (_currentCart.discountTotalValue ?? 0) > 0
-        ? (_currentCart.discountTotalValue!).toStringAsFixed(2)
-        : '',
-  );
-  final subtotal = _currentCart.calculateSubtotal();
-  final currentIsPercent = _currentCart.discountTotalType == 'percent';
-
-  showGeneralDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (dialogContext, animation, secondaryAnimation) {
-      var isPercent = currentIsPercent;
-      return StatefulBuilder(
-        builder: (context, setLocalState) {
-          Widget quickChip(String label, double percent) {
-            return InkWell(
-              onTap: () {
-                isPercent = true;
-                discountController.text = percent.toStringAsFixed(0);
-                setLocalState(() {});
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Ink(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF2FF),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBFD1F7)),
-                ),
-                child: Text(
-                  '$label%',
-                  style: const TextStyle(
-                    color: Color(0xFF1A56DB),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            );
-          }
-
-          Future<void> applyDiscount() async {
-            final value = double.tryParse(discountController.text.trim()) ?? 0;
-            if (value <= 0) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Indica un descuento válido.'),
-                  backgroundColor: status.error,
-                ),
-              );
-              return;
-            }
-            if (isPercent) {
-              if (value > 100) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text(
-                      'El porcentaje no puede ser mayor a 100%.',
-                    ),
-                    backgroundColor: status.error,
-                  ),
-                );
-                return;
-              }
-              _updateCurrentCart(() {
-                _currentCart.discountTotalType = 'percent';
-                _currentCart.discountTotalValue = value;
-              });
-            } else {
-              if (value >= subtotal) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text(
-                      'El monto debe ser menor al total de la venta.',
-                    ),
-                    backgroundColor: status.error,
-                  ),
-                );
-                return;
-              }
-              _updateCurrentCart(() {
-                _currentCart.discountTotalType = 'amount';
-                _currentCart.discountTotalValue = value;
-              });
-            }
-            if (mounted) Navigator.of(dialogContext).pop();
-          }
-
-          return Material(
-            color: Colors.transparent,
-            child: Stack(
-              children: [
-                Positioned(
-                  right: 12,
-                  top: 92,
-                  width: math.min(320.0, panelWidth - 18),
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFDCE5F0)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.12),
-                          blurRadius: 30,
-                          offset: const Offset(0, 16),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.flash_on_rounded,
-                              color: Color(0xFF1A56DB),
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                'Descuento',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF17324D),
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.of(dialogContext).pop(),
-                              icon: const Icon(Icons.close),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDiscountPanelTypeChip(
-                                label: 'Porcentaje',
-                                selected: isPercent,
-                                onTap: () => setLocalState(() {
-                                  isPercent = true;
-                                }),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildDiscountPanelTypeChip(
-                                label: 'Monto fijo',
-                                selected: !isPercent,
-                                onTap: () => setLocalState(() {
-                                  isPercent = false;
-                                }),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            quickChip('5', 5),
-                            quickChip('10', 10),
-                            quickChip('15', 15),
-                            quickChip('20', 20),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: discountController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d*\.?\d{0,2}'),
-                            ),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: isPercent
-                                ? 'Porcentaje de descuento'
-                                : 'Monto de descuento',
-                            prefixText: isPercent ? '' : 'RD\$ ',
-                            suffixText: isPercent ? '%' : null,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Total actual: ${CurrencyDisplay.format(_currentCart.calculateTotal(), decimalDigits: 2)}',
-                          style: const TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            if ((_currentCart.discountTotalValue ?? 0) > 0)
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    _removeQuickDiscount();
-                                    Navigator.of(dialogContext).pop();
-                                  },
-                                  child: const Text('Quitar descuento'),
-                                ),
-                              ),
-                            if ((_currentCart.discountTotalValue ?? 0) > 0)
-                              const SizedBox(width: 8),
-                            Expanded(
-                              child: FilledButton(
-                                onPressed: applyDiscount,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1A56DB),
-                                ),
-                                child: const Text('Aplicar descuento'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    },
-    transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.12, 0),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
-      );
-    },
-  ).whenComplete(discountController.dispose);
-}
-
-Widget _buildDiscountPanelTypeChip({
-  required String label,
-  required bool selected,
-  required VoidCallback onTap,
-}) {
-  return InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(12),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 140),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFFEAF2FF) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: selected
-              ? const Color(0xFF1A56DB)
-              : const Color(0xFFD7E0EA),
-        ),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: selected
-              ? const Color(0xFF1A56DB)
-              : const Color(0xFF5E7186),
-          fontSize: 12.5,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    ),
-  );
-}
-
-void _removeQuickDiscount() {
-  _updateCurrentCart(() {
-    _currentCart.discountTotalType = null;
-    _currentCart.discountTotalValue = null;
-  });
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: const Text('Descuento eliminado.'),
-      backgroundColor: status.success,
-    ),
-  );
-}
-
-Widget _buildQuoteHeaderIconAction({
-  required String id,
-  required IconData icon,
-  required String tooltip,
-  required VoidCallback? onTap,
-}) {
-  final isHovered = _hoveredTicketHeaderActions.contains(id);
-  final isDisabled = onTap == null;
-
-  const brandColor = Color(0xFF1A56DB);
-  const softBrandBg = Color(0xFFDBE5FF);
-  const borderColor = Color(0xFFBFD1FF);
-
-  return MouseRegion(
-    cursor: isDisabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
-    onEnter: (_) {
-      if (!isDisabled) {
-        _setHoverStateDeferred(_hoveredTicketHeaderActions, id, true);
-      }
-    },
-    onExit: (_) {
-      if (!isDisabled) {
-        _setHoverStateDeferred(_hoveredTicketHeaderActions, id, false);
-      }
-    },
-    child: Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 350),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 140),
-        opacity: isDisabled ? 0.45 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(12),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isHovered ? softBrandBg : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isHovered ? brandColor : borderColor,
-                  width: 1,
-                ),
-                boxShadow: [
-                  if (isHovered && !isDisabled)
-                    BoxShadow(
-                      color: brandColor.withOpacity(0.14),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                ],
-              ),
-              child: Icon(
-                icon,
-                size: 24,
-                color: isDisabled ? const Color(0xFF94A3B8) : brandColor,
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-Future<void> _saveQuoteFromHeaderAndShowDialog() async {
-  if (_currentCart.items.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Agrega productos antes de guardar una cotización.'),
-        backgroundColor: status.warning,
-      ),
-    );
-    return;
   }
 
-  final confirmed = await _confirmQuoteClientBeforeSaving();
-  if (!mounted || confirmed != true) return;
+  Widget _buildInvoicePanelHeader() {
+    const headerBorderColor = Color(0xFFE2E8F0);
+    const fullposBlue = Color(0xFF1A56DB);
+    const softBlueBg = Color(0xFFDBE5FF);
 
-  final result = await _presentDialog<QuoteDialogResult>(
-    builder: (context) => QuoteDialog(
-      items: _currentCart.items,
-      selectedClient: _currentCart.selectedClient,
-      itbisEnabled: _currentCart.itbisEnabled,
-      itbisRate: _currentCart.itbisRate,
-      discountTotal:
-          _currentCart.discount + _currentCart.calculateTotalDiscount(),
-      ticketName: _currentCart.name,
-    ),
-  );
-
-  if (!mounted || result?.saved != true) return;
-
-  await _deleteCurrentCartFromDatabase();
-
-  if (!mounted) return;
-
-  setState(() {
-    _currentCart.clear();
-    _selectedCartItemIndex = null;
-    _rebuildQtyIndexForCurrentCart();
-  });
-
-  await _showQuoteSavedActionsDialog(result?.quoteId);
-}
-
-Future<void> _showQuoteSavedActionsDialog(int? quoteId) async {
-  await _showQuoteSavedOptionsDialog(quoteId: quoteId);
-}
-
-Future<void> _openSavedQuotePdfPreview(int quoteId) async {
-  final quoteDetail = await QuotesRepository().getQuoteById(quoteId);
-  if (!mounted) return;
-
-  if (quoteDetail == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('No se pudo cargar la cotización guardada.'),
-        backgroundColor: status.error,
-      ),
-    );
-    return;
-  }
-
-  final business = await SettingsRepository.getBusinessInfo();
-  if (!mounted) return;
-
-  await QuotePrinter.showPreview(
-    context: context,
-    quote: quoteDetail.quote,
-    items: quoteDetail.items,
-    clientName: quoteDetail.clientName,
-    clientPhone: quoteDetail.clientPhone,
-    clientRnc: quoteDetail.clientRnc,
-    business: business,
-  );
-}
-
-Future<bool?> _confirmQuoteClientBeforeSaving() async {
-  final client = _currentCart.selectedClient;
-  final rawClientName = client?.name;
-  final rawClientPhone = client?.phone;
-
-  final clientName = rawClientName?.trim().isNotEmpty == true
-      ? rawClientName!.trim()
-      : 'Consumidor Final';
-
-  final clientPhone = rawClientPhone?.trim().isNotEmpty == true
-      ? rawClientPhone!.trim()
-      : null;
-
-  const brandColor = Color(0xFF1A56DB);
-  const textColor = Color(0xFF0F172A);
-  const mutedTextColor = Color(0xFF64748B);
-  const borderColor = Color(0xFFE2E8F0);
-
-  return showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) {
-      return Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Container(
-          width: 460,
-          decoration: BoxDecoration(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── FULLPOS Brand Control Header ───────────────────────────
+        Container(
+          decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.16),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
+            border: Border(bottom: BorderSide(color: headerBorderColor)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
+              Container(height: 3, color: fullposBlue),
+
               Padding(
-                padding: const EdgeInsets.fromLTRB(28, 22, 20, 18),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Confirmar cliente',
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w500,
-                          height: 1.2,
-                        ),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => Navigator.of(dialogContext).pop(false),
-                      borderRadius: BorderRadius.circular(100),
-                      child: const SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: Icon(
-                          Icons.close_rounded,
-                          size: 24,
-                          color: Color(0xFF94A3B8),
-                        ),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
                 ),
-              ),
-
-              const Divider(height: 1, color: borderColor),
-
-              // Body
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
-                child: Column(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
-                      width: 54,
-                      height: 54,
+                      width: 32,
+                      height: 32,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFDBE5FF),
-                        borderRadius: BorderRadius.circular(16),
+                        color: softBlueBg,
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
-                        Icons.person_outline_rounded,
-                        color: brandColor,
-                        size: 30,
+                        Icons.receipt_long_outlined,
+                        size: 18,
+                        color: fullposBlue,
                       ),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(width: 12),
 
-                    const Text(
-                      '¿Deseas guardar esta cotización para este cliente?',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: borderColor,
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.account_circle_outlined,
-                              color: brandColor,
-                              size: 24,
+                          Text(
+                            'Factura de venta',
+                            style: TextStyle(
+                              color: salesDetailTextColor,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                              letterSpacing: -0.3,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  clientName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: textColor,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  clientPhone ?? 'Sin teléfono registrado',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: mutedTextColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 3),
+                          Text(
+                            'Controla cliente, numeración y líneas desde este panel',
+                            style: TextStyle(
+                              color: salesDetailMutedTextColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              height: 1.3,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(width: 6),
 
-                    Text(
-                      client == null
-                          ? 'No hay un cliente específico seleccionado. Se usará Consumidor Final.'
-                          : 'Verifica que el cliente sea correcto antes de continuar.',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: mutedTextColor,
-                        fontSize: 12,
-                        height: 1.35,
-                      ),
+                    // Botón rayo: Descuento rápido
+                    _buildQuickDiscountButton(),
+
+                    const SizedBox(width: 6),
+
+                    // Botón único: Guardar como cotización
+                    _buildQuoteHeaderIconAction(
+                      id: 'save-quote-header',
+                      icon: Icons.description_outlined,
+                      tooltip: 'Convertir venta en cotización PDF',
+                      onTap:
+                          _currentCart.items.isEmpty || _isQuotePdfFlowRunning
+                          ? null
+                          : () =>
+                                unawaited(_saveQuoteFromHeaderAndShowDialog()),
                     ),
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
 
-              const Divider(height: 1, color: borderColor),
-
-              // Footer
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
-                child: Row(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildPanelDocumentTypeDropdown(),
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(false),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(42),
-                          foregroundColor: textColor,
-                          side: const BorderSide(
-                            color: Color(0xFFCBD5E1),
-                            width: 1,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        child: const Text('Cancelar'),
+                    Expanded(child: _buildPanelClientControl()),
+                    const SizedBox(width: 8),
+                    SizedBox(width: 110, child: _buildPanelNewClientButton()),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickDiscountButton() {
+    const fullposBlue = Color(0xFF1A56DB);
+    const softBlueBg = Color(0xFFDBE5FF);
+    const borderColor = Color(0xFFBFD1FF);
+    const size = 36.0;
+
+    return Tooltip(
+      message: 'Descuento rápido',
+      waitDuration: const Duration(milliseconds: 350),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showQuickDiscountMenu(),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: softBlueBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor, width: 1),
+            ),
+            child: const Icon(
+              Icons.flash_on_rounded,
+              size: 18,
+              color: fullposBlue,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvoiceTypeHeaderButton() {
+    final currentType = _currentSalesDocumentType;
+    final label = _salesDocumentTypeShortLabel(currentType);
+
+    return Builder(
+      builder: (context) => _buildHeaderIconWithLabel(
+        id: 'invoice-type-header',
+        tooltip: 'Tipo de factura',
+        label: label,
+        icon: Image.asset(
+          'assets/imagen/iconos/fiscal.png',
+          width: 16,
+          height: 16,
+          fit: BoxFit.contain,
+        ),
+        onTap: () => _showInvoiceTypeHeaderMenu(context),
+      ),
+    );
+  }
+
+  Widget _buildHeaderIconWithLabel({
+    required String id,
+    required String tooltip,
+    required Widget icon,
+    required String label,
+    required VoidCallback? onTap,
+  }) {
+    final isHovered = _hoveredTicketHeaderActions.contains(id);
+    final isDisabled = onTap == null;
+
+    const brandColor = Color(0xFF1A56DB);
+    const softBrandBg = Color(0xFFDBE5FF);
+    const borderColor = Color(0xFFBFD1FF);
+
+    return MouseRegion(
+      cursor: isDisabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      onEnter: (_) {
+        if (!isDisabled) {
+          _setHoverStateDeferred(_hoveredTicketHeaderActions, id, true);
+        }
+      },
+      onExit: (_) {
+        if (!isDisabled) {
+          _setHoverStateDeferred(_hoveredTicketHeaderActions, id, false);
+        }
+      },
+      child: Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 350),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 140),
+          opacity: isDisabled ? 0.45 : 1,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isHovered ? softBrandBg : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isHovered ? brandColor : borderColor,
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    if (isHovered && !isDisabled)
+                      BoxShadow(
+                        color: brandColor.withOpacity(0.14),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(true),
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(42),
-                          backgroundColor: brandColor,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        child: const Text('Confirmar'),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    icon,
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: brandColor,
+                        height: 1.0,
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showInvoiceTypeHeaderMenu(BuildContext context) {
+    final currentType = _currentSalesDocumentType;
+    final availableTypes = <_SalesDocumentType>[
+      _SalesDocumentType.consumidorFinal,
+      if (_isElectronicInvoicingFeatureEnabled)
+        _SalesDocumentType.creditoFiscal,
+      _SalesDocumentType.cotizacion,
+    ];
+
+    unawaited(
+      _showAnchoredPopover<void>(
+        anchorContext: context,
+        width: 260,
+        maxHeight: 220,
+        childBuilder: (dialogContext, close) {
+          return _buildProfessionalDropdownSurface(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shrinkWrap: true,
+              children: [
+                _buildDropdownGroupHeader('Documentos'),
+                for (final type in availableTypes)
+                  _buildDropdownOptionTile(
+                    title: _salesDocumentTypeLabel(type),
+                    selected: type == currentType,
+                    onTap: () {
+                      close();
+                      unawaited(_setSalesDocumentType(type));
+                    },
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showQuickDiscountMenu() {
+    if (_currentCart.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Agrega productos antes de aplicar descuento.'),
+          backgroundColor: status.warning,
+        ),
       );
-    },
-  );
-}
+      return;
+    }
+    final screenSize = MediaQuery.sizeOf(context);
+    final panelWidth = _ticketPanelConstraints(screenSize.width).maxWidth;
+    final discountController = TextEditingController(
+      text: (_currentCart.discountTotalValue ?? 0) > 0
+          ? (_currentCart.discountTotalValue!).toStringAsFixed(2)
+          : '',
+    );
+    final subtotal = _currentCart.calculateSubtotal();
+    final currentIsPercent = _currentCart.discountTotalType == 'percent';
 
-Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
-  if (!mounted) return;
-
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) {
-      return Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Container(
-          width: 430,
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.14),
-                blurRadius: 26,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDBE5FF),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.request_quote_outlined,
-                  color: Color(0xFF1A56DB),
-                  size: 30,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              const Text(
-                'Cotización guardada',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  height: 1.15,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              const Text(
-                'La cotización fue creada correctamente. Puedes verla, enviarla o salir.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
-                  height: 1.35,
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton.icon(
-                  onPressed: quoteId == null
-                      ? null
-                      : () {
-                          Navigator.of(dialogContext).pop();
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!mounted) return;
-                            unawaited(_openSavedQuotePdfPreview(quoteId));
-                          });
-                        },
-                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                  label: const Text('Ver cotización'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A56DB),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        var isPercent = currentIsPercent;
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            Widget quickChip(String label, double percent) {
+              return InkWell(
+                onTap: () {
+                  isPercent = true;
+                  discountController.text = percent.toStringAsFixed(0);
+                  setLocalState(() {});
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF2FF),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFBFD1F7)),
+                  ),
+                  child: Text(
+                    '$label%',
+                    style: const TextStyle(
+                      color: Color(0xFF1A56DB),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-              ),
+              );
+            }
 
-              const SizedBox(height: 10),
-
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop();
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text(
-                          'La opción de enviar PDF se conectará al módulo de envío.',
-                        ),
-                        backgroundColor: status.info,
+            Future<void> applyDiscount() async {
+              final value =
+                  double.tryParse(discountController.text.trim()) ?? 0;
+              if (value <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Indica un descuento válido.'),
+                    backgroundColor: status.error,
+                  ),
+                );
+                return;
+              }
+              if (isPercent) {
+                if (value > 100) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                        'El porcentaje no puede ser mayor a 100%.',
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.send_outlined, size: 20),
-                  label: const Text('Enviar cotización PDF'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF1A56DB),
-                    side: const BorderSide(
-                      color: Color(0xFFBFD1FF),
-                      width: 1,
+                      backgroundColor: status.error,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                  );
+                  return;
+                }
+                _updateCurrentCart(() {
+                  _currentCart.discountTotalType = 'percent';
+                  _currentCart.discountTotalValue = value;
+                });
+              } else {
+                if (value >= subtotal) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                        'El monto debe ser menor al total de la venta.',
+                      ),
+                      backgroundColor: status.error,
                     ),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                  );
+                  return;
+                }
+                _updateCurrentCart(() {
+                  _currentCart.discountTotalType = 'amount';
+                  _currentCart.discountTotalValue = value;
+                });
+              }
+              if (mounted) Navigator.of(dialogContext).pop();
+            }
+
+            return Material(
+              color: Colors.transparent,
+              child: Stack(
+                children: [
+                  Positioned(
+                    right: 12,
+                    top: 92,
+                    width: math.min(320.0, panelWidth - 18),
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFDCE5F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.12),
+                            blurRadius: 30,
+                            offset: const Offset(0, 16),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.flash_on_rounded,
+                                color: Color(0xFF1A56DB),
+                              ),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Descuento',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF17324D),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(),
+                                icon: const Icon(Icons.close),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildDiscountPanelTypeChip(
+                                  label: 'Porcentaje',
+                                  selected: isPercent,
+                                  onTap: () => setLocalState(() {
+                                    isPercent = true;
+                                  }),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildDiscountPanelTypeChip(
+                                  label: 'Monto fijo',
+                                  selected: !isPercent,
+                                  onTap: () => setLocalState(() {
+                                    isPercent = false;
+                                  }),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              quickChip('5', 5),
+                              quickChip('10', 10),
+                              quickChip('15', 15),
+                              quickChip('20', 20),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: discountController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d{0,2}'),
+                              ),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: isPercent
+                                  ? 'Porcentaje de descuento'
+                                  : 'Monto de descuento',
+                              prefixText: isPercent ? '' : 'RD\$ ',
+                              suffixText: isPercent ? '%' : null,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Total actual: ${CurrencyDisplay.format(_currentCart.calculateTotal(), decimalDigits: 2)}',
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              if ((_currentCart.discountTotalValue ?? 0) > 0)
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () {
+                                      _removeQuickDiscount();
+                                      Navigator.of(dialogContext).pop();
+                                    },
+                                    child: const Text('Quitar descuento'),
+                                  ),
+                                ),
+                              if ((_currentCart.discountTotalValue ?? 0) > 0)
+                                const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: applyDiscount,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF1A56DB),
+                                  ),
+                                  child: const Text('Aplicar descuento'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
+            );
+          },
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.12, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    ).whenComplete(discountController.dispose);
+  }
 
-              const SizedBox(height: 10),
-
-              SizedBox(
-                width: double.infinity,
-                height: 42,
-                child: TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF64748B),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  child: const Text('Salir'),
-                ),
-              ),
-            ],
+  Widget _buildDiscountPanelTypeChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFEAF2FF) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? const Color(0xFF1A56DB) : const Color(0xFFD7E0EA),
           ),
         ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: selected ? const Color(0xFF1A56DB) : const Color(0xFF5E7186),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _removeQuickDiscount() {
+    _updateCurrentCart(() {
+      _currentCart.discountTotalType = null;
+      _currentCart.discountTotalValue = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Descuento eliminado.'),
+        backgroundColor: status.success,
+      ),
+    );
+  }
+
+  Widget _buildQuoteHeaderIconAction({
+    required String id,
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+  }) {
+    final isHovered = _hoveredTicketHeaderActions.contains(id);
+    final isDisabled = onTap == null;
+
+    const brandColor = Color(0xFF1A56DB);
+    const softBrandBg = Color(0xFFDBE5FF);
+    const borderColor = Color(0xFFBFD1FF);
+
+    return MouseRegion(
+      cursor: isDisabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      onEnter: (_) {
+        if (!isDisabled) {
+          _setHoverStateDeferred(_hoveredTicketHeaderActions, id, true);
+        }
+      },
+      onExit: (_) {
+        if (!isDisabled) {
+          _setHoverStateDeferred(_hoveredTicketHeaderActions, id, false);
+        }
+      },
+      child: Tooltip(
+        message: tooltip,
+        waitDuration: const Duration(milliseconds: 350),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 140),
+          opacity: isDisabled ? 0.45 : 1,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isHovered ? softBrandBg : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isHovered ? brandColor : borderColor,
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    if (isHovered && !isDisabled)
+                      BoxShadow(
+                        color: brandColor.withOpacity(0.14),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                  ],
+                ),
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: isDisabled ? const Color(0xFF94A3B8) : brandColor,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveQuoteFromHeaderAndShowDialog() async {
+    return _handleSaveSaleAsQuotationPdf();
+    // ignore: dead_code
+    if (_currentCart.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Agrega productos antes de guardar una cotización.',
+          ),
+          backgroundColor: status.warning,
+        ),
       );
-    },
-  );
-}
+      return;
+    }
+
+    final confirmed = await _confirmQuoteClientBeforeSaving();
+    if (!mounted || confirmed != true) return;
+
+    final result = await _presentDialog<QuoteDialogResult>(
+      builder: (context) => QuoteDialog(
+        items: _currentCart.items,
+        selectedClient: _currentCart.selectedClient,
+        itbisEnabled: _currentCart.itbisEnabled,
+        itbisRate: _currentCart.itbisRate,
+        discountTotal:
+            _currentCart.discount + _currentCart.calculateTotalDiscount(),
+        ticketName: _currentCart.name,
+      ),
+    );
+
+    if (!mounted || result?.saved != true) return;
+
+    await _deleteCurrentCartFromDatabase();
+
+    if (!mounted) return;
+
+    setState(() {
+      _currentCart.clear();
+      _selectedCartItemIndex = null;
+      _rebuildQtyIndexForCurrentCart();
+    });
+
+    await _showQuoteSavedActionsDialog(result?.quoteId);
+  }
+
+  Future<void> _showQuoteSavedActionsDialog(int? quoteId) async {
+    await _showQuoteSavedOptionsDialog(quoteId: quoteId);
+  }
+
+  Future<void> _openSavedQuotePdfPreview(int quoteId) async {
+    final quoteDetail = await QuotesRepository().getQuoteById(quoteId);
+    if (!mounted) return;
+
+    if (quoteDetail == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No se pudo cargar la cotización guardada.'),
+          backgroundColor: status.error,
+        ),
+      );
+      return;
+    }
+
+    final business = await SettingsRepository.getBusinessInfo();
+    if (!mounted) return;
+
+    await QuotePrinter.showPreview(
+      context: context,
+      quote: quoteDetail.quote,
+      items: quoteDetail.items,
+      clientName: quoteDetail.clientName,
+      clientPhone: quoteDetail.clientPhone,
+      clientRnc: quoteDetail.clientRnc,
+      business: business,
+    );
+  }
+
+  Future<bool?> _confirmQuoteClientBeforeSaving() async {
+    final client = _currentCart.selectedClient;
+    final rawClientName = client?.name;
+    final rawClientPhone = client?.phone;
+
+    final clientName = rawClientName?.trim().isNotEmpty == true
+        ? rawClientName!.trim()
+        : 'Consumidor Final';
+
+    final clientPhone = rawClientPhone?.trim().isNotEmpty == true
+        ? rawClientPhone!.trim()
+        : null;
+
+    const brandColor = Color(0xFF1A56DB);
+    const textColor = Color(0xFF0F172A);
+    const mutedTextColor = Color(0xFF64748B);
+    const borderColor = Color(0xFFE2E8F0);
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: Container(
+            width: 460,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.16),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 22, 20, 18),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Confirmar cliente',
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w500,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => Navigator.of(dialogContext).pop(false),
+                        borderRadius: BorderRadius.circular(100),
+                        child: const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 24,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(height: 1, color: borderColor),
+
+                // Body
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDBE5FF),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.person_outline_rounded,
+                          color: brandColor,
+                          size: 30,
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      const Text(
+                        '¿Deseas guardar esta cotización para este cliente?',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          height: 1.35,
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: borderColor, width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.account_circle_outlined,
+                                color: brandColor,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    clientName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: textColor,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    clientPhone ?? 'Sin teléfono registrado',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: mutedTextColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        client == null
+                            ? 'No hay un cliente específico seleccionado. Se usará Consumidor Final.'
+                            : 'Verifica que el cliente sea correcto antes de continuar.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: mutedTextColor,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(height: 1, color: borderColor),
+
+                // Footer
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(42),
+                            foregroundColor: textColor,
+                            side: const BorderSide(
+                              color: Color(0xFFCBD5E1),
+                              width: 1,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(42),
+                            backgroundColor: brandColor,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          child: const Text('Confirmar'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: Container(
+            width: 430,
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 26,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDBE5FF),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.request_quote_outlined,
+                    color: Color(0xFF1A56DB),
+                    size: 30,
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                const Text(
+                  'Cotización guardada',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                const Text(
+                  'La cotización fue creada correctamente. Puedes verla, enviarla o salir.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    height: 1.35,
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: quoteId == null
+                        ? null
+                        : () {
+                            Navigator.of(dialogContext).pop();
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted) return;
+                              unawaited(_openSavedQuotePdfPreview(quoteId));
+                            });
+                          },
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                    label: const Text('Ver cotización'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1A56DB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'La opción de enviar PDF se conectará al módulo de envío.',
+                          ),
+                          backgroundColor: status.info,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.send_outlined, size: 20),
+                    label: const Text('Enviar cotización PDF'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1A56DB),
+                      side: const BorderSide(
+                        color: Color(0xFFBFD1FF),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 42,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF64748B),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: const Text('Salir'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleSaveSaleAsQuotationPdf() async {
+    if (_isQuotePdfFlowRunning || !mounted) return;
+
+    if (_currentCart.items.isEmpty) {
+      await _showQuoteStatusCard(
+        title: 'Venta incompleta',
+        message: 'Agrega al menos un producto antes de crear una cotización.',
+        icon: Icons.inventory_2_outlined,
+        accentColor: const Color(0xFFF59E0B),
+        primaryLabel: 'Entendido',
+      );
+      return;
+    }
+
+    setState(() => _isQuotePdfFlowRunning = true);
+
+    var progressVisible = false;
+
+    Future<void> hideProgress() async {
+      if (!mounted || !progressVisible) return;
+      progressVisible = false;
+      Navigator.of(context, rootNavigator: true).pop();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+
+    try {
+      final selectedClient = await _ensureDefaultCustomerSelected();
+      if (!mounted) return;
+
+      if (selectedClient == null || selectedClient.id == null) {
+        await _showQuoteStatusCard(
+          title: 'Cliente no disponible',
+          message: 'No se pudo asignar un cliente por defecto para continuar.',
+          icon: Icons.person_off_outlined,
+          accentColor: const Color(0xFFDC2626),
+          primaryLabel: 'Cerrar',
+        );
+        return;
+      }
+
+      final confirmed = await _showConvertToQuotationConfirmationDialog(
+        selectedClient,
+      );
+      if (!mounted || confirmed != true) return;
+
+      progressVisible = true;
+      unawaited(_showQuotationLoadingDialog());
+
+      final quoteDetail = await _createQuotationPdfFlow(
+        selectedClient: selectedClient,
+      );
+
+      try {
+        await _prepareQuotationPdf(quoteDetail);
+      } catch (_) {
+        await hideProgress();
+        final action = await _showQuotationPdfFlowWarningDialog(quoteDetail);
+        if (!mounted) return;
+        if (action == _QuoteFlowDialogAction.goToQuotation) {
+          context.go('/quotes-list');
+        }
+        return;
+      }
+
+      await hideProgress();
+      await _clearCurrentCartAfterQuotationPdfSuccess();
+      if (!mounted) return;
+
+      final action = await _showQuotationCreatedSuccessDialog(quoteDetail);
+      if (!mounted) return;
+
+      switch (action) {
+        case _QuoteFlowDialogAction.viewPdf:
+          final quoteId = quoteDetail.quote.id;
+          if (quoteId != null) {
+            await _openSavedQuotePdfPreview(quoteId);
+          }
+          break;
+        case _QuoteFlowDialogAction.goToQuotation:
+          context.go('/quotes-list');
+          break;
+        case _QuoteFlowDialogAction.backToSales:
+        case null:
+          break;
+      }
+    } catch (e, st) {
+      await hideProgress();
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _handleSaveSaleAsQuotationPdf,
+        module: 'sales/quote/pdf_flow',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isQuotePdfFlowRunning = false);
+      }
+    }
+  }
+
+  Future<QuoteDetailDto> _createQuotationPdfFlow({
+    required ClientModel selectedClient,
+  }) async {
+    final quoteItems = _currentCart.items
+        .map(
+          (item) => QuoteItemModel(
+            quoteId: 0,
+            productId: item.productId,
+            productCode: item.productCodeSnapshot,
+            productName: item.productNameSnapshot,
+            description: item.productNameSnapshot,
+            qty: item.qty,
+            price: item.unitPrice,
+            unitPrice: item.unitPrice,
+            cost: item.purchasePriceSnapshot,
+            discountLine: item.discountLine,
+            totalLine: (item.qty * item.unitPrice) - item.discountLine,
+          ),
+        )
+        .toList(growable: false);
+
+    final quoteId = await QuotesRepository().saveQuote(
+      clientId: selectedClient.id!,
+      userId: await SessionManager.userId(),
+      ticketName: _currentCart.name,
+      subtotal: _currentCart.calculateSubtotalAfterDiscount(),
+      itbisEnabled: _currentCart.itbisEnabled,
+      itbisRate: _currentCart.itbisRate,
+      itbisAmount: _currentCart.calculateItbis(),
+      discountTotal:
+          _currentCart.discount + _currentCart.calculateTotalDiscount(),
+      total: _currentCart.calculateTotal(),
+      items: quoteItems,
+    );
+
+    final quoteDetail = await QuotesRepository().getQuoteById(quoteId);
+    if (quoteDetail == null) {
+      throw StateError('No se pudo cargar la cotización creada.');
+    }
+    return quoteDetail;
+  }
+
+  Future<void> _prepareQuotationPdf(QuoteDetailDto quoteDetail) async {
+    final business = await SettingsRepository.getBusinessInfo();
+    await QuotePrinter.generatePdf(
+      quote: quoteDetail.quote,
+      items: quoteDetail.items,
+      clientName: quoteDetail.clientName,
+      clientPhone: quoteDetail.clientPhone,
+      clientRnc: quoteDetail.clientRnc,
+      business: business,
+    );
+  }
+
+  Future<void> _clearCurrentCartAfterQuotationPdfSuccess() async {
+    await _deleteCurrentCartFromDatabase();
+    if (!mounted) return;
+
+    setState(() {
+      _currentCart.clear();
+      _selectedCartItemIndex = null;
+      _rebuildQtyIndexForCurrentCart();
+    });
+
+    await _ensureDefaultCustomerSelected();
+  }
+
+  Future<bool?> _showConvertToQuotationConfirmationDialog(
+    ClientModel client,
+  ) async {
+    final clientName = client.name.trim().isNotEmpty
+        ? client.name.trim()
+        : 'Consumidor Final';
+    final clientDocument = client.documentLabel;
+    final clientPhone = client.phone?.trim().isNotEmpty == true
+        ? client.phone!.trim()
+        : null;
+
+    const brandColor = Color(0xFF1A56DB);
+    const textColor = Color(0xFF0F172A);
+    const mutedTextColor = Color(0xFF64748B);
+    const borderColor = Color(0xFFE2E8F0);
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: Container(
+            width: 460,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.16),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 24, 20, 18),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Convertir venta en cotización',
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => Navigator.of(dialogContext).pop(false),
+                        borderRadius: BorderRadius.circular(100),
+                        child: const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 24,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: borderColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDBE5FF),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.request_quote_outlined,
+                          color: brandColor,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '¿Seguro que deseas pasar esta venta a cotización?',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'La cotización se guardará primero y luego se preparará el PDF con el formato profesional del sistema.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: mutedTextColor,
+                          fontSize: 12.5,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: borderColor, width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.account_circle_outlined,
+                                color: brandColor,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    clientName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: textColor,
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    clientDocument ??
+                                        clientPhone ??
+                                        'Cliente general',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: mutedTextColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: borderColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(42),
+                            foregroundColor: textColor,
+                            side: const BorderSide(
+                              color: Color(0xFFCBD5E1),
+                              width: 1,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(42),
+                            backgroundColor: brandColor,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text('Convertir'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<_QuoteFlowDialogAction?> _showQuotationCreatedSuccessDialog(
+    QuoteDetailDto quoteDetail,
+  ) async {
+    if (!mounted) return null;
+
+    final quote = quoteDetail.quote;
+    final quoteLabel = quote.id == null
+        ? 'Pendiente'
+        : 'COT-${quote.id!.toString().padLeft(5, '0')}';
+
+    return showDialog<_QuoteFlowDialogAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: Container(
+            width: 430,
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 26,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDBE5FF),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.request_quote_outlined,
+                    color: Color(0xFF1A56DB),
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Cotización creada correctamente',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'La venta fue convertida en cotización y el PDF ya está listo.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildQuotePdfSummaryRow('Cotización', quoteLabel),
+                      const SizedBox(height: 8),
+                      _buildQuotePdfSummaryRow(
+                        'Cliente',
+                        quoteDetail.clientName,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildQuotePdfSummaryRow(
+                        'Total',
+                        CurrencyDisplay.format(quote.total),
+                        emphasize: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_QuoteFlowDialogAction.viewPdf),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                    label: const Text('Ver PDF'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1A56DB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_QuoteFlowDialogAction.goToQuotation),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                    label: const Text('Ir a cotización'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1A56DB),
+                      side: const BorderSide(
+                        color: Color(0xFFBFD1FF),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 42,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_QuoteFlowDialogAction.backToSales),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF64748B),
+                    ),
+                    child: const Text('Volver a ventas'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQuotePdfSummaryRow(
+    String label,
+    String value, {
+    bool emphasize = false,
+  }) {
+    final valueStyle = TextStyle(
+      color: const Color(0xFF0F172A),
+      fontSize: emphasize ? 14.5 : 13.2,
+      fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
+      height: 1.2,
+    );
+    return Row(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: valueStyle,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showQuotationLoadingDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
+            ),
+            child: Container(
+              width: 360,
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.14),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDBE5FF),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.8,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF1A56DB),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Creando cotización y preparando PDF',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Estamos procesando la venta con el formato profesional de cotización.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12.8,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showQuoteStatusCard({
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color accentColor,
+    required String primaryLabel,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: Container(
+            width: 420,
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: accentColor, size: 30),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13.2,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accentColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(primaryLabel),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<_QuoteFlowDialogAction?> _showQuotationPdfFlowWarningDialog(
+    QuoteDetailDto quoteDetail,
+  ) async {
+    if (!mounted) return null;
+    final quoteLabel = quoteDetail.quote.id == null
+        ? 'Pendiente'
+        : 'COT-${quoteDetail.quote.id!.toString().padLeft(5, '0')}';
+
+    return showDialog<_QuoteFlowDialogAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          child: Container(
+            width: 430,
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFF59E0B),
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Cotización creada con advertencia',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'La cotización $quoteLabel fue guardada, pero el PDF no pudo generarse en este momento.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13.2,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_QuoteFlowDialogAction.goToQuotation),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                    label: const Text('Ir a cotización'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1A56DB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 42,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(
+                      dialogContext,
+                    ).pop(_QuoteFlowDialogAction.backToSales),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF64748B),
+                    ),
+                    child: const Text('Volver a ventas'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildPanelDocumentTypeDropdown() {
     final currentType = _currentSalesDocumentType;
@@ -6793,97 +8480,89 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
     return CompositedTransformTarget(
       link: _clientSearchLayerLink,
-      child: Container(
+      child: SizedBox(
         key: _clientSearchFieldKey,
-        height: 48,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: _clientSearchFocusNode.hasFocus
-                ? const Color(0xFF1A56DB)
-                : const Color(0xFFD6E0EA),
-            width: 1,
+        height: 40,
+        child: TextField(
+          controller: _clientSearchController,
+          focusNode: _clientSearchFocusNode,
+          onTap: _openClientSearchOverlay,
+          onChanged: (value) {
+            _clientSearchQuery = value;
+            if (_clientSearchOverlay == null) {
+              _openClientSearchOverlay();
+            }
+            _clientSearchOverlay?.markNeedsBuild();
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            hintText: 'Buscar o seleccionar cliente',
+            hintStyle: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 13.4,
+              fontWeight: FontWeight.w500,
+              height: 1.1,
+            ),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 9,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFF1A56DB),
+                width: 1.2,
+              ),
+            ),
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 110,
+              maxWidth: 110,
+            ),
+            suffixIcon: SizedBox(
+              width: 110,
+              child: Row(
+                children: [
+                  if (client != null)
+                    _buildClientFieldIcon(
+                      icon: Icons.edit_outlined,
+                      onTap: () => unawaited(_showEditClientFromSales(client)),
+                    ),
+                  if (client != null)
+                    _buildClientFieldIcon(
+                      icon: Icons.close_rounded,
+                      onTap: () {
+                        _removeClient();
+                        _clientSearchController.clear();
+                        _clientSearchQuery = '';
+                        _clientSearchOverlay?.markNeedsBuild();
+                      },
+                    ),
+                  const Spacer(),
+                  _buildClientFieldIcon(
+                    icon: Icons.keyboard_arrow_down_rounded,
+                    onTap: _openClientSearchOverlay,
+                  ),
+                  const SizedBox(width: 6),
+                ],
+              ),
+            ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF0F172A).withOpacity(0.02),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _clientSearchController,
-                focusNode: _clientSearchFocusNode,
-                onTap: _openClientSearchOverlay,
-                onChanged: (value) {
-                  _clientSearchQuery = value;
-                  if (_clientSearchOverlay == null) {
-                    _openClientSearchOverlay();
-                  }
-                  _clientSearchOverlay?.markNeedsBuild();
-                },
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  labelText: 'Cliente',
-                  floatingLabelBehavior: FloatingLabelBehavior.always,
-                  hintText: 'Buscar o seleccionar cliente',
-                  labelStyle: TextStyle(
-                    color: Color(0xFF6B7A92),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  hintStyle: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                style: TextStyle(
-                  color: salesDetailTextColor,
-                  fontSize: 14.0,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            if (client != null) ...[
-              _buildInlineClientIcon(
-                icon: Icons.edit_outlined,
-                onTap: _showClientPicker,
-              ),
-              const SizedBox(width: 4),
-              _buildInlineClientIcon(
-                icon: Icons.close_rounded,
-                onTap: () {
-                  _removeClient();
-                  _clientSearchController.clear();
-                  _clientSearchQuery = '';
-                  _clientSearchOverlay?.markNeedsBuild();
-                },
-              ),
-            ],
-            const SizedBox(width: 2),
-            InkWell(
-              onTap: () {
-                _clientSearchFocusNode.requestFocus();
-                _openClientSearchOverlay();
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: salesDetailMutedTextColor,
-                ),
-              ),
-            ),
-          ],
+          style: TextStyle(
+            color: salesDetailTextColor,
+            fontSize: 13.8,
+            fontWeight: FontWeight.w500,
+            height: 1.1,
+          ),
         ),
       ),
     );
@@ -6904,28 +8583,78 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
           cedula.contains(normalizedQuery);
     }).toList();
 
+    Widget compactTile({
+      required String title,
+      String? subtitle,
+      required bool selected,
+      required VoidCallback onTap,
+      Widget? trailing,
+    }) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            color: selected ? const Color(0xFFF5F8FE) : Colors.transparent,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.2,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: const Color(0xFF17324D),
+                    ),
+                  ),
+                ),
+                if (subtitle != null && subtitle.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 11.8,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF6B7C8E),
+                      ),
+                    ),
+                  ),
+                ],
+                if (trailing != null) ...[const SizedBox(width: 6), trailing],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return _buildProfessionalDropdownSurface(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 320),
+        constraints: const BoxConstraints(maxHeight: 240),
         child: Material(
           color: Colors.transparent,
           child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 4),
             shrinkWrap: true,
             itemCount: filteredClients.isEmpty ? 1 : filteredClients.length + 1,
-            separatorBuilder: (context, index) => const Divider(
-              height: 1,
-              indent: 14,
-              endIndent: 14,
-            ),
+            separatorBuilder: (context, index) =>
+                const Divider(height: 1, indent: 12, endIndent: 12),
             itemBuilder: (context, index) {
               if (filteredClients.isEmpty) {
                 return const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   child: Text(
                     'No se encontraron clientes',
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 12.2,
                       color: Color(0xFF6B7C8E),
                       fontWeight: FontWeight.w500,
                     ),
@@ -6935,7 +8664,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
               if (index == 0) {
                 final selected = client == null;
-                return _buildDropdownOptionTile(
+                return compactTile(
                   title: 'Consumidor Final',
                   subtitle: 'Cliente general',
                   selected: selected,
@@ -6950,19 +8679,18 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
               }
 
               final option = filteredClients[index - 1];
-              final optionMeta =
-                  (option.telefono?.trim().isNotEmpty ?? false)
-                      ? option.telefono!.trim()
-                      : ((option.rnc?.trim().isNotEmpty ?? false)
-                          ? option.rnc!.trim()
-                          : ((option.cedula?.trim().isNotEmpty ?? false)
+              final optionMeta = (option.telefono?.trim().isNotEmpty ?? false)
+                  ? option.telefono!.trim()
+                  : ((option.rnc?.trim().isNotEmpty ?? false)
+                        ? option.rnc!.trim()
+                        : ((option.cedula?.trim().isNotEmpty ?? false)
                               ? option.cedula!.trim()
                               : ''));
               final selected = option.id == client?.id;
 
-              return _buildDropdownOptionTile(
+              return compactTile(
                 title: option.nombre,
-                subtitle: optionMeta.isEmpty ? null : '($optionMeta)',
+                subtitle: optionMeta.isEmpty ? null : optionMeta,
                 selected: selected,
                 onTap: () async {
                   _closeClientSearchOverlay();
@@ -6974,14 +8702,14 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                 trailing: InkWell(
                   onTap: () async {
                     _closeClientSearchOverlay();
-                    await _showClientPicker();
+                    await _showEditClientFromSales(option);
                   },
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                   child: const Padding(
-                    padding: EdgeInsets.all(6),
+                    padding: EdgeInsets.all(4),
                     child: Icon(
                       Icons.edit_outlined,
-                      size: 18,
+                      size: 16,
                       color: Color(0xFF64748B),
                     ),
                   ),
@@ -6994,170 +8722,9 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
     );
   }
 
-  Future<void> _showClientDropdownPopover(
-    BuildContext fieldContext,
-    ClientModel? client,
-  ) async {
-    final searchController = TextEditingController();
-    var query = '';
-
-    try {
-      await _showAnchoredPopover<void>(
-        anchorContext: fieldContext,
-        width: 340,
-        maxHeight: 340,
-        childBuilder: (dialogContext, close) {
-          return StatefulBuilder(
-            builder: (context, setPopoverState) {
-              final normalizedQuery = query.trim().toLowerCase();
-              final filteredClients = _clients.where((option) {
-                if (normalizedQuery.isEmpty) return true;
-                final name = option.nombre.toLowerCase();
-                final phone = option.telefono?.toLowerCase() ?? '';
-                final rnc = option.rnc?.toLowerCase() ?? '';
-                final cedula = option.cedula?.toLowerCase() ?? '';
-                return name.contains(normalizedQuery) ||
-                    phone.contains(normalizedQuery) ||
-                    rnc.contains(normalizedQuery) ||
-                    cedula.contains(normalizedQuery);
-              }).toList();
-
-              return _buildProfessionalDropdownSurface(
-                child: SizedBox(
-                  height: 340,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                        child: TextField(
-                          controller: searchController,
-                          autofocus: true,
-                          onChanged: (value) {
-                            setPopoverState(() => query = value);
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Buscar cliente por nombre',
-                            prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                            isDense: true,
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFDCE5F0),
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFDCE5F0),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFF1A56DB),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      Expanded(
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shrinkWrap: true,
-                          itemCount: filteredClients.length + 1,
-                          separatorBuilder: (context, index) =>
-                              const Divider(height: 1, indent: 14, endIndent: 14),
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              final selected = client == null;
-                              return _buildDropdownOptionTile(
-                                title: 'Consumidor Final',
-                                subtitle: 'Cliente general',
-                                selected: selected,
-                                onTap: () {
-                                  close();
-                                  _removeClient();
-                                },
-                              );
-                            }
-
-                            final option = filteredClients[index - 1];
-                            final optionMeta =
-                                (option.telefono?.trim().isNotEmpty ?? false)
-                                ? option.telefono!.trim()
-                                : ((option.rnc?.trim().isNotEmpty ?? false)
-                                      ? option.rnc!.trim()
-                                      : ((option.cedula?.trim().isNotEmpty ?? false)
-                                            ? option.cedula!.trim()
-                                            : ''));
-                            final selected = option.id == client?.id;
-                            return _buildDropdownOptionTile(
-                              title: option.nombre,
-                              subtitle: optionMeta.isEmpty ? null : '($optionMeta)',
-                              selected: selected,
-                              onTap: () async {
-                                close();
-                                await _applySelectedClient(option);
-                              },
-                              trailing: InkWell(
-                                onTap: () async {
-                                  close();
-                                  await _showClientPicker();
-                                },
-                                borderRadius: BorderRadius.circular(10),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(6),
-                                  child: Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      searchController.dispose();
-    }
-  }
-
-  Widget _buildInlineClientIcon({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: 24,
-        height: 24,
-        child: Center(
-          child: Icon(icon, size: 16, color: salesDetailMutedTextColor),
-        ),
-      ),
-    );
-  }
-
   Widget _buildPanelNewClientButton() {
     return SizedBox(
-      height: 44,
+      height: 48,
       child: ElevatedButton.icon(
         onPressed: _showCreateClientFromSales,
         style: ElevatedButton.styleFrom(
@@ -7165,7 +8732,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
           foregroundColor: const Color(0xFF1A56DB),
           elevation: 0,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
             side: const BorderSide(color: Color(0xFFC7D2FE), width: 1),
@@ -7174,7 +8741,24 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
         icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
         label: const Text(
           'Nuevo',
-          style: TextStyle(fontSize: 12.8, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 12.6, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClientFieldIcon({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 28,
+        height: 28,
+        child: Center(
+          child: Icon(icon, size: 18, color: salesDetailMutedTextColor),
         ),
       ),
     );
@@ -7243,10 +8827,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                   ],
                 ),
               ),
-              if (suffix != null) ...[
-                const SizedBox(width: 6),
-                suffix,
-              ],
+              if (suffix != null) ...[const SizedBox(width: 6), suffix],
               const SizedBox(width: 4),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
@@ -7265,13 +8846,13 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFDCE5F0)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD9E3EF)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.10),
-              blurRadius: 24,
-              offset: const Offset(0, 14),
+              color: const Color(0xFF0F172A).withOpacity(0.07),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
@@ -7304,6 +8885,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
   Widget _buildDropdownOptionTile({
     required String title,
     String? subtitle,
+    String? trailingText,
     required bool selected,
     required VoidCallback onTap,
     Widget? trailing,
@@ -7312,44 +8894,65 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          color: selected ? const Color(0xFFF4F8FF) : Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: selected ? const Color(0xFFF5F8FE) : Colors.transparent,
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w600,
-                        color: const Color(0xFF17324D),
-                      ),
-                    ),
-                    if (subtitle != null && subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF6B7C8E),
-                        ),
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.05,
+                    color: const Color(0xFF17324D),
+                  ),
                 ),
               ),
+              if (trailingText != null && trailingText.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      trailingText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 12.4,
+                        fontWeight: FontWeight.w400,
+                        height: 1.05,
+                        color: Color(0xFF6B7C8E),
+                      ),
+                    ),
+                  ),
+                ),
+              ] else if (subtitle != null && subtitle.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 12.2,
+                        fontWeight: FontWeight.w400,
+                        height: 1.05,
+                        color: Color(0xFF6B7C8E),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (selected)
                 const Padding(
                   padding: EdgeInsets.only(left: 10),
@@ -7359,10 +8962,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                     color: Color(0xFF1A56DB),
                   ),
                 ),
-              if (trailing != null) ...[
-                const SizedBox(width: 8),
-                trailing,
-              ],
+              if (trailing != null) ...[const SizedBox(width: 8), trailing],
             ],
           ),
         ),
@@ -7730,13 +9330,21 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       child: isNewItem
           ? _AnimatedNewItemHighlight(
               child: _buildCartItemContent(
-                item, index, rowBackground, rowDividerColor,
-                showActions, subtotal,
+                item,
+                index,
+                rowBackground,
+                rowDividerColor,
+                showActions,
+                subtotal,
               ),
             )
           : _buildCartItemContent(
-              item, index, rowBackground, rowDividerColor,
-              showActions, subtotal,
+              item,
+              index,
+              rowBackground,
+              rowDividerColor,
+              showActions,
+              subtotal,
             ),
     );
   }
@@ -7758,6 +9366,13 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
             _setHoverStateDeferred(_hoveredCartItemIndexes, index, false),
         child: InkWell(
           onTap: () => setState(() => _selectedCartItemIndex = index),
+          onDoubleTap: () => unawaited(
+            _showItemEditPopover(
+              rowContext,
+              index,
+              focus: _InlineItemFocus.qty,
+            ),
+          ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -7892,43 +9507,43 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                              _buildCartRowActionButton(
-                                id: 'edit-$index',
-                                icon: Image.asset(
-                                  'assets/imagen/iconos/editar-texto.png',
-                                  width: 22,
-                                  height: 22,
-                                  fit: BoxFit.contain,
-                                ),
-                                tooltip: 'Editar',
-                                onTap: () => unawaited(
-                                  _showItemEditPopover(
-                                    rowContext,
-                                    index,
-                                    focus: _InlineItemFocus.qty,
+                                _buildCartRowActionButton(
+                                  id: 'edit-$index',
+                                  icon: Image.asset(
+                                    'assets/imagen/iconos/editar-texto.png',
+                                    width: 22,
+                                    height: 22,
+                                    fit: BoxFit.contain,
+                                  ),
+                                  tooltip: 'Editar',
+                                  onTap: () => unawaited(
+                                    _showItemEditPopover(
+                                      rowContext,
+                                      index,
+                                      focus: _InlineItemFocus.qty,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              _buildCartRowActionButton(
-                                id: 'delete-$index',
-                                icon: Image.asset(
-                                  'assets/imagen/iconos/eliminar.png',
-                                  width: 22,
-                                  height: 22,
-                                  fit: BoxFit.contain,
+                                const SizedBox(width: 10),
+                                _buildCartRowActionButton(
+                                  id: 'delete-$index',
+                                  icon: Image.asset(
+                                    'assets/imagen/iconos/eliminar.png',
+                                    width: 22,
+                                    height: 22,
+                                    fit: BoxFit.contain,
+                                  ),
+                                  tooltip: 'Eliminar',
+                                  onTap: () => _updateCurrentCart(() {
+                                    if (_inlineEditCartItemIndex == index) {
+                                      _inlineEditCartItemIndex = null;
+                                    }
+                                    if (_selectedCartItemIndex == index) {
+                                      _selectedCartItemIndex = null;
+                                    }
+                                    _currentCart.removeItem(index);
+                                  }),
                                 ),
-                                tooltip: 'Eliminar',
-                                onTap: () => _updateCurrentCart(() {
-                                  if (_inlineEditCartItemIndex == index) {
-                                    _inlineEditCartItemIndex = null;
-                                  }
-                                  if (_selectedCartItemIndex == index) {
-                                    _selectedCartItemIndex = null;
-                                  }
-                                  _currentCart.removeItem(index);
-                                }),
-                              ),
                               ],
                             ),
                           ),
@@ -8056,32 +9671,38 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-          ),
-          child: Builder(
-            builder: (context) {
-              final grossSubtotal = _currentCart.calculateGrossSubtotal();
-              final discountsCombined = _currentCart
-                  .calculateTotalDiscountsCombined();
-              final itbisAmount = _currentCart.itbisEnabled
-                  ? _currentCart.calculateItbis()
-                  : 0.0;
-              final subtotalAmount = (grossSubtotal - discountsCombined).clamp(
-                0.0,
-                double.infinity,
-              );
-              final itbisLabel =
-                  'ITBIS (${(_currentCart.itbisRate * 100).toStringAsFixed(2)}%)';
+        Builder(
+          builder: (context) {
+            final grossSubtotal = _currentCart.calculateGrossSubtotal();
+            final discountsCombined = _currentCart
+                .calculateTotalDiscountsCombined();
+            final shouldShowFiscalTax = _currentCart.electronicInvoiceEnabled;
+            final itbisAmount = shouldShowFiscalTax
+                ? _currentCart.calculateItbis()
+                : 0.0;
+            final subtotalAmount = (grossSubtotal - discountsCombined).clamp(
+              0.0,
+              double.infinity,
+            );
+            final itbisLabel =
+                'ITBIS (${(_currentCart.itbisRate * 100).toStringAsFixed(2)}%)';
+            final showSummary = discountsCombined > 0 || shouldShowFiscalTax;
 
-              return Column(
+            if (!showSummary) {
+              return const SizedBox.shrink();
+            }
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: const Color(0xFFE2E8F0))),
+              ),
+              child: Column(
                 children: [
                   _buildSummaryRow('Subtotal', subtotalAmount, false),
                   if (discountsCombined > 0) ...[
-                    const SizedBox(height: 7),
+                    const SizedBox(height: 10),
                     _buildSummaryRow(
                       'Descuento',
                       -discountsCombined,
@@ -8089,22 +9710,22 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                       color: scheme.error,
                     ),
                   ],
-                  if (_currentCart.itbisEnabled) ...[
-                    const SizedBox(height: 7),
+                  if (shouldShowFiscalTax) ...[
+                    const SizedBox(height: 10),
                     _buildSummaryRow(itbisLabel, itbisAmount, false),
                   ],
                 ],
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: Row(
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 58,
+                  height: 68,
                   child: ElevatedButton(
                     onPressed: canSell
                         ? () => _processPayment(
@@ -8114,9 +9735,9 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                         : null,
                     style:
                         ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          padding: const EdgeInsets.symmetric(horizontal: 22),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 0,
                           shadowColor: Colors.transparent,
@@ -8140,15 +9761,15 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(bottom: 1),
                           child: Text(
                             'Cobrar',
                             style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
-                              height: 1.0,
-                              letterSpacing: -0.2,
+                              fontSize: 21,
+                              fontWeight: FontWeight.w600,
+                              height: 1.1,
+                              letterSpacing: -0.15,
                             ),
                           ),
                         ),
@@ -8157,10 +9778,10 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
                           child: Text(
                             totalLabel,
                             style: const TextStyle(
-                              fontSize: 20.5,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
-                              letterSpacing: -0.35,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w500,
+                              height: 1.08,
+                              letterSpacing: -0.2,
                             ),
                           ),
                         ),
@@ -8172,20 +9793,137 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
               const SizedBox(width: 8),
               Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  onTap: _openFacturaPage,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.receipt_long_outlined,
-                      size: 20,
-                      color: Colors.white,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  onEnter: (_) {
+                    if (!mounted) return;
+                    setState(() => _isFacturaActionHovered = true);
+                  },
+                  onExit: (_) {
+                    if (!mounted) return;
+                    setState(() {
+                      _isFacturaActionHovered = false;
+                      _isFacturaActionPressed = false;
+                    });
+                  },
+                  child: GestureDetector(
+                    onTapDown: (_) {
+                      if (!mounted) return;
+                      setState(() => _isFacturaActionPressed = true);
+                    },
+                    onTapCancel: () {
+                      if (!mounted) return;
+                      setState(() => _isFacturaActionPressed = false);
+                    },
+                    onTapUp: (_) {
+                      if (!mounted) return;
+                      setState(() => _isFacturaActionPressed = false);
+                    },
+                    child: AnimatedScale(
+                      scale: _isFacturaActionPressed
+                          ? 0.94
+                          : (_isFacturaActionHovered ? 1.04 : 1),
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                            width: 62,
+                            height: 62,
+                            decoration: BoxDecoration(
+                              color: _showRecentSalesPanel
+                                  ? const Color(0xFFEFF6FF)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color:
+                                    (_showRecentSalesPanel ||
+                                        _isFacturaActionHovered)
+                                    ? const Color(0xFF1A56DB)
+                                    : const Color(0xFFCBD5E1),
+                                width: 1,
+                              ),
+                              boxShadow:
+                                  (_isFacturaActionHovered ||
+                                      _showRecentSalesPanel)
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFF2563EB,
+                                        ).withOpacity(0.12),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ]
+                                  : const [],
+                            ),
+                            child: InkWell(
+                              onTap: () => unawaited(_toggleRecentSalesPanel()),
+                              borderRadius: BorderRadius.circular(12),
+                              splashColor: const Color(
+                                0xFF2563EB,
+                              ).withOpacity(0.10),
+                              highlightColor: Colors.transparent,
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: AnimatedSlide(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                  offset: _isFacturaActionHovered
+                                      ? const Offset(0, -0.02)
+                                      : Offset.zero,
+                                  child: Image.asset(
+                                    'assets/imagen/iconos/factura.png',
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_recentSales.isNotEmpty)
+                            Positioned(
+                              top: -4,
+                              right: -4,
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 180),
+                                opacity: _showRecentSalesPanel ? 0.72 : 1,
+                                child: Container(
+                                  constraints: const BoxConstraints(
+                                    minWidth: 18,
+                                    minHeight: 18,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF16A39A),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 1.4,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _recentSales.length > 9
+                                        ? '9+'
+                                        : '${_recentSales.length}',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -8269,21 +10007,23 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: isTotal ? 12.5 : 12,
+              fontSize: isTotal ? 14.5 : 13.2,
               fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
               color: labelColor,
-              height: 1.0,
+              height: 1.18,
+              letterSpacing: 0.1,
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 14),
         Text(
           CurrencyDisplay.format(amount, decimalDigits: 2),
           style: TextStyle(
-            fontSize: isTotal ? 13.5 : 12.5,
-            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w700,
+            fontSize: isTotal ? 17 : 15.2,
+            fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
             color: valueColor,
-            height: 1.0,
+            height: 1.12,
+            letterSpacing: 0.05,
           ),
         ),
       ],
@@ -8299,6 +10039,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       _currentCartIndex = _carts.length - 1;
       _rebuildQtyIndexForCurrentCart();
     });
+    await _ensureDefaultCustomerSelected();
     await _saveAllCartsToDatabase();
   }
 
@@ -8308,6 +10049,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
       _currentCartIndex = index;
       _rebuildQtyIndexForCurrentCart();
     });
+    await _ensureDefaultCustomerSelected();
   }
 
   Future<void> _renameFooterTicket(int index) async {
@@ -9036,6 +10778,8 @@ class _DialogHotkeys extends StatelessWidget {
   }
 }
 
+enum _QuoteFlowDialogAction { viewPdf, goToQuotation, backToSales }
+
 enum _SalesDocumentType { consumidorFinal, creditoFiscal, cotizacion }
 
 class _Cart {
@@ -9253,8 +10997,7 @@ class _AnimatedNewItemHighlight extends StatefulWidget {
       _AnimatedNewItemHighlightState();
 }
 
-class _AnimatedNewItemHighlightState
-    extends State<_AnimatedNewItemHighlight>
+class _AnimatedNewItemHighlightState extends State<_AnimatedNewItemHighlight>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _shineAnimation;
@@ -9300,17 +11043,17 @@ class _AnimatedNewItemHighlightState
           decoration: BoxDecoration(
             // Fondo azul muy suave que se desvanece
             color: Color.alphaBlend(
-              const Color(0xFF1A56DB).withOpacity(
-                _bgFadeAnimation.value * 0.08,
-              ),
+              const Color(
+                0xFF1A56DB,
+              ).withOpacity(_bgFadeAnimation.value * 0.08),
               Colors.white,
             ),
             // Borde izquierdo con color que se desvanece
             border: Border(
               left: BorderSide(
-                color: const Color(0xFF1A56DB).withOpacity(
-                  _bgFadeAnimation.value * 0.5,
-                ),
+                color: const Color(
+                  0xFF1A56DB,
+                ).withOpacity(_bgFadeAnimation.value * 0.5),
                 width: 3,
               ),
             ),
@@ -9343,10 +11086,7 @@ class _AnimatedNewItemHighlightState
 /// Painter que dibuja un barrido de brillo diagonal que cruza de izquierda
 /// a derecha, simulando un "shine" o "reflejo" que recorre el elemento.
 class _ShineSweepPainter extends CustomPainter {
-  _ShineSweepPainter({
-    required this.progress,
-    required this.color,
-  });
+  _ShineSweepPainter({required this.progress, required this.color});
 
   final double progress;
   final Color color;
@@ -9355,29 +11095,26 @@ class _ShineSweepPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (progress <= 0 || progress >= 1) return;
 
+    final bandWidth = size.width * 0.35;
+    final centerX = (size.width + bandWidth) * progress - (bandWidth * 0.5);
+    final rect = Rect.fromLTWH(
+      centerX - bandWidth * 0.5,
+      0,
+      bandWidth,
+      size.height,
+    );
+
     final paint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
-            children: [
-              _buildPanelDocumentTypeDropdown(),
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(child: _buildPanelClientControl()),
-                  const SizedBox(width: 8),
-                  SizedBox(width: 118, child: _buildPanelNewClientButton()),
-                ],
-              ),
-            ],
+        colors: [Colors.transparent, color, Colors.transparent],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(rect);
 
     canvas.save();
     canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRect(
-      Rect.fromLTWH(centerX - bandWidth * 0.5, 0, bandWidth, size.height),
-      paint,
-    );
+    canvas.drawRect(rect, paint);
     canvas.restore();
   }
 
@@ -9390,10 +11127,12 @@ class _SalesClientSidePanel extends StatefulWidget {
   const _SalesClientSidePanel({
     required this.onClose,
     required this.onSaved,
+    this.initialClient,
   });
 
   final VoidCallback onClose;
   final ValueChanged<ClientModel> onSaved;
+  final ClientModel? initialClient;
 
   @override
   State<_SalesClientSidePanel> createState() => _SalesClientSidePanelState();
@@ -9406,6 +11145,19 @@ class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
   final _taxIdController = TextEditingController();
   final _addressController = TextEditingController();
   bool _isSaving = false;
+
+  bool get _isEditing => widget.initialClient != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final client = widget.initialClient;
+    if (client == null) return;
+    _nameController.text = client.nombre;
+    _phoneController.text = client.telefono ?? '';
+    _taxIdController.text = client.rnc ?? client.cedula ?? '';
+    _addressController.text = client.direccion ?? '';
+  }
 
   @override
   void dispose() {
@@ -9435,7 +11187,9 @@ class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
           ? normalizedTaxDigits
           : null;
 
+      final baseClient = widget.initialClient;
       final client = ClientModel(
+        id: baseClient?.id,
         nombre: _nameController.text.trim(),
         telefono: normalizedPhone,
         direccion: _addressController.text.trim().isEmpty
@@ -9443,9 +11197,17 @@ class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
             : _addressController.text.trim(),
         rnc: rnc,
         cedula: cedula,
-        createdAtMs: now,
+        createdAtMs: baseClient?.createdAtMs ?? now,
         updatedAtMs: now,
       );
+
+      if (_isEditing) {
+        await ClientsRepository.update(client);
+        final updatedClient = await ClientsRepository.getById(client.id!);
+        if (!mounted) return;
+        widget.onSaved(updatedClient ?? client);
+        return;
+      }
 
       final clientId = await ClientsRepository.create(client);
       final createdClient = await ClientsRepository.getById(clientId);
@@ -9488,21 +11250,23 @@ class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Nuevo cliente',
+                          _isEditing ? 'Editar cliente' : 'Nuevo cliente',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
                             color: Color(0xFF17324D),
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          'Crea un cliente rápido para esta factura',
+                          _isEditing
+                              ? 'Actualiza los datos del cliente desde esta columna'
+                              : 'Crea un cliente rapido para esta factura',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w500,
@@ -9638,7 +11402,11 @@ class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text('Guardar cliente'),
+                          : Text(
+                              _isEditing
+                                  ? 'Guardar cambios'
+                                  : 'Guardar cliente',
+                            ),
                     ),
                   ),
                 ],
@@ -9654,9 +11422,7 @@ class _SalesClientSidePanelState extends State<_SalesClientSidePanel> {
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
     );
   }
 }

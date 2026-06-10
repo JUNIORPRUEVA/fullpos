@@ -396,11 +396,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Rutas de ventas
           GoRoute(
             path: '/factura',
-            builder: (context, state) => PermissionGate(
-              permission: Permissions.salesHistoryView,
-              autoPromptOnce: false,
-              reason: 'Acceso a factura',
-              child: const FacturaPage(),
+            pageBuilder: (context, state) => CustomTransitionPage<void>(
+              key: state.pageKey,
+              transitionDuration: const Duration(milliseconds: 320),
+              reverseTransitionDuration: const Duration(milliseconds: 220),
+              child: PermissionGate(
+                permission: Permissions.salesHistoryView,
+                autoPromptOnce: false,
+                reason: 'Acceso a factura',
+                child: const FacturaPage(),
+              ),
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                    final curved = CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                      reverseCurve: Curves.easeInCubic,
+                    );
+                    return FadeTransition(
+                      opacity: Tween<double>(begin: 0, end: 1).animate(curved),
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.022, 0),
+                          end: Offset.zero,
+                        ).animate(curved),
+                        child: child,
+                      ),
+                    );
+                  },
             ),
           ),
           GoRoute(
