@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../constants/app_sizes.dart';
-import 'sidebar.dart';
 import 'topbar.dart';
 import 'footer.dart';
+import 'fullpos_drawer.dart';
 
-/// Layout principal de la aplicación (Sidebar + Topbar + Content + Footer)
+/// Layout principal de la aplicación (Topbar + Content + Footer)
+/// El drawer lateral se abre mediante showGeneralDialog para tener
+/// control total de la animación y el overlay.
 class AppShell extends StatefulWidget {
   final Widget child;
 
@@ -21,16 +23,6 @@ class _AppShellState extends State<AppShell> {
   bool _didInitResponsive = false;
   bool _isShort = false;
 
-  double _sidebarWidthFor(double maxWidth) {
-    // Sidebar más estrecho para una estética corporativa limpia.
-    // Mantiene ancho consistente en resoluciones comunes.
-    if (maxWidth < 1360) {
-      return 182.0;
-    }
-    final proportional = maxWidth * 0.128;
-    return proportional.clamp(182.0, 198.0);
-  }
-
   void _updateResponsive(BoxConstraints constraints) {
     if (!_didInitResponsive) {
       _didInitResponsive = true;
@@ -44,6 +36,22 @@ class _AppShellState extends State<AppShell> {
     if (constraints.maxHeight > shortUpper) _isShort = false;
   }
 
+  void _openDrawer(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar menú',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return const FullPosDrawer();
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return child;
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -52,23 +60,19 @@ class _AppShellState extends State<AppShell> {
 
         final isShort = _isShort;
         final showFooter = !isShort;
-        final sidebarWidth = _sidebarWidthFor(constraints.maxWidth);
-        final sidebarScale = 1.0;
         final topbarHeight = AppSizes.topbarHeight;
-        final topbarScale = 1.0;
         final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
-        final footerScale = 1.0;
 
         final topbarWidget = Builder(
           builder: (context) => Column(
             children: [
               Expanded(
                 child: Topbar(
-                  scale: topbarScale,
+                  scale: 1.0,
                   topPadding: 0,
                   showMenuButton: true,
                   showBottomBorder: false,
-                  onMenuPressed: () => Scaffold.of(context).openDrawer(),
+                  onMenuPressed: () => _openDrawer(context),
                 ),
               ),
             ],
@@ -82,25 +86,13 @@ class _AppShellState extends State<AppShell> {
             if (showFooter)
               SizedBox(
                 height: footerHeight,
-                child: Footer(scale: footerScale),
+                child: Footer(scale: 1.0),
               ),
           ],
         );
 
         return Scaffold(
           backgroundColor: Colors.transparent,
-          drawer: Drawer(
-            width: sidebarWidth,
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            child: SafeArea(
-              child: Sidebar(
-                forcedCollapsed: false,
-                customWidth: sidebarWidth,
-                scale: sidebarScale,
-              ),
-            ),
-          ),
           body: SafeArea(child: contentColumn),
         );
       },

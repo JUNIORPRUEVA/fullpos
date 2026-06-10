@@ -2058,107 +2058,137 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
   }
 
-  Future<ClientModel?> _ensureDefaultCustomerSelected() async {
-    final selected = _resolveKnownClient(_currentCart.selectedClient);
-    if (selected != null && selected.id != null) {
-      if (!identical(selected, _currentCart.selectedClient) ||
-          _currentCart.name != selected.nombre) {
-        _updateCurrentCart(() {
-          _currentCart.selectedClient = selected;
-          _currentCart.name = selected.nombre;
-        });
-      }
-      _syncClientFieldText();
-      return selected;
+Future<ClientModel?> _ensureDefaultCustomerSelected() async {
+  final selected = _resolveKnownClient(_currentCart.selectedClient);
+
+  if (selected != null && selected.id != null) {
+    if (!identical(selected, _currentCart.selectedClient) ||
+        _currentCart.name != selected.nombre) {
+      _updateCurrentCart(() {
+        _currentCart.selectedClient = selected;
+        _currentCart.name = selected.nombre;
+      });
     }
 
-    final fallback = await _resolveOrCreateDefaultClient();
-    if (!mounted || fallback == null || fallback.id == null) return null;
-
-    await _applySelectedClient(fallback);
     _syncClientFieldText();
-    return fallback;
+    return selected;
   }
 
-  Future<void> _showQuickItemDialog() async {
-    if (!mounted) return;
+  final fallback = await _resolveOrCreateDefaultClient();
 
-    setState(() => _isQuickSalePressed = true);
+  if (!mounted || fallback == null || fallback.id == null) {
+    return null;
+  }
 
-    final screenSize = MediaQuery.sizeOf(context);
-    final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
-    final panelMargin = screenSize.width < 1150 ? 10.0 : 14.0;
-    final panelGap = screenSize.width < 1180 ? 8.0 : 10.0;
-    final dialogWidth = math.min(430.0, screenSize.width - 30);
-    final rightOffset = ticketPanelConstraints.maxWidth + 6;
-    final blurRightInset =
-        ticketPanelConstraints.maxWidth + panelGap + panelMargin;
-    const blurTopOffset = 52.0;
-    final topOffset = math.max(70.0, screenSize.height * 0.12);
+  await _applySelectedClient(fallback);
+  _syncClientFieldText();
 
-    final result = await showGeneralDialog<SaleItemModel>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.transparent,
-      pageBuilder: (dialogContext, animation, secondaryAnimation) {
-        return Material(
-          type: MaterialType.transparency,
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                top: blurTopOffset,
-                bottom: 0,
-                right: blurRightInset,
+  return fallback;
+}
+
+Future<void> _showQuickItemDialog() async {
+  if (!mounted) return;
+
+  setState(() => _isQuickSalePressed = true);
+
+  final screenSize = MediaQuery.sizeOf(context);
+  final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
+
+  final panelMargin = screenSize.width < 1150 ? 10.0 : 14.0;
+  final panelGap = screenSize.width < 1180 ? 8.0 : 10.0;
+
+  // El nuevo QuickItemDialog es más ancho y responsive.
+  final dialogWidth = math.min(520.0, screenSize.width - 30);
+
+  // Mantiene el diálogo pegado al lado derecho del área de productos,
+  // sin meterse encima del panel de factura.
+  final rightOffset = ticketPanelConstraints.maxWidth + 6;
+
+  // El blur llega hasta antes del panel derecho.
+  final blurRightInset =
+      ticketPanelConstraints.maxWidth + panelGap + panelMargin;
+
+  // Ajustes visuales para que el blur no tape el topbar ni el footer.
+  const blurTopOffset = 52.0;
+  const footerSafeInset = 58.0;
+
+  final topOffset = math.max(58.0, screenSize.height * 0.055);
+
+  final result = await showGeneralDialog<SaleItemModel>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.transparent,
+    pageBuilder: (dialogContext, animation, secondaryAnimation) {
+      return Material(
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: blurTopOffset,
+              bottom: footerSafeInset,
+              right: blurRightInset,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(dialogContext).maybePop(),
                 child: ClipRect(
                   child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 9, sigmaY: 9),
+                    filter: ui.ImageFilter.blur(
+                      sigmaX: 9,
+                      sigmaY: 9,
+                    ),
                     child: Container(
                       color: const Color(0xFFF4F7FB).withOpacity(0.34),
                     ),
                   ),
                 ),
               ),
-              Positioned(
-                top: topOffset,
-                right: rightOffset.clamp(
-                  2.0,
-                  screenSize.width - dialogWidth - 2,
-                ),
-                width: dialogWidth,
-                child: const QuickItemDialog(),
+            ),
+
+            Positioned(
+              top: topOffset,
+              right: rightOffset.clamp(
+                2.0,
+                screenSize.width - dialogWidth - 2,
               ),
-            ],
-          ),
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 220),
-      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.10, -0.02),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
-        );
-      },
-    );
+              width: dialogWidth,
+              child: const QuickItemDialog(),
+            ),
+          ],
+        ),
+      );
+    },
+    transitionDuration: const Duration(milliseconds: 220),
+    transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
 
-    if (mounted) {
-      setState(() => _isQuickSalePressed = false);
-    }
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.10, -0.02),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
 
-    if (!mounted || result == null) return;
-    _updateCurrentCart(() => _currentCart.items.add(result));
+  if (mounted) {
+    setState(() => _isQuickSalePressed = false);
   }
+
+  if (!mounted || result == null) return;
+
+  _updateCurrentCart(() {
+    _currentCart.items.add(result);
+  });
+}
 
   Future<void> _setSalesDocumentType(_SalesDocumentType type) async {
     if (type == _SalesDocumentType.consumidorFinal) {
