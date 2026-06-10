@@ -939,257 +939,104 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                           ),
                                           const SizedBox(height: 12),
                                           _buildSectionLabel(
-                                            context,
-                                            'Imagen',
-                                            null,
-                                          ),
-                                          Container(
-                                            width: double.infinity,
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                              border: Border.all(
-                                                color: scheme.outlineVariant,
-                                              ),
-                                              color: scheme.surface,
-                                            ),
-                                            child: Column(
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    ProductThumbnail(
-                                                      name: _nameController.text
-                                                              .trim()
-                                                              .isEmpty
-                                                          ? 'Producto'
-                                                          : _nameController.text
-                                                              .trim(),
-                                                      imagePath:
-                                                          _previewImagePath,
-                                                      placeholderColorHex:
-                                                          _resolvePlaceholderColor(),
-                                                      placeholderType:
-                                                          _placeholderType,
-                                                      categoryId:
-                                                          _selectedCategoryId,
-                                                      size: 68,
-                                                      width: 68,
-                                                      height: 68,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                        10,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 10),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            _nameController.text
-                                                                    .trim()
-                                                                    .isEmpty
-                                                                ? 'Sin nombre'
-                                                                : _nameController
-                                                                    .text
-                                                                    .trim(),
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style: theme
-                                                                .textTheme
-                                                                .bodyMedium
-                                                                ?.copyWith(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                            height: 6,
-                                                          ),
-                                                          Wrap(
-                                                            spacing: 6,
-                                                            runSpacing: 6,
-                                                            children: [
-                                                              ChoiceChip(
-                                                                label:
-                                                                    const Text(
-                                                                  'Imagen',
-                                                                ),
-                                                                selected:
-                                                                    _placeholderType ==
-                                                                        'image',
-                                                                onSelected: (_) =>
-                                                                    _setPlaceholderType(
-                                                                  'image',
-                                                                ),
-                                                              ),
-                                                              ChoiceChip(
-                                                                label:
-                                                                    const Text(
-                                                                  'Color',
-                                                                ),
-                                                                selected:
-                                                                    _placeholderType ==
-                                                                        'color',
-                                                                onSelected: (_) =>
-                                                                    _setPlaceholderType(
-                                                                  'color',
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 10),
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child:
-                                                          _placeholderType ==
-                                                                  'image'
-                                                              ? FilledButton
-                                                                  .icon(
-                                                                  onPressed:
-                                                                      _isLoading
-                                                                          ? null
-                                                                          : _pickImage,
-                                                                  icon:
-                                                                      const Icon(
-                                                                    Icons
-                                                                        .upload_file,
-                                                                  ),
-                                                                  label: Text(
-                                                                    _previewImagePath ==
-                                                                            null
-                                                                        ? 'Imagen'
-                                                                        : 'Cambiar imagen',
-                                                                  ),
-                                                                )
-                                                              : FilledButton
-                                                                  .icon(
-                                                                  onPressed:
-                                                                      _isLoading
-                                                                          ? null
-                                                                          : _pickColorManually,
-                                                                  icon:
-                                                                      const Icon(
-                                                                    Icons
-                                                                        .palette_outlined,
-                                                                  ),
-                                                                  label:
-                                                                      const Text(
-                                                                    'Elegir color',
-                                                                  ),
-                                                                ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    if (_placeholderType ==
-                                                            'image' &&
-                                                        _previewImagePath !=
-                                                            null)
-                                                      SizedBox(
-                                                        width: 42,
-                                                        height: 42,
-                                                        child: OutlinedButton(
-                                                          onPressed: _isLoading
-                                                              ? null
-                                                              : _removeSelectedImage,
-                                                          style: OutlinedButton
-                                                              .styleFrom(
-                                                            padding:
-                                                                EdgeInsets.zero,
-                                                          ),
-                                                          child: const Icon(
-                                                            Icons
-                                                                .delete_outline,
-                                                            size: 18,
-                                                          ),
-                                                        ),
-                                                      )
-                                                    else if (_placeholderType ==
-                                                        'color')
-                                                      SizedBox(
-                                                        width: 42,
-                                                        height: 42,
-                                                        child: OutlinedButton(
-                                                          onPressed: _isLoading
-                                                              ? null
-                                                              : _generateColor,
-                                                          style: OutlinedButton
-                                                              .styleFrom(
-                                                            padding:
-                                                                EdgeInsets.zero,
-                                                          ),
-                                                          child: const Icon(
-                                                            Icons
-                                                                .casino_outlined,
-                                                            size: 18,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    const SizedBox(width: 8),
-                                                    Container(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 7,
-                                                      ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.white,
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(10),
-                                                        border: Border.all(
-                                                          color: scheme
-                                                              .outlineVariant,
-                                                        ),
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Container(
-                                                            width: 18,
-                                                            height: 18,
-                                                            decoration:
-                                                                BoxDecoration(
-                                                              color: ColorUtils
-                                                                  .colorFromHex(
-                                                                _resolvePlaceholderColor(),
-                                                              ),
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                5,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 6,
-                                                          ),
-                                                          Text(
-                                                            _resolvePlaceholderColor(),
-                                                            style: theme
-                                                                .textTheme
-                                                                .labelMedium,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
+  context,
+  'Imagen',
+  null,
+),
+Container(
+  width: double.infinity,
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(
+      color: scheme.outlineVariant,
+    ),
+    color: scheme.surface,
+  ),
+  child: Row(
+    children: [
+      ProductThumbnail(
+        name: _nameController.text.trim().isEmpty
+            ? 'Producto'
+            : _nameController.text.trim(),
+        imagePath: _previewImagePath,
+        placeholderType: 'image',
+        categoryId: _selectedCategoryId,
+        size: 68,
+        width: 68,
+        height: 68,
+        borderRadius: BorderRadius.circular(10),
+      ),
+
+      const SizedBox(width: 12),
+
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _nameController.text.trim().isEmpty
+                  ? 'Sin nombre'
+                  : _nameController.text.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _previewImagePath == null
+                  ? 'Sin imagen personalizada. Se usará el ícono por defecto.'
+                  : 'Imagen personalizada seleccionada.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _isLoading ? null : _pickImage,
+                    icon: const Icon(Icons.upload_file_rounded, size: 18),
+                    label: Text(
+                      _previewImagePath == null
+                          ? 'Seleccionar imagen'
+                          : 'Cambiar imagen',
+                    ),
+                  ),
+                ),
+                if (_previewImagePath != null) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 42,
+                    height: 42,
+                    child: OutlinedButton(
+                      onPressed: _isLoading ? null : _removeSelectedImage,
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline_rounded,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    ],
+  ),
+),
+const SizedBox(height: 12),
                                           const SizedBox(height: 12),
                                           _buildSectionLabel(
                                             context,

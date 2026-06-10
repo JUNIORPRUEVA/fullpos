@@ -601,6 +601,7 @@ class QuotePrinter {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
+          // Logo
           pw.Container(
             width: 58,
             height: 58,
@@ -628,6 +629,7 @@ class QuotePrinter {
                   ),
           ),
           pw.SizedBox(width: 14),
+          // Company info (left)
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -654,6 +656,7 @@ class QuotePrinter {
             ),
           ),
           pw.SizedBox(width: 18),
+          // Quote info (right)
           pw.Container(
             width: 175,
             child: pw.Column(
@@ -687,14 +690,14 @@ class QuotePrinter {
                     vertical: 4,
                   ),
                   decoration: pw.BoxDecoration(
-                    color: PdfColors.white,
-                    border: pw.Border.all(color: statusColor, width: 0.7),
-                    borderRadius: pw.BorderRadius.circular(14),
+                    color: brand.softPrimary,
+                    border: pw.Border.all(color: statusColor, width: 0.6),
+                    borderRadius: pw.BorderRadius.circular(5),
                   ),
                   child: pw.Text(
                     statusLabel,
                     style: pw.TextStyle(
-                      fontSize: 7.8,
+                      fontSize: 8,
                       color: statusColor,
                       fontWeight: pw.FontWeight.bold,
                       letterSpacing: 0.3,
@@ -866,58 +869,90 @@ class QuotePrinter {
     NumberFormat currencyFormat,
     _QuotePdfBrand brand,
   ) {
+    final showItbis = quote.itbisEnabled && quote.itbisAmount > 0;
+
+    // Build header cells
+    final headerCells = <pw.Widget>[
+      _tableHeaderCell('Producto / Servicio', brand),
+      _tableHeaderCell('Cant.', brand, align: pw.TextAlign.center),
+      _tableHeaderCell('Precio', brand, align: pw.TextAlign.right),
+    ];
+    if (showItbis) {
+      headerCells.add(
+        _tableHeaderCell('ITBIS', brand, align: pw.TextAlign.right),
+      );
+    }
+    headerCells.add(
+      _tableHeaderCell('Total', brand, align: pw.TextAlign.right),
+    );
+
     final rows = <pw.TableRow>[
       pw.TableRow(
         decoration: pw.BoxDecoration(color: brand.tableHeader),
-        children: [
-          _tableHeaderCell('Producto / Servicio', brand),
-          _tableHeaderCell('Cant.', brand, align: pw.TextAlign.center),
-          _tableHeaderCell('Precio', brand, align: pw.TextAlign.right),
-          _tableHeaderCell('ITBIS', brand, align: pw.TextAlign.right),
-          _tableHeaderCell('Total', brand, align: pw.TextAlign.right),
-        ],
+        children: headerCells,
       ),
     ];
 
     for (var i = 0; i < items.length; i++) {
       final item = items[i];
-      final itemItbis = quote.itbisEnabled && quote.subtotal > 0
+      final itemItbis = showItbis && quote.subtotal > 0
           ? (item.totalLine / quote.subtotal) * quote.itbisAmount
           : 0.0;
+
+      final bodyCells = <pw.Widget>[
+        _productDescriptionCell(item, brand),
+        _tableBodyCell(
+          _formatQty(item.qty),
+          brand,
+          align: pw.TextAlign.center,
+          bold: true,
+        ),
+        _tableBodyCell(
+          _formatMoney(currencyFormat, item.price),
+          brand,
+          align: pw.TextAlign.right,
+        ),
+      ];
+      if (showItbis) {
+        bodyCells.add(
+          _tableBodyCell(
+            itemItbis > 0 ? _formatMoney(currencyFormat, itemItbis) : '-',
+            brand,
+            align: pw.TextAlign.right,
+            muted: itemItbis <= 0,
+          ),
+        );
+      }
+      bodyCells.add(
+        _tableBodyCell(
+          _formatMoney(currencyFormat, item.totalLine),
+          brand,
+          align: pw.TextAlign.right,
+          bold: true,
+        ),
+      );
 
       rows.add(
         pw.TableRow(
           decoration: pw.BoxDecoration(
             color: i.isOdd ? brand.surfaceAlt : PdfColors.white,
           ),
-          children: [
-            _productDescriptionCell(item, brand),
-            _tableBodyCell(
-              _formatQty(item.qty),
-              brand,
-              align: pw.TextAlign.center,
-              bold: true,
-            ),
-            _tableBodyCell(
-              _formatMoney(currencyFormat, item.price),
-              brand,
-              align: pw.TextAlign.right,
-            ),
-            _tableBodyCell(
-              itemItbis > 0 ? _formatMoney(currencyFormat, itemItbis) : '-',
-              brand,
-              align: pw.TextAlign.right,
-              muted: itemItbis <= 0,
-            ),
-            _tableBodyCell(
-              _formatMoney(currencyFormat, item.totalLine),
-              brand,
-              align: pw.TextAlign.right,
-              bold: true,
-            ),
-          ],
+          children: bodyCells,
         ),
       );
+    }
+
+    // Column widths: adjust when ITBIS is hidden
+    final columnWidths = <int, pw.TableColumnWidth>{
+      0: const pw.FlexColumnWidth(4.15),
+      1: const pw.FlexColumnWidth(0.8),
+      2: const pw.FlexColumnWidth(1.25),
+    };
+    if (showItbis) {
+      columnWidths[3] = const pw.FlexColumnWidth(1.15);
+      columnWidths[4] = const pw.FlexColumnWidth(1.35);
+    } else {
+      columnWidths[3] = const pw.FlexColumnWidth(1.8);
     }
 
     return pw.Container(
@@ -930,13 +965,7 @@ class QuotePrinter {
         border: pw.TableBorder(
           horizontalInside: pw.BorderSide(color: brand.border, width: 0.45),
         ),
-        columnWidths: {
-          0: const pw.FlexColumnWidth(4.15),
-          1: const pw.FlexColumnWidth(0.8),
-          2: const pw.FlexColumnWidth(1.25),
-          3: const pw.FlexColumnWidth(1.15),
-          4: const pw.FlexColumnWidth(1.35),
-        },
+        columnWidths: columnWidths,
         children: rows,
       ),
     );
@@ -1038,6 +1067,8 @@ class QuotePrinter {
     NumberFormat currencyFormat,
     _QuotePdfBrand brand,
   ) {
+    final showItbis = quote.itbisEnabled && quote.itbisAmount > 0;
+
     return pw.Container(
       width: 245,
       decoration: pw.BoxDecoration(
@@ -1073,7 +1104,7 @@ class QuotePrinter {
                     brand,
                     valueColor: brand.danger,
                   ),
-                if (quote.itbisEnabled)
+                if (showItbis)
                   _totalsRow(
                     'ITBIS (${(quote.itbisRate * 100).toInt()}%)',
                     quote.itbisAmount,
@@ -1329,14 +1360,6 @@ PdfColor _pdfColorFromInt(int value) {
   final blue = (value & 0xFF) / 255;
 
   return PdfColor(red, green, blue);
-}
-
-PdfColor _pdfColorWithOpacity(PdfColor color, double opacity) {
-  return PdfColor(
-    color.red,
-    color.green,
-    color.blue,
-  );
 }
 
 class _PdfFonts {

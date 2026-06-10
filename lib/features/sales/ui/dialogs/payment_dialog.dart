@@ -7,16 +7,13 @@ import '../../../clients/data/client_model.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../../../core/theme/app_status_theme.dart';
 import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../../theme/app_colors.dart';
 
 enum PaymentMethod { cash, card, transfer, mixed, credit, layaway }
 
 enum PaymentOutputMode { ticket, pdf, none }
 
-enum PaymentDocumentType { consumidorFinal, creditoFiscal, cotizacion }
-
-enum QuoteOutputMode { save, preview, print }
-
-/// Diálogo de pago profesional
+/// Diálogo de pago profesional con identidad de marca
 class PaymentDialog extends StatefulWidget {
   final double total;
   final bool initialPrintTicket;
@@ -24,10 +21,6 @@ class PaymentDialog extends StatefulWidget {
   final String? initialChargeOutputMode;
   final String? cartFingerprint;
   final ClientModel? selectedClient;
-  final PaymentDocumentType initialDocumentType;
-  final bool allowElectronicInvoiceOption;
-  final Future<PaymentDocumentType> Function(PaymentDocumentType type)
-  onDocumentTypeChanged;
   final Future<ClientModel?> Function() onSelectClient;
   final Future<ClientModel?> Function()? onCreateClient;
   final Future<ClientModel?> Function(ClientModel client)? onEditClient;
@@ -40,9 +33,6 @@ class PaymentDialog extends StatefulWidget {
     this.initialChargeOutputMode,
     this.cartFingerprint,
     this.selectedClient,
-    this.initialDocumentType = PaymentDocumentType.consumidorFinal,
-    this.allowElectronicInvoiceOption = true,
-    required this.onDocumentTypeChanged,
     required this.onSelectClient,
     this.onCreateClient,
     this.onEditClient,
@@ -70,7 +60,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
   final _termDaysController = TextEditingController(text: '30');
   final _installmentsController = TextEditingController(text: '1');
   final _noteController = TextEditingController();
-  final _quoteValidDaysController = TextEditingController(text: '15');
   final _layawayNameController = TextEditingController();
   final _layawayPhoneController = TextEditingController();
   final _receivedController = TextEditingController();
@@ -84,25 +73,11 @@ class _PaymentDialogState extends State<PaymentDialog> {
   late final String _paymentAttemptId;
   String _lastTriggerSource = 'unknown';
   int _lastSubmitAtMs = 0;
-  late PaymentDocumentType _selectedDocumentType;
-  QuoteOutputMode _quoteOutputMode = QuoteOutputMode.save;
 
   bool get _printTicket => _outputMode == PaymentOutputMode.ticket;
   bool get _downloadInvoicePdf => _outputMode == PaymentOutputMode.pdf;
-  bool get _isQuoteMode =>
-      _selectedDocumentType == PaymentDocumentType.cotizacion;
-
-  PaymentDocumentType _normalizeDocumentType(PaymentDocumentType type) {
-    if (!widget.allowElectronicInvoiceOption &&
-        type == PaymentDocumentType.creditoFiscal) {
-      return PaymentDocumentType.consumidorFinal;
-    }
-    return type;
-  }
 
   bool _handleKeyEvent(KeyEvent event) {
-    // En Windows, algunos Function keys no siempre pasan por Shortcuts cuando
-    // hay un TextField enfocado. Capturamos F9 aquí para que siempre confirme.
     assert(() {
       // ignore: avoid_print
       debugPrint(
@@ -218,7 +193,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _paymentAttemptId = _buildPaymentRequestId();
     _outputMode = _resolveInitialOutputMode();
-    _selectedDocumentType = _normalizeDocumentType(widget.initialDocumentType);
     _selectedClient = widget.selectedClient;
     if (_selectedClient != null) {
       _syncLayawayFromClient(_selectedClient!);
@@ -243,7 +217,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
     _termDaysController.dispose();
     _installmentsController.dispose();
     _noteController.dispose();
-    _quoteValidDaysController.dispose();
     _layawayNameController.dispose();
     _layawayPhoneController.dispose();
     _receivedController.dispose();
@@ -361,32 +334,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
     debugPrint(
       'PAYMENT_EXECUTE source=$_lastTriggerSource time=${DateTime.now().millisecondsSinceEpoch} cart=${widget.cartFingerprint ?? 'na'} request=$paymentRequestId',
     );
-
-    if (_isQuoteMode) {
-      if (_selectedClient == null) {
-        _showError('Debe seleccionar un cliente para generar la cotización');
-        await _ensureClientSelected();
-        return;
-      }
-
-      final validDays = int.tryParse(_quoteValidDaysController.text) ?? 0;
-      if (validDays <= 0) {
-        _showError('Debe indicar una vigencia válida para la cotización');
-        return;
-      }
-
-      final result = {
-        'paymentRequestId': paymentRequestId,
-        'triggerSource': _lastTriggerSource,
-        'documentType': _selectedDocumentType,
-        'selectedClient': _selectedClient,
-        'quoteOutputMode': _quoteOutputMode,
-        'quoteValidDays': validDays,
-        'quoteNotes': _noteController.text.trim(),
-      };
-      _closeDialog(result);
-      return;
-    }
 
     final cashAmount = double.tryParse(_cashController.text) ?? 0.0;
     final cardAmount = double.tryParse(_cardController.text) ?? 0.0;
@@ -521,7 +468,6 @@ class _PaymentDialogState extends State<PaymentDialog> {
     final result = {
       'paymentRequestId': paymentRequestId,
       'triggerSource': _lastTriggerSource,
-      'documentType': _selectedDocumentType,
       'selectedClient': _selectedClient,
       'method': _selectedMethod,
       'cash': cashAmount,
@@ -560,1104 +506,967 @@ class _PaymentDialogState extends State<PaymentDialog> {
       SnackBar(content: Text(message), backgroundColor: scheme.error),
     );
   }
-
-  Future<void> _selectDocumentType(PaymentDocumentType type) async {
-    final resolved = await widget.onDocumentTypeChanged(type);
-    if (!mounted) return;
-    setState(() {
-      _selectedDocumentType = resolved;
-      if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
-        _quoteOutputMode = QuoteOutputMode.save;
-      }
-    });
-  }
-
-  String _documentTypeLabel(PaymentDocumentType type) {
-    switch (type) {
-      case PaymentDocumentType.consumidorFinal:
-        return 'Consumidor final';
-      case PaymentDocumentType.creditoFiscal:
-        return 'Crédito fiscal';
-      case PaymentDocumentType.cotizacion:
-        return 'Cotización';
-    }
-  }
-
-  String _dialogTitle() {
-    if (_isQuoteMode) return 'GENERAR COTIZACIÓN';
-    return 'PROCESAR PAGO';
-  }
-
-  String _dialogSubtitle() {
-    if (_isQuoteMode) {
-      return 'Configure los datos de la propuesta antes de guardarla';
-    }
-    return '';
-  }
-
-  IconData _dialogIcon() {
-    if (_isQuoteMode) return Icons.request_quote_outlined;
-    return Icons.payment;
-  }
-
-  void _selectQuoteOutput(QuoteOutputMode mode) {
-    setState(() => _quoteOutputMode = mode);
-  }
-
-  Widget _buildClientPanel() {
-    final clientLabel = (_selectedClient?.nombre ?? 'Sin cliente seleccionado')
-        .trim();
-    final secondary = [
-      (_selectedClient?.telefono ?? '').trim(),
-      (_selectedClient?.rnc ?? '').trim(),
-      (_selectedClient?.cedula ?? '').trim(),
-    ].where((value) => value.isNotEmpty).join('  •  ');
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: scheme.primary.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.person_outline, color: scheme.primary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'CLIENTE DE LA COTIZACIÓN',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface.withAlpha(170),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  clientLabel,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (secondary.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    secondary,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurface.withAlpha(170),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          FilledButton.tonalIcon(
-            onPressed: _ensureClientSelected,
-            icon: const Icon(Icons.search, size: 18),
-            label: Text(_selectedClient == null ? 'Seleccionar' : 'Cambiar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuoteModeBody() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: scheme.primary.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.primary.withOpacity(0.18)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline, color: scheme.primary, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'La cotización no registra pago. Solo guarda la propuesta comercial con su cliente, vigencia y observaciones.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.35,
-                    color: scheme.onSurface,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildClientPanel(),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _quoteValidDaysController,
-                decoration: const InputDecoration(
-                  labelText: 'VIGENCIA (DÍAS)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.event_available_outlined),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        TextFormField(
-          controller: _noteController,
-          decoration: const InputDecoration(
-            labelText: 'NOTAS / CONDICIONES',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.note_alt_outlined),
-          ),
-          maxLines: 3,
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final viewport = MediaQuery.sizeOf(context);
-    final dialogWidth = (viewport.width * 0.88).clamp(520.0, 860.0);
-    final dialogMaxHeight = (viewport.height * 0.93).clamp(700.0, 980.0);
+    final dialogWidth = (viewport.width * 0.66).clamp(620.0, 820.0);
+    final dialogMaxHeight = (viewport.height * 0.90).clamp(600.0, 860.0);
 
     return DialogKeyboardShortcuts(
       onSubmit: () => _submitPayment(source: 'keyboard_enter'),
       enableSubmitShortcuts: true,
       enableDismissShortcut: false,
       child: Dialog(
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+        backgroundColor: Colors.transparent,
         child: Container(
           width: dialogWidth,
           constraints: BoxConstraints(maxHeight: dialogMaxHeight),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFAFBFD),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFDDE3EC)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(45),
+                blurRadius: 34,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(4),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(_dialogIcon(), color: scheme.onPrimary, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _dialogTitle(),
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: scheme.onPrimary,
-                            ),
-                          ),
-                          if (_dialogSubtitle().isNotEmpty)
-                            Text(
-                              _dialogSubtitle(),
-                              style: TextStyle(
-                                color: scheme.onPrimary.withAlpha(179),
-                                fontSize: 13,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: Icon(Icons.close, color: scheme.onPrimary),
-                    ),
-                  ],
-                ),
-              ),
+              _buildHeader(),
 
-              // Body
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.fromLTRB(22, 18, 22, 16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Total a pagar
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: _isQuoteMode
-                              ? scheme.primaryContainer
-                              : scheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _isQuoteMode
-                                ? scheme.primary
-                                : scheme.secondary,
-                            width: 2,
-                          ),
-                        ),
-                        child: Wrap(
-                          alignment: WrapAlignment.spaceBetween,
-                          runSpacing: 8,
-                          spacing: 12,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _isQuoteMode
-                                      ? Icons.description_outlined
-                                      : Icons.attach_money,
-                                  color: _isQuoteMode
-                                      ? scheme.primary
-                                      : scheme.secondary,
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _isQuoteMode
-                                      ? 'TOTAL COTIZADO:'
-                                      : 'TOTAL A PAGAR:',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: _isQuoteMode
-                                        ? scheme.onPrimaryContainer
-                                        : scheme.onSecondaryContainer,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Text(
-                              CurrencyDisplay.format(widget.total),
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: _isQuoteMode
-                                    ? scheme.primary
-                                    : scheme.secondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildMainSummary(),
+                      const SizedBox(height: 18),
 
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Tipo de documento',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 44,
-                        child: DropdownButtonFormField<PaymentDocumentType>(
-                          isExpanded: true,
-                          value: _selectedDocumentType,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            filled: true,
-                            fillColor: scheme.surfaceContainerHighest,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: scheme.primary,
-                                width: 1.5,
-                              ),
-                            ),
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                          items: [
-                            DropdownMenuItem(
-                              value: PaymentDocumentType.consumidorFinal,
-                              child: Text(
-                                _documentTypeLabel(
-                                  PaymentDocumentType.consumidorFinal,
-                                ),
-                              ),
-                            ),
-                            if (widget.allowElectronicInvoiceOption)
-                              DropdownMenuItem(
-                                value: PaymentDocumentType.creditoFiscal,
-                                child: Text(
-                                  _documentTypeLabel(
-                                    PaymentDocumentType.creditoFiscal,
-                                  ),
-                                ),
-                              ),
-                            DropdownMenuItem(
-                              value: PaymentDocumentType.cotizacion,
-                              child: Text(
-                                _documentTypeLabel(
-                                  PaymentDocumentType.cotizacion,
-                                ),
-                              ),
-                            ),
-                          ],
-                          onChanged: (value) {
-                            if (value == null) return;
-                            unawaited(_selectDocumentType(value));
-                          },
-                        ),
-                      ),
-
+                      _buildPaymentMethodSelector(),
                       const SizedBox(height: 16),
 
-                      if (_isQuoteMode) ...[
-                        _buildQuoteModeBody(),
-                      ] else ...[
-                        // Sección de Recibido y Devuelta
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: scheme.outlineVariant),
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.payments,
-                                    color: scheme.primary,
-                                    size: 22,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      _selectedMethod == PaymentMethod.layaway
-                                          ? 'ABONO INICIAL:'
-                                          : 'CLIENTE PAGA CON:',
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: TextField(
-                                      controller: _receivedController,
-                                      keyboardType: TextInputType.number,
-                                      textAlign: TextAlign.right,
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: scheme.primary,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText: widget.total.toStringAsFixed(
-                                          2,
-                                        ),
-                                        hintStyle: TextStyle(
-                                          color: scheme.onSurface.withAlpha(
-                                            102,
-                                          ),
-                                        ),
-                                        prefixText: '\$ ',
-                                        prefixStyle: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: scheme.primary,
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          borderSide: BorderSide(
-                                            color: scheme.primary,
-                                            width: 2,
-                                          ),
-                                        ),
-                                      ),
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.allow(
-                                          RegExp(r'^\d+\.?\d{0,2}'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: _change > 0
-                                      ? status.success.withAlpha(51)
-                                      : (_change < 0
-                                            ? status.error.withAlpha(51)
-                                            : scheme.surfaceContainerHighest),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Wrap(
-                                        alignment: WrapAlignment.spaceBetween,
-                                        runSpacing: 8,
-                                        spacing: 12,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: [
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                _change >= 0
-                                                    ? Icons.arrow_back
-                                                    : Icons.warning,
-                                                color: _change > 0
-                                                    ? status.success
-                                                    : (_change < 0
-                                                          ? status.error
-                                                          : scheme.onSurface
-                                                                .withAlpha(
-                                                                  153,
-                                                                )),
-                                                size: 22,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                _change >= 0
-                                                    ? 'DEVUELTA:'
-                                                    : 'FALTA:',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: _change > 0
-                                                      ? status.success
-                                                      : (_change < 0
-                                                            ? status.error
-                                                            : scheme.onSurface
-                                                                  .withAlpha(
-                                                                    153,
-                                                                  )),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          Text(
-                                            CurrencyDisplay.format(
-                                              _change.abs(),
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 24,
-                                              fontWeight: FontWeight.bold,
-                                              color: _change > 0
-                                                  ? status.success
-                                                  : (_change < 0
-                                                        ? status.error
-                                                        : scheme.onSurface
-                                                              .withAlpha(153)),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: KeyedSubtree(
+                          key: ValueKey(_selectedMethod),
+                          child: _buildMethodFields(),
                         ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'MÉTODO DE PAGO',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildMethodChip(
-                              PaymentMethod.cash,
-                              'EFECTIVO',
-                              Icons.money,
-                            ),
-                            _buildMethodChip(
-                              PaymentMethod.card,
-                              'TARJETA',
-                              Icons.credit_card,
-                            ),
-                            _buildMethodChip(
-                              PaymentMethod.transfer,
-                              'TRANSFERENCIA',
-                              Icons.account_balance,
-                            ),
-                            _buildMethodChip(
-                              PaymentMethod.mixed,
-                              'MIXTO',
-                              Icons.payments,
-                            ),
-                            _buildMethodChip(
-                              PaymentMethod.credit,
-                              'CRÉDITO',
-                              Icons.request_quote,
-                            ),
-                            _buildMethodChip(
-                              PaymentMethod.layaway,
-                              'APARTADO',
-                              Icons.bookmark,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        if (_selectedMethod == PaymentMethod.cash) ...[
-                          // Solo el efectivo, la devuelta ya se muestra arriba
-                          const SizedBox.shrink(),
-                        ] else if (_selectedMethod == PaymentMethod.card) ...[
-                          _buildAmountField(
-                            'MONTO CON TARJETA',
-                            _cardController,
-                            Icons.credit_card,
-                          ),
-                        ] else if (_selectedMethod ==
-                            PaymentMethod.transfer) ...[
-                          _buildAmountField(
-                            'MONTO TRANSFERIDO',
-                            _transferController,
-                            Icons.account_balance,
-                          ),
-                        ] else if (_selectedMethod == PaymentMethod.mixed) ...[
-                          _buildAmountField(
-                            'EFECTIVO',
-                            _cashController,
-                            Icons.money,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildAmountField(
-                            'TARJETA',
-                            _cardController,
-                            Icons.credit_card,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildAmountField(
-                            'TRANSFERENCIA',
-                            _transferController,
-                            Icons.account_balance,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Solo se permite Efectivo + Tarjeta o Efectivo + Transferencia.',
-                            style: TextStyle(
-                              color: scheme.onSurface.withAlpha(170),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: _change.abs() < 0.01
-                                  ? status.success.withAlpha(31)
-                                  : status.warning.withAlpha(31),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: _change.abs() < 0.01
-                                    ? status.success
-                                    : status.warning,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Wrap(
-                                    alignment: WrapAlignment.spaceBetween,
-                                    runSpacing: 8,
-                                    spacing: 12,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      const Text(
-                                        'DIFERENCIA:',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      Text(
-                                        CurrencyDisplay.format(_change),
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: _change.abs() < 0.01
-                                              ? status.success
-                                              : status.warning,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ] else if (_selectedMethod == PaymentMethod.credit) ...[
-                          // Cliente
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: scheme.outlineVariant),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.person, color: scheme.primary),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'CLIENTE',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: scheme.onSurface.withAlpha(
-                                            153,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        (_selectedClient?.nombre ?? 'NINGUNO')
-                                            .toUpperCase(),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (_selectedClient == null)
-                                  ElevatedButton(
-                                    onPressed: _ensureClientSelected,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: scheme.primary,
-                                      foregroundColor: scheme.onPrimary,
-                                    ),
-                                    child: const Text('SELECCIONAR'),
-                                  ),
-                                if (_selectedClient != null &&
-                                    !_isClientComplete(_selectedClient) &&
-                                    widget.onEditClient != null)
-                                  OutlinedButton(
-                                    onPressed: () => _ensureClientCompleted(
-                                      _selectedClient!,
-                                    ),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: scheme.primary,
-                                    ),
-                                    child: const Text('COMPLETAR'),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          if (_selectedClient != null &&
-                              !_isClientComplete(_selectedClient))
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'Faltan datos del cliente (telefono, direccion y RNC/cedula)',
-                                style: TextStyle(
-                                  color: status.warning,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 16),
-
-                          // Plazo y cuotas
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _termDaysController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'PLAZO (DIAS)',
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.timer_outlined),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _installmentsController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'CUOTAS',
-                                    border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.stacked_line_chart),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Fecha de vencimiento
-                          InkWell(
-                            onTap: _selectDueDate,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: scheme.outlineVariant,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.calendar_today,
-                                    color: scheme.primary,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'FECHA DE VENCIMIENTO',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: scheme.onSurface.withAlpha(
-                                              153,
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          _dueDate != null
-                                              ? '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}'
-                                              : 'SELECCIONAR FECHA',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.arrow_forward_ios, size: 16),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Interés
-                          TextFormField(
-                            controller: _interestController,
-                            decoration: const InputDecoration(
-                              labelText: 'INTERÉS (%)',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.percent),
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'^\d+\.?\d{0,2}'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Nota
-                          TextFormField(
-                            controller: _noteController,
-                            decoration: const InputDecoration(
-                              labelText: 'NOTA / CONDICIONES',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.note),
-                            ),
-                            maxLines: 2,
-                          ),
-                        ] else if (_selectedMethod ==
-                            PaymentMethod.layaway) ...[
-                          // Cliente (apartado)
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: scheme.outlineVariant),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.person, color: scheme.primary),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'CLIENTE',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: scheme.onSurface.withAlpha(
-                                            153,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        (_selectedClient?.nombre ??
-                                                'SIN SELECCIONAR')
-                                            .toUpperCase(),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                ElevatedButton(
-                                  onPressed: _ensureClientSelected,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: scheme.primary,
-                                    foregroundColor: scheme.onPrimary,
-                                  ),
-                                  child: const Text('SELECCIONAR'),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _layawayNameController,
-                            decoration: const InputDecoration(
-                              labelText: 'NOMBRE (APARTADO)',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.badge_outlined),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _layawayPhoneController,
-                            decoration: const InputDecoration(
-                              labelText: 'TELÉFONO (APARTADO)',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.phone),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _noteController,
-                            decoration: const InputDecoration(
-                              labelText: 'NOTA (APARTADO)',
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.note),
-                            ),
-                            maxLines: 2,
-                          ),
-                        ],
-                      ],
+                      ),
                     ],
                   ),
                 ),
               ),
 
-              // Footer
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(4),
+              _buildFooter(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: 74,
+      padding: const EdgeInsets.fromLTRB(24, 0, 14, 0),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFE5EAF1)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF1FF),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(
+              Icons.point_of_sale_rounded,
+              size: 21,
+              color: AppColors.primaryBlue,
+            ),
+          ),
+          const SizedBox(width: 13),
+          const Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cobrar venta',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.25,
+                    height: 1,
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        if (_isQuoteMode) {
-                          return _buildOutputSwitchRow(
-                            constraints: constraints,
-                            children: [
-                              _buildOutputSwitchCard(
-                                label: 'GUARDAR',
-                                subtitle: 'Registrar cotización',
-                                icon: Icons.save_outlined,
-                                value: _quoteOutputMode == QuoteOutputMode.save,
-                                onChanged: (enabled) {
-                                  if (enabled) {
-                                    _selectQuoteOutput(QuoteOutputMode.save);
-                                  }
-                                },
-                              ),
-                              _buildOutputSwitchCard(
-                                label: 'VISTA PREVIA',
-                                subtitle: 'Guardar y mostrar PDF',
-                                icon: Icons.visibility_outlined,
-                                value:
-                                    _quoteOutputMode == QuoteOutputMode.preview,
-                                onChanged: (enabled) {
-                                  if (enabled) {
-                                    _selectQuoteOutput(QuoteOutputMode.preview);
-                                  }
-                                },
-                              ),
-                              _buildOutputSwitchCard(
-                                label: 'IMPRIMIR',
-                                subtitle: 'Guardar e imprimir',
-                                icon: Icons.print_outlined,
-                                value:
-                                    _quoteOutputMode == QuoteOutputMode.print,
-                                onChanged: (enabled) {
-                                  if (enabled) {
-                                    _selectQuoteOutput(QuoteOutputMode.print);
-                                  }
-                                },
-                              ),
-                            ],
-                          );
-                        }
-                        return _buildOutputSwitchRow(
-                          constraints: constraints,
-                          children: [
-                            _buildOutputSwitchCard(
-                              label: 'TICKET',
-                              subtitle: 'Cobrar e imprimir',
-                              icon: Icons.print,
-                              value: _outputMode == PaymentOutputMode.ticket,
-                              onChanged: (enabled) {
-                                if (enabled) _selectPrint();
-                              },
-                            ),
-                            _buildOutputSwitchCard(
-                              label: 'PDF',
-                              subtitle: 'Cobrar y descargar',
-                              icon: Icons.download,
-                              value: _outputMode == PaymentOutputMode.pdf,
-                              enabled: widget.allowInvoicePdfDownload,
-                              onChanged: (enabled) {
-                                if (enabled) _selectDownloadInvoicePdf();
-                              },
-                            ),
-                            _buildOutputSwitchCard(
-                              label: 'SIN IMPRIMIR',
-                              subtitle: 'Solo cobrar',
-                              icon: Icons.block,
-                              value: _outputMode == PaymentOutputMode.none,
-                              onChanged: (enabled) {
-                                if (enabled) _selectWithoutPrinting();
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _isQuoteMode
-                          ? 'Atajos: Enter/F9 = Guardar cotización  ·  Esc = Salir'
-                          : 'Atajos: Enter/F9 = Cobrar  ·  Esc = Salir',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: scheme.onSurface.withAlpha(170),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      runSpacing: 10,
-                      spacing: 12,
-                      children: [
-                        TextButton(
-                          onPressed: _isProcessingPayment
-                              ? null
-                              : () => Navigator.of(context).maybePop(),
-                          child: const Text('CANCELAR'),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: _isProcessingPayment
-                              ? null
-                              : () => _submitPayment(source: 'mouse_click'),
-                          icon: Icon(_chargeActionIcon()),
-                          label: Text(_chargeActionLabel()),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: scheme.primary,
-                            foregroundColor: scheme.onPrimary,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 14,
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
+                SizedBox(height: 6),
+                Text(
+                  'Confirma el pago y genera el comprobante',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF64748B),
+                    height: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: _isProcessingPayment
+                ? null
+                : () => Navigator.of(context).maybePop(),
+            icon: const Icon(
+              Icons.close_rounded,
+              size: 22,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainSummary() {
+    final isLayaway = _selectedMethod == PaymentMethod.layaway;
+    final payController = isLayaway ? _receivedController : _cashController;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE1E7EF)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Total a pagar',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+              ),
+              Text(
+                CurrencyDisplay.format(widget.total),
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -1,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0xFFE5EAF1)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isLayaway ? 'Abono inicial' : 'Cliente paga con',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.15,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 200,
+                height: 48,
+                child: TextField(
+                  controller: payController,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primaryBlue,
+                    letterSpacing: -0.25,
+                  ),
+                  decoration: _cleanInputDecoration(
+                    hintText: widget.total.toStringAsFixed(2),
+                    prefixText: r'$ ',
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d+\.?\d{0,2}'),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          _buildChangeLine(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChangeLine() {
+    final isPositive = _change > 0.009;
+    final isNegative = _change < -0.009;
+
+    final color = isPositive
+        ? status.success
+        : isNegative
+            ? status.error
+            : const Color(0xFF64748B);
+
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: isNegative
+            ? status.error.withAlpha(14)
+            : isPositive
+                ? status.success.withAlpha(14)
+                : const Color(0xFFF4F7FB),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isNegative
+                ? Icons.warning_amber_rounded
+                : Icons.keyboard_return_rounded,
+            size: 19,
+            color: color,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              isNegative ? 'Falta' : 'Devuelta',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: color,
+              ),
+            ),
+          ),
+          Text(
+            CurrencyDisplay.format(_change.abs()),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: -0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodSelector() {
+    final items = [
+      _PaymentMethodView(PaymentMethod.cash, 'Efectivo', Icons.money_rounded),
+      _PaymentMethodView(PaymentMethod.card, 'Tarjeta', Icons.credit_card),
+      _PaymentMethodView(
+        PaymentMethod.transfer,
+        'Transferencia',
+        Icons.account_balance_rounded,
+      ),
+      _PaymentMethodView(PaymentMethod.mixed, 'Mixto', Icons.payments_rounded),
+      _PaymentMethodView(
+        PaymentMethod.credit,
+        'Crédito',
+        Icons.request_quote_rounded,
+      ),
+      _PaymentMethodView(
+        PaymentMethod.layaway,
+        'Apartado',
+        Icons.bookmark_rounded,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Método de pago',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF0F172A),
+            letterSpacing: -0.15,
+          ),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final itemWidth = constraints.maxWidth >= 650
+                ? (constraints.maxWidth - 14) / 3
+                : (constraints.maxWidth - 7) / 2;
+
+            return Wrap(
+              spacing: 7,
+              runSpacing: 8,
+              children: [
+                for (final item in items)
+                  SizedBox(
+                    width: itemWidth,
+                    child: _buildMethodButton(
+                      item.method,
+                      item.label,
+                      item.icon,
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMethodButton(PaymentMethod method, String label, IconData icon) {
+    final isSelected = _selectedMethod == method;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: () => _selectPaymentMethod(method),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primaryBlue : Colors.white,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: isSelected
+                  ? AppColors.primaryBlue
+                  : const Color(0xFFDDE3EC),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 19,
+                color: isSelected ? Colors.white : AppColors.primaryBlue,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                    letterSpacing: -0.15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectPaymentMethod(PaymentMethod method) {
+    setState(() {
+      _selectedMethod = method;
+      _change = 0;
+
+      if (method != PaymentMethod.cash && method != PaymentMethod.mixed) {
+        _cashController.clear();
+      }
+      if (method != PaymentMethod.card && method != PaymentMethod.mixed) {
+        _cardController.clear();
+      }
+      if (method != PaymentMethod.transfer && method != PaymentMethod.mixed) {
+        _transferController.clear();
+      }
+
+      if (method == PaymentMethod.card) {
+        _cardController.text = widget.total.toStringAsFixed(2);
+      } else if (method == PaymentMethod.transfer) {
+        _transferController.text = widget.total.toStringAsFixed(2);
+      } else if (method == PaymentMethod.cash) {
+        _cashController.text = widget.total.toStringAsFixed(2);
+      } else if (method == PaymentMethod.layaway) {
+        _receivedController.text = (widget.total * 0.30)
+            .clamp(0, widget.total)
+            .toStringAsFixed(2);
+      } else if (method == PaymentMethod.credit) {
+        final days = int.tryParse(_termDaysController.text) ?? 0;
+        if (days > 0) {
+          _dueDate = DateTime.now().add(Duration(days: days));
+        }
+      }
+
+      _calculateChange();
+      _calculateReceivedChange();
+    });
+  }
+
+  Widget _buildMethodFields() {
+    if (_selectedMethod == PaymentMethod.cash) {
+      return const SizedBox.shrink();
+    }
+
+    if (_selectedMethod == PaymentMethod.card) {
+      return _buildAmountField(
+        'Monto con tarjeta',
+        _cardController,
+        Icons.credit_card,
+      );
+    }
+
+    if (_selectedMethod == PaymentMethod.transfer) {
+      return _buildAmountField(
+        'Monto transferido',
+        _transferController,
+        Icons.account_balance_rounded,
+      );
+    }
+
+    if (_selectedMethod == PaymentMethod.mixed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildAmountField(
+                  'Efectivo',
+                  _cashController,
+                  Icons.money_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildAmountField(
+                  'Tarjeta',
+                  _cardController,
+                  Icons.credit_card,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildAmountField(
+            'Transferencia',
+            _transferController,
+            Icons.account_balance_rounded,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Solo efectivo + tarjeta o efectivo + transferencia.',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface.withAlpha(150),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _buildDifferenceLine(),
+        ],
+      );
+    }
+
+    if (_selectedMethod == PaymentMethod.credit) {
+      return _buildCreditFields();
+    }
+
+    if (_selectedMethod == PaymentMethod.layaway) {
+      return _buildLayawayFields();
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildDifferenceLine() {
+    final isOk = _change.abs() < 0.01;
+    final color = isOk ? status.success : status.warning;
+
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: color.withAlpha(14),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Text(
+            'Diferencia',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            CurrencyDisplay.format(_change),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreditFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildClientLine(
+          title: 'Cliente para crédito',
+          emptyText: 'Sin seleccionar',
+          actionText: _selectedClient == null ? 'Seleccionar' : 'Completar',
+          onPressed: _selectedClient == null
+              ? _ensureClientSelected
+              : (!_isClientComplete(_selectedClient) &&
+                      widget.onEditClient != null)
+                  ? () => _ensureClientCompleted(_selectedClient!)
+                  : null,
+        ),
+        if (_selectedClient != null && !_isClientComplete(_selectedClient)) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Faltan datos: teléfono, dirección y RNC/cédula.',
+            style: TextStyle(
+              color: status.warning,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSmallTextField(
+                controller: _termDaysController,
+                label: 'Plazo',
+                suffixText: 'días',
+                icon: Icons.timer_outlined,
+                digitsOnly: true,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildSmallTextField(
+                controller: _installmentsController,
+                label: 'Cuotas',
+                icon: Icons.stacked_line_chart_rounded,
+                digitsOnly: true,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _buildDueDateSelector(),
+        const SizedBox(height: 10),
+        _buildSmallTextField(
+          controller: _interestController,
+          label: 'Interés',
+          suffixText: '%',
+          icon: Icons.percent_rounded,
+        ),
+        const SizedBox(height: 10),
+        _buildSmallTextField(
+          controller: _noteController,
+          label: 'Nota / condiciones',
+          icon: Icons.notes_rounded,
+          maxLines: 2,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLayawayFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildClientLine(
+          title: 'Cliente para apartado',
+          emptyText: 'Sin seleccionar',
+          actionText: 'Seleccionar',
+          onPressed: _ensureClientSelected,
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildSmallTextField(
+                controller: _layawayNameController,
+                label: 'Nombre',
+                icon: Icons.badge_outlined,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildSmallTextField(
+                controller: _layawayPhoneController,
+                label: 'Teléfono',
+                icon: Icons.phone_rounded,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _buildSmallTextField(
+          controller: _noteController,
+          label: 'Nota del apartado',
+          icon: Icons.notes_rounded,
+          maxLines: 2,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClientLine({
+    required String title,
+    required String emptyText,
+    required String actionText,
+    required VoidCallback? onPressed,
+  }) {
+    final clientName = (_selectedClient?.nombre.trim().isNotEmpty ?? false)
+        ? _selectedClient!.nombre.trim()
+        : emptyText;
+
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: const Color(0xFFDDE3EC)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.person_outline_rounded,
+            color: AppColors.primaryBlue,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$title  ',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  TextSpan(
+                    text: clientName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryBlue,
+              side: const BorderSide(color: Color(0xFFC9DAFF)),
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            child: Text(actionText),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDueDateSelector() {
+    final label = _dueDate != null
+        ? '${_dueDate!.day.toString().padLeft(2, '0')}/${_dueDate!.month.toString().padLeft(2, '0')}/${_dueDate!.year}'
+        : 'Seleccionar fecha';
+
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: _selectDueDate,
+        child: Container(
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: const Color(0xFFDDE3EC)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.calendar_today_rounded,
+                color: AppColors.primaryBlue,
+                size: 19,
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Vencimiento',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: Color(0xFF94A3B8),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 17),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
+        border: Border(
+          top: BorderSide(color: Color(0xFFE5EAF1)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildOutputSelector(),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Enter/F9 para cobrar · Esc para salir',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _isProcessingPayment
+                    ? null
+                    : () => Navigator.of(context).maybePop(),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF475569),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _isProcessingPayment
+                      ? null
+                      : () => _submitPayment(source: 'mouse_click'),
+                  icon: _isProcessingPayment
+                      ? const SizedBox(
+                          width: 17,
+                          height: 17,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(_chargeActionIcon(), size: 20),
+                  label: Text(
+                    _isProcessingPayment
+                        ? 'Procesando...'
+                        : _chargeActionLabel(),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 26),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.15,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOutputSelector() {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FB),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildOutputOption(
+              label: 'Ticket',
+              icon: Icons.print_rounded,
+              selected: _outputMode == PaymentOutputMode.ticket,
+              onTap: _selectPrint,
+            ),
+          ),
+          Expanded(
+            child: _buildOutputOption(
+              label: 'PDF',
+              icon: Icons.download_rounded,
+              selected: _outputMode == PaymentOutputMode.pdf,
+              enabled: widget.allowInvoicePdfDownload,
+              onTap: _selectDownloadInvoicePdf,
+            ),
+          ),
+          Expanded(
+            child: _buildOutputOption(
+              label: 'Sin imprimir',
+              icon: Icons.block_rounded,
+              selected: _outputMode == PaymentOutputMode.none,
+              onTap: _selectWithoutPrinting,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOutputOption({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    final color = selected ? AppColors.primaryBlue : const Color(0xFF334155);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: enabled ? onTap : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          height: 38,
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(12),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 17,
+                color: enabled ? color : const Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: enabled ? color : const Color(0xFF94A3B8),
+                    letterSpacing: -0.1,
+                  ),
                 ),
               ),
             ],
@@ -1668,197 +1477,25 @@ class _PaymentDialogState extends State<PaymentDialog> {
   }
 
   String _chargeActionLabel() {
-    if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
-      return 'GUARDAR COTIZACIÓN';
-    }
     switch (_outputMode) {
       case PaymentOutputMode.ticket:
-        return 'COBRAR E IMPRIMIR';
+        return 'Cobrar e imprimir';
       case PaymentOutputMode.pdf:
-        return 'COBRAR Y DESCARGAR';
+        return 'Cobrar y descargar';
       case PaymentOutputMode.none:
-        return 'COBRAR SIN IMPRIMIR';
+        return 'Cobrar';
     }
   }
 
   IconData _chargeActionIcon() {
-    if (_selectedDocumentType == PaymentDocumentType.cotizacion) {
-      return Icons.request_quote_outlined;
-    }
     switch (_outputMode) {
       case PaymentOutputMode.ticket:
-        return Icons.print;
+        return Icons.print_rounded;
       case PaymentOutputMode.pdf:
-        return Icons.download;
+        return Icons.download_rounded;
       case PaymentOutputMode.none:
-        return Icons.check_circle_outline;
+        return Icons.check_circle_outline_rounded;
     }
-  }
-
-  Widget _buildOutputSwitchRow({
-    required BoxConstraints constraints,
-    required List<Widget> children,
-  }) {
-    final minCardWidth = constraints.maxWidth >= 760
-        ? (constraints.maxWidth - 24) / 3
-        : 220.0;
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var index = 0; index < children.length; index++) ...[
-            SizedBox(width: minCardWidth, child: children[index]),
-            if (index != children.length - 1) const SizedBox(width: 12),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOutputSwitchCard({
-    required String label,
-    required String subtitle,
-    required IconData icon,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    bool enabled = true,
-  }) {
-    final textColor = enabled
-        ? scheme.onSurface
-        : scheme.onSurface.withAlpha(120);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: value ? scheme.primary : scheme.outlineVariant,
-          width: value ? 1.8 : 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: (value ? scheme.primary : scheme.outlineVariant).withAlpha(
-                28,
-              ),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: value ? scheme.primary : textColor,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: textColor,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: textColor.withAlpha(210),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Transform.scale(
-            scale: 0.84,
-            child: Switch(
-              value: value,
-              onChanged: enabled ? onChanged : null,
-              activeThumbColor: scheme.primary,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMethodChip(PaymentMethod method, String label, IconData icon) {
-    final isSelected = _selectedMethod == method;
-    return ChoiceChip(
-      selected: isSelected,
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 18,
-            color: isSelected ? scheme.onPrimary : scheme.primary,
-          ),
-          const SizedBox(width: 6),
-          Text(label),
-        ],
-      ),
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedMethod = method;
-            _change = 0;
-            // Resetear campos
-            if (method != PaymentMethod.cash && method != PaymentMethod.mixed) {
-              _cashController.clear();
-            }
-            if (method != PaymentMethod.card && method != PaymentMethod.mixed) {
-              _cardController.clear();
-            }
-            if (method != PaymentMethod.transfer &&
-                method != PaymentMethod.mixed) {
-              _transferController.clear();
-            }
-            // Pre-llenar según método
-            if (method == PaymentMethod.card) {
-              _cardController.text = widget.total.toStringAsFixed(2);
-            } else if (method == PaymentMethod.transfer) {
-              _transferController.text = widget.total.toStringAsFixed(2);
-            } else if (method == PaymentMethod.cash) {
-              _cashController.text = widget.total.toStringAsFixed(2);
-            } else if (method == PaymentMethod.layaway) {
-              _receivedController.text = (widget.total * 0.30)
-                  .clamp(0, widget.total)
-                  .toStringAsFixed(2);
-            } else if (method == PaymentMethod.credit) {
-              final days = int.tryParse(_termDaysController.text) ?? 0;
-              if (days > 0) {
-                _dueDate = DateTime.now().add(Duration(days: days));
-              }
-            }
-          });
-        }
-      },
-      selectedColor: scheme.primary,
-      labelStyle: TextStyle(
-        color: isSelected ? scheme.onPrimary : scheme.onSurface,
-        fontWeight: FontWeight.w600,
-      ),
-    );
   }
 
   Widget _buildAmountField(
@@ -1866,17 +1503,126 @@ class _PaymentDialogState extends State<PaymentDialog> {
     TextEditingController controller,
     IconData icon,
   ) {
+    return SizedBox(
+      height: 50,
+      child: TextFormField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF0F172A),
+        ),
+        decoration: _cleanInputDecoration(
+          labelText: label,
+          icon: icon,
+          prefixText: r'$ ',
+        ),
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmallTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? suffixText,
+    bool digitsOnly = false,
+    int maxLines = 1,
+  }) {
     return TextFormField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        prefixIcon: Icon(icon),
+      maxLines: maxLines,
+      keyboardType: digitsOnly ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w900,
+        color: Color(0xFF0F172A),
       ),
-      keyboardType: TextInputType.number,
+      decoration: _cleanInputDecoration(
+        labelText: label,
+        icon: icon,
+        suffixText: suffixText,
+      ),
       inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
+        if (digitsOnly) FilteringTextInputFormatter.digitsOnly,
       ],
     );
   }
+
+  InputDecoration _cleanInputDecoration({
+    String? labelText,
+    String? hintText,
+    String? prefixText,
+    String? suffixText,
+    IconData? icon,
+  }) {
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      prefixText: prefixText,
+      suffixText: suffixText,
+      isDense: true,
+      filled: true,
+      fillColor: Colors.white,
+      prefixIcon: icon == null
+          ? null
+          : Icon(
+              icon,
+              size: 19,
+              color: AppColors.primaryBlue,
+            ),
+      prefixIconConstraints: const BoxConstraints(
+        minWidth: 42,
+        minHeight: 42,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      labelStyle: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF64748B),
+      ),
+      hintStyle: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF94A3B8),
+      ),
+      prefixStyle: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF64748B),
+      ),
+      suffixStyle: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF64748B),
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: const BorderSide(color: Color(0xFFDDE3EC)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: const BorderSide(color: Color(0xFFDDE3EC)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: const BorderSide(
+          color: AppColors.primaryBlue,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentMethodView {
+  final PaymentMethod method;
+  final String label;
+  final IconData icon;
+
+  const _PaymentMethodView(this.method, this.label, this.icon);
 }

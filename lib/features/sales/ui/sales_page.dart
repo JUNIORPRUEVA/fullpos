@@ -2097,9 +2097,6 @@ Future<void> _showQuickItemDialog() async {
   final screenSize = MediaQuery.sizeOf(context);
   final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
 
-  final panelMargin = screenSize.width < 1150 ? 10.0 : 14.0;
-  final panelGap = screenSize.width < 1180 ? 8.0 : 10.0;
-
   // Debe coincidir con el ancho del QuickItemDialog.
   final dialogWidth = math.min(382.0, screenSize.width - 24);
 
@@ -2336,40 +2333,7 @@ Future<void> _showNewProductDialog() async {
     await _refreshElectronicCompany();
   }
 
-  Future<payment.PaymentDocumentType> _setPaymentDocumentType(
-    payment.PaymentDocumentType type,
-  ) async {
-    switch (type) {
-      case payment.PaymentDocumentType.consumidorFinal:
-        return payment.PaymentDocumentType.consumidorFinal;
-      case payment.PaymentDocumentType.creditoFiscal:
-        if (!_isElectronicInvoicingFeatureEnabled) {
-          return payment.PaymentDocumentType.consumidorFinal;
-        }
-        if (!await _canEnableElectronicInvoiceOrNotify()) {
-          return payment.PaymentDocumentType.consumidorFinal;
-        }
-        return payment.PaymentDocumentType.creditoFiscal;
-      case payment.PaymentDocumentType.cotizacion:
-        return payment.PaymentDocumentType.cotizacion;
-    }
-  }
-
-  Future<void> _applyPaymentDocumentType(
-    payment.PaymentDocumentType type,
-  ) async {
-    switch (type) {
-      case payment.PaymentDocumentType.consumidorFinal:
-        await _setSalesDocumentType(_SalesDocumentType.consumidorFinal);
-        return;
-      case payment.PaymentDocumentType.creditoFiscal:
-        await _setSalesDocumentType(_SalesDocumentType.creditoFiscal);
-        return;
-      case payment.PaymentDocumentType.cotizacion:
-        await _setSalesDocumentType(_SalesDocumentType.cotizacion);
-        return;
-    }
-  }
+  // Métodos de tipo de documento eliminados - ahora siempre es consumidor final
 
   _SalesDocumentType get _currentSalesDocumentType {
     if (_currentCart.electronicInvoiceEnabled) {
@@ -2389,17 +2353,6 @@ Future<void> _showNewProductDialog() async {
         return 'Crédito fiscal (01)';
       case _SalesDocumentType.cotizacion:
         return 'Cotización';
-    }
-  }
-
-  String _salesDocumentTypeShortLabel(_SalesDocumentType type) {
-    switch (type) {
-      case _SalesDocumentType.consumidorFinal:
-        return 'General';
-      case _SalesDocumentType.creditoFiscal:
-        return 'Fiscal';
-      case _SalesDocumentType.cotizacion:
-        return 'Cotizacion';
     }
   }
 
@@ -3590,9 +3543,6 @@ Future<void> _showNewProductDialog() async {
           initialChargeOutputMode: configuredChargeOutputMode,
           cartFingerprint: cartFingerprint,
           selectedClient: _currentCart.selectedClient,
-          initialDocumentType: payment.PaymentDocumentType.consumidorFinal,
-          allowElectronicInvoiceOption: _isElectronicInvoicingFeatureEnabled,
-          onDocumentTypeChanged: _setPaymentDocumentType,
           onSelectClient: _showClientPicker,
           onCreateClient: _showCreateClientFromSales,
         ),
@@ -3632,14 +3582,10 @@ Future<void> _showNewProductDialog() async {
       }
       if (!mounted) return;
 
-      final selectedDocumentType =
-          paymentResult['documentType'] as payment.PaymentDocumentType? ??
-          payment.PaymentDocumentType.consumidorFinal;
       final electronicInvoiceRequested =
           paymentResult['electronicInvoiceRequested'] == true;
       final effectiveClient = paymentResult['selectedClient'] as ClientModel?;
 
-      await _applyPaymentDocumentType(selectedDocumentType);
       if (!mounted) return;
 
       if (effectiveClient != null) {
@@ -3652,11 +3598,6 @@ Future<void> _showNewProductDialog() async {
         }
       } else if (!electronicInvoiceRequested) {
         _updateCurrentCart(() {});
-      }
-
-      if (selectedDocumentType == payment.PaymentDocumentType.cotizacion) {
-        await _saveAsQuote(paymentResult: paymentResult);
-        return;
       }
       final method = paymentResult['method'] as payment.PaymentMethod;
       final resolvedKind = kind;
@@ -3709,11 +3650,7 @@ Future<void> _showNewProductDialog() async {
       String? electronicInvoiceCode;
       String? electronicDocumentType;
       if (electronicInvoiceRequested) {
-        electronicDocumentType = switch (selectedDocumentType) {
-          payment.PaymentDocumentType.creditoFiscal => '31',
-          payment.PaymentDocumentType.consumidorFinal => '32',
-          payment.PaymentDocumentType.cotizacion => null,
-        };
+        electronicDocumentType = '32';
       }
 
       final paymentMethodStr = switch (method) {
@@ -3791,9 +3728,7 @@ Future<void> _showNewProductDialog() async {
           : effectiveClient?.cedula;
       final resolvedCustomerName =
           effectiveClient?.nombre ??
-          (electronicInvoiceRequested &&
-                  selectedDocumentType ==
-                      payment.PaymentDocumentType.consumidorFinal
+          (electronicInvoiceRequested
               ? 'Consumidor final'
               : _currentCart.selectedClient?.nombre);
       final resolvedCustomerPhone = effectiveClient?.telefono;
@@ -4115,167 +4050,6 @@ Future<void> _showNewProductDialog() async {
     return collapsedSpaces;
   }
 
-  Future<void> _saveAsQuote({Map<String, dynamic>? paymentResult}) async {
-    final canQuote = await _authorizeAction(
-      AppActions.createQuote,
-      resourceType: 'quote',
-      resourceId: _currentCart.ticketId?.toString(),
-    );
-    if (!canQuote) return;
-
-    if (paymentResult != null) {
-      final selectedClient =
-          paymentResult['selectedClient'] as ClientModel? ??
-          _currentCart.selectedClient;
-      if (selectedClient == null || selectedClient.id == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Debe seleccionar un cliente para la cotización',
-            ),
-            backgroundColor: status.error,
-          ),
-        );
-        return;
-      }
-
-      final quoteItems = _currentCart.items
-          .map(
-            (item) => QuoteItemModel(
-              quoteId: 0,
-              productId: item.productId,
-              productCode: item.productCodeSnapshot,
-              productName: item.productNameSnapshot,
-              description: item.productNameSnapshot,
-              qty: item.qty,
-              price: item.unitPrice,
-              unitPrice: item.unitPrice,
-              cost: item.purchasePriceSnapshot,
-              discountLine: item.discountLine,
-              totalLine: (item.qty * item.unitPrice) - item.discountLine,
-            ),
-          )
-          .toList();
-
-      final quoteOutputMode =
-          paymentResult['quoteOutputMode'] as payment.QuoteOutputMode? ??
-          payment.QuoteOutputMode.save;
-      final validDays =
-          (paymentResult['quoteValidDays'] as num?)?.toInt() ?? 15;
-      final quoteNotes = (paymentResult['quoteNotes'] as String?)?.trim();
-
-      try {
-        final quoteId = await QuotesRepository().saveQuote(
-          clientId: selectedClient.id!,
-          userId: null,
-          ticketName: _currentCart.name,
-          subtotal: _currentCart.calculateSubtotalAfterDiscount(),
-          itbisEnabled: _currentCart.itbisEnabled,
-          itbisRate: _currentCart.itbisRate,
-          itbisAmount: _currentCart.calculateItbis(),
-          discountTotal:
-              _currentCart.discount + _currentCart.calculateTotalDiscount(),
-          total: _currentCart.calculateTotal(),
-          notes: quoteNotes?.isEmpty == true ? null : quoteNotes,
-          items: quoteItems,
-        );
-
-        final shouldPrint = quoteOutputMode == payment.QuoteOutputMode.print;
-        final shouldPreview =
-            quoteOutputMode == payment.QuoteOutputMode.preview;
-        if (shouldPrint || shouldPreview) {
-          final quoteDetail = await QuotesRepository().getQuoteById(quoteId);
-          if (quoteDetail != null) {
-            final business = await SettingsRepository.getBusinessInfo();
-            final settings = await PrinterSettingsRepository.getOrCreate();
-            if (shouldPreview) {
-              if (!mounted) return;
-              await QuotePrinter.showPreview(
-                context: context,
-                quote: quoteDetail.quote,
-                items: quoteDetail.items,
-                clientName: quoteDetail.clientName,
-                clientPhone: quoteDetail.clientPhone,
-                clientRnc: quoteDetail.clientRnc,
-                business: business,
-                validDays: validDays,
-              );
-            } else {
-              await QuotePrinter.printQuote(
-                quote: quoteDetail.quote,
-                items: quoteDetail.items,
-                clientName: quoteDetail.clientName,
-                clientPhone: quoteDetail.clientPhone,
-                clientRnc: quoteDetail.clientRnc,
-                business: business,
-                settings: settings,
-                validDays: validDays,
-              );
-            }
-          }
-        }
-
-        await _deleteCurrentCartFromDatabase();
-
-        if (!mounted) return;
-        setState(() {
-          _currentCart.clear();
-          _selectedCartItemIndex = null;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              shouldPrint
-                  ? 'Cotización guardada e impresa'
-                  : (shouldPreview
-                        ? 'Cotización guardada y lista para vista previa'
-                        : 'Cotización guardada'),
-            ),
-            backgroundColor: status.success,
-          ),
-        );
-      } catch (e, st) {
-        if (!mounted) return;
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _saveAsQuote(paymentResult: paymentResult),
-          module: 'sales/quote/save',
-        );
-      }
-      return;
-    }
-
-    final result = await _presentDialog<QuoteDialogResult>(
-      builder: (context) => QuoteDialog(
-        items: _currentCart.items,
-        selectedClient: _currentCart.selectedClient,
-        itbisEnabled: _currentCart.itbisEnabled,
-        itbisRate: _currentCart.itbisRate,
-        discountTotal:
-            _currentCart.discount + _currentCart.calculateTotalDiscount(),
-        ticketName: _currentCart.name,
-      ),
-    );
-
-    if (!mounted || result?.saved != true || !result!.clearCart) return;
-
-    // Eliminar carrito temporal si existe
-    await _deleteCurrentCartFromDatabase();
-
-    if (!mounted) return;
-    setState(() {
-      _currentCart.clear();
-      _selectedCartItemIndex = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Cotización guardada'),
-        backgroundColor: status.success,
-      ),
-    );
-  }
 
   @override
   void dispose() {
@@ -6722,145 +6496,6 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildInvoiceTypeHeaderButton() {
-    final currentType = _currentSalesDocumentType;
-    final label = _salesDocumentTypeShortLabel(currentType);
-
-    return Builder(
-      builder: (context) => _buildHeaderIconWithLabel(
-        id: 'invoice-type-header',
-        tooltip: 'Tipo de factura',
-        label: label,
-        icon: Image.asset(
-          'assets/imagen/iconos/fiscal.png',
-          width: 16,
-          height: 16,
-          fit: BoxFit.contain,
-        ),
-        onTap: () => _showInvoiceTypeHeaderMenu(context),
-      ),
-    );
-  }
-
-  Widget _buildHeaderIconWithLabel({
-    required String id,
-    required String tooltip,
-    required Widget icon,
-    required String label,
-    required VoidCallback? onTap,
-  }) {
-    final isHovered = _hoveredTicketHeaderActions.contains(id);
-    final isDisabled = onTap == null;
-
-    const brandColor = Color(0xFF1A56DB);
-    const softBrandBg = Color(0xFFDBE5FF);
-    const borderColor = Color(0xFFBFD1FF);
-
-    return MouseRegion(
-      cursor: isDisabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
-      onEnter: (_) {
-        if (!isDisabled) {
-          _setHoverStateDeferred(_hoveredTicketHeaderActions, id, true);
-        }
-      },
-      onExit: (_) {
-        if (!isDisabled) {
-          _setHoverStateDeferred(_hoveredTicketHeaderActions, id, false);
-        }
-      },
-      child: Tooltip(
-        message: tooltip,
-        waitDuration: const Duration(milliseconds: 350),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 140),
-          opacity: isDisabled ? 0.45 : 1,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: isHovered ? softBrandBg : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isHovered ? brandColor : borderColor,
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    if (isHovered && !isDisabled)
-                      BoxShadow(
-                        color: brandColor.withOpacity(0.14),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    icon,
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: brandColor,
-                        height: 1.0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showInvoiceTypeHeaderMenu(BuildContext context) {
-    final currentType = _currentSalesDocumentType;
-    final availableTypes = <_SalesDocumentType>[
-      _SalesDocumentType.consumidorFinal,
-      if (_isElectronicInvoicingFeatureEnabled)
-        _SalesDocumentType.creditoFiscal,
-      _SalesDocumentType.cotizacion,
-    ];
-
-    unawaited(
-      _showAnchoredPopover<void>(
-        anchorContext: context,
-        width: 260,
-        maxHeight: 220,
-        childBuilder: (dialogContext, close) {
-          return _buildProfessionalDropdownSurface(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              shrinkWrap: true,
-              children: [
-                _buildDropdownGroupHeader('Documentos'),
-                for (final type in availableTypes)
-                  _buildDropdownOptionTile(
-                    title: _salesDocumentTypeLabel(type),
-                    selected: type == currentType,
-                    onTap: () {
-                      close();
-                      unawaited(_setSalesDocumentType(type));
-                    },
-                  ),
-              ],
-            ),
-          );
-        },
       ),
     );
   }
