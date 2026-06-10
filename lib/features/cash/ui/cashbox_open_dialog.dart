@@ -142,143 +142,149 @@ class _CashboxOpenDialogState extends State<CashboxOpenDialog> {
                                           overflow: TextOverflow.ellipsis,
                                           style: theme.textTheme.titleLarge
                                               ?.copyWith(
-                                            color: onSurface,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.2,
-                                          ),
+                                                color: onSurface,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: 0.2,
+                                              ),
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
                                           widget.title,
                                           style: theme.textTheme.bodyMedium
-                                              ?.copyWith(
-                                            color: mutedText,
-                                          ),
+                                              ?.copyWith(color: mutedText),
                                         ),
                                       ],
                                     ),
                                   ),
                                 ],
                               ),
-                            const SizedBox(height: 18),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceVariant.withOpacity(0.40),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: dividerColor),
-                              ),
-                              child: Text(
-                                widget.subtitle,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: mutedText,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _amountController,
-                              enabled: !_submitting,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                AccountingAmountFormatter(allowEmpty: false),
-                              ],
-                              decoration: InputDecoration(
-                                labelText: 'Fondo inicial',
-                                hintText: '0.00',
-                                prefixText: 'RD\$ ',
-                                prefixIcon: Icon(
-                                  Icons.payments_outlined,
-                                  color: scheme.primary,
-                                ),
-                                filled: true,
-                                fillColor: inputFill,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: cardBorder),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(color: cardBorder),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: scheme.primary,
-                                    width: 2,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (!widget.canOpen) ...[
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 18),
                               Container(
-                                padding: const EdgeInsets.all(12),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: scheme.error.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: scheme.error.withOpacity(0.30),
+                                  color: scheme.surfaceVariant.withOpacity(
+                                    0.40,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: dividerColor),
+                                ),
+                                child: Text(
+                                  widget.subtitle,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: mutedText,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.error_outline, color: scheme.error, size: 20),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        widget.deniedMessage,
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: scheme.error,
-                                          fontWeight: FontWeight.w600,
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _amountController,
+                                enabled: !_submitting,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  AccountingAmountFormatter(allowEmpty: false),
+                                ],
+                                decoration: InputDecoration(
+                                  labelText: 'Fondo inicial',
+                                  hintText: '0.00',
+                                  prefixText: 'RD\$ ',
+                                  prefixIcon: Icon(
+                                    Icons.payments_outlined,
+                                    color: scheme.primary,
+                                  ),
+                                  filled: true,
+                                  fillColor: inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide(color: cardBorder),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide(color: cardBorder),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide(
+                                      color: scheme.primary,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (!widget.canOpen) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: scheme.error.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: scheme.error.withOpacity(0.30),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.error_outline,
+                                        color: scheme.error,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          widget.deniedMessage,
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                color: scheme.error,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 18),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: _submitting
-                                        ? null
-                                        : () => Navigator.pop(context),
-                                    icon: const Icon(Icons.close_rounded),
-                                    label: const Text('Cancelar'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  flex: 2,
-                                  child: FilledButton.icon(
-                                    onPressed: (!widget.canOpen || _submitting)
-                                        ? null
-                                        : _submit,
-                                    icon: const Icon(Icons.lock_open_rounded),
-                                    label: Text(widget.confirmLabel),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ],
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: _submitting
+                                          ? null
+                                          : () => Navigator.pop(context),
+                                      icon: const Icon(Icons.close_rounded),
+                                      label: const Text('Cancelar'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    flex: 2,
+                                    child: FilledButton.icon(
+                                      onPressed:
+                                          (!widget.canOpen || _submitting)
+                                          ? null
+                                          : _submit,
+                                      icon: const Icon(Icons.lock_open_rounded),
+                                      label: Text(widget.confirmLabel),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
   }
 }

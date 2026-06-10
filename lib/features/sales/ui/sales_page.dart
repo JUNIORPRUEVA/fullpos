@@ -111,7 +111,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
   static const double _productCardHeight = 254.0;
   static const double _productHorizontalMargin = 12.0;
   static const double _productVerticalMargin = 10.0;
-
+  static const double _customerRowControlHeight = 36.0;
+  static const double _customerRowControlRadius = 10.0;
+  static const double _customerNewButtonWidth = 110.0;
   _ProductGridMetrics _productGridMetricsFor(double availableWidth) {
     if (!availableWidth.isFinite || availableWidth <= 0) {
       return const _ProductGridMetrics(
@@ -405,7 +407,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   String _footerTicketLabel(_Cart cart, int index) {
     final clientName = cart.selectedClient?.nombre.trim() ?? '';
-    if (clientName.isNotEmpty) {
+    if (clientName.isNotEmpty && !_isDefaultClientName(clientName)) {
       return _firstNameOnly(clientName);
     }
 
@@ -416,11 +418,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
         RegExp(r'^(ticket|venta)\s*\d*$', caseSensitive: false).hasMatch(raw);
 
     if (index == 0 && isGenericTicket) {
-      return 'Venta principal';
+      return 'Ticket principal';
     }
 
     if (isGenericTicket) {
-      return 'Venta ${index + 1}';
+      return 'Ticket ${index + 1}';
     }
 
     return raw.length > 18 ? '${raw.substring(0, 15)}...' : raw;
@@ -4385,9 +4387,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     constraints.maxWidth,
                   );
                   final recentPanelWidth = ticketPanelConstraints.maxWidth;
-                  final showRecentSalesInline =
-                      _showRecentSalesPanel &&
-                      constraints.maxWidth >= (recentPanelWidth * 2) + 760;
                   const panelGap = 0.0;
                   final theme = Theme.of(context);
                   final salesProducts = theme.extension<SalesProductsTheme>();
@@ -4626,32 +4625,19 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 ),
                               ),
                             ),
-                            if (showRecentSalesInline)
-                              SizedBox(width: panelGap),
-                            if (showRecentSalesInline)
-                              ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minWidth: recentPanelWidth,
-                                  maxWidth: recentPanelWidth,
-                                ),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: const Color(0xFFCBD5E1),
-                                        width: 1,
-                                      ),
-                                    ),
-                                  ),
-                                  child: _buildRecentSalesPanel(),
-                                ),
-                              ),
                           ],
                         ),
                       ),
                       if (showCashClosedOverlay) _buildCashClosedOverlay(),
-                      if (_showRecentSalesPanel && !showRecentSalesInline)
+                      if (_showRecentSalesPanel)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: _closeRecentSalesPanel,
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      if (_showRecentSalesPanel)
                         Positioned(
                           top: 0,
                           right: 0,
@@ -5711,8 +5697,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
       fillColor,
     );
     final ringColor = fillColor.withOpacity(0.34);
-    const outerSize = 42.0;
-    const innerSize = 34.0;
+    const outerSize = 44.0;
+    const innerSize = 36.0;
 
     return Container(
       width: outerSize,
@@ -6070,7 +6056,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildInvoicePanelHeader(),
-        const SizedBox(height: 10),
+        const SizedBox(height: 5),
         Divider(height: 1, color: dividerColor),
         Expanded(child: _buildItemsListCard()),
         Divider(height: 1, color: dividerColor),
@@ -6140,13 +6126,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: const Color(0xFFDFF6F3),
+              color: const Color(0xFFDBE5FF),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.receipt_long_outlined,
               size: 18,
-              color: Color(0xFF16A39A),
+              color: Color(0xFF1A56DB),
             ),
           ),
           const SizedBox(width: 12),
@@ -6484,14 +6470,23 @@ class _SalesPageState extends ConsumerState<SalesPage>
               children: [
                 _buildPanelDocumentTypeDropdown(),
                 const SizedBox(height: 6),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(child: _buildPanelClientControl()),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 110, child: _buildPanelNewClientButton()),
-                  ],
-                ),
+               SizedBox(
+  height: _customerRowControlHeight,
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Expanded(
+        child: _buildPanelClientControl(),
+      ),
+      const SizedBox(width: 8),
+      SizedBox(
+        width: _customerNewButtonWidth,
+        height: _customerRowControlHeight,
+        child: _buildPanelNewClientButton(),
+      ),
+    ],
+  ),
+),
               ],
             ),
           ),
@@ -8430,283 +8425,308 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildPanelDocumentTypeDropdown() {
-    final currentType = _currentSalesDocumentType;
-    final availableTypes = <_SalesDocumentType>[
-      _SalesDocumentType.consumidorFinal,
-      if (_isElectronicInvoicingFeatureEnabled)
-        _SalesDocumentType.creditoFiscal,
-      _SalesDocumentType.cotizacion,
-    ];
+Widget _buildPanelDocumentTypeDropdown() {
+  final currentType = _currentSalesDocumentType;
+  final availableTypes = <_SalesDocumentType>[
+    _SalesDocumentType.consumidorFinal,
+    if (_isElectronicInvoicingFeatureEnabled)
+      _SalesDocumentType.creditoFiscal,
+    _SalesDocumentType.cotizacion,
+  ];
 
-    return Builder(
-      builder: (fieldContext) => _buildProfessionalDropdownField(
-        supportingText: 'Numeracion',
-        value: _salesDocumentTypeLabel(currentType),
-        onTap: () => unawaited(
-          _showAnchoredPopover<void>(
-            anchorContext: fieldContext,
-            width: 300,
-            maxHeight: 260,
-            childBuilder: (dialogContext, close) {
-              return _buildProfessionalDropdownSurface(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shrinkWrap: true,
-                  children: [
-                    _buildDropdownGroupHeader('No electrónicas'),
-                    for (final type in availableTypes)
-                      _buildDropdownOptionTile(
-                        title: _salesDocumentTypeLabel(type),
-                        selected: type == currentType,
-                        onTap: () {
-                          close();
-                          unawaited(_setSalesDocumentType(type));
-                        },
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPanelClientControl() {
-    final client = _currentCart.selectedClient;
-    _syncClientFieldText();
-
-    return CompositedTransformTarget(
-      link: _clientSearchLayerLink,
-      child: SizedBox(
-        key: _clientSearchFieldKey,
-        height: 40,
-        child: TextField(
-          controller: _clientSearchController,
-          focusNode: _clientSearchFocusNode,
-          onTap: _openClientSearchOverlay,
-          onChanged: (value) {
-            _clientSearchQuery = value;
-            if (_clientSearchOverlay == null) {
-              _openClientSearchOverlay();
-            }
-            _clientSearchOverlay?.markNeedsBuild();
-          },
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            hintText: 'Buscar o seleccionar cliente',
-            hintStyle: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 13.4,
-              fontWeight: FontWeight.w500,
-              height: 1.1,
-            ),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 9,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFF1A56DB),
-                width: 1.2,
-              ),
-            ),
-            suffixIconConstraints: const BoxConstraints(
-              minWidth: 110,
-              maxWidth: 110,
-            ),
-            suffixIcon: SizedBox(
-              width: 110,
-              child: Row(
+  return Builder(
+    builder: (fieldContext) => _buildProfessionalDropdownField(
+      supportingText: 'Numeracion',
+      value: _salesDocumentTypeLabel(currentType),
+      onTap: () => unawaited(
+        _showAnchoredPopover<void>(
+          anchorContext: fieldContext,
+          width: 300,
+          maxHeight: 260,
+          childBuilder: (dialogContext, close) {
+            return _buildProfessionalDropdownSurface(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shrinkWrap: true,
                 children: [
-                  if (client != null)
-                    _buildClientFieldIcon(
-                      icon: Icons.edit_outlined,
-                      onTap: () => unawaited(_showEditClientFromSales(client)),
-                    ),
-                  if (client != null)
-                    _buildClientFieldIcon(
-                      icon: Icons.close_rounded,
+                  _buildDropdownGroupHeader('No electrónicas'),
+                  for (final type in availableTypes)
+                    _buildDropdownOptionTile(
+                      title: _salesDocumentTypeLabel(type),
+                      selected: type == currentType,
                       onTap: () {
-                        _removeClient();
-                        _clientSearchController.clear();
-                        _clientSearchQuery = '';
-                        _clientSearchOverlay?.markNeedsBuild();
+                        close();
+                        unawaited(_setSalesDocumentType(type));
                       },
                     ),
-                  const Spacer(),
-                  _buildClientFieldIcon(
-                    icon: Icons.keyboard_arrow_down_rounded,
-                    onTap: _openClientSearchOverlay,
-                  ),
-                  const SizedBox(width: 6),
                 ],
               ),
-            ),
-          ),
-          style: TextStyle(
-            color: salesDetailTextColor,
-            fontSize: 13.8,
-            fontWeight: FontWeight.w500,
-            height: 1.1,
-          ),
+            );
+          },
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildClientSearchDropdown() {
-    final client = _currentCart.selectedClient;
-    final normalizedQuery = _clientSearchQuery.trim().toLowerCase();
-    final filteredClients = _clients.where((option) {
-      if (normalizedQuery.isEmpty) return true;
-      final name = option.nombre.toLowerCase();
-      final phone = option.telefono?.toLowerCase() ?? '';
-      final rnc = option.rnc?.toLowerCase() ?? '';
-      final cedula = option.cedula?.toLowerCase() ?? '';
-      return name.contains(normalizedQuery) ||
-          phone.contains(normalizedQuery) ||
-          rnc.contains(normalizedQuery) ||
-          cedula.contains(normalizedQuery);
-    }).toList();
+Widget _buildPanelClientControl() {
+  final client = _currentCart.selectedClient;
+  _syncClientFieldText();
 
-    Widget compactTile({
-      required String title,
-      String? subtitle,
-      required bool selected,
-      required VoidCallback onTap,
-      Widget? trailing,
-    }) {
-      return Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: selected ? const Color(0xFFF5F8FE) : Colors.transparent,
+  return CompositedTransformTarget(
+    link: _clientSearchLayerLink,
+    child: SizedBox.expand(
+      key: _clientSearchFieldKey,
+      child: TextField(
+        controller: _clientSearchController,
+        focusNode: _clientSearchFocusNode,
+        textAlignVertical: TextAlignVertical.center,
+        onTap: _openClientSearchOverlay,
+        onChanged: (value) {
+          _clientSearchQuery = value;
+          if (_clientSearchOverlay == null) {
+            _openClientSearchOverlay();
+          }
+          _clientSearchOverlay?.markNeedsBuild();
+        },
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.white,
+          hintText: 'Buscar o seleccionar cliente',
+          hintStyle: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 13.4,
+            fontWeight: FontWeight.w500,
+            height: 1.0,
+          ),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 0,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(_customerRowControlRadius),
+            borderSide: const BorderSide(
+              color: Color(0xFFD6E0EA),
+              width: 1,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(_customerRowControlRadius),
+            borderSide: const BorderSide(
+              color: Color(0xFFD6E0EA),
+              width: 1,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(_customerRowControlRadius),
+            borderSide: const BorderSide(
+              color: Color(0xFF1A56DB),
+              width: 1.2,
+            ),
+          ),
+          suffixIconConstraints: const BoxConstraints(
+            minWidth: 108,
+            maxWidth: 108,
+            minHeight: _customerRowControlHeight,
+            maxHeight: _customerRowControlHeight,
+          ),
+          suffixIcon: SizedBox(
+            width: 108,
+            height: _customerRowControlHeight,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13.2,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: const Color(0xFF17324D),
-                    ),
+                if (client != null)
+                  _buildClientFieldIcon(
+                    icon: Icons.edit_outlined,
+                    onTap: () => unawaited(_showEditClientFromSales(client)),
                   ),
+                if (client != null)
+                  _buildClientFieldIcon(
+                    icon: Icons.close_rounded,
+                    onTap: () {
+                      _removeClient();
+                      _clientSearchController.clear();
+                      _clientSearchQuery = '';
+                      _clientSearchOverlay?.markNeedsBuild();
+                    },
+                  ),
+                const Spacer(),
+                _buildClientFieldIcon(
+                  icon: Icons.keyboard_arrow_down_rounded,
+                  onTap: _openClientSearchOverlay,
                 ),
-                if (subtitle != null && subtitle.isNotEmpty) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 11.8,
-                        fontWeight: FontWeight.w400,
-                        color: Color(0xFF6B7C8E),
-                      ),
-                    ),
-                  ),
-                ],
-                if (trailing != null) ...[const SizedBox(width: 6), trailing],
+                const SizedBox(width: 6),
               ],
             ),
           ),
         ),
-      );
-    }
+        style: TextStyle(
+          color: salesDetailTextColor,
+          fontSize: 14.1,
+          fontWeight: FontWeight.w500,
+          height: 1.0,
+        ),
+      ),
+    ),
+  );
+}
 
-    return _buildProfessionalDropdownSurface(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 240),
-        child: Material(
-          color: Colors.transparent,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            shrinkWrap: true,
-            itemCount: filteredClients.isEmpty ? 1 : filteredClients.length + 1,
-            separatorBuilder: (context, index) =>
-                const Divider(height: 1, indent: 12, endIndent: 12),
-            itemBuilder: (context, index) {
-              if (filteredClients.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+Widget _buildClientSearchDropdown() {
+  final client = _currentCart.selectedClient;
+  final normalizedQuery = _clientSearchQuery.trim().toLowerCase();
+  final filteredClients = _clients.where((option) {
+    if (normalizedQuery.isEmpty) return true;
+
+    final name = option.nombre.toLowerCase();
+    final phone = option.telefono?.toLowerCase() ?? '';
+    final rnc = option.rnc?.toLowerCase() ?? '';
+    final cedula = option.cedula?.toLowerCase() ?? '';
+
+    return name.contains(normalizedQuery) ||
+        phone.contains(normalizedQuery) ||
+        rnc.contains(normalizedQuery) ||
+        cedula.contains(normalizedQuery);
+  }).toList();
+
+  Widget compactTile({
+    required String title,
+    String? subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          color: selected ? const Color(0xFFF5F8FE) : Colors.transparent,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.2,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: const Color(0xFF17324D),
+                  ),
+                ),
+              ),
+              if (subtitle != null && subtitle.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Expanded(
                   child: Text(
-                    'No se encontraron clientes',
-                    style: TextStyle(
-                      fontSize: 12.2,
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 11.8,
+                      fontWeight: FontWeight.w400,
                       color: Color(0xFF6B7C8E),
-                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                );
-              }
+                ),
+              ],
+              if (trailing != null) ...[
+                const SizedBox(width: 6),
+                trailing,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-              if (index == 0) {
-                final selected = client == null;
-                return compactTile(
-                  title: 'Consumidor Final',
-                  subtitle: 'Cliente general',
-                  selected: selected,
-                  onTap: () {
-                    _closeClientSearchOverlay();
-                    _clientSearchFocusNode.unfocus();
-                    _removeClient();
-                    _clientSearchQuery = '';
-                    _clientSearchController.clear();
-                  },
-                );
-              }
+  return _buildProfessionalDropdownSurface(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 240),
+      child: Material(
+        color: Colors.transparent,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          shrinkWrap: true,
+          itemCount: filteredClients.isEmpty ? 1 : filteredClients.length + 1,
+          separatorBuilder: (context, index) {
+            return const Divider(
+              height: 1,
+              indent: 12,
+              endIndent: 12,
+            );
+          },
+          itemBuilder: (context, index) {
+            if (filteredClients.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                child: Text(
+                  'No se encontraron clientes',
+                  style: TextStyle(
+                    fontSize: 12.2,
+                    color: Color(0xFF6B7C8E),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            }
 
-              final option = filteredClients[index - 1];
-              final optionMeta = (option.telefono?.trim().isNotEmpty ?? false)
-                  ? option.telefono!.trim()
-                  : ((option.rnc?.trim().isNotEmpty ?? false)
-                        ? option.rnc!.trim()
-                        : ((option.cedula?.trim().isNotEmpty ?? false)
-                              ? option.cedula!.trim()
-                              : ''));
-              final selected = option.id == client?.id;
+            if (index == 0) {
+              final selected = client == null;
 
               return compactTile(
-                title: option.nombre,
-                subtitle: optionMeta.isEmpty ? null : optionMeta,
+                title: 'Consumidor Final',
+                subtitle: 'Cliente general',
                 selected: selected,
-                onTap: () async {
+                onTap: () {
                   _closeClientSearchOverlay();
                   _clientSearchFocusNode.unfocus();
-                  await _applySelectedClient(option);
+                  _removeClient();
                   _clientSearchQuery = '';
-                  _syncClientFieldText();
+                  _clientSearchController.clear();
                 },
-                trailing: InkWell(
-                  onTap: () async {
-                    _closeClientSearchOverlay();
-                    await _showEditClientFromSales(option);
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
+              );
+            }
+
+            final option = filteredClients[index - 1];
+
+            final optionMeta = (option.telefono?.trim().isNotEmpty ?? false)
+                ? option.telefono!.trim()
+                : ((option.rnc?.trim().isNotEmpty ?? false)
+                    ? option.rnc!.trim()
+                    : ((option.cedula?.trim().isNotEmpty ?? false)
+                        ? option.cedula!.trim()
+                        : ''));
+
+            final selected = option.id == client?.id;
+
+            return compactTile(
+              title: option.nombre,
+              subtitle: optionMeta.isEmpty ? null : optionMeta,
+              selected: selected,
+              onTap: () async {
+                _closeClientSearchOverlay();
+                _clientSearchFocusNode.unfocus();
+                await _applySelectedClient(option);
+                _clientSearchQuery = '';
+                _syncClientFieldText();
+              },
+              trailing: InkWell(
+                onTap: () async {
+                  _closeClientSearchOverlay();
+                  await _showEditClientFromSales(option);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Center(
                     child: Icon(
                       Icons.edit_outlined,
                       size: 16,
@@ -8714,55 +8734,89 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     ),
                   ),
                 ),
-              );
-            },
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _buildPanelNewClientButton() {
+  return SizedBox.expand(
+    child: ElevatedButton.icon(
+      onPressed: _showCreateClientFromSales,
+      style: ElevatedButton.styleFrom(
+        fixedSize: const Size(
+          _customerNewButtonWidth,
+          _customerRowControlHeight,
+        ),
+        minimumSize: const Size(
+          _customerNewButtonWidth,
+          _customerRowControlHeight,
+        ),
+        maximumSize: const Size(
+          _customerNewButtonWidth,
+          _customerRowControlHeight,
+        ),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        backgroundColor: const Color(0xFFF1F5FF),
+        foregroundColor: const Color(0xFF1A56DB),
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+        alignment: Alignment.center,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_customerRowControlRadius),
+          side: const BorderSide(
+            color: Color(0xFFC7D2FE),
+            width: 1,
           ),
         ),
+        textStyle: const TextStyle(
+          fontSize: 12.8,
+          fontWeight: FontWeight.w600,
+          height: 1.0,
+        ),
       ),
-    );
-  }
+      icon: const Icon(
+        Icons.person_add_alt_1_rounded,
+        size: 16,
+      ),
+      label: const Text(
+        'Nuevo',
+        style: TextStyle(
+          fontSize: 12.8,
+          fontWeight: FontWeight.w600,
+          height: 1.0,
+        ),
+      ),
+    ),
+  );
+}
 
-  Widget _buildPanelNewClientButton() {
-    return SizedBox(
-      height: 48,
-      child: ElevatedButton.icon(
-        onPressed: _showCreateClientFromSales,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFF1F5FF),
-          foregroundColor: const Color(0xFF1A56DB),
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: Color(0xFFC7D2FE), width: 1),
-          ),
-        ),
-        icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-        label: const Text(
-          'Nuevo',
-          style: TextStyle(fontSize: 12.6, fontWeight: FontWeight.w600),
+Widget _buildClientFieldIcon({
+  required IconData icon,
+  required VoidCallback onTap,
+}) {
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(8),
+    child: SizedBox(
+      width: 28,
+      height: _customerRowControlHeight,
+      child: Center(
+        child: Icon(
+          icon,
+          size: 18,
+          color: salesDetailMutedTextColor,
         ),
       ),
-    );
-  }
-
-  Widget _buildClientFieldIcon({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: 28,
-        height: 28,
-        child: Center(
-          child: Icon(icon, size: 18, color: salesDetailMutedTextColor),
-        ),
-      ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildProfessionalDropdownField({
     String? supportingText,
@@ -9875,9 +9929,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   offset: _isFacturaActionHovered
                                       ? const Offset(0, -0.02)
                                       : Offset.zero,
-                                  child: Image.asset(
-                                    'assets/imagen/iconos/factura.png',
-                                    fit: BoxFit.contain,
+                                  child: const ImageIcon(
+                                    AssetImage(
+                                      'assets/imagen/iconos/factura.png',
+                                    ),
+                                    color: Color(0xFF1A56DB),
+                                    size: 30,
                                   ),
                                 ),
                               ),

@@ -17,7 +17,7 @@ const _cashOpenDialogInputText = Color(0xFF111827);
 const _cashOpenDialogInputHint = Color(0xFF6B7280);
 const _cashOpenDialogBorder = Color(0xFFE5E7EB);
 
-/// Diálogo para abrir caja y crear la sesión activa.
+/// Dialogo para abrir caja y crear la sesion activa.
 class CashOpenDialog extends ConsumerStatefulWidget {
   const CashOpenDialog({super.key});
 
@@ -58,7 +58,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
         action: AppActions.startSession,
         resourceType: 'cashbox_daily',
         resourceId: 'new',
-        reason: 'Iniciar sesión',
+        reason: 'Iniciar sesion',
       );
       if (!authorized || !mounted) return;
 
@@ -76,7 +76,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
           ScaffoldMessenger.of(rootContext).showSnackBar(
             SnackBar(
               content: Text(
-                'Sesión iniciada con ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: r'$')}',
+                'Sesion iniciada con ${AccountingAmountFormatter.formatWithSymbol(amount, symbol: r'$')}',
               ),
               backgroundColor: Theme.of(rootContext).colorScheme.primary,
             ),
@@ -120,10 +120,7 @@ class _CashOpenDialogState extends ConsumerState<CashOpenDialog> {
           curve: Curves.easeOut,
           padding: EdgeInsets.only(bottom: viewInsets),
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: safeWidth,
-              minWidth: 320,
-            ),
+            constraints: BoxConstraints(maxWidth: safeWidth, minWidth: 320),
             child: Container(
               decoration: BoxDecoration(
                 color: _cashOpenDialogCard,

@@ -63,6 +63,12 @@ class WindowStartupController {
           // Ignore - the window may already be hidden.
         }
 
+        try {
+          await windowManager.setBackgroundColor(const Color(0xFFF2F6F9));
+        } catch (_) {
+          // Ignore background-color sync failures.
+        }
+
         if (kDebugMode) {
           debugPrint('[WINDOW] startup options applied (hidden)');
         }
@@ -135,4 +141,3 @@ class WindowStartupController {
     }
   }
 }
-

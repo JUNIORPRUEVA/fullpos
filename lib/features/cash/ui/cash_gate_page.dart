@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/brand/fullpos_brand_theme.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
@@ -10,13 +9,16 @@ import '../../../core/utils/accounting_amount_formatter.dart';
 import '../providers/cash_providers.dart';
 
 const _cashGatePageBackground = Color(0xFFF5F7FA);
-const _cashGatePanelColor = Color(0xFF374151);
+const _cashGatePanelColor = Color(0xFFFFFFFF);
 const _cashGatePrimaryBlue = Color(0xFF2563EB);
-const _cashGateInputBackground = Color(0xFFFFFFFF);
+const _cashGatePanelBorder = Color(0xFFBFDBFE);
+const _cashGateHeaderBorder = Color(0xFFD6E0EA);
+const _cashGateInputBackground = Color(0xFFF8FAFC);
 const _cashGateInputText = Color(0xFF111827);
 const _cashGateInputHint = Color(0xFF94A3B8);
-const _cashGateInputLabel = Color(0xFFD1D5DB);
-const _cashGateInputBadgeBackground = Color(0xFFEFF4FF);
+const _cashGateInputLabel = Color(0xFF0F172A);
+const _cashGateInputSubtitle = Color(0xFF64748B);
+const _cashGateInputBadgeBackground = Color(0xFFECF3FF);
 const _cashGateInputIdleBorder = Color(0xFFE2E8F0);
 
 class CashGatePage extends ConsumerStatefulWidget {
@@ -73,7 +75,7 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
         action: AppActions.startSession,
         resourceType: 'cashbox_daily',
         resourceId: 'new',
-        reason: 'Iniciar sesión',
+        reason: 'Iniciar sesion',
       );
       if (!authorized || !mounted) return;
 
@@ -101,7 +103,20 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cardBorder = Colors.white.withOpacity(0.08);
+    final screenSize = MediaQuery.of(context).size;
+    final ultraCompact = screenSize.width < 420 || screenSize.height < 760;
+    final shellHorizontalPadding = (screenSize.width * 0.06).clamp(16.0, 40.0);
+    final shellVerticalPadding = (screenSize.height * 0.06).clamp(16.0, 40.0);
+    final panelWidth = (screenSize.width - (shellHorizontalPadding * 2)).clamp(
+      280.0,
+      430.0,
+    );
+    final panelPadding = ultraCompact ? 20.0 : 28.0;
+    final titleSize = ultraCompact ? 17.5 : 19.5;
+    final subtitleSize = ultraCompact ? 12.4 : 13.4;
+    final fieldLabelSize = ultraCompact ? 15.5 : 16.8;
+    final amountTextSize = ultraCompact ? 16.8 : 18.6;
+    final amountFieldWidth = ultraCompact ? 252.0 : 304.0;
     final inputFill = _cashGateInputBackground;
     final focusedAmountFill = _cashGateInputBackground;
     final amountBorderColor = _amountHasFocus
@@ -154,235 +169,276 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 32,
+                padding: EdgeInsets.symmetric(
+                  horizontal: shellHorizontalPadding,
+                  vertical: shellVerticalPadding,
                 ),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 404),
+                  constraints: BoxConstraints(maxWidth: panelWidth.toDouble()),
                   child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
+                      color: _cashGatePanelColor,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: _cashGatePanelBorder,
+                        width: 1.25,
+                      ),
                       boxShadow: const [
                         BoxShadow(
-                          color: Color(0x260F172A),
-                          blurRadius: 44,
-                          offset: Offset(0, 24),
+                          color: Color(0x160F172A),
+                          blurRadius: 34,
+                          offset: Offset(0, 18),
                         ),
                         BoxShadow(
-                          color: Color(0x120F172A),
-                          blurRadius: 20,
-                          offset: Offset(0, 6),
+                          color: Color(0x0C0F172A),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
                         ),
                       ],
                     ),
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      color: _cashGatePanelColor,
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      surfaceTintColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        side: BorderSide(color: cardBorder),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        panelPadding,
+                        panelPadding,
+                        panelPadding,
+                        ultraCompact ? 20 : 24,
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Center(
-                                child: Image.asset(
-                                  FullposBrandTheme.logoAsset,
-                                  height: 54,
-                                  fit: BoxFit.contain,
-                                ),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.only(
+                                bottom: ultraCompact ? 14 : 18,
                               ),
-                              const SizedBox(height: 18),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Fondo inicial',
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                    color: _cashGateInputLabel,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.2,
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: _cashGateHeaderBorder,
+                                    width: 1,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 10),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: amountBorderColor,
-                                    width: _amountHasFocus ? 1.8 : 1.0,
-                                  ),
-                                  boxShadow: _amountHasFocus
-                                      ? [
-                                          BoxShadow(
-                                            color: _cashGatePrimaryBlue
-                                                .withOpacity(0.16),
-                                            blurRadius: 22,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ]
-                                      : const [],
-                                ),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: _amountHasFocus
-                                        ? focusedAmountFill
-                                        : inputFill,
-                                    borderRadius: BorderRadius.circular(15),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          left: 14,
-                                          top: 12,
-                                          bottom: 12,
-                                          right: 12,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Abrir caja',
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          color: _cashGateInputLabel,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: -0.2,
+                                          fontSize: titleSize,
                                         ),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 10,
+                                  ),
+                                  SizedBox(height: ultraCompact ? 4 : 6),
+                                  Text(
+                                    'Registra el fondo inicial para comenzar a trabajar.',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: _cashGateInputSubtitle,
+                                      fontSize: subtitleSize,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: ultraCompact ? 18 : 22),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Fondo inicial',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: _cashGateInputLabel,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: fieldLabelSize,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: ultraCompact ? 10 : 12),
+                            Align(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: amountFieldWidth,
+                                ),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: amountBorderColor,
+                                      width: _amountHasFocus ? 1.5 : 1.0,
+                                    ),
+                                    boxShadow: _amountHasFocus
+                                        ? [
+                                            BoxShadow(
+                                              color: _cashGatePrimaryBlue
+                                                  .withOpacity(0.10),
+                                              blurRadius: 18,
+                                              offset: const Offset(0, 8),
+                                            ),
+                                          ]
+                                        : const [],
+                                  ),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: _amountHasFocus
+                                          ? focusedAmountFill
+                                          : inputFill,
+                                      borderRadius: BorderRadius.circular(11),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 10,
+                                            top: 8,
+                                            bottom: 8,
+                                            right: 8,
                                           ),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                _cashGateInputBadgeBackground,
-                                            borderRadius: BorderRadius.circular(
-                                              12,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  _cashGateInputBadgeBackground,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Text(
+                                              r'RD$',
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    color: _cashGatePrimaryBlue,
+                                                    fontWeight: FontWeight.w700,
+                                                    letterSpacing: -0.2,
+                                                  ),
                                             ),
                                           ),
-                                          child: Text(
-                                            r'RD$',
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                                  color: _cashGatePrimaryBlue,
-                                                  fontWeight: FontWeight.w800,
-                                                  letterSpacing: -0.2,
-                                                ),
-                                          ),
                                         ),
-                                      ),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: _amountController,
-                                          focusNode: _amountFocusNode,
-                                          enabled: !_isLoading,
-                                          autofocus: true,
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            AccountingAmountFormatter(),
-                                          ],
-                                          style: theme.textTheme.headlineSmall
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                                color: _cashGateInputText,
-                                                letterSpacing: -0.6,
-                                                height: 1.0,
-                                              ),
-                                          cursorColor: _cashGatePrimaryBlue,
-                                          textAlignVertical:
-                                              TextAlignVertical.center,
-                                          decoration: InputDecoration(
-                                            hintText: '0',
-                                            hintStyle: theme
-                                                .textTheme
-                                                .headlineSmall
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _amountController,
+                                            focusNode: _amountFocusNode,
+                                            enabled: !_isLoading,
+                                            autofocus: true,
+                                            keyboardType: TextInputType.number,
+                                            inputFormatters: [
+                                              AccountingAmountFormatter(),
+                                            ],
+                                            style: theme.textTheme.headlineSmall
                                                 ?.copyWith(
-                                                  color: _cashGateInputHint,
-                                                  fontWeight: FontWeight.w700,
-                                                  letterSpacing: -0.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _cashGateInputText,
+                                                  letterSpacing: -0.4,
+                                                  fontSize: amountTextSize,
                                                   height: 1.0,
                                                 ),
-                                            filled: false,
-                                            isCollapsed: true,
-                                            border: InputBorder.none,
-                                            enabledBorder: InputBorder.none,
-                                            focusedBorder: InputBorder.none,
-                                            errorBorder: InputBorder.none,
-                                            focusedErrorBorder:
-                                                InputBorder.none,
-                                            contentPadding:
-                                                const EdgeInsets.only(
-                                                  top: 22,
-                                                  bottom: 22,
-                                                  right: 18,
-                                                ),
+                                            cursorColor: _cashGatePrimaryBlue,
+                                            textAlignVertical:
+                                                TextAlignVertical.center,
+                                            decoration: InputDecoration(
+                                              hintText: '0.00',
+                                              hintStyle: theme
+                                                  .textTheme
+                                                  .headlineSmall
+                                                  ?.copyWith(
+                                                    color: _cashGateInputHint,
+                                                    fontWeight: FontWeight.w500,
+                                                    letterSpacing: -0.3,
+                                                    fontSize: amountTextSize,
+                                                    height: 1.0,
+                                                  ),
+                                              filled: false,
+                                              isCollapsed: true,
+                                              border: InputBorder.none,
+                                              enabledBorder: InputBorder.none,
+                                              focusedBorder: InputBorder.none,
+                                              errorBorder: InputBorder.none,
+                                              focusedErrorBorder:
+                                                  InputBorder.none,
+                                              contentPadding:
+                                                  const EdgeInsets.only(
+                                                    top: 20,
+                                                    bottom: 20,
+                                                    right: 16,
+                                                  ),
+                                            ),
+                                            validator: (value) {
+                                              final parsed =
+                                                  AccountingAmountFormatter.parse(
+                                                    (value ?? '').trim(),
+                                                  );
+                                              if (parsed < 0) {
+                                                return 'El monto no puede ser negativo';
+                                              }
+                                              return null;
+                                            },
+                                            textInputAction:
+                                                TextInputAction.done,
+                                            onFieldSubmitted: (_) =>
+                                                _openCash(),
+                                            onTap: () {
+                                              _amountController
+                                                  .selection = TextSelection(
+                                                baseOffset: 0,
+                                                extentOffset: _amountController
+                                                    .text
+                                                    .length,
+                                              );
+                                            },
                                           ),
-                                          validator: (value) {
-                                            final parsed =
-                                                AccountingAmountFormatter.parse(
-                                                  (value ?? '').trim(),
-                                                );
-                                            if (parsed < 0) {
-                                              return 'El monto no puede ser negativo';
-                                            }
-                                            return null;
-                                          },
-                                          textInputAction: TextInputAction.done,
-                                          onFieldSubmitted: (_) => _openCash(),
-                                          onTap: () {
-                                            _amountController
-                                                .selection = TextSelection(
-                                              baseOffset: 0,
-                                              extentOffset:
-                                                  _amountController.text.length,
-                                            );
-                                          },
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              SizedBox(
-                                height: 48,
-                                child: FilledButton.icon(
-                                  onPressed: _isLoading ? null : _openCash,
-                                  icon: _isLoading
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(Icons.lock_open_rounded),
-                                  label: Text(
-                                    _isLoading
-                                        ? 'Abriendo caja...'
-                                        : 'Abrir caja',
-                                  ),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: _cashGatePrimaryBlue,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    textStyle: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            SizedBox(height: ultraCompact ? 18 : 22),
+                            SizedBox(
+                              height: 50,
+                              child: FilledButton.icon(
+                                onPressed: _isLoading ? null : _openCash,
+                                icon: _isLoading
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.lock_open_rounded),
+                                label: Text(
+                                  _isLoading
+                                      ? 'Abriendo caja...'
+                                      : 'Abrir caja',
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _cashGatePrimaryBlue,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),

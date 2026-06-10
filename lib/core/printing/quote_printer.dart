@@ -18,6 +18,8 @@ import '../layout/app_shell.dart';
 import '../services/empresa_service.dart';
 
 /// Servicio para imprimir, compartir y generar PDF de cotizaciones.
+///
+/// Diseño profesional y elegante con estética minimalista corporativa.
 class QuotePrinter {
   QuotePrinter._();
 
@@ -315,9 +317,8 @@ class QuotePrinter {
     final safeClientPhone = clientPhone == null
         ? null
         : _sanitizePdfText(clientPhone);
-    final safeClientRnc = clientRnc == null
-        ? null
-        : _sanitizePdfText(clientRnc);
+    final safeClientRnc =
+        clientRnc == null ? null : _sanitizePdfText(clientRnc);
 
     final createdDate = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
     final expirationDate = createdDate.add(Duration(days: validDays));
@@ -332,8 +333,8 @@ class QuotePrinter {
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(34, 30, 34, 30),
-        footer: (context) => _buildBottomDecorativeFooter(
+        margin: const pw.EdgeInsets.fromLTRB(40, 36, 40, 36),
+        footer: (context) => _buildFooter(
           context: context,
           businessData: safeBusiness,
           quote: quote,
@@ -351,27 +352,24 @@ class QuotePrinter {
             brand,
             logoProvider,
           ),
-          pw.SizedBox(height: 18),
-          _buildClientAndTermsSection(
+          pw.SizedBox(height: 22),
+          _buildClientSection(
             clientName: safeClientName.isEmpty
                 ? 'Consumidor Final'
                 : safeClientName,
             clientPhone: safeClientPhone,
             clientRnc: safeClientRnc,
-            issueDate: issueDate,
-            validUntil: validUntil,
-            validDays: validDays,
             brand: brand,
           ),
-          pw.SizedBox(height: 18),
+          pw.SizedBox(height: 24),
           _buildSectionTitle(
             title: 'Detalle de productos y servicios',
             subtitle: 'Precios expresados en pesos dominicanos',
             brand: brand,
           ),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 10),
           _buildProductsTable(items, currencyFormat, brand),
-          pw.SizedBox(height: 20),
+          pw.SizedBox(height: 22),
           _buildSummarySection(
             quote: quote,
             currencyFormat: currencyFormat,
@@ -522,8 +520,10 @@ class QuotePrinter {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // PDF SECTIONS
+  // PDF SECTIONS — DISEÑO PROFESIONAL Y ELEGANTE
   // ─────────────────────────────────────────────────────────────
+
+  // ─── HEADER ──────────────────────────────────────────────────
 
   static pw.Widget _buildHeader(
     Map<String, String> businessData,
@@ -553,28 +553,28 @@ class QuotePrinter {
     ], separator: ', ');
 
     return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 18),
+      padding: const pw.EdgeInsets.only(bottom: 20),
       decoration: pw.BoxDecoration(
         border: pw.Border(
-          bottom: pw.BorderSide(color: brand.divider, width: 1.4),
+          bottom: pw.BorderSide(color: brand.divider, width: 0.8),
         ),
       ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
+          // ── Logo ──
           pw.Container(
-            width: 74,
-            height: 74,
-            padding: const pw.EdgeInsets.all(8),
+            width: 80,
+            height: 80,
             decoration: pw.BoxDecoration(
               color: brand.softPrimary,
-              borderRadius: pw.BorderRadius.circular(16),
-              border: pw.Border.all(color: brand.border),
+              borderRadius: pw.BorderRadius.circular(18),
+              border: pw.Border.all(color: brand.border, width: 0.6),
             ),
             child: logoProvider != null
                 ? pw.ClipRRect(
-                    horizontalRadius: 12,
-                    verticalRadius: 12,
+                    horizontalRadius: 14,
+                    verticalRadius: 14,
                     child: pw.Image(logoProvider, fit: pw.BoxFit.contain),
                   )
                 : pw.Center(
@@ -582,119 +582,137 @@ class QuotePrinter {
                       _logoInitials(companyName),
                       style: pw.TextStyle(
                         color: brand.primary,
-                        fontSize: 18,
+                        fontSize: 22,
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
                   ),
           ),
-          pw.SizedBox(width: 14),
+          pw.SizedBox(width: 16),
+          // ── Company Info ──
           pw.Expanded(
-            child: pw.Padding(
-              padding: const pw.EdgeInsets.only(top: 2),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    companyName,
-                    style: pw.TextStyle(
-                      fontSize: 20,
-                      fontWeight: pw.FontWeight.bold,
-                      color: brand.text,
-                    ),
-                  ),
-                  if ((businessData['slogan'] ?? '').trim().isNotEmpty) ...[
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      businessData['slogan']!,
-                      style: pw.TextStyle(fontSize: 9.5, color: brand.muted),
-                    ),
-                  ],
-                  pw.SizedBox(height: 8),
-                  if (address.isNotEmpty) _businessLine(address, brand),
-                  if (phones.isNotEmpty) _businessLine('Tel: $phones', brand),
-                  if ((businessData['rnc'] ?? '').trim().isNotEmpty)
-                    _businessLine('RNC: ${businessData['rnc']!}', brand),
-                  if ((businessData['email'] ?? '').trim().isNotEmpty)
-                    _businessLine(businessData['email']!, brand),
-                ],
-              ),
-            ),
-          ),
-          pw.SizedBox(width: 14),
-          pw.Container(
-            width: 184,
-            padding: const pw.EdgeInsets.all(13),
-            decoration: pw.BoxDecoration(
-              color: brand.primary,
-              borderRadius: pw.BorderRadius.circular(14),
-            ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  'COTIZACIÓN',
+                  companyName,
                   style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 15,
+                    fontSize: 22,
                     fontWeight: pw.FontWeight.bold,
-                    letterSpacing: 0.7,
+                    color: brand.text,
+                    letterSpacing: -0.3,
                   ),
                 ),
-                pw.SizedBox(height: 8),
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 5,
-                  ),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.white,
-                    borderRadius: pw.BorderRadius.circular(8),
-                  ),
-                  child: pw.Text(
-                    '#COT-$displayId',
+                if ((businessData['slogan'] ?? '').trim().isNotEmpty) ...[
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    businessData['slogan']!,
                     style: pw.TextStyle(
-                      color: brand.primary,
-                      fontSize: 12,
-                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 9,
+                      color: brand.muted,
+                      letterSpacing: 0.2,
                     ),
                   ),
-                ),
-                pw.SizedBox(height: 9),
-                _quoteMetaLine('Fecha', issueDate),
-                _quoteMetaLine('Hora', issueTime),
-                _quoteMetaLine('Válida hasta', validUntil),
-                _quoteMetaLine('Estado', _statusLabel(quote.status)),
+                ],
+                pw.SizedBox(height: 8),
+                if (address.isNotEmpty)
+                  _headerDetailLine(address, brand),
+                if (phones.isNotEmpty)
+                  _headerDetailLine('Tel: $phones', brand),
+                if ((businessData['rnc'] ?? '').trim().isNotEmpty)
+                  _headerDetailLine('RNC: ${businessData['rnc']!}', brand),
+                if ((businessData['email'] ?? '').trim().isNotEmpty)
+                  _headerDetailLine(businessData['email']!, brand),
               ],
             ),
+          ),
+          pw.SizedBox(width: 16),
+          // ── Quote Badge ──
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Container(
+                padding:
+                    const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: pw.BoxDecoration(
+                  color: brand.primary,
+                  borderRadius: pw.BorderRadius.circular(12),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      'COTIZACIÓN',
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 13,
+                        fontWeight: pw.FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Container(
+                      padding: const pw.EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: pw.BoxDecoration(
+                        color: PdfColor.fromInt(0x33FFFFFF),
+                        borderRadius: pw.BorderRadius.circular(6),
+                      ),
+                      child: pw.Text(
+                        '#COT-$displayId',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 11,
+                          fontWeight: pw.FontWeight.bold,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              _metaLine('Emisión', issueDate, brand),
+              _metaLine('Válida hasta', validUntil, brand),
+              _metaLine('Estado', _statusLabel(quote.status), brand),
+            ],
           ),
         ],
       ),
     );
   }
 
-  static pw.Widget _businessLine(String text, _QuotePdfBrand brand) {
+  static pw.Widget _headerDetailLine(String text, _QuotePdfBrand brand) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 2),
-      child: pw.Text(text, style: pw.TextStyle(fontSize: 9, color: brand.text)),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(fontSize: 8.5, color: brand.text),
+      ),
     );
   }
 
-  static pw.Widget _quoteMetaLine(String label, String value) {
+  static pw.Widget _metaLine(
+      String label, String value, _QuotePdfBrand brand) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 3),
       child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        mainAxisSize: pw.MainAxisSize.min,
         children: [
           pw.Text(
-            label,
-            style: pw.TextStyle(fontSize: 8.5, color: PdfColors.white),
+            '$label: ',
+            style: pw.TextStyle(
+              fontSize: 8,
+              color: brand.muted,
+            ),
           ),
           pw.Text(
             value,
             style: pw.TextStyle(
-              fontSize: 8.5,
-              color: PdfColors.white,
+              fontSize: 8,
+              color: brand.text,
               fontWeight: pw.FontWeight.bold,
             ),
           ),
@@ -703,56 +721,60 @@ class QuotePrinter {
     );
   }
 
-  static pw.Widget _buildClientAndTermsSection({
+  // ─── CLIENT SECTION ──────────────────────────────────────────
+
+  static pw.Widget _buildClientSection({
     required String clientName,
     required String? clientPhone,
     required String? clientRnc,
-    required String issueDate,
-    required String validUntil,
-    required int validDays,
     required _QuotePdfBrand brand,
   }) {
-    final clientLines = <pw.Widget>[_infoLine('Cliente', clientName)];
+    final clientLines = <pw.Widget>[
+      _clientDetailLine('Cliente', clientName, brand),
+    ];
 
     if (clientPhone != null && clientPhone.trim().isNotEmpty) {
-      clientLines.add(_infoLine('Teléfono', clientPhone));
+      clientLines.add(_clientDetailLine('Teléfono', clientPhone, brand));
     }
 
     if (clientRnc != null && clientRnc.trim().isNotEmpty) {
-      clientLines.add(_infoLine('RNC / Cédula', clientRnc));
+      clientLines.add(_clientDetailLine('RNC / Cédula', clientRnc, brand));
     }
 
     return pw.Container(
-      padding: const pw.EdgeInsets.all(14),
+      padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
         color: brand.surfaceAlt,
-        borderRadius: pw.BorderRadius.circular(14),
-        border: pw.Border.all(color: brand.border),
+        borderRadius: pw.BorderRadius.circular(12),
+        border: pw.Border.all(color: brand.border, width: 0.6),
       ),
       child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Expanded(
-            flex: 3,
-            child: _infoBlock(
-              title: 'Información del cliente',
-              lines: clientLines,
-              brand: brand,
+          pw.Container(
+            width: 3,
+            height: 48,
+            decoration: pw.BoxDecoration(
+              color: brand.primary,
+              borderRadius: pw.BorderRadius.circular(4),
             ),
           ),
-          pw.SizedBox(width: 18),
-          pw.Container(width: 1, height: 64, color: brand.border),
-          pw.SizedBox(width: 18),
+          pw.SizedBox(width: 12),
           pw.Expanded(
-            flex: 2,
-            child: _infoBlock(
-              title: 'Condiciones',
-              lines: [
-                _infoLine('Emisión', issueDate),
-                _infoLine('Vencimiento', validUntil),
-                _infoLine('Validez', '$validDays días'),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Información del cliente',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: brand.muted,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                pw.SizedBox(height: 4),
+                ...clientLines,
               ],
-              brand: brand,
             ),
           ),
         ],
@@ -760,46 +782,25 @@ class QuotePrinter {
     );
   }
 
-  static pw.Widget _infoBlock({
-    required String title,
-    required List<pw.Widget> lines,
-    required _QuotePdfBrand brand,
-  }) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          title,
-          style: pw.TextStyle(
-            fontSize: 10.5,
-            fontWeight: pw.FontWeight.bold,
-            color: brand.primary,
-          ),
-        ),
-        pw.SizedBox(height: 8),
-        ...lines,
-      ],
-    );
-  }
-
-  static pw.Widget _infoLine(String label, String value) {
+  static pw.Widget _clientDetailLine(
+      String label, String value, _QuotePdfBrand brand) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 4),
+      padding: const pw.EdgeInsets.only(bottom: 2),
       child: pw.RichText(
         text: pw.TextSpan(
           text: '$label: ',
           style: pw.TextStyle(
-            fontSize: 9,
+            fontSize: 9.5,
             fontWeight: pw.FontWeight.bold,
-            color: PdfColors.grey700,
+            color: brand.muted,
           ),
           children: [
             pw.TextSpan(
               text: value,
               style: pw.TextStyle(
-                fontSize: 9,
+                fontSize: 9.5,
                 fontWeight: pw.FontWeight.normal,
-                color: PdfColors.grey800,
+                color: brand.text,
               ),
             ),
           ],
@@ -807,6 +808,8 @@ class QuotePrinter {
       ),
     );
   }
+
+  // ─── SECTION TITLE ───────────────────────────────────────────
 
   static pw.Widget _buildSectionTitle({
     required String title,
@@ -817,29 +820,33 @@ class QuotePrinter {
       crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
         pw.Container(
-          width: 4,
-          height: 24,
+          width: 3,
+          height: 22,
           decoration: pw.BoxDecoration(
             color: brand.primary,
-            borderRadius: pw.BorderRadius.circular(20),
+            borderRadius: pw.BorderRadius.circular(4),
           ),
         ),
-        pw.SizedBox(width: 8),
+        pw.SizedBox(width: 10),
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(
               title,
               style: pw.TextStyle(
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: pw.FontWeight.bold,
                 color: brand.text,
+                letterSpacing: -0.2,
               ),
             ),
             pw.SizedBox(height: 1),
             pw.Text(
               subtitle,
-              style: pw.TextStyle(fontSize: 8.5, color: brand.muted),
+              style: pw.TextStyle(
+                fontSize: 8,
+                color: brand.muted,
+              ),
             ),
           ],
         ),
@@ -847,26 +854,33 @@ class QuotePrinter {
     );
   }
 
+  // ─── PRODUCTS TABLE ──────────────────────────────────────────
+
   static pw.Widget _buildProductsTable(
     List<QuoteItemModel> items,
     NumberFormat currencyFormat,
     _QuotePdfBrand brand,
   ) {
     final headerStyle = pw.TextStyle(
-      fontSize: 8.5,
+      fontSize: 8,
       fontWeight: pw.FontWeight.bold,
       color: PdfColors.white,
+      letterSpacing: 0.3,
     );
 
     final rows = <pw.TableRow>[
       pw.TableRow(
         decoration: pw.BoxDecoration(color: brand.primary),
         children: [
-          _tableCell('PRODUCTO / SERVICIO', headerStyle),
-          _tableCell('CANT.', headerStyle, align: pw.TextAlign.center),
-          _tableCell('PRECIO', headerStyle, align: pw.TextAlign.right),
-          _tableCell('DESC.', headerStyle, align: pw.TextAlign.right),
-          _tableCell('TOTAL', headerStyle, align: pw.TextAlign.right),
+          _tableCell('PRODUCTO / SERVICIO', headerStyle, padding: 10),
+          _tableCell('CANT.', headerStyle,
+              align: pw.TextAlign.center, padding: 10),
+          _tableCell('PRECIO', headerStyle,
+              align: pw.TextAlign.right, padding: 10),
+          _tableCell('DESC.', headerStyle,
+              align: pw.TextAlign.right, padding: 10),
+          _tableCell('TOTAL', headerStyle,
+              align: pw.TextAlign.right, padding: 10),
         ],
       ),
     ];
@@ -885,7 +899,7 @@ class QuotePrinter {
             _tableCell(
               _formatQty(item.qty),
               pw.TextStyle(
-                fontSize: 9.2,
+                fontSize: 9,
                 color: brand.text,
                 fontWeight: pw.FontWeight.bold,
               ),
@@ -893,20 +907,20 @@ class QuotePrinter {
             ),
             _tableCell(
               _formatMoney(currencyFormat, item.price),
-              pw.TextStyle(fontSize: 9.2, color: brand.text),
+              pw.TextStyle(fontSize: 9, color: brand.text),
               align: pw.TextAlign.right,
             ),
             _tableCell(
               item.discountLine > 0
                   ? _formatMoney(currencyFormat, item.discountLine)
                   : '-',
-              pw.TextStyle(fontSize: 9.2, color: brand.muted),
+              pw.TextStyle(fontSize: 9, color: brand.muted),
               align: pw.TextAlign.right,
             ),
             _tableCell(
               _formatMoney(currencyFormat, item.totalLine),
               pw.TextStyle(
-                fontSize: 9.4,
+                fontSize: 9,
                 fontWeight: pw.FontWeight.bold,
                 color: brand.text,
               ),
@@ -919,13 +933,12 @@ class QuotePrinter {
 
     return pw.Container(
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: brand.border),
+        border: pw.Border.all(color: brand.border, width: 0.6),
         borderRadius: pw.BorderRadius.circular(10),
       ),
       child: pw.Table(
         border: pw.TableBorder(
-          horizontalInside: pw.BorderSide(color: brand.border, width: 0.7),
-          verticalInside: pw.BorderSide(color: brand.border, width: 0.5),
+          horizontalInside: pw.BorderSide(color: brand.border, width: 0.5),
         ),
         columnWidths: {
           0: const pw.FlexColumnWidth(4.2),
@@ -946,11 +959,11 @@ class QuotePrinter {
     final cleanDescription = _sanitizePdfText(item.description);
 
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: pw.Text(
         cleanDescription.isEmpty ? 'Producto / servicio' : cleanDescription,
         style: pw.TextStyle(
-          fontSize: 9.2,
+          fontSize: 9,
           fontWeight: pw.FontWeight.bold,
           color: brand.text,
         ),
@@ -962,12 +975,15 @@ class QuotePrinter {
     String text,
     pw.TextStyle style, {
     pw.TextAlign align = pw.TextAlign.left,
+    double padding = 8,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      padding: pw.EdgeInsets.symmetric(horizontal: padding, vertical: 8),
       child: pw.Text(text, style: style, textAlign: align),
     );
   }
+
+  // ─── SUMMARY SECTION ─────────────────────────────────────────
 
   static pw.Widget _buildSummarySection({
     required QuoteModel quote,
@@ -981,11 +997,11 @@ class QuotePrinter {
       children: [
         pw.Expanded(
           child: pw.Container(
-            padding: const pw.EdgeInsets.all(13),
+            padding: const pw.EdgeInsets.all(14),
             decoration: pw.BoxDecoration(
               color: brand.surfaceAlt,
-              borderRadius: pw.BorderRadius.circular(14),
-              border: pw.Border.all(color: brand.border),
+              borderRadius: pw.BorderRadius.circular(12),
+              border: pw.Border.all(color: brand.border, width: 0.6),
             ),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -993,17 +1009,22 @@ class QuotePrinter {
                 pw.Text(
                   'Observaciones',
                   style: pw.TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 10,
                     fontWeight: pw.FontWeight.bold,
                     color: brand.primary,
+                    letterSpacing: 0.3,
                   ),
                 ),
-                pw.SizedBox(height: 7),
+                pw.SizedBox(height: 8),
                 pw.Text(
                   noteText.isEmpty
                       ? 'Esta cotización está sujeta a disponibilidad, condiciones de entrega y confirmación de pago.'
                       : _sanitizePdfText(noteText),
-                  style: pw.TextStyle(fontSize: 8.5, color: brand.muted),
+                  style: pw.TextStyle(
+                    fontSize: 8.5,
+                    color: brand.muted,
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
@@ -1021,15 +1042,26 @@ class QuotePrinter {
     _QuotePdfBrand brand,
   ) {
     return pw.Container(
-      width: 270,
-      padding: const pw.EdgeInsets.all(14),
+      width: 260,
+      padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
         color: PdfColors.white,
-        borderRadius: pw.BorderRadius.circular(14),
-        border: pw.Border.all(color: brand.border),
+        borderRadius: pw.BorderRadius.circular(12),
+        border: pw.Border.all(color: brand.border, width: 0.6),
       ),
       child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
+          pw.Text(
+            'Resumen',
+            style: pw.TextStyle(
+              fontSize: 10,
+              fontWeight: pw.FontWeight.bold,
+              color: brand.muted,
+              letterSpacing: 0.3,
+            ),
+          ),
+          pw.SizedBox(height: 10),
           _totalsRow('Subtotal', quote.subtotal, currencyFormat, brand),
           if (quote.discountTotal > 0)
             _totalsRow(
@@ -1046,11 +1078,12 @@ class QuotePrinter {
               currencyFormat,
               brand,
             ),
-          pw.SizedBox(height: 8),
-          pw.Container(height: 1, color: brand.border),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 10),
+          pw.Container(height: 1, color: brand.divider),
+          pw.SizedBox(height: 10),
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: pw.BoxDecoration(
               color: brand.primary,
               borderRadius: pw.BorderRadius.circular(10),
@@ -1061,15 +1094,16 @@ class QuotePrinter {
                 pw.Text(
                   'TOTAL',
                   style: pw.TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: PdfColors.white,
                     fontWeight: pw.FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 pw.Text(
                   _formatMoney(currencyFormat, quote.total),
                   style: pw.TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: PdfColors.white,
                     fontWeight: pw.FontWeight.bold,
                   ),
@@ -1094,7 +1128,8 @@ class QuotePrinter {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: pw.TextStyle(fontSize: 9, color: brand.muted)),
+          pw.Text(label,
+              style: pw.TextStyle(fontSize: 9, color: brand.muted)),
           pw.Text(
             _formatMoney(currencyFormat, amount),
             style: pw.TextStyle(
@@ -1108,11 +1143,24 @@ class QuotePrinter {
     );
   }
 
-  static pw.Widget _buildBottomInfoSection({
+  // ─── FOOTER ──────────────────────────────────────────────────
+
+  static pw.Widget _buildFooter({
+    required pw.Context context,
     required Map<String, String> businessData,
+    required QuoteModel quote,
     required int validDays,
+    required String? notes,
     required _QuotePdfBrand brand,
   }) {
+    const footerHeight = 38.0;
+
+    final isLastPage = context.pageNumber == context.pagesCount;
+
+    if (!isLastPage) {
+      return pw.SizedBox(height: footerHeight);
+    }
+
     final socialParts = <String>[];
 
     if ((businessData['website'] ?? '').trim().isNotEmpty) {
@@ -1135,48 +1183,6 @@ class QuotePrinter {
       'Condiciones de pago y entrega según acuerdo comercial.',
     ];
 
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Expanded(
-          flex: 3,
-          child: pw.Text(
-            leftParts.join(' '),
-            textAlign: pw.TextAlign.left,
-            style: pw.TextStyle(fontSize: 7.4, color: brand.muted),
-          ),
-        ),
-        pw.SizedBox(width: 12),
-        pw.Expanded(
-          flex: 2,
-          child: pw.Text(
-            footerRightText.isEmpty
-                ? 'Gracias por confiar en nosotros.'
-                : footerRightText,
-            textAlign: pw.TextAlign.right,
-            style: pw.TextStyle(fontSize: 7.4, color: brand.muted),
-          ),
-        ),
-      ],
-    );
-  }
-
-  static pw.Widget _buildBottomDecorativeFooter({
-    required pw.Context context,
-    required Map<String, String> businessData,
-    required QuoteModel quote,
-    required int validDays,
-    required String? notes,
-    required _QuotePdfBrand brand,
-  }) {
-    const footerHeight = 38.0;
-
-    final isLastPage = context.pageNumber == context.pagesCount;
-
-    if (!isLastPage) {
-      return pw.SizedBox(height: footerHeight);
-    }
-
     return pw.SizedBox(
       height: footerHeight,
       child: pw.Column(
@@ -1184,10 +1190,29 @@ class QuotePrinter {
         children: [
           pw.Container(height: 1, color: brand.divider),
           pw.SizedBox(height: 6),
-          _buildBottomInfoSection(
-            businessData: businessData,
-            validDays: validDays,
-            brand: brand,
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                flex: 3,
+                child: pw.Text(
+                  leftParts.join(' '),
+                  textAlign: pw.TextAlign.left,
+                  style: pw.TextStyle(fontSize: 7.4, color: brand.muted),
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
+                flex: 2,
+                child: pw.Text(
+                  footerRightText.isEmpty
+                      ? 'Gracias por confiar en nosotros.'
+                      : footerRightText,
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(fontSize: 7.4, color: brand.muted),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -20,6 +20,10 @@ namespace {
 #define DWMWA_CAPTION_COLOR 35
 #endif
 
+#ifndef DWMWA_BORDER_COLOR
+#define DWMWA_BORDER_COLOR 34
+#endif
+
 #ifndef DWMWA_TEXT_COLOR
 #define DWMWA_TEXT_COLOR 36
 #endif
@@ -533,11 +537,14 @@ void Win32Window::UpdateTheme(HWND const window) {
 
   // Force a light native caption so Windows keeps the caption glyphs dark.
   const BOOL use_dark_mode = FALSE;
-  const COLORREF caption_color = RGB(255, 255, 255);
+  const COLORREF caption_color = RGB(0xF2, 0xF6, 0xF9);
+  const COLORREF border_color = RGB(0xF2, 0xF6, 0xF9);
   const COLORREF text_color = RGB(0, 0, 0);
 
   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                         &use_dark_mode, sizeof(use_dark_mode));
+  DwmSetWindowAttribute(window, DWMWA_BORDER_COLOR, &border_color,
+                        sizeof(border_color));
   DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &caption_color,
                         sizeof(caption_color));
   DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &text_color,

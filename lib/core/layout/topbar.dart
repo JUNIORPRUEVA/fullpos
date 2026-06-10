@@ -399,7 +399,7 @@ class _TopbarState extends ConsumerState<Topbar>
     final scheme = theme.colorScheme;
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
 
-    final topbarBg = tokens.topbarBackground;
+    const topbarBg = Colors.white;
     final appBarFg = ColorUtils.ensureReadableColor(
       tokens.topbarText,
       topbarBg,
@@ -408,12 +408,6 @@ class _TopbarState extends ConsumerState<Topbar>
     final chromeBorderColor = Color.alphaBlend(
       tokens.outline.withOpacity(
         theme.brightness == Brightness.dark ? 0.34 : 0.52,
-      ),
-      topbarBg,
-    );
-    final chromeShadowColor = Color.alphaBlend(
-      theme.shadowColor.withOpacity(
-        theme.brightness == Brightness.dark ? 0.28 : 0.12,
       ),
       topbarBg,
     );
@@ -492,9 +486,14 @@ class _TopbarState extends ConsumerState<Topbar>
                 : null,
             boxShadow: [
               BoxShadow(
-                color: chromeShadowColor,
+                color: Colors.black.withOpacity(0.04),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
@@ -532,10 +531,10 @@ class _TopbarState extends ConsumerState<Topbar>
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: appBarFg,
-                    fontSize: ((isCompact ? 16 : 18) * s).clamp(15.0, 20.0),
+                    fontSize: ((isCompact ? 17 : 19) * s).clamp(16.0, 21.0),
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.08,
-                    height: 1.2,
+                    letterSpacing: 0.1,
+                    height: 1.40,
                     fontFamilyFallback: const [
                       'Poppins',
                       'Segoe UI',

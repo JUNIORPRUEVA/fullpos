@@ -192,7 +192,7 @@ class _AnimatedLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final logoSize = width < 560 ? 96.0 : 116.0;
+    final logoSize = width < 560 ? 110.0 : 135.0;
 
     return AnimatedBuilder(
       animation: controller,

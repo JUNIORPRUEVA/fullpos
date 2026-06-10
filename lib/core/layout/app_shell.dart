@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import '../constants/app_sizes.dart';
 import 'sidebar.dart';
@@ -61,27 +59,25 @@ class _AppShellState extends State<AppShell> {
         final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
         final footerScale = 1.0;
 
-        final isDesktop =
-            Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-        final double topbarInnerTopPadding = isDesktop
-            ? AppSizes.paddingXS
-            : 0.0;
-
         final topbarWidget = Builder(
-          builder: (context) => Topbar(
-            scale: topbarScale,
-            topPadding: topbarInnerTopPadding,
-            showMenuButton: true,
-            onMenuPressed: () => Scaffold.of(context).openDrawer(),
+          builder: (context) => Column(
+            children: [
+              Expanded(
+                child: Topbar(
+                  scale: topbarScale,
+                  topPadding: 0,
+                  showMenuButton: true,
+                  showBottomBorder: false,
+                  onMenuPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
+            ],
           ),
         );
 
         final contentColumn = Column(
           children: [
-            SizedBox(
-              height: topbarHeight + topbarInnerTopPadding,
-              child: topbarWidget,
-            ),
+            SizedBox(height: topbarHeight, child: topbarWidget),
             Expanded(child: widget.child),
             if (showFooter)
               SizedBox(
