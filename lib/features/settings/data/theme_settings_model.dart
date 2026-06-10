@@ -30,7 +30,7 @@ class PremiumThemeColors {
   static const Color darkSurfaceAlt = Color(0xFF111827);
   static const Color darkText = Color(0xFFE2E8F0);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
-  static const Color salesSidebarBackground = Color(0x1E1976D2);
+  static const Color salesSidebarBackground = Color(0xFFF2F6F9);
   static const Color salesFooterBackground = Color(0xFFFFFFFF);
   static const Color salesDetailBackground = Color(0x1E1976D2);
   static const Color salesDetailLegacyGradientStart = Color(0xFF7B1FA2);
@@ -202,7 +202,7 @@ class ThemeSettings {
     hoverColor: PremiumThemeColors.sidebarHover,
     appBarColor: PremiumThemeColors.chromeBackground,
     appBarTextColor: PremiumThemeColors.chromeText,
-    topbarColor: PremiumThemeColors.chromeBackground,
+    topbarColor: Color(0xFFFFFFFF),
     topbarTextColor: PremiumThemeColors.chromeText,
     cardColor: PremiumThemeColors.surface,
     buttonColor: PremiumThemeColors.primary,

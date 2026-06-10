@@ -124,11 +124,11 @@ class _SidebarState extends ConsumerState<Sidebar>
     final screenSize = MediaQuery.of(context).size;
 
     final sidebarBaseColor = theme.brightness == Brightness.dark
-        ? const Color(0xFF0A1422)
-        : const Color(0xFF0E2033);
+        ? const Color(0xFF1E293B)
+        : const Color(0xFFF2F6F9);
     final sidebarTextColor = theme.brightness == Brightness.dark
-        ? const Color(0xFFE7EEF8)
-        : const Color(0xFFEAF1FB);
+        ? const Color(0xFFE2E8F0)
+        : const Color(0xFF1E293B);
     Color sidebarHighlight(double opacity) => Color.alphaBlend(
       sidebarTextColor.withOpacity(opacity),
       sidebarBaseColor,
@@ -144,12 +144,12 @@ class _SidebarState extends ConsumerState<Sidebar>
       sidebarBaseColor,
     );
     final sidebarHoverColor = Color.alphaBlend(
-      const Color(0xFF85BFFF).withOpacity(0.12),
+      const Color(0xFF2563EB).withOpacity(0.08),
       sidebarBaseColor,
     );
     final sidebarActiveColor = theme.brightness == Brightness.dark
-        ? const Color(0xFF77C7FF)
-        : const Color(0xFF69B6FF);
+        ? const Color(0xFF60A5FA)
+        : const Color(0xFF2563EB);
     final sidebarActiveTopColor = Color.alphaBlend(
       sidebarHighlight(0.10),
       sidebarActiveColor,
@@ -159,8 +159,8 @@ class _SidebarState extends ConsumerState<Sidebar>
       sidebarActiveColor,
     );
     final sidebarTooltipColor = theme.brightness == Brightness.dark
-        ? sidebarShadow(0.16)
-        : sidebarShadow(0.32);
+        ? const Color(0xFF334155)
+        : const Color(0xFF475569);
     final sidebarTooltipTextColor = ColorUtils.ensureReadableColor(
       sidebarTextColor,
       sidebarTooltipColor,
@@ -168,7 +168,7 @@ class _SidebarState extends ConsumerState<Sidebar>
     );
     final sidebarBorderColor = Color.alphaBlend(
       const Color(
-        0xFFB9C9DC,
+        0xFFCBD5E1,
       ).withOpacity(theme.brightness == Brightness.dark ? 0.14 : 0.18),
       sidebarBaseColor,
     );
@@ -228,7 +228,7 @@ class _SidebarState extends ConsumerState<Sidebar>
                         colors: [
                           sidebarHighlight(0.04),
                           Colors.transparent,
-                          const Color(0xFF071320),
+                          const Color(0xFFE2E8F0),
                         ],
                         stops: const [0.0, 0.38, 1.0],
                       ),

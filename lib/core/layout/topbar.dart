@@ -55,7 +55,6 @@ enum _UserMenuAction {
 
 class _TopbarState extends ConsumerState<Topbar>
     with SingleTickerProviderStateMixin {
-  static const Color _topbarBackground = Colors.white;
   static const Color _softTextColor = Color(0xFF64748B);
   static const Color _strongTextColor = Color(0xFF0F172A);
 
@@ -220,7 +219,8 @@ class _TopbarState extends ConsumerState<Topbar>
 
   Future<void> _showLicenseDetailsDialog() async {
     final scheme = Theme.of(context).colorScheme;
-    final tokens = Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final tokens =
+        Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
     final accent = ColorUtils.ensureReadableColor(
       tokens.buttonPrimary,
       Colors.white,
@@ -399,22 +399,23 @@ class _TopbarState extends ConsumerState<Topbar>
     final scheme = theme.colorScheme;
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
 
+    final topbarBg = tokens.topbarBackground;
     final appBarFg = ColorUtils.ensureReadableColor(
       tokens.topbarText,
-      _topbarBackground,
+      topbarBg,
       minRatio: 4.5,
     );
     final chromeBorderColor = Color.alphaBlend(
       tokens.outline.withOpacity(
         theme.brightness == Brightness.dark ? 0.34 : 0.52,
       ),
-      _topbarBackground,
+      topbarBg,
     );
     final chromeShadowColor = Color.alphaBlend(
       theme.shadowColor.withOpacity(
         theme.brightness == Brightness.dark ? 0.28 : 0.12,
       ),
-      _topbarBackground,
+      topbarBg,
     );
 
     return LayoutBuilder(
@@ -433,7 +434,7 @@ class _TopbarState extends ConsumerState<Topbar>
 
         final brandAccent = ColorUtils.ensureReadableColor(
           tokens.buttonPrimary,
-          _topbarBackground,
+          topbarBg,
           minRatio: 3.0,
         );
         final profileName = (_displayName ?? _username ?? 'Usuario').trim();
@@ -485,11 +486,9 @@ class _TopbarState extends ConsumerState<Topbar>
             0,
           ),
           decoration: BoxDecoration(
-            color: _topbarBackground,
+            color: topbarBg,
             border: widget.showBottomBorder
-                ? Border(
-                    bottom: BorderSide(color: chromeBorderColor, width: 1),
-                  )
+                ? Border(bottom: BorderSide(color: chromeBorderColor, width: 1))
                 : null,
             boxShadow: [
               BoxShadow(
@@ -528,7 +527,7 @@ class _TopbarState extends ConsumerState<Topbar>
               ],
               Expanded(
                 child: Text(
-                  'Facturar',
+                  'Vender',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -603,7 +602,7 @@ class _TopbarState extends ConsumerState<Topbar>
                         maxWidth: menuWidth,
                       ),
                       elevation: 10,
-                      color: _topbarBackground,
+                      color: topbarBg,
                       surfaceTintColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -660,7 +659,9 @@ class _UserStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayLabel = label.trim().isEmpty ? 'Usuario activo' : label.trim();
-    final normalizedRole = roleLabel.trim().isEmpty ? 'Operando ahora' : roleLabel.trim();
+    final normalizedRole = roleLabel.trim().isEmpty
+        ? 'Operando ahora'
+        : roleLabel.trim();
     final pulseOpacity = 0.18 + (pulseValue * 0.18);
     final background = Color.alphaBlend(color.withOpacity(0.075), Colors.white);
     final borderColor = color.withOpacity(0.28 + (pulseValue * 0.10));
@@ -749,7 +750,10 @@ class _UserStatusChip extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: color.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(999),
@@ -1040,7 +1044,9 @@ class _LicenseDetailsDialog extends StatelessWidget {
                           ],
                         ),
                         borderRadius: BorderRadius.circular(15),
-                        border: Border.all(color: accentColor.withOpacity(0.14)),
+                        border: Border.all(
+                          color: accentColor.withOpacity(0.14),
+                        ),
                       ),
                       child: Icon(
                         Icons.workspace_premium_rounded,
@@ -1095,7 +1101,10 @@ class _LicenseDetailsDialog extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Color.alphaBlend(badgeColor.withOpacity(0.075), Colors.white),
+                    color: Color.alphaBlend(
+                      badgeColor.withOpacity(0.075),
+                      Colors.white,
+                    ),
                     borderRadius: BorderRadius.circular(17),
                     border: Border.all(color: badgeColor.withOpacity(0.20)),
                   ),
@@ -1160,7 +1169,9 @@ class _LicenseDetailsDialog extends StatelessWidget {
                         onPressed: () => Navigator.of(context).pop(),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(44),
-                          side: BorderSide(color: accentColor.withOpacity(0.22)),
+                          side: BorderSide(
+                            color: accentColor.withOpacity(0.22),
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1185,7 +1196,9 @@ class _LicenseDetailsDialog extends StatelessWidget {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),

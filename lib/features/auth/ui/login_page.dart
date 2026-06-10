@@ -772,15 +772,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             ),
                             const SizedBox(height: 20),
                             if (_errorMessage != null) ...[
-                              const SizedBox(height: 4),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                                  horizontal: 14,
                                   vertical: 10,
                                 ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF4B1D1D),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: const Color(0xFF7F1D1D),
+                                  ),
                                 ),
                                 child: Text(
                                   _errorMessage!,
@@ -791,37 +793,44 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 18),
                             ],
-                            const SizedBox(height: 6),
-                            TextFormField(
-                              controller: _usernameController,
-                              focusNode: _usernameFocusNode,
-                              style: const TextStyle(color: inputText),
-                              cursorColor: primaryBlue,
-                              decoration: decoration(
-                                hint: 'Ingresa tu usuario',
-                                suffix: buildUsernameSuffix(),
+                            buildFieldBlock(
+                              label: 'Usuario',
+                              child: TextFormField(
+                                controller: _usernameController,
+                                focusNode: _usernameFocusNode,
+                                style: const TextStyle(
+                                  color: inputText,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                cursorColor: primaryBlue,
+                                decoration: decoration(
+                                  hint: 'Ingresa tu usuario',
+                                  suffix: buildUsernameSuffix(),
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Ingrese un usuario';
+                                  }
+                                  return null;
+                                },
+                                enabled: !_isLoading,
+                                textInputAction: TextInputAction.next,
+                                autofocus: true,
+                                onChanged: (_) {
+                                  if (_errorMessage != null) {
+                                    setState(() {
+                                      _errorMessage = null;
+                                    });
+                                  } else {
+                                    setState(() {});
+                                  }
+                                },
                               ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Ingrese un usuario';
-                                }
-                                return null;
-                              },
-                              enabled: !_isLoading,
-                              textInputAction: TextInputAction.next,
-                              autofocus: true,
-                              onChanged: (_) {
-                                if (_errorMessage != null) {
-                                  setState(() {
-                                    _errorMessage = null;
-                                  });
-                                } else {
-                                  setState(() {});
-                                }
-                              },
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 18),
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 160),
                               switchInCurve: Curves.easeOut,
