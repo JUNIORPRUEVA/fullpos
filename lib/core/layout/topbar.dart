@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,17 +10,15 @@ import '../../features/license/data/license_models.dart';
 import '../../features/license/services/license_storage.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
-import '../session/ui_preferences.dart';
 import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
 
 /// Topbar principal de FullPOS.
+/// Orden: Menú | Vender                                      Apps | Turno | Usuario | Mi negocio
 ///
-/// Diseño compacto estilo POS/SaaS:
-/// - Chip azul tecnológico con usuario activo/en línea.
-/// - Accesos rápidos compactos para corte, licencia y configuración.
-/// - Botón de cuenta/caja alineado al extremo derecho.
-/// - Menú desplegable solo con Perfil, Licencia, Seguridad y Configuración.
+/// Nota importante:
+/// El OverflowBox fuerza el ancho visual al ancho completo de la ventana.
+/// Esto corrige el caso donde el Topbar está montado dentro de la columna izquierda.
 class Topbar extends ConsumerStatefulWidget {
   const Topbar({
     super.key,
@@ -44,32 +41,31 @@ class Topbar extends ConsumerStatefulWidget {
   ConsumerState<Topbar> createState() => _TopbarState();
 }
 
-enum _UserMenuAction {
+enum _TopbarMenuAction {
   profile,
-  license,
-  security,
-  settings,
-  viewCurrentCut,
   support,
+  license,
+  cloud,
+  settings,
+  logout,
+  makeShiftCut,
+  currentShift,
+  shiftHistory,
 }
 
-class _TopbarState extends ConsumerState<Topbar>
-    with SingleTickerProviderStateMixin {
+class _TopbarState extends ConsumerState<Topbar> {
   static const Color _softTextColor = Color(0xFF64748B);
   static const Color _strongTextColor = Color(0xFF0F172A);
 
-  late final AnimationController _cashPulseController;
   Timer? _cashTimer;
   StreamSubscription<void>? _sessionSub;
-  StreamSubscription<void>? _uiPrefsSub;
 
   String? _username;
   String? _displayName;
-  String? _role;
-  String? _terminalId;
-  String? _profileImagePath;
   LicenseInfo? _licenseInfo;
+
   final LicenseStorage _licenseStorage = LicenseStorage();
+
   bool _loadingOpenCashSessionId = false;
   int? _openCashSessionId;
 
@@ -77,21 +73,11 @@ class _TopbarState extends ConsumerState<Topbar>
   void initState() {
     super.initState();
 
-    _cashPulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
     _refreshTopbarData();
 
     _sessionSub = SessionManager.changes.listen((_) {
       if (!mounted) return;
       _refreshTopbarData();
-    });
-
-    _uiPrefsSub = UiPreferences.changes.listen((_) {
-      if (!mounted) return;
-      unawaited(_loadProfileImage());
     });
 
     _cashTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -103,14 +89,11 @@ class _TopbarState extends ConsumerState<Topbar>
   void dispose() {
     _cashTimer?.cancel();
     _sessionSub?.cancel();
-    _uiPrefsSub?.cancel();
-    _cashPulseController.dispose();
     super.dispose();
   }
 
   void _refreshTopbarData() {
     unawaited(_loadUserSummary());
-    unawaited(_loadProfileImage());
     unawaited(_loadOpenCashSessionId());
     unawaited(_loadLicenseInfo());
   }
@@ -118,37 +101,12 @@ class _TopbarState extends ConsumerState<Topbar>
   Future<void> _loadUserSummary() async {
     final username = await SessionManager.username();
     final displayName = await SessionManager.displayName();
-    final role = await SessionManager.role();
-    final terminalId = await SessionManager.terminalId();
 
     if (!mounted) return;
     setState(() {
       _username = _cleanText(username) ?? 'Usuario';
       _displayName = _cleanText(displayName);
-      _role = _cleanText(role);
-      _terminalId = _cleanText(terminalId);
     });
-  }
-
-  Future<void> _loadProfileImage() async {
-    final userId = await SessionManager.userId();
-    final username = await SessionManager.username();
-    final userKey = _buildUserKey(userId: userId, username: username);
-
-    if (userKey == null) {
-      if (!mounted) return;
-      setState(() => _profileImagePath = null);
-      return;
-    }
-
-    String? path = await UiPreferences.getProfileImagePath(userKey);
-    if (path != null && !await File(path).exists()) {
-      await UiPreferences.setProfileImagePath(userKey, null);
-      path = null;
-    }
-
-    if (!mounted) return;
-    setState(() => _profileImagePath = path);
   }
 
   Future<void> _loadOpenCashSessionId() async {
@@ -158,7 +116,9 @@ class _TopbarState extends ConsumerState<Topbar>
     try {
       final sessionId =
           (await OperationFlowService.loadActiveSession())?.shiftId;
+
       if (!mounted) return;
+
       if (sessionId != _openCashSessionId) {
         setState(() => _openCashSessionId = sessionId);
       }
@@ -178,6 +138,22 @@ class _TopbarState extends ConsumerState<Topbar>
       if (!mounted) return;
       setState(() => _licenseInfo = null);
     }
+  }
+
+  static String? _cleanText(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
+  String _businessDisplayName() {
+    // Cambia esta línea cuando tengas la variable real del negocio.
+    return 'Mi negocio';
+  }
+
+  String _activeUserName() {
+    final name = (_displayName ?? _username ?? '').trim();
+    return name.isEmpty ? 'Usuario' : name;
   }
 
   String _licenseBadgeTitle() {
@@ -203,6 +179,7 @@ class _TopbarState extends ConsumerState<Topbar>
     final today = DateTime.now();
     final baseDate = DateTime(today.year, today.month, today.day);
     final days = end.difference(baseDate).inDays;
+
     if (days < 0) return 'Licencia vencida';
     if (days == 0) return 'Vence hoy';
     if (days == 1) return 'Vence en 1 día';
@@ -217,15 +194,23 @@ class _TopbarState extends ConsumerState<Topbar>
     return const Color(0xFFF59E0B);
   }
 
+  void _showSnack(String message, {Color? backgroundColor}) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: backgroundColor),
+    );
+  }
+
   Future<void> _showLicenseDetailsDialog() async {
-    final scheme = Theme.of(context).colorScheme;
-    final tokens =
-        Theme.of(context).extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
+
     final accent = ColorUtils.ensureReadableColor(
       tokens.buttonPrimary,
       Colors.white,
       minRatio: 3.0,
     );
+
     final badgeColor = _licenseBadgeColor(scheme);
 
     await showDialog<void>(
@@ -246,85 +231,73 @@ class _TopbarState extends ConsumerState<Topbar>
     );
   }
 
-  static String? _cleanText(String? value) {
-    final trimmed = value?.trim();
-    if (trimmed == null || trimmed.isEmpty) return null;
-    return trimmed;
-  }
+  Future<void> _showCompanyProductsDialog() async {
+    final theme = Theme.of(context);
+    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
 
-  String? _buildUserKey({required int? userId, required String? username}) {
-    if (userId != null) return 'id:$userId';
-    final trimmedUsername = _cleanText(username);
-    if (trimmedUsername == null) return null;
-    return 'u:$trimmedUsername';
-  }
+    final accent = ColorUtils.ensureReadableColor(
+      tokens.buttonPrimary,
+      Colors.white,
+      minRatio: 3.0,
+    );
 
-  String _roleLabel() {
-    final normalized = (_role ?? '').trim().toLowerCase();
-    switch (normalized) {
-      case 'admin':
-        return 'Administrador';
-      case 'cashier':
-      case 'cajero':
-        return 'Cajero';
-      case 'seller':
-      case 'vendedor':
-        return 'Vendedor';
-      default:
-        return normalized.isEmpty ? 'Usuario activo' : _role!.trim();
-    }
-  }
-
-  String _cashChipLabel() {
-    final terminal = (_terminalId ?? '').trim();
-    if (terminal.isEmpty) return 'Caja principal';
-
-    final compact = terminal.length > 10
-        ? terminal.substring(terminal.length - 6).toUpperCase()
-        : terminal.toUpperCase();
-    return 'Caja $compact';
-  }
-
-  void _showSnack(String message, {Color? backgroundColor}) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: backgroundColor),
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return _CompanyProductsDialog(
+          accentColor: accent,
+          onClose: () => Navigator.of(dialogContext).pop(),
+        );
+      },
     );
   }
 
-  Future<void> _handleUserMenuAction(_UserMenuAction action) async {
+  Future<void> _handleMenuAction(_TopbarMenuAction action) async {
     switch (action) {
-      case _UserMenuAction.profile:
+      case _TopbarMenuAction.profile:
         context.go('/account');
         return;
-      case _UserMenuAction.license:
-        context.go('/settings/license');
+      case _TopbarMenuAction.support:
+        _showSnack('Soporte estará disponible pronto.');
         return;
-      case _UserMenuAction.security:
-        _showSnack('Seguridad estará disponible pronto.');
+      case _TopbarMenuAction.license:
+        await _showLicenseDetailsDialog();
         return;
-      case _UserMenuAction.settings:
+      case _TopbarMenuAction.cloud:
+        _showSnack('Nube estará disponible pronto.');
+        return;
+      case _TopbarMenuAction.settings:
         context.go('/settings');
         return;
-      case _UserMenuAction.viewCurrentCut:
+      case _TopbarMenuAction.logout:
+        context.go('/login');
+        return;
+      case _TopbarMenuAction.makeShiftCut:
+        context.go('/cash');
+        return;
+      case _TopbarMenuAction.currentShift:
         final sessionId = _openCashSessionId;
+
         if (sessionId == null) {
           context.go('/cash');
           return;
         }
 
         await CashPanelSheet.show(context, sessionId: sessionId);
+
         if (!mounted) return;
         unawaited(_loadOpenCashSessionId());
         return;
-      case _UserMenuAction.support:
-        _showSnack('Soporte estará disponible pronto.');
+      case _TopbarMenuAction.shiftHistory:
+        context.go('/cash');
         return;
     }
   }
 
-  PopupMenuItem<_UserMenuAction> _buildMenuItem(
+  PopupMenuItem<_TopbarMenuAction> _buildMenuItem(
     BuildContext context, {
-    required _UserMenuAction value,
+    required _TopbarMenuAction value,
     required IconData icon,
     required String label,
     required double width,
@@ -334,7 +307,7 @@ class _TopbarState extends ConsumerState<Topbar>
     final scheme = Theme.of(context).colorScheme;
     final itemColor = color ?? const Color(0xFF334155);
 
-    return PopupMenuItem<_UserMenuAction>(
+    return PopupMenuItem<_TopbarMenuAction>(
       value: value,
       height: 44,
       padding: EdgeInsets.zero,
@@ -393,18 +366,101 @@ class _TopbarState extends ConsumerState<Topbar>
     );
   }
 
+  List<PopupMenuEntry<_TopbarMenuAction>> _businessMenuItems(
+    BuildContext context,
+    double menuWidth,
+  ) {
+    return [
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.profile,
+        icon: Icons.person_outline_rounded,
+        label: 'Mi perfil',
+        width: menuWidth,
+      ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.support,
+        icon: Icons.support_agent_rounded,
+        label: 'Soporte',
+        width: menuWidth,
+      ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.license,
+        icon: Icons.workspace_premium_outlined,
+        label: 'Licencias',
+        width: menuWidth,
+      ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.cloud,
+        icon: Icons.cloud_outlined,
+        label: 'Nube',
+        width: menuWidth,
+      ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.settings,
+        icon: Icons.settings_outlined,
+        label: 'Configuración',
+        width: menuWidth,
+      ),
+      const PopupMenuDivider(height: 8),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.logout,
+        icon: Icons.logout_rounded,
+        label: 'Cerrar sesión',
+        width: menuWidth,
+        color: const Color(0xFFDC2626),
+        fontWeight: FontWeight.w800,
+      ),
+    ];
+  }
+
+  List<PopupMenuEntry<_TopbarMenuAction>> _turnMenuItems(
+    BuildContext context,
+    double menuWidth,
+  ) {
+    return [
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.makeShiftCut,
+        icon: Icons.point_of_sale_rounded,
+        label: 'Hacer corte de turno',
+        width: menuWidth,
+      ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.currentShift,
+        icon: Icons.receipt_long_rounded,
+        label: 'Turno actual',
+        width: menuWidth,
+      ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.shiftHistory,
+        icon: Icons.history_rounded,
+        label: 'Historial de turnos',
+        width: menuWidth,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
 
     const topbarBg = Colors.white;
+
     final appBarFg = ColorUtils.ensureReadableColor(
       tokens.topbarText,
       topbarBg,
       minRatio: 4.5,
     );
+
     final chromeBorderColor = Color.alphaBlend(
       tokens.outline.withOpacity(
         theme.brightness == Brightness.dark ? 0.34 : 0.52,
@@ -412,15 +468,20 @@ class _TopbarState extends ConsumerState<Topbar>
       topbarBg,
     );
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 900;
+        final isCompact = screenWidth < 900;
         final s = widget.scale.clamp(0.85, 1.12);
+
         final topbarHeight = (AppSizes.topbarHeight * s).clamp(48.0, 56.0);
         final topInset = (widget.topPadding * s).clamp(0.0, 12.0);
+
         final padM = AppSizes.paddingM * s;
         final padL = AppSizes.paddingL * s;
         final spaceS = AppSizes.spaceS * s;
+
         final horizontalPad = ((isCompact ? padM : padL) * 0.55).clamp(
           8.0,
           14.0,
@@ -431,47 +492,19 @@ class _TopbarState extends ConsumerState<Topbar>
           topbarBg,
           minRatio: 3.0,
         );
-        final profileName = (_displayName ?? _username ?? 'Usuario').trim();
-        final username = (_username ?? 'usuario').trim();
-        final showUserLabel = constraints.maxWidth >= 620;
-        final showUserDetails = constraints.maxWidth >= 720;
-        final accountTriggerLabel = _openCashSessionId == null
-            ? profileName
-            : _cashChipLabel();
-        final menuWidth = constraints.maxWidth < 430 ? 230.0 : 254.0;
 
-        final menuItems = <PopupMenuEntry<_UserMenuAction>>[
-          _buildMenuItem(
-            context,
-            value: _UserMenuAction.profile,
-            icon: Icons.person_outline_rounded,
-            label: 'Mi perfil',
-            width: menuWidth,
-          ),
-          _buildMenuItem(
-            context,
-            value: _UserMenuAction.license,
-            icon: Icons.workspace_premium_outlined,
-            label: 'Licencia',
-            width: menuWidth,
-          ),
-          _buildMenuItem(
-            context,
-            value: _UserMenuAction.security,
-            icon: Icons.shield_outlined,
-            label: 'Seguridad',
-            width: menuWidth,
-          ),
-          _buildMenuItem(
-            context,
-            value: _UserMenuAction.settings,
-            icon: Icons.settings_outlined,
-            label: 'Configuración',
-            width: menuWidth,
-          ),
-        ];
+        final businessName = _businessDisplayName();
+        final activeUser = _activeUserName();
 
-        return Container(
+        final businessMenuWidth = screenWidth < 430 ? 238.0 : 270.0;
+        final turnMenuWidth = screenWidth < 430 ? 230.0 : 258.0;
+
+        final showBusinessText = screenWidth >= 520;
+        final showProductsButton = screenWidth >= 500;
+        final showTurnLabel = screenWidth >= 690;
+
+        final topbarContent = Container(
+          width: screenWidth,
           height: topbarHeight + topInset,
           padding: EdgeInsets.fromLTRB(
             horizontalPad,
@@ -482,22 +515,23 @@ class _TopbarState extends ConsumerState<Topbar>
           decoration: BoxDecoration(
             color: topbarBg,
             border: widget.showBottomBorder
-                ? Border(bottom: BorderSide(color: chromeBorderColor, width: 1))
+                ? Border(
+                    bottom: BorderSide(
+                      color: chromeBorderColor,
+                      width: 1,
+                    ),
+                  )
                 : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 6,
+                color: Colors.black.withOpacity(0.035),
+                blurRadius: 8,
                 offset: const Offset(0, 2),
-              ),
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
               ),
             ],
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (widget.showMenuButton) ...[
                 IconButton(
@@ -524,113 +558,126 @@ class _TopbarState extends ConsumerState<Topbar>
                 ),
                 SizedBox(width: spaceS * 0.3),
               ],
-              Expanded(
-                child: Text(
-                  'Vender',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: appBarFg,
-                    fontSize: ((isCompact ? 17 : 19) * s).clamp(16.0, 21.0),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.1,
-                    height: 1.40,
-                    fontFamilyFallback: const [
-                      'Poppins',
-                      'Segoe UI',
-                      'Roboto',
-                      'Arial',
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(width: spaceS * 0.6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _UserStatusChip(
-                      scale: s,
-                      visibleLabel: showUserLabel,
-                      color: brandAccent,
-                      label: profileName,
-                      roleLabel: _roleLabel(),
-                      pulseValue: _cashPulseController.value,
-                    ),
-                    SizedBox(width: (8 * s).clamp(6.0, 9.0)),
-                    _TurnCutAction(
-                      scale: s,
-                      visibleLabel: constraints.maxWidth >= 760,
-                      accentColor: brandAccent,
-                      borderColor: chromeBorderColor,
-                      isOpen: _openCashSessionId != null,
-                      onTap: () => unawaited(
-                        _handleUserMenuAction(_UserMenuAction.viewCurrentCut),
-                      ),
-                    ),
-                    SizedBox(width: (5 * s).clamp(4.0, 7.0)),
-                    _TopbarIconAction(
-                      scale: s,
-                      icon: Icons.workspace_premium_outlined,
-                      tooltip: 'Ver licencia',
-                      color: _licenseBadgeColor(scheme),
-                      borderColor: chromeBorderColor,
-                      onTap: () => unawaited(_showLicenseDetailsDialog()),
-                    ),
-                    if (!isCompact) ...[
-                      SizedBox(width: (5 * s).clamp(4.0, 7.0)),
-                      _TopbarIconAction(
-                        scale: s,
-                        icon: Icons.apps_rounded,
-                        tooltip: 'Configuración',
-                        color: _softTextColor,
-                        borderColor: chromeBorderColor,
-                        onTap: () => unawaited(
-                          _handleUserMenuAction(_UserMenuAction.settings),
-                        ),
-                      ),
-                    ],
-                    SizedBox(width: (8 * s).clamp(6.0, 9.0)),
-                    PopupMenuButton<_UserMenuAction>(
-                      tooltip: 'Cuenta y empresa',
-                      position: PopupMenuPosition.under,
-                      offset: const Offset(0, 8),
-                      constraints: BoxConstraints(
-                        minWidth: menuWidth,
-                        maxWidth: menuWidth,
-                      ),
-                      elevation: 10,
-                      color: topbarBg,
-                      surfaceTintColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: brandAccent.withOpacity(0.12)),
-                      ),
-                      onSelected: _handleUserMenuAction,
-                      itemBuilder: (_) => menuItems,
-                      child: Tooltip(
-                        message: '$profileName · @$username',
-                        waitDuration: const Duration(milliseconds: 350),
-                        child: _TopbarUserMenuButton(
-                          scale: s,
-                          accentColor: brandAccent,
-                          borderColor: chromeBorderColor,
-                          backgroundColor: Color.alphaBlend(
-                            brandAccent.withOpacity(0.04),
-                            Colors.white,
-                          ),
-                          displayName: accountTriggerLabel,
-                          subtitle: _roleLabel(),
-                          showDetails: showUserDetails,
-                          imagePath: _profileImagePath,
-                        ),
-                      ),
-                    ),
+              Text(
+                'Vender',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: appBarFg,
+                  fontSize: ((isCompact ? 16 : 18) * s).clamp(15.5, 20.0),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.05,
+                  height: 1.25,
+                  fontFamilyFallback: const [
+                    'Poppins',
+                    'Segoe UI',
+                    'Roboto',
+                    'Arial',
                   ],
                 ),
               ),
+              const Spacer(),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showProductsButton) ...[
+                    _TopbarIconAction(
+                      scale: s,
+                      icon: Icons.apps_rounded,
+                      tooltip: 'Productos de la empresa',
+                      color: _softTextColor,
+                      borderColor: chromeBorderColor,
+                      onTap: () => unawaited(_showCompanyProductsDialog()),
+                    ),
+                    SizedBox(width: (7 * s).clamp(5.0, 8.0)),
+                  ],
+                  PopupMenuButton<_TopbarMenuAction>(
+                    tooltip: 'Turnos',
+                    position: PopupMenuPosition.under,
+                    offset: const Offset(0, 8),
+                    constraints: BoxConstraints(
+                      minWidth: turnMenuWidth,
+                      maxWidth: turnMenuWidth,
+                    ),
+                    elevation: 10,
+                    color: topbarBg,
+                    surfaceTintColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: brandAccent.withOpacity(0.12),
+                      ),
+                    ),
+                    onSelected: _handleMenuAction,
+                    itemBuilder: (_) => _turnMenuItems(
+                      context,
+                      turnMenuWidth,
+                    ),
+                    child: _TurnMenuButton(
+                      scale: s,
+                      visibleLabel: showTurnLabel,
+                      accentColor: brandAccent,
+                      borderColor: chromeBorderColor,
+                      isOpen: _openCashSessionId != null,
+                    ),
+                  ),
+                  SizedBox(width: (7 * s).clamp(5.0, 8.0)),
+                  _ActiveCashierChip(
+                    scale: s,
+                    name: activeUser,
+                    borderColor: chromeBorderColor,
+                  ),
+                  SizedBox(width: (7 * s).clamp(5.0, 8.0)),
+                  PopupMenuButton<_TopbarMenuAction>(
+                    tooltip: 'Negocio y cuenta',
+                    position: PopupMenuPosition.under,
+                    offset: const Offset(0, 8),
+                    constraints: BoxConstraints(
+                      minWidth: businessMenuWidth,
+                      maxWidth: businessMenuWidth,
+                    ),
+                    elevation: 10,
+                    color: topbarBg,
+                    surfaceTintColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: brandAccent.withOpacity(0.12),
+                      ),
+                    ),
+                    onSelected: _handleMenuAction,
+                    itemBuilder: (_) => _businessMenuItems(
+                      context,
+                      businessMenuWidth,
+                    ),
+                    child: Tooltip(
+                      message: businessName,
+                      waitDuration: const Duration(milliseconds: 350),
+                      child: _BusinessMenuButton(
+                        scale: s,
+                        businessName: businessName,
+                        showText: showBusinessText,
+                        accentColor: brandAccent,
+                        borderColor: chromeBorderColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
+          ),
+        );
+
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: topbarHeight + topInset,
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: screenWidth,
+            maxWidth: screenWidth,
+            minHeight: topbarHeight + topInset,
+            maxHeight: topbarHeight + topInset,
+            child: topbarContent,
           ),
         );
       },
@@ -638,138 +685,67 @@ class _TopbarState extends ConsumerState<Topbar>
   }
 }
 
-class _UserStatusChip extends StatelessWidget {
-  const _UserStatusChip({
+class _BusinessMenuButton extends StatelessWidget {
+  const _BusinessMenuButton({
     required this.scale,
-    required this.visibleLabel,
-    required this.color,
-    required this.label,
-    required this.roleLabel,
-    required this.pulseValue,
+    required this.businessName,
+    required this.showText,
+    required this.accentColor,
+    required this.borderColor,
   });
 
   final double scale;
-  final bool visibleLabel;
-  final Color color;
-  final String label;
-  final String roleLabel;
-  final double pulseValue;
+  final String businessName;
+  final bool showText;
+  final Color accentColor;
+  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
-    final displayLabel = label.trim().isEmpty ? 'Usuario activo' : label.trim();
-    final normalizedRole = roleLabel.trim().isEmpty
-        ? 'Operando ahora'
-        : roleLabel.trim();
-    final pulseOpacity = 0.18 + (pulseValue * 0.18);
-    final background = Color.alphaBlend(color.withOpacity(0.075), Colors.white);
-    final borderColor = color.withOpacity(0.28 + (pulseValue * 0.10));
+    final height = (36 * scale).clamp(34.0, 40.0);
+    final cleanName =
+        businessName.trim().isEmpty ? 'Mi negocio' : businessName.trim();
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      height: (36 * scale).clamp(34.0, 38.0),
-      padding: EdgeInsets.symmetric(
-        horizontal: visibleLabel ? (10 * scale).clamp(9.0, 12.0) : 8,
+      duration: const Duration(milliseconds: 160),
+      height: height,
+      padding: EdgeInsets.only(
+        left: (6 * scale).clamp(5.0, 7.0),
+        right: showText ? (12 * scale).clamp(10.0, 14.0) : 6,
       ),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.08 + (pulseValue * 0.05)),
-            blurRadius: 12,
-            spreadRadius: -8,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: Color.alphaBlend(
+          accentColor.withOpacity(0.035),
+          Colors.white,
+        ),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: borderColor.withOpacity(0.85),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: (23 * scale).clamp(21.0, 25.0),
-                height: (23 * scale).clamp(21.0, 25.0),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(pulseOpacity),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              Container(
-                width: (17 * scale).clamp(16.0, 19.0),
-                height: (17 * scale).clamp(16.0, 19.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: color.withOpacity(0.28)),
-                ),
-                child: Icon(
-                  Icons.support_agent_rounded,
-                  size: (11.5 * scale).clamp(10.0, 13.0),
-                  color: color,
-                ),
-              ),
-              Positioned(
-                right: 1,
-                bottom: 1,
-                child: Container(
-                  width: (7.5 * scale).clamp(6.5, 8.5),
-                  height: (7.5 * scale).clamp(6.5, 8.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.2),
-                  ),
-                ),
-              ),
-            ],
+          _BusinessLogoMark(
+            size: (26 * scale).clamp(24.0, 29.0),
+            accentColor: accentColor,
+            name: cleanName,
           ),
-          if (visibleLabel) ...[
-            SizedBox(width: (7 * scale).clamp(5.0, 8.0)),
+          if (showText) ...[
+            SizedBox(width: (8 * scale).clamp(6.0, 9.0)),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 162),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      displayLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _TopbarState._strongTextColor,
-                        fontSize: (12.2 * scale).clamp(11.5, 13.0),
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      normalizedRole,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: (9.7 * scale).clamp(9.0, 10.5),
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-                ],
+              constraints: const BoxConstraints(maxWidth: 190),
+              child: Text(
+                cleanName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _TopbarState._strongTextColor,
+                  fontSize: (13.2 * scale).clamp(12.4, 14.2),
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                  letterSpacing: 0.05,
+                ),
               ),
             ),
           ],
@@ -779,14 +755,84 @@ class _UserStatusChip extends StatelessWidget {
   }
 }
 
-class _TurnCutAction extends StatelessWidget {
-  const _TurnCutAction({
+class _BusinessLogoMark extends StatelessWidget {
+  const _BusinessLogoMark({
+    required this.size,
+    required this.accentColor,
+    required this.name,
+  });
+
+  final double size;
+  final Color accentColor;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = _initials(name);
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accentColor,
+            Color.alphaBlend(
+              Colors.black.withOpacity(0.16),
+              accentColor,
+            ),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(0.18),
+            blurRadius: 10,
+            spreadRadius: -7,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: (10.8 * (size / 26)).clamp(9.5, 12.0),
+            fontWeight: FontWeight.w900,
+            height: 1,
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _initials(String value) {
+    final parts = value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) return 'N';
+    if (parts.length == 1) {
+      return parts.first.characters.first.toUpperCase();
+    }
+
+    return '${parts.first.characters.first}${parts.last.characters.first}'
+        .toUpperCase();
+  }
+}
+
+class _TurnMenuButton extends StatelessWidget {
+  const _TurnMenuButton({
     required this.scale,
     required this.visibleLabel,
     required this.accentColor,
     required this.borderColor,
     required this.isOpen,
-    required this.onTap,
   });
 
   final double scale;
@@ -794,71 +840,127 @@ class _TurnCutAction extends StatelessWidget {
   final Color accentColor;
   final Color borderColor;
   final bool isOpen;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final height = (34 * scale).clamp(32.0, 38.0);
-    final bg = Color.alphaBlend(accentColor.withOpacity(0.10), Colors.white);
+
+    final bg = Color.alphaBlend(
+      accentColor.withOpacity(0.08),
+      Colors.white,
+    );
 
     return Tooltip(
-      message: isOpen ? 'Ver corte actual' : 'Abrir módulo de caja',
+      message: isOpen ? 'Turno abierto' : 'Gestionar turno',
       waitDuration: const Duration(milliseconds: 350),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+      child: Container(
+        height: height,
+        padding: EdgeInsets.symmetric(
+          horizontal: visibleLabel ? (10 * scale).clamp(9.0, 12.0) : 7,
+        ),
+        decoration: BoxDecoration(
+          color: bg,
           borderRadius: BorderRadius.circular(9),
-          child: Ink(
-            height: height,
-            padding: EdgeInsets.symmetric(
-              horizontal: visibleLabel ? (10 * scale).clamp(9.0, 12.0) : 0,
-            ),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: accentColor.withOpacity(0.34)),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withOpacity(0.14),
-                  blurRadius: 12,
-                  spreadRadius: -8,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: (22 * scale).clamp(20.0, 24.0),
-                  height: (22 * scale).clamp(20.0, 24.0),
-                  decoration: BoxDecoration(
-                    color: accentColor.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Icon(
-                    Icons.receipt_long_rounded,
-                    size: (14.5 * scale).clamp(13.0, 16.0),
-                    color: accentColor,
-                  ),
-                ),
-                if (visibleLabel) ...[
-                  SizedBox(width: (7 * scale).clamp(5.0, 8.0)),
-                  Text(
-                    'Corte',
-                    style: TextStyle(
-                      color: accentColor,
-                      fontSize: (12 * scale).clamp(11.2, 12.8),
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          border: Border.all(
+            color: accentColor.withOpacity(0.30),
           ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: (22 * scale).clamp(20.0, 24.0),
+              height: (22 * scale).clamp(20.0, 24.0),
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.13),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Icon(
+                Icons.point_of_sale_rounded,
+                size: (14.5 * scale).clamp(13.0, 16.0),
+                color: accentColor,
+              ),
+            ),
+            if (visibleLabel) ...[
+              SizedBox(width: (7 * scale).clamp(5.0, 8.0)),
+              Text(
+                'Turno',
+                style: TextStyle(
+                  color: accentColor,
+                  fontSize: (12 * scale).clamp(11.2, 12.8),
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+              SizedBox(width: (3 * scale).clamp(2.0, 4.0)),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: (17 * scale).clamp(15.0, 18.0),
+                color: accentColor.withOpacity(0.72),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveCashierChip extends StatelessWidget {
+  const _ActiveCashierChip({
+    required this.scale,
+    required this.name,
+    required this.borderColor,
+  });
+
+  final double scale;
+  final String name;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanName = name.trim().isEmpty ? 'Usuario' : name.trim();
+    final height = (34 * scale).clamp(32.0, 38.0);
+
+    return Tooltip(
+      message: cleanName,
+      waitDuration: const Duration(milliseconds: 350),
+      child: Container(
+        height: height,
+        padding: EdgeInsets.symmetric(
+          horizontal: (10 * scale).clamp(8.0, 12.0),
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: borderColor.withOpacity(0.75),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_outline_rounded,
+              size: (17 * scale).clamp(15.0, 18.0),
+              color: _TopbarState._softTextColor,
+            ),
+            SizedBox(width: (6 * scale).clamp(5.0, 7.0)),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 136),
+              child: Text(
+                cleanName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: _TopbarState._strongTextColor,
+                  fontSize: (12.5 * scale).clamp(11.6, 13.2),
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -900,7 +1002,9 @@ class _TopbarIconAction extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: borderColor.withOpacity(0.70)),
+              border: Border.all(
+                color: borderColor.withOpacity(0.70),
+              ),
             ),
             child: Icon(
               icon,
@@ -914,72 +1018,233 @@ class _TopbarIconAction extends StatelessWidget {
   }
 }
 
-class _TopbarUserMenuButton extends StatelessWidget {
-  const _TopbarUserMenuButton({
-    required this.scale,
+class _CompanyProductsDialog extends StatelessWidget {
+  const _CompanyProductsDialog({
     required this.accentColor,
-    required this.borderColor,
-    required this.backgroundColor,
-    required this.displayName,
-    required this.subtitle,
-    required this.showDetails,
-    required this.imagePath,
+    required this.onClose,
   });
 
-  final double scale;
   final Color accentColor;
-  final Color borderColor;
-  final Color backgroundColor;
-  final String displayName;
-  final String subtitle;
-  final bool showDetails;
-  final String? imagePath;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      height: (36 * scale).clamp(34.0, 40.0),
-      padding: EdgeInsets.only(
-        left: showDetails ? (11 * scale).clamp(9.0, 12.0) : 7,
-        right: (8 * scale).clamp(7.0, 10.0),
-      ),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: borderColor.withOpacity(0.85)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showDetails) ...[
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 130),
-              child: Text(
-                displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _TopbarState._strongTextColor,
-                  fontSize: (12.8 * scale).clamp(12.0, 13.4),
-                  fontWeight: FontWeight.w900,
-                  height: 1,
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: accentColor.withOpacity(0.13),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.16),
+                blurRadius: 34,
+                spreadRadius: -14,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: accentColor.withOpacity(0.14),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.apps_rounded,
+                        color: accentColor,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Productos de la empresa',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _TopbarState._strongTextColor,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              height: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Soluciones disponibles para tu negocio',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _TopbarState._softTextColor,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close_rounded),
+                      color: _TopbarState._softTextColor,
+                      splashRadius: 20,
+                    ),
+                  ],
                 ),
               ),
-            ),
-            SizedBox(width: (9 * scale).clamp(7.0, 10.0)),
-          ],
-          _UserAvatar(
-            size: (25 * scale).clamp(23.0, 27.0),
-            accentColor: accentColor,
-            name: displayName.isEmpty ? subtitle : displayName,
-            imagePath: imagePath,
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                child: Column(
+                  children: [
+                    _CompanyProductCard(
+                      accentColor: accentColor,
+                      icon: Icons.point_of_sale_rounded,
+                      title: 'FullPOS',
+                      subtitle: 'Facturación, ventas, caja e inventario.',
+                    ),
+                    const SizedBox(height: 10),
+                    _CompanyProductCard(
+                      accentColor: accentColor,
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'FullCredit',
+                      subtitle: 'Gestión de créditos, clientes y pagos.',
+                    ),
+                    const SizedBox(height: 10),
+                    _CompanyProductCard(
+                      accentColor: accentColor,
+                      icon: Icons.payments_outlined,
+                      title: 'FullPréstamos',
+                      subtitle: 'Control profesional de préstamos y cobros.',
+                    ),
+                    const SizedBox(height: 10),
+                    _CompanyProductCard(
+                      accentColor: accentColor,
+                      icon: Icons.smart_toy_outlined,
+                      title: 'Bots / Automatizaciones',
+                      subtitle: 'Automatización de ventas y seguimiento.',
+                    ),
+                    const SizedBox(height: 10),
+                    _CompanyProductCard(
+                      accentColor: accentColor,
+                      icon: Icons.cloud_outlined,
+                      title: 'Nube',
+                      subtitle: 'Sincronización, respaldo y acceso remoto.',
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          SizedBox(width: (5 * scale).clamp(4.0, 6.0)),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompanyProductCard extends StatelessWidget {
+  const _CompanyProductCard({
+    required this.accentColor,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final Color accentColor;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 13,
+        vertical: 12,
+      ),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          accentColor.withOpacity(0.035),
+          Colors.white,
+        ),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: accentColor.withOpacity(0.10),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: accentColor,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _TopbarState._strongTextColor,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _TopbarState._softTextColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
           Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: (18 * scale).clamp(16.0, 20.0),
-            color: _TopbarState._softTextColor,
+            Icons.chevron_right_rounded,
+            color: accentColor.withOpacity(0.45),
+            size: 20,
           ),
         ],
       ),
@@ -1013,7 +1278,9 @@ class _LicenseDetailsDialog extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: accentColor.withOpacity(0.14)),
+            border: Border.all(
+              color: accentColor.withOpacity(0.14),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.16),
@@ -1054,10 +1321,10 @@ class _LicenseDetailsDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 13),
-                    Expanded(
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             'Licencia del cliente',
                             maxLines: 1,
@@ -1105,7 +1372,9 @@ class _LicenseDetailsDialog extends StatelessWidget {
                       Colors.white,
                     ),
                     borderRadius: BorderRadius.circular(17),
-                    border: Border.all(color: badgeColor.withOpacity(0.20)),
+                    border: Border.all(
+                      color: badgeColor.withOpacity(0.20),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -1177,7 +1446,9 @@ class _LicenseDetailsDialog extends StatelessWidget {
                         ),
                         child: const Text(
                           'Cerrar',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ),
@@ -1185,7 +1456,10 @@ class _LicenseDetailsDialog extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: onOpenLicense,
-                        icon: const Icon(Icons.open_in_new_rounded, size: 17),
+                        icon: const Icon(
+                          Icons.open_in_new_rounded,
+                          size: 17,
+                        ),
                         label: const Text('Ver licencia'),
                         style: ElevatedButton.styleFrom(
                           minimumSize: const Size.fromHeight(44),
@@ -1206,85 +1480,6 @@ class _LicenseDetailsDialog extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _UserAvatar extends StatelessWidget {
-  const _UserAvatar({
-    required this.size,
-    required this.accentColor,
-    required this.name,
-    this.imagePath,
-  });
-
-  final double size;
-  final Color accentColor;
-  final String name;
-  final String? imagePath;
-
-  @override
-  Widget build(BuildContext context) {
-    final initials = _initials(name);
-    final path = imagePath;
-
-    return Container(
-      width: size,
-      height: size,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accentColor,
-            Color.alphaBlend(Colors.black.withOpacity(0.18), accentColor),
-          ],
-        ),
-      ),
-      child: path != null
-          ? Image.file(
-              File(path),
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) =>
-                  _InitialsText(initials: initials),
-            )
-          : _InitialsText(initials: initials),
-    );
-  }
-
-  static String _initials(String value) {
-    final parts = value
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-
-    if (parts.isEmpty) return 'U';
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return '${parts.first.characters.first}${parts.last.characters.first}'
-        .toUpperCase();
-  }
-}
-
-class _InitialsText extends StatelessWidget {
-  const _InitialsText({required this.initials});
-
-  final String initials;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        initials,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w900,
-          height: 1,
         ),
       ),
     );

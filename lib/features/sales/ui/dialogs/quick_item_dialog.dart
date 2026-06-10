@@ -24,6 +24,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   final _qtyFocusNode = FocusNode();
   final _priceFocusNode = FocusNode();
   final _costFocusNode = FocusNode();
+
   final _currency = NumberFormat.currency(
     locale: 'en_US',
     symbol: 'RD\$',
@@ -32,13 +33,16 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
 
   _QuickFieldTarget _activeField = _QuickFieldTarget.price;
   bool _isSubmitting = false;
+  bool _isHeaderHovered = false;
 
   @override
   void initState() {
     super.initState();
+
     _qtyController.addListener(_refresh);
     _priceController.addListener(_refresh);
     _costController.addListener(_refresh);
+
     _qtyFocusNode.addListener(() {
       if (_qtyFocusNode.hasFocus) _setActiveField(_QuickFieldTarget.qty);
     });
@@ -122,6 +126,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     final controller = _activeController;
     final text = controller.text;
     if (text.isEmpty) return;
+
     controller.text = text.substring(0, text.length - 1);
     controller.selection = TextSelection.collapsed(
       offset: controller.text.length,
@@ -133,9 +138,11 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   void _clearActiveField() {
     final controller = _activeController;
     controller.clear();
+
     if (_activeField == _QuickFieldTarget.qty) {
       controller.text = '1';
     }
+
     controller.selection = TextSelection.collapsed(
       offset: controller.text.length,
     );
@@ -147,9 +154,11 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     final controller = _activeController;
     final current = double.tryParse(controller.text.trim()) ?? 0;
     final next = current + 1;
+
     controller.text = next % 1 == 0
         ? next.toStringAsFixed(0)
         : next.toStringAsFixed(2);
+
     controller.selection = TextSelection.collapsed(
       offset: controller.text.length,
     );
@@ -162,6 +171,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSubmitting = true);
+
     try {
       final description = _descriptionController.text.trim();
       final price = _priceValue;
@@ -195,190 +205,329 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       onSubmit: _saveItem,
       child: Material(
         color: Colors.transparent,
-        child: Container(
-          width: 430,
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFD8E1EC)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 34,
-                offset: const Offset(0, 18),
+        child: AnimatedScale(
+          scale: _isHeaderHovered ? 1.006 : 1.0,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          child: Container(
+            width: 430,
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: _isHeaderHovered
+                    ? const Color(0xFFBFD1F7)
+                    : const Color(0xFFD8E1EC),
               ),
-            ],
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE9F1FF),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.calculate_rounded,
-                        color: Color(0xFF1A56DB),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Venta común',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF17324D),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            'Agrega una línea manual a la venta activa',
-                            style: TextStyle(
-                              color: Color(0xFF6B7C8E),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                _buildTotalDisplay(),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _descriptionController,
-                  focusNode: _descriptionFocusNode,
-                  decoration: InputDecoration(
-                    labelText: 'Descripción *',
-                    hintText: 'Nombre del producto o servicio',
-                    prefixIcon: const Icon(Icons.description_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  maxLines: 2,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'La descripción es requerida';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildNumberField(
-                        controller: _qtyController,
-                        focusNode: _qtyFocusNode,
-                        label: 'Cantidad *',
-                        icon: Icons.pin_outlined,
-                        field: _QuickFieldTarget.qty,
-                        validator: (value) {
-                          final qty = double.tryParse((value ?? '').trim());
-                          if (qty == null || qty <= 0) {
-                            return 'Cantidad inválida';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildNumberField(
-                        controller: _priceController,
-                        focusNode: _priceFocusNode,
-                        label: 'Precio *',
-                        icon: Icons.attach_money_rounded,
-                        field: _QuickFieldTarget.price,
-                        validator: (value) {
-                          final price = double.tryParse((value ?? '').trim());
-                          if (price == null || price <= 0) {
-                            return 'Precio inválido';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _buildNumberField(
-                  controller: _costController,
-                  focusNode: _costFocusNode,
-                  label: 'Costo (opcional)',
-                  icon: Icons.payments_outlined,
-                  field: _QuickFieldTarget.cost,
-                ),
-                const SizedBox(height: 18),
-                _buildTargetSelector(),
-                const SizedBox(height: 14),
-                _buildCalculatorPad(),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _isSubmitting
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: const Text('Cancelar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton.icon(
-                        onPressed: _isSubmitting ? null : _saveItem,
-                        icon: _isSubmitting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.check_circle_outline),
-                        label: const Text('Aplicar a la venta'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                          backgroundColor: const Color(0xFF1A56DB),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(_isHeaderHovered ? 0.16 : 0.12),
+                  blurRadius: _isHeaderHovered ? 42 : 34,
+                  spreadRadius: _isHeaderHovered ? -10 : 0,
+                  offset: const Offset(0, 18),
                 ),
               ],
             ),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(theme),
+                  const SizedBox(height: 18),
+                  _buildTotalDisplay(),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _descriptionController,
+                    focusNode: _descriptionFocusNode,
+                    decoration: InputDecoration(
+                      labelText: 'Descripción *',
+                      hintText: 'Nombre del producto o servicio',
+                      prefixIcon: const Icon(Icons.description_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    maxLines: 2,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'La descripción es requerida';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildNumberField(
+                          controller: _qtyController,
+                          focusNode: _qtyFocusNode,
+                          label: 'Cantidad *',
+                          icon: Icons.pin_outlined,
+                          field: _QuickFieldTarget.qty,
+                          validator: (value) {
+                            final qty = double.tryParse((value ?? '').trim());
+                            if (qty == null || qty <= 0) {
+                              return 'Cantidad inválida';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildNumberField(
+                          controller: _priceController,
+                          focusNode: _priceFocusNode,
+                          label: 'Precio *',
+                          icon: Icons.attach_money_rounded,
+                          field: _QuickFieldTarget.price,
+                          validator: (value) {
+                            final price = double.tryParse((value ?? '').trim());
+                            if (price == null || price <= 0) {
+                              return 'Precio inválido';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildNumberField(
+                    controller: _costController,
+                    focusNode: _costFocusNode,
+                    label: 'Costo (opcional)',
+                    icon: Icons.payments_outlined,
+                    field: _QuickFieldTarget.cost,
+                  ),
+                  const SizedBox(height: 18),
+                  _buildTargetSelector(),
+                  const SizedBox(height: 14),
+                  _buildCalculatorPad(),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSubmitting
+                              ? null
+                              : () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton.icon(
+                          onPressed: _isSubmitting ? null : _saveItem,
+                          icon: _isSubmitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.check_circle_outline),
+                          label: const Text('Aplicar a la venta'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: const Color(0xFF1A56DB),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _isHeaderHovered = true),
+      onExit: (_) => setState(() => _isHeaderHovered = false),
+      child: Tooltip(
+        message: 'Vende fuera de inventario',
+        waitDuration: const Duration(milliseconds: 320),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isHeaderHovered
+                ? const Color(0xFFF5F9FF)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: _isHeaderHovered
+                  ? const Color(0xFF1A56DB).withOpacity(0.12)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                width: _isHeaderHovered ? 48 : 44,
+                height: _isHeaderHovered ? 48 : 44,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: _isHeaderHovered
+                        ? const [
+                            Color(0xFFE0ECFF),
+                            Color(0xFFF7FAFF),
+                          ]
+                        : const [
+                            Color(0xFFE9F1FF),
+                            Color(0xFFE9F1FF),
+                          ],
+                  ),
+                  borderRadius: BorderRadius.circular(_isHeaderHovered ? 16 : 14),
+                  border: Border.all(
+                    color: _isHeaderHovered
+                        ? const Color(0xFF2563EB).withOpacity(0.24)
+                        : Colors.transparent,
+                  ),
+                  boxShadow: [
+                    if (_isHeaderHovered)
+                      BoxShadow(
+                        color: const Color(0xFF2563EB).withOpacity(0.16),
+                        blurRadius: 16,
+                        spreadRadius: -8,
+                        offset: const Offset(0, 8),
+                      ),
+                  ],
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  transitionBuilder: (child, animation) {
+                    return ScaleTransition(
+                      scale: animation,
+                      child: FadeTransition(opacity: animation, child: child),
+                    );
+                  },
+                  child: Icon(
+                    _isHeaderHovered
+                        ? Icons.inventory_2_outlined
+                        : Icons.calculate_rounded,
+                    key: ValueKey<bool>(_isHeaderHovered),
+                    color: _isHeaderHovered
+                        ? const Color(0xFF2563EB)
+                        : const Color(0xFF1A56DB),
+                    size: _isHeaderHovered ? 25 : 24,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOut,
+                      style: (theme.textTheme.titleLarge ?? const TextStyle())
+                          .copyWith(
+                        fontWeight:
+                            _isHeaderHovered ? FontWeight.w900 : FontWeight.w800,
+                        color: _isHeaderHovered
+                            ? const Color(0xFF1A56DB)
+                            : const Color(0xFF17324D),
+                        height: 1.08,
+                        letterSpacing: _isHeaderHovered ? -0.1 : 0,
+                      ),
+                      child: const Text(
+                        'Venta común',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) {
+                        final slideAnimation = Tween<Offset>(
+                          begin: const Offset(0, 0.18),
+                          end: Offset.zero,
+                        ).animate(animation);
+
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: slideAnimation,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Text(
+                        _isHeaderHovered
+                            ? 'Vende fuera de inventario'
+                            : 'Agrega una línea manual a la venta activa',
+                        key: ValueKey<bool>(_isHeaderHovered),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _isHeaderHovered
+                              ? const Color(0xFF2563EB)
+                              : const Color(0xFF6B7C8E),
+                          fontSize: _isHeaderHovered ? 12.5 : 13,
+                          fontWeight: _isHeaderHovered
+                              ? FontWeight.w800
+                              : FontWeight.w500,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                decoration: BoxDecoration(
+                  color: _isHeaderHovered
+                      ? const Color(0xFFEAF2FF)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Cerrar',
+                  splashRadius: 20,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: _isHeaderHovered
+                        ? const Color(0xFF1A56DB)
+                        : const Color(0xFF5E7186),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -433,6 +582,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     String? Function(String?)? validator,
   }) {
     final isActive = _activeField == field;
+
     return TextFormField(
       controller: controller,
       focusNode: focusNode,
@@ -464,6 +614,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   Widget _buildTargetSelector() {
     Widget chip(String label, _QuickFieldTarget field) {
       final isSelected = _activeField == field;
+
       return Expanded(
         child: InkWell(
           onTap: () {
@@ -514,10 +665,22 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
 
   Widget _buildCalculatorPad() {
     final keys = <String>[
-      '7', '8', '9', 'C',
-      '4', '5', '6', 'DEL',
-      '1', '2', '3', '.',
-      '0', '00', '+1', '=',
+      '7',
+      '8',
+      '9',
+      'C',
+      '4',
+      '5',
+      '6',
+      'DEL',
+      '1',
+      '2',
+      '3',
+      '.',
+      '0',
+      '00',
+      '+1',
+      '=',
     ];
 
     return GridView.builder(
@@ -562,8 +725,8 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
               color: isPrimary
                   ? const Color(0xFFEAF2FF)
                   : isAccent
-                  ? const Color(0xFFF8F1F1)
-                  : const Color(0xFFF8FAFC),
+                      ? const Color(0xFFF8F1F1)
+                      : const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: isPrimary
@@ -580,8 +743,8 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
                   color: isPrimary
                       ? const Color(0xFF1A56DB)
                       : isAccent
-                      ? const Color(0xFFB45353)
-                      : const Color(0xFF23384F),
+                          ? const Color(0xFFB45353)
+                          : const Color(0xFF23384F),
                 ),
               ),
             ),

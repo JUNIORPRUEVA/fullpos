@@ -5241,105 +5241,157 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildQuickSaleCard({required int index, required double cardSize}) {
-    final isHovered = _hoveredProductIndexes.contains(index);
-    const accentColor = _allegraAccentColor;
-    final isActive = isHovered || _isQuickSalePressed;
-    final borderColor = isActive
-        ? accentColor.withOpacity(0.92)
-        : const Color(0xFFE2E8F0);
+Widget _buildQuickSaleCard({required int index, required double cardSize}) {
+  final isHovered = _hoveredProductIndexes.contains(index);
+  const accentColor = _allegraAccentColor;
+  final isActive = isHovered || _isQuickSalePressed;
+  final borderColor = isActive
+      ? accentColor.withOpacity(0.92)
+      : const Color(0xFFE2E8F0);
 
-    return MouseRegion(
-      onEnter: (_) =>
-          _setHoverStateDeferred(_hoveredProductIndexes, index, true),
-      onExit: (_) =>
-          _setHoverStateDeferred(_hoveredProductIndexes, index, false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        transform: Matrix4.identity()
-          ..scale(_isQuickSalePressed ? 0.97 : (isHovered ? 0.985 : 1.0)),
-        transformAlignment: Alignment.center,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.white,
-          border: Border.all(color: borderColor, width: 2.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(isActive ? 0.07 : 0.04),
-              blurRadius: isActive ? 12 : 8,
-              spreadRadius: 0,
-              offset: Offset(0, isActive ? 5 : 3),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTapDown: (_) => setState(() => _isQuickSalePressed = true),
-              onTapCancel: () => setState(() => _isQuickSalePressed = false),
-              onTap: _showQuickItemDialog,
-              onTapUp: (_) => setState(() => _isQuickSalePressed = false),
-              hoverColor: Colors.transparent,
-              highlightColor: Colors.transparent,
-              splashColor: accentColor.withOpacity(0.10),
-              child: SizedBox(
-                height: cardSize,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Align(
-                          alignment: const Alignment(0, 0.36),
-                          child: AnimatedScale(
-                            duration: const Duration(milliseconds: 120),
-                            scale: _isQuickSalePressed ? 0.96 : 1.0,
-                            child: Container(
-                              width: isHovered ? 92 : 104,
-                              height: isHovered ? 92 : 104,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF3F6F8),
-                                shape: BoxShape.circle,
+  return MouseRegion(
+    onEnter: (_) =>
+        _setHoverStateDeferred(_hoveredProductIndexes, index, true),
+    onExit: (_) =>
+        _setHoverStateDeferred(_hoveredProductIndexes, index, false),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      transform: Matrix4.identity()
+        ..scale(_isQuickSalePressed ? 0.97 : (isHovered ? 0.985 : 1.0)),
+      transformAlignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+        border: Border.all(color: borderColor, width: 2.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isActive ? 0.07 : 0.04),
+            blurRadius: isActive ? 12 : 8,
+            spreadRadius: 0,
+            offset: Offset(0, isActive ? 5 : 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTapDown: (_) => setState(() => _isQuickSalePressed = true),
+            onTapCancel: () => setState(() => _isQuickSalePressed = false),
+            onTap: _showQuickItemDialog,
+            onTapUp: (_) => setState(() => _isQuickSalePressed = false),
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashColor: accentColor.withOpacity(0.10),
+            child: SizedBox(
+              height: cardSize,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: const Alignment(0, 0.34),
+                        child: AnimatedScale(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          scale: _isQuickSalePressed
+                              ? 0.94
+                              : (isHovered ? 1.10 : 1.0),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOutCubic,
+                            width: isHovered ? 112 : 104,
+                            height: isHovered ? 112 : 104,
+                            decoration: BoxDecoration(
+                              color: isHovered
+                                  ? const Color(0xFFEAF2FF)
+                                  : const Color(0xFFF3F6F8),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isHovered
+                                    ? accentColor.withOpacity(0.16)
+                                    : Colors.transparent,
+                                width: 1,
                               ),
-                              alignment: Alignment.center,
-                              child: Icon(
-                                Icons.add_shopping_cart_rounded,
-                                size: isHovered ? 48 : 54,
-                                color: const Color(0xFF76879A),
-                              ),
+                              boxShadow: [
+                                if (isHovered)
+                                  BoxShadow(
+                                    color: accentColor.withOpacity(0.10),
+                                    blurRadius: 20,
+                                    spreadRadius: -10,
+                                    offset: const Offset(0, 10),
+                                  ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.add_shopping_cart_rounded,
+                              size: isHovered ? 58 : 54,
+                              color: const Color(0xFF76879A),
                             ),
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 42),
-                        child: Text(
-                          'Venta común',
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: scheme.onSurface.withOpacity(0.98),
-                            fontSize: 16.8,
-                            fontWeight: FontWeight.w900,
-                            height: 1.08,
-                          ),
-                        ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 34),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.12),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: isHovered
+                            ? const Text(
+                                'Vender fuera de\ninventario',
+                                key: ValueKey('quick-sale-hover-text'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Color(0xFF111827),
+                                  fontSize: 16.2,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.18,
+                                ),
+                              )
+                            : Text(
+                                'Venta común',
+                                key: const ValueKey('quick-sale-default-text'),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: const Color(0xFF111827),
+                                  fontSize: 16.8,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.08,
+                                ),
+                              ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ignore: unused_element
   Widget _buildCategoryDropdown() {
