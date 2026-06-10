@@ -587,14 +587,14 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final viewport = MediaQuery.sizeOf(context);
-    final dialogWidth = (viewport.width * 0.47).clamp(560.0, 760.0);
-    final dialogMaxHeight = (viewport.height - 24).clamp(560.0, 840.0);
+
+    final dialogWidth = (viewport.width - 96).clamp(560.0, 700.0).toDouble();
+    final dialogMaxHeight = (viewport.height - 110).clamp(560.0, 740.0).toDouble();
 
     return Shortcuts(
       shortcuts: {
@@ -616,19 +616,33 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
         },
         child: Focus(
           autofocus: true,
-          child: SizedBox.expand(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(96, 12, 4, 12),
-                child: Dialog(
-                  backgroundColor: Colors.transparent,
-                  insetPadding: EdgeInsets.zero,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: dialogWidth,
-                      maxHeight: dialogMaxHeight,
-                    ),
+          child: Center(
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 24,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: dialogMaxHeight,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.13),
+                        blurRadius: 32,
+                        spreadRadius: -12,
+                        offset: const Offset(0, 18),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
                     child: ProductsSurface(
                       padding: EdgeInsets.zero,
                       child: Column(
@@ -636,7 +650,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                         children: [
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
                             decoration: BoxDecoration(
                               color: scheme.surface,
                               border: Border(
@@ -645,27 +659,72 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                 ),
                               ),
                               borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(22),
+                                top: Radius.circular(16),
                               ),
                             ),
                             child: Row(
                               children: [
-                                Expanded(
-                                  child: Text(
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEAF2FF),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: const Color(0xFFBFD1F7),
+                                    ),
+                                  ),
+                                  child: Icon(
                                     _isEdit
-                                        ? 'EDITAR PRODUCTO'
-                                        : 'CREAR PRODUCTO',
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                          color: scheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.5,
+                                        ? Icons.edit_note_rounded
+                                        : Icons.add_box_outlined,
+                                    color: const Color(0xFF1A56DB),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _isEdit
+                                            ? 'Editar producto'
+                                            : 'Crear producto',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                          color: scheme.onSurface,
+                                          fontWeight: FontWeight.w800,
+                                          height: 1.05,
                                         ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        'Completa los datos del producto',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                          color: scheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.close),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: const Color(0xFFF1F5F9),
+                                    foregroundColor: const Color(0xFF475569),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.close_rounded),
                                   onPressed: () => Navigator.pop(context),
                                 ),
                               ],
@@ -674,22 +733,23 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                           Flexible(
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(
+                                16,
                                 14,
+                                16,
                                 12,
-                                14,
-                                10,
                               ),
                               child: LayoutBuilder(
                                 builder: (context, constraints) {
                                   final fieldWidth =
                                       ((constraints.maxWidth - 10) / 2).clamp(
-                                        240.0,
-                                        constraints.maxWidth,
-                                      );
+                                    240.0,
+                                    constraints.maxWidth,
+                                  );
 
                                   return Form(
                                     key: _formKey,
                                     child: SingleChildScrollView(
+                                      physics: const ClampingScrollPhysics(),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         crossAxisAlignment:
@@ -743,7 +803,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 10),
+                                          const SizedBox(height: 12),
                                           _buildSectionLabel(
                                             context,
                                             'Clasificación',
@@ -758,14 +818,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                 child: Row(
                                                   children: [
                                                     Expanded(
-                                                      child: DropdownButtonFormField<int?>(
+                                                      child:
+                                                          DropdownButtonFormField<
+                                                              int?>(
                                                         value:
                                                             _selectedCategoryId,
                                                         isExpanded: true,
                                                         decoration:
                                                             _fieldDecoration(
-                                                              'Categoría',
-                                                            ),
+                                                          'Categoría',
+                                                        ),
                                                         items: [
                                                           const DropdownMenuItem(
                                                             value: null,
@@ -776,19 +838,19 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                           ..._categories.map(
                                                             (c) =>
                                                                 DropdownMenuItem(
-                                                                  value: c.id,
-                                                                  child: Text(
-                                                                    c.name,
-                                                                  ),
-                                                                ),
+                                                              value: c.id,
+                                                              child: Text(
+                                                                c.name,
+                                                              ),
+                                                            ),
                                                           ),
                                                         ],
                                                         onChanged: (value) =>
                                                             setState(
-                                                              () =>
-                                                                  _selectedCategoryId =
-                                                                      value,
-                                                            ),
+                                                          () =>
+                                                              _selectedCategoryId =
+                                                                  value,
+                                                        ),
                                                       ),
                                                     ),
                                                     const SizedBox(width: 8),
@@ -798,12 +860,11 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                       child: OutlinedButton(
                                                         onPressed:
                                                             _quickCreateCategory,
-                                                        style:
-                                                            OutlinedButton.styleFrom(
-                                                              padding:
-                                                                  EdgeInsets
-                                                                      .zero,
-                                                            ),
+                                                        style: OutlinedButton
+                                                            .styleFrom(
+                                                          padding:
+                                                              EdgeInsets.zero,
+                                                        ),
                                                         child: const Icon(
                                                           Icons.add,
                                                           size: 18,
@@ -818,14 +879,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                 child: Row(
                                                   children: [
                                                     Expanded(
-                                                      child: DropdownButtonFormField<int?>(
+                                                      child:
+                                                          DropdownButtonFormField<
+                                                              int?>(
                                                         value:
                                                             _selectedSupplierId,
                                                         isExpanded: true,
                                                         decoration:
                                                             _fieldDecoration(
-                                                              'Suplidor',
-                                                            ),
+                                                          'Suplidor',
+                                                        ),
                                                         items: [
                                                           const DropdownMenuItem(
                                                             value: null,
@@ -836,19 +899,19 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                           ..._suppliers.map(
                                                             (s) =>
                                                                 DropdownMenuItem(
-                                                                  value: s.id,
-                                                                  child: Text(
-                                                                    s.name,
-                                                                  ),
-                                                                ),
+                                                              value: s.id,
+                                                              child: Text(
+                                                                s.name,
+                                                              ),
+                                                            ),
                                                           ),
                                                         ],
                                                         onChanged: (value) =>
                                                             setState(
-                                                              () =>
-                                                                  _selectedSupplierId =
-                                                                      value,
-                                                            ),
+                                                          () =>
+                                                              _selectedSupplierId =
+                                                                  value,
+                                                        ),
                                                       ),
                                                     ),
                                                     const SizedBox(width: 8),
@@ -858,12 +921,11 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                       child: OutlinedButton(
                                                         onPressed:
                                                             _quickCreateSupplier,
-                                                        style:
-                                                            OutlinedButton.styleFrom(
-                                                              padding:
-                                                                  EdgeInsets
-                                                                      .zero,
-                                                            ),
+                                                        style: OutlinedButton
+                                                            .styleFrom(
+                                                          padding:
+                                                              EdgeInsets.zero,
+                                                        ),
                                                         child: const Icon(
                                                           Icons.add,
                                                           size: 18,
@@ -875,7 +937,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 10),
+                                          const SizedBox(height: 12),
                                           _buildSectionLabel(
                                             context,
                                             'Imagen',
@@ -883,7 +945,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                           ),
                                           Container(
                                             width: double.infinity,
-                                            padding: const EdgeInsets.all(10),
+                                            padding: const EdgeInsets.all(12),
                                             decoration: BoxDecoration(
                                               borderRadius:
                                                   BorderRadius.circular(14),
@@ -897,13 +959,12 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                 Row(
                                                   children: [
                                                     ProductThumbnail(
-                                                      name:
-                                                          _nameController.text
+                                                      name: _nameController.text
                                                               .trim()
                                                               .isEmpty
                                                           ? 'Producto'
                                                           : _nameController.text
-                                                                .trim(),
+                                                              .trim(),
                                                       imagePath:
                                                           _previewImagePath,
                                                       placeholderColorHex:
@@ -917,8 +978,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                       height: 68,
                                                       borderRadius:
                                                           BorderRadius.circular(
-                                                            10,
-                                                          ),
+                                                        10,
+                                                      ),
                                                     ),
                                                     const SizedBox(width: 10),
                                                     Expanded(
@@ -933,8 +994,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                                     .isEmpty
                                                                 ? 'Sin nombre'
                                                                 : _nameController
-                                                                      .text
-                                                                      .trim(),
+                                                                    .text
+                                                                    .trim(),
                                                             maxLines: 1,
                                                             overflow:
                                                                 TextOverflow
@@ -943,10 +1004,10 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                                 .textTheme
                                                                 .bodyMedium
                                                                 ?.copyWith(
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w700,
-                                                                ),
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ),
                                                           ),
                                                           const SizedBox(
                                                             height: 6,
@@ -958,28 +1019,28 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                               ChoiceChip(
                                                                 label:
                                                                     const Text(
-                                                                      'Imagen',
-                                                                    ),
+                                                                  'Imagen',
+                                                                ),
                                                                 selected:
                                                                     _placeholderType ==
-                                                                    'image',
+                                                                        'image',
                                                                 onSelected: (_) =>
                                                                     _setPlaceholderType(
-                                                                      'image',
-                                                                    ),
+                                                                  'image',
+                                                                ),
                                                               ),
                                                               ChoiceChip(
                                                                 label:
                                                                     const Text(
-                                                                      'Color',
-                                                                    ),
+                                                                  'Color',
+                                                                ),
                                                                 selected:
                                                                     _placeholderType ==
-                                                                    'color',
+                                                                        'color',
                                                                 onSelected: (_) =>
                                                                     _setPlaceholderType(
-                                                                      'color',
-                                                                    ),
+                                                                  'color',
+                                                                ),
                                                               ),
                                                             ],
                                                           ),
@@ -988,42 +1049,47 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     ),
                                                   ],
                                                 ),
-                                                const SizedBox(height: 8),
+                                                const SizedBox(height: 10),
                                                 Row(
                                                   children: [
                                                     Expanded(
                                                       child:
                                                           _placeholderType ==
-                                                              'image'
-                                                          ? FilledButton.icon(
-                                                              onPressed:
-                                                                  _isLoading
-                                                                  ? null
-                                                                  : _pickImage,
-                                                              icon: const Icon(
-                                                                Icons
-                                                                    .upload_file,
-                                                              ),
-                                                              label: Text(
-                                                                _previewImagePath ==
-                                                                        null
-                                                                    ? 'Imagen'
-                                                                    : 'Cambiar imagen',
-                                                              ),
-                                                            )
-                                                          : FilledButton.icon(
-                                                              onPressed:
-                                                                  _isLoading
-                                                                  ? null
-                                                                  : _pickColorManually,
-                                                              icon: const Icon(
-                                                                Icons
-                                                                    .palette_outlined,
-                                                              ),
-                                                              label: const Text(
-                                                                'Elegir color',
-                                                              ),
-                                                            ),
+                                                                  'image'
+                                                              ? FilledButton
+                                                                  .icon(
+                                                                  onPressed:
+                                                                      _isLoading
+                                                                          ? null
+                                                                          : _pickImage,
+                                                                  icon:
+                                                                      const Icon(
+                                                                    Icons
+                                                                        .upload_file,
+                                                                  ),
+                                                                  label: Text(
+                                                                    _previewImagePath ==
+                                                                            null
+                                                                        ? 'Imagen'
+                                                                        : 'Cambiar imagen',
+                                                                  ),
+                                                                )
+                                                              : FilledButton
+                                                                  .icon(
+                                                                  onPressed:
+                                                                      _isLoading
+                                                                          ? null
+                                                                          : _pickColorManually,
+                                                                  icon:
+                                                                      const Icon(
+                                                                    Icons
+                                                                        .palette_outlined,
+                                                                  ),
+                                                                  label:
+                                                                      const Text(
+                                                                    'Elegir color',
+                                                                  ),
+                                                                ),
                                                     ),
                                                     const SizedBox(width: 8),
                                                     if (_placeholderType ==
@@ -1037,12 +1103,11 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                           onPressed: _isLoading
                                                               ? null
                                                               : _removeSelectedImage,
-                                                          style:
-                                                              OutlinedButton.styleFrom(
-                                                                padding:
-                                                                    EdgeInsets
-                                                                        .zero,
-                                                              ),
+                                                          style: OutlinedButton
+                                                              .styleFrom(
+                                                            padding:
+                                                                EdgeInsets.zero,
+                                                          ),
                                                           child: const Icon(
                                                             Icons
                                                                 .delete_outline,
@@ -1059,12 +1124,11 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                           onPressed: _isLoading
                                                               ? null
                                                               : _generateColor,
-                                                          style:
-                                                              OutlinedButton.styleFrom(
-                                                                padding:
-                                                                    EdgeInsets
-                                                                        .zero,
-                                                              ),
+                                                          style: OutlinedButton
+                                                              .styleFrom(
+                                                            padding:
+                                                                EdgeInsets.zero,
+                                                          ),
                                                           child: const Icon(
                                                             Icons
                                                                 .casino_outlined,
@@ -1074,17 +1138,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                       ),
                                                     const SizedBox(width: 8),
                                                     Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 7,
-                                                          ),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 7,
+                                                      ),
                                                       decoration: BoxDecoration(
                                                         color: Colors.white,
                                                         borderRadius:
-                                                            BorderRadius.circular(
-                                                              10,
-                                                            ),
+                                                            BorderRadius
+                                                                .circular(10),
                                                         border: Border.all(
                                                           color: scheme
                                                               .outlineVariant,
@@ -1097,14 +1160,17 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                           Container(
                                                             width: 18,
                                                             height: 18,
-                                                            decoration: BoxDecoration(
-                                                              color: ColorUtils.colorFromHex(
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: ColorUtils
+                                                                  .colorFromHex(
                                                                 _resolvePlaceholderColor(),
                                                               ),
                                                               borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    5,
-                                                                  ),
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                5,
+                                                              ),
                                                             ),
                                                           ),
                                                           const SizedBox(
@@ -1124,7 +1190,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                               ],
                                             ),
                                           ),
-                                          const SizedBox(height: 10),
+                                          const SizedBox(height: 12),
                                           _buildSectionLabel(
                                             context,
                                             'Precios',
@@ -1144,12 +1210,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     prefixText: '\$ ',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType.numberWithOptions(
-                                                        decimal: true,
-                                                      ),
+                                                      const TextInputType
+                                                          .numberWithOptions(
+                                                    decimal: true,
+                                                  ),
                                                   inputFormatters: [
-                                                    FilteringTextInputFormatter.allow(
-                                                      RegExp(r'^\d+\.?\d{0,2}'),
+                                                    FilteringTextInputFormatter
+                                                        .allow(
+                                                      RegExp(
+                                                        r'^\d+\.?\d{0,2}',
+                                                      ),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1159,8 +1229,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     }
                                                     final price =
                                                         double.tryParse(
-                                                          value.trim(),
-                                                        );
+                                                      value.trim(),
+                                                    );
                                                     if (price == null ||
                                                         price <= 0) {
                                                       return 'Debe ser mayor que 0';
@@ -1179,12 +1249,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     prefixText: '\$ ',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType.numberWithOptions(
-                                                        decimal: true,
-                                                      ),
+                                                      const TextInputType
+                                                          .numberWithOptions(
+                                                    decimal: true,
+                                                  ),
                                                   inputFormatters: [
-                                                    FilteringTextInputFormatter.allow(
-                                                      RegExp(r'^\d+\.?\d{0,2}'),
+                                                    FilteringTextInputFormatter
+                                                        .allow(
+                                                      RegExp(
+                                                        r'^\d+\.?\d{0,2}',
+                                                      ),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1194,8 +1268,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     }
                                                     final price =
                                                         double.tryParse(
-                                                          value.trim(),
-                                                        );
+                                                      value.trim(),
+                                                    );
                                                     if (price == null ||
                                                         price <= 0) {
                                                       return 'Debe ser mayor que 0';
@@ -1206,7 +1280,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 10),
+                                          const SizedBox(height: 12),
                                           _buildSectionLabel(
                                             context,
                                             'Inventario',
@@ -1227,12 +1301,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                         : 'Stock actual',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType.numberWithOptions(
-                                                        decimal: true,
-                                                      ),
+                                                      const TextInputType
+                                                          .numberWithOptions(
+                                                    decimal: true,
+                                                  ),
                                                   inputFormatters: [
-                                                    FilteringTextInputFormatter.allow(
-                                                      RegExp(r'^\d+\.?\d{0,2}'),
+                                                    FilteringTextInputFormatter
+                                                        .allow(
+                                                      RegExp(
+                                                        r'^\d+\.?\d{0,2}',
+                                                      ),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1242,8 +1320,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     }
                                                     final stock =
                                                         double.tryParse(
-                                                          value.trim(),
-                                                        );
+                                                      value.trim(),
+                                                    );
                                                     if (stock == null ||
                                                         stock < 0) {
                                                       return 'Inválido';
@@ -1261,12 +1339,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     'Stock mínimo',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType.numberWithOptions(
-                                                        decimal: true,
-                                                      ),
+                                                      const TextInputType
+                                                          .numberWithOptions(
+                                                    decimal: true,
+                                                  ),
                                                   inputFormatters: [
-                                                    FilteringTextInputFormatter.allow(
-                                                      RegExp(r'^\d+\.?\d{0,2}'),
+                                                    FilteringTextInputFormatter
+                                                        .allow(
+                                                      RegExp(
+                                                        r'^\d+\.?\d{0,2}',
+                                                      ),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1276,8 +1358,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                     }
                                                     final stock =
                                                         double.tryParse(
-                                                          value.trim(),
-                                                        );
+                                                      value.trim(),
+                                                    );
                                                     if (stock == null ||
                                                         stock < 0) {
                                                       return 'Inválido';
@@ -1297,14 +1379,16 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                             ),
                           ),
                           Container(
-                            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                             decoration: BoxDecoration(
                               color: scheme.surface,
                               border: Border(
-                                top: BorderSide(color: scheme.outlineVariant),
+                                top: BorderSide(
+                                  color: scheme.outlineVariant,
+                                ),
                               ),
                               borderRadius: const BorderRadius.vertical(
-                                bottom: Radius.circular(22),
+                                bottom: Radius.circular(16),
                               ),
                             ),
                             child: Row(
@@ -1344,4 +1428,5 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       ),
     );
   }
+
 }

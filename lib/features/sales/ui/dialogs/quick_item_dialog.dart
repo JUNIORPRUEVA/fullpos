@@ -25,6 +25,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   static const Color _danger = Color(0xFFDC2626);
 
   final _formKey = GlobalKey<FormState>();
+
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController(text: '1');
@@ -34,6 +35,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   final _qtyFocusNode = FocusNode();
   final _priceFocusNode = FocusNode();
   final _costFocusNode = FocusNode();
+  final _keyboardFocusNode = FocusNode();
 
   final _currency = NumberFormat.currency(
     locale: 'en_US',
@@ -42,6 +44,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   );
 
   _QuickFieldTarget _activeField = _QuickFieldTarget.price;
+
   bool _isSubmitting = false;
   bool _showMoreData = false;
   bool _calculatorOnly = false;
@@ -60,11 +63,18 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     _qtyFocusNode.addListener(() {
       if (_qtyFocusNode.hasFocus) _setActiveField(_QuickFieldTarget.qty);
     });
+
     _priceFocusNode.addListener(() {
       if (_priceFocusNode.hasFocus) _setActiveField(_QuickFieldTarget.price);
     });
+
     _costFocusNode.addListener(() {
       if (_costFocusNode.hasFocus) _setActiveField(_QuickFieldTarget.cost);
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _keyboardFocusNode.requestFocus();
     });
   }
 
@@ -74,10 +84,13 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     _priceController.dispose();
     _qtyController.dispose();
     _costController.dispose();
+
     _descriptionFocusNode.dispose();
     _qtyFocusNode.dispose();
     _priceFocusNode.dispose();
     _costFocusNode.dispose();
+    _keyboardFocusNode.dispose();
+
     super.dispose();
   }
 
@@ -142,20 +155,59 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     return clean.isEmpty ? '0' : clean;
   }
 
-  void _clearCalculator({bool keepField = true}) {
-    _calcExpression = '';
-    _calcResultText = '';
-    if (!keepField) {
-      final controller = _activeController;
-      controller.clear();
-      if (_activeField == _QuickFieldTarget.qty) {
-        controller.text = '1';
+  void _focusKeyboard() {
+    if (!mounted) return;
+    _keyboardFocusNode.requestFocus();
+  }
+
+  void _toggleCalculatorOnly(bool value) {
+    if (_calculatorOnly == value) return;
+
+    setState(() {
+      _calculatorOnly = value;
+      _calcExpression = '';
+      _calcResultText = '';
+
+      if (_calculatorOnly) {
+        _showMoreData = false;
       }
-      controller.selection = TextSelection.collapsed(
-        offset: controller.text.length,
-      );
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_calculatorOnly) {
+        FocusScope.of(context).unfocus();
+        _focusKeyboard();
+      } else {
+        _priceFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _clearCalculator({bool keepField = true}) {
+    setState(() {
+      _calcExpression = '';
+      _calcResultText = '';
+
+      if (!keepField && !_calculatorOnly) {
+        final controller = _activeController;
+        controller.clear();
+
+        if (_activeField == _QuickFieldTarget.qty) {
+          controller.text = '1';
+        }
+
+        controller.selection = TextSelection.collapsed(
+          offset: controller.text.length,
+        );
+      }
+    });
+
+    if (_calculatorOnly) {
+      _focusKeyboard();
+    } else {
+      _activeFocusNode.requestFocus();
     }
-    _refresh();
   }
 
   void _appendKey(String value) {
@@ -164,43 +216,59 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       return;
     }
 
-    if (value == '.') {
-      final lastNumber = _calcExpression.split(RegExp(r'[+\-*/]')).last;
-      if (lastNumber.contains('.')) return;
-      _calcExpression = _calcExpression.isEmpty ? '0.' : '$_calcExpression.';
-    } else {
-      if (_calcExpression == '0') {
-        _calcExpression = value;
+    setState(() {
+      if (value == '.') {
+        final lastNumber = _calcExpression.split(RegExp(r'[+\-*/]')).last;
+        if (lastNumber.contains('.')) return;
+        _calcExpression = _calcExpression.isEmpty ? '0.' : '$_calcExpression.';
       } else {
-        _calcExpression = '$_calcExpression$value';
+        if (_calcExpression == '0') {
+          _calcExpression = value;
+        } else {
+          _calcExpression = '$_calcExpression$value';
+        }
       }
-    }
 
-    _calcResultText = '';
-    _syncExpressionToActiveFieldIfSimple();
-    _activeFocusNode.requestFocus();
-    _refresh();
+      _calcResultText = '';
+      _syncExpressionToActiveFieldIfSimple();
+    });
+
+    if (_calculatorOnly) {
+      _focusKeyboard();
+    } else {
+      _activeFocusNode.requestFocus();
+    }
   }
 
   void _appendOperator(String operator) {
-    if (_calcExpression.trim().isEmpty) {
-      final activeText = _activeController.text.trim();
-      _calcExpression = activeText.isEmpty ? '0' : activeText;
-    }
+    setState(() {
+      if (_calcExpression.trim().isEmpty) {
+        if (_calculatorOnly) {
+          _calcExpression = '0';
+        } else {
+          final activeText = _activeController.text.trim();
+          _calcExpression = activeText.isEmpty ? '0' : activeText;
+        }
+      }
 
-    if (_calcExpression.isEmpty) return;
+      if (_calcExpression.isEmpty) return;
 
-    final lastChar = _calcExpression.characters.last;
-    if (_isOperator(lastChar)) {
-      _calcExpression =
-          '${_calcExpression.substring(0, _calcExpression.length - 1)}$operator';
+      final lastChar = _calcExpression.characters.last;
+      if (_isOperator(lastChar)) {
+        _calcExpression =
+            '${_calcExpression.substring(0, _calcExpression.length - 1)}$operator';
+      } else {
+        _calcExpression = '$_calcExpression$operator';
+      }
+
+      _calcResultText = '';
+    });
+
+    if (_calculatorOnly) {
+      _focusKeyboard();
     } else {
-      _calcExpression = '$_calcExpression$operator';
+      _activeFocusNode.requestFocus();
     }
-
-    _calcResultText = '';
-    _activeFocusNode.requestFocus();
-    _refresh();
   }
 
   void _syncExpressionToActiveFieldIfSimple() {
@@ -209,26 +277,41 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
 
     final controller = _activeController;
     controller.text = _calcExpression;
-    controller.selection = TextSelection.collapsed(offset: controller.text.length);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
   }
 
   void _backspace() {
-    if (_calcExpression.isNotEmpty) {
-      _calcExpression = _calcExpression.substring(0, _calcExpression.length - 1);
-    }
-
-    if (!_calculatorOnly && !_calcExpression.contains(RegExp(r'[+\-*/]'))) {
-      final controller = _activeController;
-      controller.text = _calcExpression;
-      if (_activeField == _QuickFieldTarget.qty && controller.text.isEmpty) {
-        controller.text = '1';
+    setState(() {
+      if (_calcExpression.isNotEmpty) {
+        _calcExpression = _calcExpression.substring(
+          0,
+          _calcExpression.length - 1,
+        );
       }
-      controller.selection = TextSelection.collapsed(offset: controller.text.length);
-    }
 
-    _calcResultText = '';
-    _activeFocusNode.requestFocus();
-    _refresh();
+      if (!_calculatorOnly && !_calcExpression.contains(RegExp(r'[+\-*/]'))) {
+        final controller = _activeController;
+        controller.text = _calcExpression;
+
+        if (_activeField == _QuickFieldTarget.qty && controller.text.isEmpty) {
+          controller.text = '1';
+        }
+
+        controller.selection = TextSelection.collapsed(
+          offset: controller.text.length,
+        );
+      }
+
+      _calcResultText = '';
+    });
+
+    if (_calculatorOnly) {
+      _focusKeyboard();
+    } else {
+      _activeFocusNode.requestFocus();
+    }
   }
 
   void _evaluateCalculator() {
@@ -236,32 +319,38 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     if (expression.isEmpty) return;
 
     final result = _calculateExpression(expression);
-    if (result == null) {
-      _calcResultText = 'Operación inválida';
-      _refresh();
-      return;
-    }
 
-    final text = _formatNumberForInput(result);
-    if (text.isEmpty) return;
+    setState(() {
+      if (result == null) {
+        _calcResultText = 'Operación inválida';
+        return;
+      }
 
-    _calcExpression = text;
-    _calcResultText = '= ${_currency.format(result)}';
+      final text = _formatNumberForInput(result);
+      if (text.isEmpty) return;
 
-    if (!_calculatorOnly) {
-      final controller = _activeController;
-      controller.text = text;
-      controller.selection = TextSelection.collapsed(offset: text.length);
+      _calcExpression = text;
+      _calcResultText = _calculatorOnly ? _currency.format(result) : '= $text';
+
+      if (!_calculatorOnly) {
+        final controller = _activeController;
+        controller.text = text;
+        controller.selection = TextSelection.collapsed(offset: text.length);
+      }
+    });
+
+    if (_calculatorOnly) {
+      _focusKeyboard();
+    } else {
       _activeFocusNode.requestFocus();
     }
-
-    _refresh();
   }
 
   double? _calculateExpression(String expression) {
     final cleaned = expression
         .replaceAll('×', '*')
         .replaceAll('÷', '/')
+        .replaceAll(',', '.')
         .replaceAll(' ', '');
 
     final tokens = RegExp(r'(\d+(?:\.\d+)?|[+\-*/])')
@@ -282,6 +371,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
 
     bool applyTopOperator() {
       if (values.length < 2 || operators.isEmpty) return false;
+
       final b = values.removeLast();
       final a = values.removeLast();
       final op = operators.removeLast();
@@ -301,11 +391,13 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
           values.add(a / b);
           return true;
       }
+
       return false;
     }
 
     for (final token in tokens) {
       final number = double.tryParse(token);
+
       if (number != null) {
         values.add(number);
         continue;
@@ -313,9 +405,11 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
 
       if (!_isOperator(token)) return null;
 
-      while (operators.isNotEmpty && precedence(operators.last) >= precedence(token)) {
+      while (operators.isNotEmpty &&
+          precedence(operators.last) >= precedence(token)) {
         if (!applyTopOperator()) return null;
       }
+
       operators.add(token);
     }
 
@@ -327,6 +421,11 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   }
 
   Future<void> _saveItem() async {
+    if (_calculatorOnly) {
+      _evaluateCalculator();
+      return;
+    }
+
     if (_isSubmitting) return;
     if (!_formKey.currentState!.validate()) return;
 
@@ -357,100 +456,304 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     }
   }
 
+  KeyEventResult _handleCalculatorKeyboard(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+    final character = event.character;
+
+    String? digit;
+
+    if (key == LogicalKeyboardKey.digit0 || key == LogicalKeyboardKey.numpad0) {
+      digit = '0';
+    } else if (key == LogicalKeyboardKey.digit1 ||
+        key == LogicalKeyboardKey.numpad1) {
+      digit = '1';
+    } else if (key == LogicalKeyboardKey.digit2 ||
+        key == LogicalKeyboardKey.numpad2) {
+      digit = '2';
+    } else if (key == LogicalKeyboardKey.digit3 ||
+        key == LogicalKeyboardKey.numpad3) {
+      digit = '3';
+    } else if (key == LogicalKeyboardKey.digit4 ||
+        key == LogicalKeyboardKey.numpad4) {
+      digit = '4';
+    } else if (key == LogicalKeyboardKey.digit5 ||
+        key == LogicalKeyboardKey.numpad5) {
+      digit = '5';
+    } else if (key == LogicalKeyboardKey.digit6 ||
+        key == LogicalKeyboardKey.numpad6) {
+      digit = '6';
+    } else if (key == LogicalKeyboardKey.digit7 ||
+        key == LogicalKeyboardKey.numpad7) {
+      digit = '7';
+    } else if (key == LogicalKeyboardKey.digit8 ||
+        key == LogicalKeyboardKey.numpad8) {
+      digit = '8';
+    } else if (key == LogicalKeyboardKey.digit9 ||
+        key == LogicalKeyboardKey.numpad9) {
+      digit = '9';
+    }
+
+    if (digit != null) {
+      _appendKey(digit);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.period ||
+        key == LogicalKeyboardKey.comma ||
+        key == LogicalKeyboardKey.numpadDecimal) {
+      _appendKey('.');
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.add ||
+        key == LogicalKeyboardKey.numpadAdd ||
+        character == '+') {
+      _appendKey('+');
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.minus ||
+        key == LogicalKeyboardKey.numpadSubtract ||
+        character == '-') {
+      _appendKey('-');
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.asterisk ||
+        key == LogicalKeyboardKey.numpadMultiply ||
+        character == '*') {
+      _appendKey('*');
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.slash ||
+        key == LogicalKeyboardKey.numpadDivide ||
+        character == '/') {
+      _appendKey('/');
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.equal ||
+        key == LogicalKeyboardKey.numpadEqual ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      _evaluateCalculator();
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.backspace) {
+      _backspace();
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.delete) {
+      _clearCalculator(keepField: true);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.escape) {
+      Navigator.of(context).maybePop();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
-    final width = screen.width.clamp(360.0, 520.0);
-    final maxHeight = (screen.height - 70).clamp(520.0, 760.0);
+
+    final dialogWidth = (screen.width < 430 ? screen.width - 24 : 372.0)
+        .clamp(330.0, 382.0)
+        .toDouble();
+
+    final dialogMaxHeight = (screen.height - 40)
+        .clamp(660.0, 840.0)
+        .toDouble();
+
+    final compact = screen.width < 430;
 
     return DialogKeyboardShortcuts(
       onSubmit: _saveItem,
-      child: Material(
-        color: Colors.transparent,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: width,
-            maxHeight: maxHeight,
-          ),
-          child: Container(
-            width: width,
-            padding: EdgeInsets.all(screen.width < 430 ? 16 : 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _borderColor),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 34,
-                  spreadRadius: -12,
-                  offset: const Offset(0, 18),
-                ),
-              ],
+      child: KeyboardListener(
+        focusNode: _keyboardFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleCalculatorKeyboard,
+        child: Material(
+          color: Colors.transparent,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: dialogWidth,
+              maxHeight: dialogMaxHeight,
             ),
-            child: Form(
-              key: _formKey,
-              child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(),
-                    const SizedBox(height: 16),
-                    _buildTotalDisplay(compact: screen.width < 430),
-                    const SizedBox(height: 14),
-                    _buildDescriptionField(),
-                    const SizedBox(height: 12),
-                    Row(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: dialogWidth,
+              padding: EdgeInsets.all(compact ? 12 : 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    spreadRadius: -10,
+                    offset: const Offset(0, 16),
+                  ),
+                ],
+              ),
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 190),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: _buildNumberField(
-                            controller: _qtyController,
-                            focusNode: _qtyFocusNode,
-                            label: 'Cantidad *',
-                            icon: Icons.pin_outlined,
-                            field: _QuickFieldTarget.qty,
-                            validator: (value) {
-                              final qty = double.tryParse((value ?? '').trim());
-                              if (qty == null || qty <= 0) return 'Cantidad inválida';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 2,
-                          child: _buildNumberField(
-                            controller: _priceController,
-                            focusNode: _priceFocusNode,
-                            label: 'Precio *',
-                            icon: Icons.attach_money_rounded,
-                            field: _QuickFieldTarget.price,
-                            validator: (value) {
-                              final price = double.tryParse((value ?? '').trim());
-                              if (price == null || price <= 0) return 'Precio inválido';
-                              return null;
-                            },
-                          ),
+                        _buildHeader(),
+                        const SizedBox(height: 12),
+                        _buildModeSelector(),
+                        const SizedBox(height: 12),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 190),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          child: _calculatorOnly
+                              ? _buildCalculatorOnlyBody()
+                              : _buildProductSaleBody(compact: compact),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    _buildMoreDataSection(),
-                    const SizedBox(height: 12),
-                    _buildCalculatorHeader(),
-                    const SizedBox(height: 8),
-                    _buildCalculatorPad(),
-                    const SizedBox(height: 14),
-                    _buildFooterActions(),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildProductSaleBody({required bool compact}) {
+    return Column(
+      key: const ValueKey<String>('product-sale-body'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTotalDisplay(compact: true),
+        const SizedBox(height: 12),
+        _buildDescriptionField(),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildNumberField(
+                controller: _qtyController,
+                focusNode: _qtyFocusNode,
+                label: 'Cantidad *',
+                icon: Icons.pin_outlined,
+                field: _QuickFieldTarget.qty,
+                validator: (value) {
+                  final qty = double.tryParse((value ?? '').trim());
+                  if (qty == null || qty <= 0) return 'Cantidad inválida';
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: _buildNumberField(
+                controller: _priceController,
+                focusNode: _priceFocusNode,
+                label: 'Precio *',
+                icon: Icons.attach_money_rounded,
+                field: _QuickFieldTarget.price,
+                validator: (value) {
+                  final price = double.tryParse((value ?? '').trim());
+                  if (price == null || price <= 0) return 'Precio inválido';
+                  return null;
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildMoreDataSection(),
+        const SizedBox(height: 10),
+        _buildCalculatorHeader(),
+        const SizedBox(height: 8),
+        _buildCalculatorPad(),
+        const SizedBox(height: 12),
+        _buildFooterActions(),
+      ],
+    );
+  }
+
+  Widget _buildCalculatorOnlyBody() {
+    return Column(
+      key: const ValueKey<String>('calculator-only-body'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildFreeCalculatorDisplay(),
+        const SizedBox(height: 10),
+        _buildCalculatorPad(),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _clearCalculator(keepField: true),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Limpiar'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  foregroundColor: _textPrimary,
+                  side: const BorderSide(color: _borderColor),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Listo'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  backgroundColor: _brandBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -466,38 +769,48 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFBFD1F7)),
           ),
-          child: const Icon(Icons.calculate_rounded, color: _brandBlue, size: 22),
+          child: Icon(
+            _calculatorOnly ? Icons.calculate_outlined : Icons.calculate_rounded,
+            color: _brandBlue,
+            size: 22,
+          ),
         ),
         const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Venta común',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _brandBlueDark,
-                  fontSize: 21,
-                  fontWeight: FontWeight.w900,
-                  height: 1.05,
-                  letterSpacing: -0.3,
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            child: Column(
+              key: ValueKey<bool>(_calculatorOnly),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _calculatorOnly ? 'Calculadora' : 'Venta común',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _brandBlueDark,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                    letterSpacing: -0.3,
+                  ),
                 ),
-              ),
-              SizedBox(height: 5),
-              Text(
-                'Agrega producto o servicio fuera del inventario',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _textMuted,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.18,
+                const SizedBox(height: 5),
+                Text(
+                  _calculatorOnly
+                      ? 'Calcula rápido sin agregar productos'
+                      : 'Agrega producto o servicio fuera del inventario',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.18,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -509,7 +822,11 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
             child: const SizedBox(
               width: 36,
               height: 36,
-              child: Icon(Icons.close_rounded, color: Color(0xFF475569), size: 22),
+              child: Icon(
+                Icons.close_rounded,
+                color: Color(0xFF475569),
+                size: 22,
+              ),
             ),
           ),
         ),
@@ -517,8 +834,101 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     );
   }
 
+  Widget _buildModeSelector() {
+    Widget option({
+      required String label,
+      required IconData icon,
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
+      return Expanded(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(9),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: selected ? const Color(0xFFBFD1F7) : Colors.transparent,
+                ),
+                boxShadow: [
+                  if (selected)
+                    BoxShadow(
+                      color: _brandBlue.withOpacity(0.08),
+                      blurRadius: 10,
+                      spreadRadius: -6,
+                      offset: const Offset(0, 4),
+                    ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: 15,
+                    color: selected ? _brandBlue : _textMuted,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected ? _brandBlue : _textMuted,
+                        fontSize: 12.2,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: _softBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Row(
+        children: [
+          option(
+            label: 'Producto',
+            icon: Icons.add_shopping_cart_rounded,
+            selected: !_calculatorOnly,
+            onTap: () => _toggleCalculatorOnly(false),
+          ),
+          const SizedBox(width: 4),
+          option(
+            label: 'Solo calculadora',
+            icon: Icons.calculate_outlined,
+            selected: _calculatorOnly,
+            onTap: () => _toggleCalculatorOnly(true),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTotalDisplay({required bool compact}) {
-    final expressionText = '${_formatCalcNumber(_qtyValue)} × ${_currency.format(_priceValue)}';
+    final expressionText =
+        '${_formatCalcNumber(_qtyValue)} × ${_currency.format(_priceValue)}';
 
     return Container(
       width: double.infinity,
@@ -542,33 +952,16 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
           ),
         ],
       ),
-      child: compact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildTotalLabel(),
-                const SizedBox(height: 8),
-                _buildTotalAmount(compact: true),
-                const SizedBox(height: 10),
-                _buildTotalExpression(expressionText),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTotalLabel(),
-                      const SizedBox(height: 8),
-                      _buildTotalAmount(compact: false),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Flexible(child: _buildTotalExpression(expressionText)),
-              ],
-            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTotalLabel(),
+          const SizedBox(height: 8),
+          _buildTotalAmount(compact: compact),
+          const SizedBox(height: 10),
+          _buildTotalExpression(expressionText),
+        ],
+      ),
     );
   }
 
@@ -643,7 +1036,10 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       ),
       maxLines: 2,
       validator: (value) {
-        if (value == null || value.trim().isEmpty) return 'La descripción es requerida';
+        if (_calculatorOnly) return null;
+        if (value == null || value.trim().isEmpty) {
+          return 'La descripción es requerida';
+        }
         return null;
       },
     );
@@ -668,8 +1064,10 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       ],
       onTap: () {
         _setActiveField(field);
-        _calcExpression = '';
-        _calcResultText = '';
+        setState(() {
+          _calcExpression = '';
+          _calcResultText = '';
+        });
       },
       decoration: InputDecoration(
         labelText: label,
@@ -681,7 +1079,10 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: isActive ? _brandBlue : Colors.blueGrey, width: 1.7),
+          borderSide: BorderSide(
+            color: isActive ? _brandBlue : Colors.blueGrey,
+            width: 1.7,
+          ),
         ),
         filled: true,
         fillColor: isActive ? const Color(0xFFF5F9FF) : Colors.white,
@@ -779,9 +1180,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
           Expanded(
             child: Text(
               expression.isEmpty
-                  ? (_calculatorOnly
-                      ? 'Calculadora libre'
-                      : 'Calculadora para $_activeFieldLabel')
+                  ? 'Calculadora para $_activeFieldLabel'
                   : expression.replaceAll('*', '×').replaceAll('/', '÷'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -801,7 +1200,9 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: _calcResultText.contains('inválida') ? _danger : _brandBlue,
+                  color: _calcResultText.contains('inválida')
+                      ? _danger
+                      : _brandBlue,
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
                   height: 1,
@@ -809,59 +1210,84 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
               ),
             ),
           ],
-          const SizedBox(width: 8),
-          _buildCalculatorOnlySwitch(),
         ],
       ),
     );
   }
 
-  Widget _buildCalculatorOnlySwitch() {
-    return Tooltip(
-      message: _calculatorOnly
-          ? 'Solo calcular, no escribir en campos'
-          : 'Escribir resultado en el campo activo',
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _calculatorOnly = !_calculatorOnly;
-            _calcExpression = '';
-            _calcResultText = '';
-          });
-        },
-        borderRadius: BorderRadius.circular(999),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          height: 26,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: _calculatorOnly ? _brandBlue : Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: _calculatorOnly ? _brandBlue : _borderColor,
+  Widget _buildFreeCalculatorDisplay() {
+    final rawExpression = _calcExpression.trim();
+    final expression = rawExpression.isEmpty
+        ? '0'
+        : rawExpression.replaceAll('*', '×').replaceAll('/', '÷');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF17324D), Color(0xFF1A56DB)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(11),
+        boxShadow: [
+          BoxShadow(
+            color: _brandBlue.withOpacity(0.18),
+            blurRadius: 16,
+            spreadRadius: -8,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Calculadora libre',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.72),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              height: 1,
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _calculatorOnly ? Icons.lock_outline_rounded : Icons.edit_rounded,
-                size: 13,
-                color: _calculatorOnly ? Colors.white : _textMuted,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                _calculatorOnly ? 'Solo calc.' : 'Aplicar',
-                style: TextStyle(
-                  color: _calculatorOnly ? Colors.white : _textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-            ],
+          const SizedBox(height: 12),
+          Text(
+            expression,
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              height: 1,
+              letterSpacing: -0.6,
+            ),
           ),
-        ),
+          const SizedBox(height: 10),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            child: Text(
+              _calcResultText.isEmpty ? 'Resultado' : _calcResultText,
+              key: ValueKey<String>(_calcResultText),
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _calcResultText.contains('inválida')
+                    ? const Color(0xFFFFD6D6)
+                    : Colors.white.withOpacity(
+                        _calcResultText.isEmpty ? 0.50 : 0.88,
+                      ),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -980,7 +1406,9 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
               minimumSize: const Size.fromHeight(46),
               foregroundColor: _textPrimary,
               side: const BorderSide(color: _borderColor),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: const Text(
               'Cancelar',
@@ -997,7 +1425,10 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : const Icon(Icons.check_circle_outline, size: 19),
             label: const Text('Aplicar a la venta'),
@@ -1005,8 +1436,13 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
               minimumSize: const Size.fromHeight(46),
               backgroundColor: _brandBlue,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ),

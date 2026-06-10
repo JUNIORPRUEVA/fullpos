@@ -42,8 +42,11 @@ import '../../clients/utils/phone_validator.dart';
 import '../../clients/utils/rnc_validator.dart';
 import '../../products/data/categories_repository.dart';
 import '../../products/data/products_repository.dart';
+import '../../products/data/suppliers_repository.dart';
 import '../../products/models/category_model.dart';
 import '../../products/models/product_model.dart';
+import '../../products/models/supplier_model.dart';
+import '../../products/ui/dialogs/product_form_dialog.dart';
 import '../../products/ui/widgets/product_thumbnail.dart';
 import '../../settings/data/business_settings_model.dart';
 import '../../settings/data/business_settings_repository.dart';
@@ -2186,6 +2189,121 @@ const footerSafeInset = 45.0;
   _updateCurrentCart(() {
     _currentCart.items.add(result);
   });
+}
+
+Future<void> _showNewProductDialog() async {
+  if (!mounted) return;
+
+  try {
+    final categoriesRepo = CategoriesRepository();
+    final suppliersRepo = SuppliersRepository();
+
+    final results = await Future.wait([
+      categoriesRepo.getAll(),
+      suppliersRepo.getAll(),
+    ]);
+
+    if (!mounted) return;
+
+    final categories = results[0] as List<CategoryModel>;
+    final suppliers = results[1] as List<SupplierModel>;
+
+    final screenSize = MediaQuery.sizeOf(context);
+    final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
+
+    // Deja libre el panel derecho de factura.
+    final blurRightInset = ticketPanelConstraints.maxWidth;
+
+    // No tapa el topbar.
+    const blurTopOffset = 40.0;
+
+    // No tapa footer/tabs inferiores.
+    const footerSafeInset = 45.0;
+
+    final created = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.transparent,
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Material(
+          type: MaterialType.transparency,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                top: blurTopOffset,
+                bottom: footerSafeInset,
+                right: blurRightInset,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(dialogContext).maybePop(),
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(
+                        sigmaX: 8,
+                        sigmaY: 8,
+                      ),
+                      child: Container(
+                        color: const Color(0xFFF4F7FB).withOpacity(0.34),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              Center(
+                child: ProductFormDialog(
+                  categories: categories,
+                  suppliers: suppliers,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 220),
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(
+              begin: 0.985,
+              end: 1.0,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+
+    if (created == true && mounted) {
+      await _searchProducts(_searchController.text);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Producto creado correctamente'),
+          backgroundColor: status.success,
+        ),
+      );
+    }
+  } catch (e, st) {
+    if (!mounted) return;
+
+    await ErrorHandler.instance.handle(
+      e,
+      stackTrace: st,
+      context: context,
+      onRetry: _showNewProductDialog,
+      module: 'sales/new_product',
+    );
+  }
 }
 
   Future<void> _setSalesDocumentType(_SalesDocumentType type) async {
@@ -5541,7 +5659,7 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
       width: 170,
       height: height,
       child: OutlinedButton(
-        onPressed: _showQuickItemDialog,
+        onPressed: _showNewProductDialog,
         style:
             OutlinedButton.styleFrom(
               backgroundColor: Colors.white,
