@@ -496,13 +496,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const pageBackground = Color(0xFFF5F7FA);
-    const cardColor = Color(0xFF374151);
-    const cardText = Color(0xFFD1D5DB);
+    const cardColor = Color(0xFF243447);
+    const cardBorder = Color(0xFF4B5D73);
+    const cardText = Color(0xFFD7E1EE);
+    const subtitleText = Color(0xFF9FB2C8);
     const primaryBlue = Color(0xFF2563EB);
+    const primaryBluePressed = Color(0xFF1D4ED8);
     const inputBackground = Color(0xFFFFFFFF);
     const inputText = Color(0xFF111827);
     const inputHint = Color(0xFF94A3B8);
-    final subtleBlue = primaryBlue.withOpacity(0.06);
+    const fieldBorder = Color(0xFFD7E0EA);
+    final subtleBlue = primaryBlue.withOpacity(0.08);
 
     final forgotPasswordStyle = ButtonStyle(
       foregroundColor: WidgetStatePropertyAll(Colors.white.withOpacity(0.82)),
@@ -530,37 +534,62 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         fillColor: inputBackground,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 16,
+          vertical: 13,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(color: fieldBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(color: fieldBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
           borderSide: const BorderSide(color: primaryBlue, width: 1.6),
         ),
         disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(color: fieldBorder),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(color: Color(0xFFEF4444)),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: primaryBlue, width: 1.6),
+          borderRadius: BorderRadius.circular(11),
+          borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.4),
         ),
         errorStyle: const TextStyle(
           color: Color(0xFFB91C1C),
           fontSize: 12,
           height: 1.2,
         ),
+      );
+    }
+
+    Widget buildFieldBlock({
+      required String label,
+      required Widget child,
+      Key? key,
+      double spacing = 8,
+    }) {
+      return Column(
+        key: key,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: cardText.withOpacity(0.96),
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              letterSpacing: 0.1,
+            ),
+          ),
+          SizedBox(height: spacing),
+          child,
+        ],
       );
     }
 
@@ -681,38 +710,67 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   constraints: const BoxConstraints(maxWidth: 404),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xFF2B3D52), cardColor],
+                      ),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: cardBorder.withOpacity(0.58)),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x260F172A),
-                          blurRadius: 44,
-                          offset: Offset(0, 24),
+                          blurRadius: 52,
+                          offset: Offset(0, 26),
                         ),
                         BoxShadow(
                           color: Color(0x120F172A),
-                          blurRadius: 20,
-                          offset: Offset(0, 6),
+                          blurRadius: 18,
+                          offset: Offset(0, 8),
                         ),
                       ],
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+                      padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
                       child: Form(
                         key: _formKey,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Center(
-                              child: Image.asset(
-                                FullposBrandTheme.logoAsset,
-                                height: 54,
-                                fit: BoxFit.contain,
+                            Container(
+                              padding: const EdgeInsets.only(bottom: 18),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: Colors.white.withOpacity(0.08),
+                                  ),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Iniciar sesión',
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: -0.2,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Accede al sistema para continuar',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: subtitleText,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 20),
                             if (_errorMessage != null) ...[
                               const SizedBox(height: 4),
                               Container(

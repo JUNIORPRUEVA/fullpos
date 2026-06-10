@@ -143,7 +143,7 @@ class WindowService {
   }) async {
     if (!_isInitialized) return;
     try {
-      await windowManager.setTitle('FULLPOS');
+      await windowManager.setTitle('FullPOS - Sistema de facturación');
     } catch (_) {}
   }
 

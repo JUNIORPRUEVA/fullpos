@@ -6754,7 +6754,7 @@ Future<void> _showQuoteSavedOptionsDialog({int? quoteId}) async {
 
     return Builder(
       builder: (fieldContext) => _buildProfessionalDropdownField(
-        supportingText: 'Tipo de factura',
+        supportingText: 'Numeracion',
         value: _salesDocumentTypeLabel(currentType),
         onTap: () => unawaited(
           _showAnchoredPopover<void>(
@@ -9359,18 +9359,18 @@ class _ShineSweepPainter extends CustomPainter {
       ..shader = LinearGradient(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
-        colors: [
-          color.withOpacity(0),
-          color.withOpacity(0.6),
-          color.withOpacity(0),
-        ],
-        stops: const [0.0, 0.5, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    // El brillo viaja de izquierda (progress=0) a derecha (progress=1)
-    // con un ancho de ~40% del contenedor
-    final bandWidth = size.width * 0.45;
-    final centerX = progress * (size.width + bandWidth) - bandWidth * 0.5;
+            children: [
+              _buildPanelDocumentTypeDropdown(),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: _buildPanelClientControl()),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 118, child: _buildPanelNewClientButton()),
+                ],
+              ),
+            ],
 
     canvas.save();
     canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));

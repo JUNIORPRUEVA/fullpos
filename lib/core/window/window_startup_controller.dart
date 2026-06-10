@@ -39,10 +39,10 @@ class WindowStartupController {
       size: startupSize,
       minimumSize: const Size(1100, 650),
       center: true,
-      backgroundColor: const Color(0xFFFFFFFF),
+      backgroundColor: const Color(0xFFF2F6F9),
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
-      title: 'FULLPOS',
+      title: 'FullPOS - Sistema de facturación',
     );
   }
 
