@@ -2097,22 +2097,20 @@ Future<void> _showQuickItemDialog() async {
   final panelMargin = screenSize.width < 1150 ? 10.0 : 14.0;
   final panelGap = screenSize.width < 1180 ? 8.0 : 10.0;
 
-  // El nuevo QuickItemDialog es más ancho y responsive.
-  final dialogWidth = math.min(520.0, screenSize.width - 30);
+  // Debe coincidir con el ancho del QuickItemDialog.
+  final dialogWidth = math.min(382.0, screenSize.width - 24);
 
-  // Mantiene el diálogo pegado al lado derecho del área de productos,
-  // sin meterse encima del panel de factura.
-  final rightOffset = ticketPanelConstraints.maxWidth + 6;
+  final rightOffset = ticketPanelConstraints.maxWidth + 8;
 
-  // El blur llega hasta antes del panel derecho.
-  final blurRightInset =
-      ticketPanelConstraints.maxWidth + panelGap + panelMargin;
+ final blurRightInset = ticketPanelConstraints.maxWidth;
 
-  // Ajustes visuales para que el blur no tape el topbar ni el footer.
-  const blurTopOffset = 52.0;
-  const footerSafeInset = 58.0;
+  // No tapa el topbar.
+const blurTopOffset = 40.0;
 
-  final topOffset = math.max(58.0, screenSize.height * 0.055);
+  // No tapa footer/tabs inferiores.
+const footerSafeInset = 45.0;
+  // Más hacia abajo, como en la referencia.
+  final topOffset = math.max(72.0, screenSize.height * 0.10);
 
   final result = await showGeneralDialog<SaleItemModel>(
     context: context,
@@ -2149,8 +2147,8 @@ Future<void> _showQuickItemDialog() async {
             Positioned(
               top: topOffset,
               right: rightOffset.clamp(
-                2.0,
-                screenSize.width - dialogWidth - 2,
+                4.0,
+                screenSize.width - dialogWidth - 4,
               ),
               width: dialogWidth,
               child: const QuickItemDialog(),
@@ -2170,7 +2168,7 @@ Future<void> _showQuickItemDialog() async {
         opacity: curved,
         child: SlideTransition(
           position: Tween<Offset>(
-            begin: const Offset(0.10, -0.02),
+            begin: const Offset(0.08, 0.02),
             end: Offset.zero,
           ).animate(curved),
           child: child,
