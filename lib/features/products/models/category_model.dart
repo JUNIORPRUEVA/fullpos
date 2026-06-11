@@ -1,5 +1,6 @@
 /// Modelo de Categoría
 class CategoryModel {
+  static const Object _unset = Object();
   final int? id;
   final String name;
   final String? imagePath;
@@ -48,18 +49,20 @@ class CategoryModel {
   CategoryModel copyWith({
     int? id,
     String? name,
-    String? imagePath,
+    Object? imagePath = _unset,
     bool? isActive,
-    int? deletedAtMs,
+    Object? deletedAtMs = _unset,
     int? createdAtMs,
     int? updatedAtMs,
   }) {
     return CategoryModel(
       id: id ?? this.id,
       name: name ?? this.name,
-      imagePath: imagePath ?? this.imagePath,
+      imagePath: imagePath == _unset ? this.imagePath : imagePath as String?,
       isActive: isActive ?? this.isActive,
-      deletedAtMs: deletedAtMs ?? this.deletedAtMs,
+      deletedAtMs: deletedAtMs == _unset
+          ? this.deletedAtMs
+          : deletedAtMs as int?,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
     );
@@ -91,6 +94,7 @@ class CategoryModel {
     return other is CategoryModel &&
         other.id == id &&
         other.name == name &&
+        other.imagePath == imagePath &&
         other.isActive == isActive &&
         other.deletedAtMs == deletedAtMs &&
         other.createdAtMs == createdAtMs &&
@@ -101,6 +105,7 @@ class CategoryModel {
   int get hashCode {
     return id.hashCode ^
         name.hashCode ^
+        imagePath.hashCode ^
         isActive.hashCode ^
         deletedAtMs.hashCode ^
         createdAtMs.hashCode ^

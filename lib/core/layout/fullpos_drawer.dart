@@ -29,6 +29,9 @@ const Duration _kAnimationDuration = Duration(milliseconds: 250);
 // ─── Rutas reales del proyecto ───────────────────────────────
 const String _kSalesRoute = '/sales';
 const String _kInventoryRoute = '/products';
+const String _kInventoryStockAdjustmentRoute = '/products/stock-adjustment';
+const String _kInventoryMovementsRoute = '/products/movements';
+const String _kInventoryCountRoute = '/products/count';
 const String _kReportsRoute = '/reports';
 
 const String _kClientsRoute = '/clients';
@@ -61,6 +64,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
   late final Animation<double> _scaleAnimation;
 
   bool _clientsExpanded = false;
+  bool _inventoryExpanded = false;
   bool _moneyExpanded = false;
   bool _managementExpanded = false;
 
@@ -85,15 +89,9 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
       end: Offset.zero,
     ).animate(curved);
 
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(curved);
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
 
-    _scaleAnimation = Tween<double>(
-      begin: 0.986,
-      end: 1.0,
-    ).animate(curved);
+    _scaleAnimation = Tween<double>(begin: 0.986, end: 1.0).animate(curved);
 
     _controller.forward();
   }
@@ -123,7 +121,6 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
   }
 
   void _navigate(String route) {
-
     try {
       context.go(route);
     } catch (_) {
@@ -165,7 +162,13 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
 
   @override
   Widget build(BuildContext context) {
-
+    final inventoryRoutes = [
+      _kInventoryRoute,
+      _kInventoryStockAdjustmentRoute,
+      _kInventoryMovementsRoute,
+      _kInventoryCountRoute,
+    ];
+    final inventoryActive = _isAnyActive(inventoryRoutes);
     return GestureDetector(
       onTap: _closeDrawer,
       child: FadeTransition(
@@ -187,10 +190,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                     decoration: BoxDecoration(
                       color: _kPanelBg,
                       border: const Border(
-                        right: BorderSide(
-                          color: _kBorderColor,
-                          width: 1,
-                        ),
+                        right: BorderSide(color: _kBorderColor, width: 1),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -205,9 +205,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                       child: Column(
                         children: [
                           _DrawerHeader(onClose: _closeDrawer),
-                          _DrawerCurrentShift(
-                            onTap: () => _navigate('/cash'),
-                          ),
+                          _DrawerCurrentShift(onTap: () => _navigate('/cash')),
                           Expanded(
                             child: ListView(
                               padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
@@ -225,7 +223,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                   isPrimary: true,
                                   onTap: () => _navigate(_kSalesRoute),
                                 ),
-                                _DrawerNavItem(
+                                _DrawerExpandableItem(
                                   icon: PhosphorIcons.package(
                                     PhosphorIconsStyle.regular,
                                   ),
@@ -233,9 +231,62 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                     PhosphorIconsStyle.fill,
                                   ),
                                   title: 'Inventario',
-                                  isActive: _isActive(_kInventoryRoute),
-                                  isPrimary: true,
-                                  onTap: () => _navigate(_kInventoryRoute),
+                                  isExpanded:
+                                      _inventoryExpanded || inventoryActive,
+                                  isActive: inventoryActive,
+                                  onTap: () {
+                                    setState(() {
+                                      _inventoryExpanded = !_inventoryExpanded;
+                                    });
+                                  },
+                                ),
+                                _DrawerSubmenu(
+                                  visible:
+                                      _inventoryExpanded || inventoryActive,
+                                  children: [
+                                    _DrawerSubItem(
+                                      icon: PhosphorIcons.cube(
+                                        PhosphorIconsStyle.regular,
+                                      ),
+                                      title: 'Productos y servicios',
+                                      isActive: _isActive(_kInventoryRoute),
+                                      onTap: () => _navigate(_kInventoryRoute),
+                                    ),
+                                    _DrawerSubItem(
+                                      icon: PhosphorIcons.slidersHorizontal(
+                                        PhosphorIconsStyle.regular,
+                                      ),
+                                      title: 'Ajuste de stock',
+                                      isActive: _isActive(
+                                        _kInventoryStockAdjustmentRoute,
+                                      ),
+                                      onTap: () => _navigate(
+                                        _kInventoryStockAdjustmentRoute,
+                                      ),
+                                    ),
+                                    _DrawerSubItem(
+                                      icon: PhosphorIcons.arrowsClockwise(
+                                        PhosphorIconsStyle.regular,
+                                      ),
+                                      title: 'Movimientos de inventario',
+                                      isActive: _isActive(
+                                        _kInventoryMovementsRoute,
+                                      ),
+                                      onTap: () =>
+                                          _navigate(_kInventoryMovementsRoute),
+                                    ),
+                                    _DrawerSubItem(
+                                      icon: PhosphorIcons.clipboardText(
+                                        PhosphorIconsStyle.regular,
+                                      ),
+                                      title: 'Recuento de inventario',
+                                      isActive: _isActive(
+                                        _kInventoryCountRoute,
+                                      ),
+                                      onTap: () =>
+                                          _navigate(_kInventoryCountRoute),
+                                    ),
+                                  ],
                                 ),
                                 _DrawerNavItem(
                                   icon: PhosphorIcons.chartBar(
@@ -276,27 +327,30 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                   visible: _clientsExpanded,
                                   children: [
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.users(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Clientes',
                                       isActive: _isActive(_kClientsRoute),
                                       onTap: () => _navigate(_kClientsRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.creditCard(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Créditos',
-                                      isActive: _isActive(
-                                        _kClientCreditsRoute,
-                                      ),
-                                      onTap: () => _navigate(
-                                        _kClientCreditsRoute,
-                                      ),
+                                      isActive: _isActive(_kClientCreditsRoute),
+                                      onTap: () =>
+                                          _navigate(_kClientCreditsRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.package(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Apartados',
                                       isActive: false,
-                                      onTap: () => _openComingSoon(
-                                        'Apartados',
-                                      ),
+                                      onTap: () => _openComingSoon('Apartados'),
                                     ),
-
                                   ],
                                 ),
 
@@ -324,25 +378,36 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                   visible: _moneyExpanded,
                                   children: [
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.arrowCircleDown(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Registrar ingreso',
                                       isActive: _isActive(_kMoneyIncomeRoute),
-                                      onTap: () => _navigate(_kMoneyIncomeRoute),
+                                      onTap: () =>
+                                          _navigate(_kMoneyIncomeRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.arrowCircleUp(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Registrar salida',
                                       isActive: _isActive(_kMoneyOutcomeRoute),
-                                      onTap: () => _navigate(
-                                        _kMoneyOutcomeRoute,
-                                      ),
+                                      onTap: () =>
+                                          _navigate(_kMoneyOutcomeRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.clockCounterClockwise(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Historial de movimiento',
                                       isActive: _isActive(_kMoneyHistoryRoute),
-                                      onTap: () => _navigate(
-                                        _kMoneyHistoryRoute,
-                                      ),
+                                      onTap: () =>
+                                          _navigate(_kMoneyHistoryRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.lightning(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Movimiento rápido',
                                       isActive: false,
                                       onTap: _handleMovementToggle,
@@ -376,38 +441,46 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                   visible: _managementExpanded,
                                   children: [
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.shoppingCart(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Realizar compra',
                                       isActive: _isActive(
                                         _kPurchaseCreateRoute,
                                       ),
-                                      onTap: () => _navigate(
-                                        _kPurchaseCreateRoute,
-                                      ),
+                                      onTap: () =>
+                                          _navigate(_kPurchaseCreateRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.listChecks(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Historial compra',
                                       isActive: _isActive(
                                         _kPurchaseHistoryRoute,
                                       ),
-                                      onTap: () => _navigate(
-                                        _kPurchaseHistoryRoute,
-                                      ),
+                                      onTap: () =>
+                                          _navigate(_kPurchaseHistoryRoute),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.userPlus(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Agregar suplidor',
                                       isActive: false,
-                                      onTap: () => _openComingSoon(
-                                        'Agregar suplidor',
-                                      ),
+                                      onTap: () =>
+                                          _openComingSoon('Agregar suplidor'),
                                     ),
                                     _DrawerSubItem(
+                                      icon: PhosphorIcons.truck(
+                                        PhosphorIconsStyle.regular,
+                                      ),
                                       title: 'Historial de suplidores',
                                       isActive: false,
                                       onTap: () => _openComingSoon(
                                         'Historial de suplidores',
                                       ),
                                     ),
-
                                   ],
                                 ),
 
@@ -425,9 +498,8 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                   title: 'Facturación electrónica',
                                   isActive: _isActive(_kElectronicBillingRoute),
                                   isPrimary: false,
-                                  onTap: () => _navigate(
-                                    _kElectronicBillingRoute,
-                                  ),
+                                  onTap: () =>
+                                      _navigate(_kElectronicBillingRoute),
                                 ),
                               ],
                             ),
@@ -451,9 +523,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
 // Header
 // ─────────────────────────────────────────────────────────────
 class _DrawerHeader extends StatelessWidget {
-  const _DrawerHeader({
-    required this.onClose,
-  });
+  const _DrawerHeader({required this.onClose});
 
   final VoidCallback onClose;
 
@@ -464,12 +534,7 @@ class _DrawerHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 14, 10),
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: _kBorderColor,
-            width: 1,
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: _kBorderColor, width: 1)),
       ),
       child: Row(
         children: [
@@ -481,11 +546,7 @@ class _DrawerHeader extends StatelessWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  _kPrimaryBlue,
-                  Color(0xFF1D4ED8),
-                  Color(0xFF1E40AF),
-                ],
+                colors: [_kPrimaryBlue, Color(0xFF1D4ED8), Color(0xFF1E40AF)],
               ),
               boxShadow: [
                 BoxShadow(
@@ -546,9 +607,7 @@ class _DrawerHeader extends StatelessWidget {
 }
 
 class _DrawerCloseButton extends StatefulWidget {
-  const _DrawerCloseButton({
-    required this.onTap,
-  });
+  const _DrawerCloseButton({required this.onTap});
 
   final VoidCallback onTap;
 
@@ -597,9 +656,7 @@ class _DrawerCloseButtonState extends State<_DrawerCloseButton> {
 // Current shift
 // ─────────────────────────────────────────────────────────────
 class _DrawerCurrentShift extends StatefulWidget {
-  const _DrawerCurrentShift({
-    required this.onTap,
-  });
+  const _DrawerCurrentShift({required this.onTap});
 
   final VoidCallback onTap;
 
@@ -799,8 +856,8 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
     final bgColor = widget.isActive
         ? _kActiveBg
         : _hovered
-            ? _kHoverBg
-            : Colors.transparent;
+        ? _kHoverBg
+        : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.8),
@@ -860,8 +917,8 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
                           color: widget.isActive
                               ? _kPrimaryBlue
                               : highlighted
-                                  ? _kTextDark
-                                  : _kTextMuted,
+                              ? _kTextDark
+                              : _kTextMuted,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -871,14 +928,13 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color:
-                                widget.isActive ? _kPrimaryBlue : _kTextDark,
+                            color: widget.isActive ? _kPrimaryBlue : _kTextDark,
                             fontSize: widget.isPrimary ? 14.4 : 14.0,
                             fontWeight: widget.isPrimary
                                 ? FontWeight.w600
                                 : widget.isActive
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
+                                ? FontWeight.w600
+                                : FontWeight.w500,
                             height: 1.28,
                             letterSpacing: 0.01,
                             decoration: TextDecoration.none,
@@ -902,10 +958,7 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
 // Submenu
 // ─────────────────────────────────────────────────────────────
 class _DrawerSubmenu extends StatelessWidget {
-  const _DrawerSubmenu({
-    required this.visible,
-    required this.children,
-  });
+  const _DrawerSubmenu({required this.visible, required this.children});
 
   final bool visible;
   final List<Widget> children;
@@ -920,10 +973,7 @@ class _DrawerSubmenu extends StatelessWidget {
         return SizeTransition(
           sizeFactor: animation,
           axisAlignment: -1,
-          child: FadeTransition(
-            opacity: animation,
-            child: child,
-          ),
+          child: FadeTransition(opacity: animation, child: child),
         );
       },
       child: visible
@@ -932,20 +982,20 @@ class _DrawerSubmenu extends StatelessWidget {
               padding: const EdgeInsets.only(left: 26, right: 8, bottom: 4),
               child: Column(children: children),
             )
-          : const SizedBox(
-              key: ValueKey('submenu-hidden'),
-            ),
+          : const SizedBox(key: ValueKey('submenu-hidden')),
     );
   }
 }
 
 class _DrawerSubItem extends StatefulWidget {
   const _DrawerSubItem({
+    required this.icon,
     required this.title,
     required this.isActive,
     required this.onTap,
   });
 
+  final IconData icon;
   final String title;
   final bool isActive;
   final VoidCallback onTap;
@@ -962,8 +1012,8 @@ class _DrawerSubItemState extends State<_DrawerSubItem> {
     final bgColor = widget.isActive
         ? _kActiveBg
         : _hovered
-            ? _kHoverBg
-            : Colors.transparent;
+        ? _kHoverBg
+        : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1.4),
@@ -1001,6 +1051,14 @@ class _DrawerSubItemState extends State<_DrawerSubItem> {
                       ),
                     ),
                     const SizedBox(width: 10),
+                    Icon(
+                      widget.icon,
+                      size: 15,
+                      color: widget.isActive
+                          ? _kPrimaryBlue
+                          : _kTextMuted.withOpacity(0.86),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         widget.title,
@@ -1011,8 +1069,9 @@ class _DrawerSubItemState extends State<_DrawerSubItem> {
                               ? _kPrimaryBlue
                               : _kTextDark.withOpacity(0.82),
                           fontSize: 13.25,
-                          fontWeight:
-                              widget.isActive ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: widget.isActive
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                           height: 1.22,
                           letterSpacing: 0.01,
                           decoration: TextDecoration.none,
@@ -1057,12 +1116,7 @@ class _DrawerFooterState extends State<_DrawerFooter> {
       padding: const EdgeInsets.fromLTRB(16, 11, 16, 12),
       decoration: const BoxDecoration(
         color: _kFooterBg,
-        border: Border(
-          top: BorderSide(
-            color: _kBorderColor,
-            width: 1,
-          ),
-        ),
+        border: Border(top: BorderSide(color: _kBorderColor, width: 1)),
       ),
       child: Row(
         children: [
@@ -1072,9 +1126,7 @@ class _DrawerFooterState extends State<_DrawerFooter> {
             decoration: BoxDecoration(
               color: _kActiveBg,
               borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: const Color(0xFFBFD1F7),
-              ),
+              border: Border.all(color: const Color(0xFFBFD1F7)),
             ),
             child: const Icon(
               Icons.cloud_done_rounded,

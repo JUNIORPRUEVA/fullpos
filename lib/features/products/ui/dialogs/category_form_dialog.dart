@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import '../../../../core/window/window_service.dart';
 import '../../data/categories_repository.dart';
 import '../../models/category_model.dart';
 import '../widgets/products_surface.dart';
@@ -22,6 +28,9 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
 
   bool _isLoading = false;
   bool _isEdit = false;
+  String? _imagePath;
+  String? _pendingImageSourcePath;
+  bool _removeImage = false;
 
   @override
   void initState() {
@@ -29,6 +38,7 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
     _isEdit = widget.category != null;
     if (_isEdit) {
       _nameController.text = widget.category!.name;
+      _imagePath = widget.category!.imagePath;
     }
   }
 
@@ -36,6 +46,53 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
   void dispose() {
     _nameController.dispose();
     super.dispose();
+  }
+
+  String? get _previewImagePath => _pendingImageSourcePath ?? _imagePath;
+
+  Future<Directory> _ensureCategoryImagesDir() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(docsDir.path, 'category_images'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  Future<String> _copyImageToAppDir(String sourcePath) async {
+    final imagesDir = await _ensureCategoryImagesDir();
+    final ext = p.extension(sourcePath);
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final fileName = _isEdit && widget.category?.id != null
+        ? 'category_${widget.category!.id}_$ts${ext.isEmpty ? '.png' : ext}'
+        : 'category_$ts${ext.isEmpty ? '.png' : ext}';
+    final destPath = p.join(imagesDir.path, fileName);
+    final copied = await File(sourcePath).copy(destPath);
+    return copied.path;
+  }
+
+  Future<void> _pickImage() async {
+    final result = await WindowService.runWithSystemDialog(
+      () => FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: false,
+      ),
+    );
+    final path = result?.files.single.path;
+    if (path == null || path.isEmpty || !mounted) return;
+    setState(() {
+      _pendingImageSourcePath = path;
+      _removeImage = false;
+    });
+  }
+
+  void _removeSelectedImage() {
+    setState(() {
+      _pendingImageSourcePath = null;
+      _imagePath = null;
+      _removeImage = true;
+    });
   }
 
   Future<void> _save() async {
@@ -63,14 +120,25 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
         return;
       }
 
+      String? finalImagePath = widget.category?.imagePath;
+      if (_removeImage) {
+        finalImagePath = null;
+      } else if (_pendingImageSourcePath != null) {
+        finalImagePath = await _copyImageToAppDir(_pendingImageSourcePath!);
+      }
+
       if (_isEdit) {
         // Actualizar
-        final updated = widget.category!.copyWith(name: name);
+        final updated = widget.category!.copyWith(
+          name: name,
+          imagePath: finalImagePath,
+        );
         await _categoriesRepo.update(updated);
       } else {
         // Crear
         final category = CategoryModel(
           name: name,
+          imagePath: finalImagePath,
           createdAtMs: DateTime.now().millisecondsSinceEpoch,
           updatedAtMs: DateTime.now().millisecondsSinceEpoch,
         );
@@ -106,6 +174,11 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
     final scheme = theme.colorScheme;
     final viewport = MediaQuery.sizeOf(context);
     final dialogWidth = (viewport.width * 0.28).clamp(360.0, 460.0);
+    final previewPath = _previewImagePath;
+    final hasPreview = previewPath != null && previewPath.trim().isNotEmpty;
+    final initial = _nameController.text.trim().isEmpty
+        ? 'C'
+        : _nameController.text.trim().substring(0, 1).toUpperCase();
 
     return Shortcuts(
       shortcuts: {
@@ -210,6 +283,100 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
                                 ),
                                 const SizedBox(height: 14),
                                 Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 74,
+                                      height: 74,
+                                      decoration: BoxDecoration(
+                                        color: scheme.primary.withOpacity(0.10),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(
+                                          color: scheme.outlineVariant,
+                                        ),
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child:
+                                          hasPreview &&
+                                              File(previewPath).existsSync()
+                                          ? Image.file(
+                                              File(previewPath),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : Center(
+                                              child: Text(
+                                                initial,
+                                                style: TextStyle(
+                                                  color: scheme.primary,
+                                                  fontSize: 28,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Imagen de categoría',
+                                            style: theme.textTheme.labelLarge
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Opcional. Si existe, se mostrará en ventas y en los selectores.',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                  height: 1.3,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 10),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              FilledButton.tonalIcon(
+                                                onPressed: _isLoading
+                                                    ? null
+                                                    : _pickImage,
+                                                icon: const Icon(
+                                                  Icons.upload_file_rounded,
+                                                  size: 18,
+                                                ),
+                                                label: Text(
+                                                  hasPreview
+                                                      ? 'Cambiar imagen'
+                                                      : 'Seleccionar imagen',
+                                                ),
+                                              ),
+                                              if (hasPreview)
+                                                OutlinedButton.icon(
+                                                  onPressed: _isLoading
+                                                      ? null
+                                                      : _removeSelectedImage,
+                                                  icon: const Icon(
+                                                    Icons
+                                                        .delete_outline_rounded,
+                                                    size: 18,
+                                                  ),
+                                                  label: const Text('Quitar'),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
                                     TextButton(
@@ -221,6 +388,14 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
                                     const SizedBox(width: 8),
                                     FilledButton(
                                       onPressed: _isLoading ? null : _save,
+                                      style: FilledButton.styleFrom(
+                                        minimumSize: const Size(132, 44),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                      ),
                                       child: _isLoading
                                           ? const SizedBox(
                                               width: 18,

@@ -27,8 +27,7 @@ import '../features/cash/ui/cash_history_page.dart';
 import '../features/cash/ui/expenses_overview_page.dart';
 import '../features/cash/data/operation_flow_service.dart';
 import '../features/clients/ui/clients_page.dart';
-import '../features/products/ui/products_page.dart';
-import '../features/products/ui/stock_history_page.dart';
+import '../features/products/ui/inventory_module_pages.dart';
 import '../features/purchases/ui/purchase_auto_page.dart';
 import '../features/purchases/ui/purchase_manual_page.dart';
 import '../features/purchases/ui/purchase_orders_page.dart';
@@ -333,11 +332,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/products',
-            builder: (context, state) => const ProductsPage(),
+            builder: (context, state) => const ProductsServicesPage(),
+          ),
+          GoRoute(
+            path: '/products/stock-adjustment',
+            builder: (context, state) => const StockAdjustmentWorkspacePage(),
+          ),
+          GoRoute(
+            path: '/products/movements',
+            builder: (context, state) => const InventoryMovementsPage(),
+          ),
+          GoRoute(
+            path: '/products/count',
+            builder: (context, state) => const InventoryCountPage(),
           ),
           GoRoute(
             path: '/products/history',
-            builder: (context, state) => const StockHistoryPage(),
+            builder: (context, state) => const InventoryMovementsPage(),
           ),
           GoRoute(
             path: '/clients',

@@ -351,14 +351,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
       TextEditingController();
   final FocusNode _inlineTotalDiscountFocusNode = FocusNode();
 
- bool _keyboardShortcutsEnabled = true;
- FooterTicketController? _footerTicketController;
-ScannerInputController? _scanner;
-late final bool Function(KeyEvent) _globalShortcutHandler;
+  bool _keyboardShortcutsEnabled = true;
+  FooterTicketController? _footerTicketController;
+  ScannerInputController? _scanner;
+  late final bool Function(KeyEvent) _globalShortcutHandler;
 
-NavigatorState? _rootNavigator;
-ScaffoldMessengerState? _scaffoldMessenger;
-bool _isDisposingSalesPage = false;
+  NavigatorState? _rootNavigator;
+  ScaffoldMessengerState? _scaffoldMessenger;
+  bool _isDisposingSalesPage = false;
 
   String? _lastScanCode;
   int _lastScanAtMs = 0;
@@ -469,18 +469,18 @@ bool _isDisposingSalesPage = false;
     });
   }
 
-void _bindFooterTicketController() {
-  final controller = ref.read(footerTicketControllerProvider);
+  void _bindFooterTicketController() {
+    final controller = ref.read(footerTicketControllerProvider);
 
-  _footerTicketController = controller;
+    _footerTicketController = controller;
 
-  controller.bind(
-    onAdd: _addFooterTicket,
-    onSelect: _selectFooterTicket,
-    onRename: _renameFooterTicket,
-    onDelete: _deleteFooterTicket,
-  );
-}
+    controller.bind(
+      onAdd: _addFooterTicket,
+      onSelect: _selectFooterTicket,
+      onRename: _renameFooterTicket,
+      onDelete: _deleteFooterTicket,
+    );
+  }
 
   bool get _isElectronicInvoicingFeatureEnabled =>
       ref.read(businessSettingsProvider).electronicInvoicingEnabled;
@@ -560,328 +560,315 @@ void _bindFooterTicketController() {
   }
 
   @override
-void initState() {
-  super.initState();
+  void initState() {
+    super.initState();
 
-  WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addObserver(this);
 
-  _bindFooterTicketController();
+    _bindFooterTicketController();
 
-  TopbarActionBus.salesMovementToggle.addListener(
-    _handleMovementPanelToggle,
-  );
+    TopbarActionBus.salesMovementToggle.addListener(_handleMovementPanelToggle);
 
-  _loadAccess();
-  _loadInitialData();
-  unawaited(_loadRecentSales());
+    _loadAccess();
+    _loadInitialData();
+    unawaited(_loadRecentSales());
 
-  // Evitar modificar providers durante el build inicial.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Evitar modificar providers durante el build inicial.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isDisposingSalesPage) return;
+
+      unawaited(_refreshCashSession());
+      unawaited(_ensureSessionBootstrap());
+    });
+
+    _loadScannerConfig();
+
+    _globalShortcutHandler = _handleGlobalShortcutKey;
+    HardwareKeyboard.instance.addHandler(_globalShortcutHandler);
+
+    RawKeyboard.instance.addListener(_handleScannerKey);
+    _clientSearchFocusNode.addListener(_handleClientSearchFocus);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Guardamos referencias seguras para no llamar Navigator.of(context)
+    // cuando el widget ya esté desmontado.
+    _rootNavigator = Navigator.of(context, rootNavigator: true);
+    _scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+  }
+
+  Future<void> _loadAccess() async {
+    final enabled = await UiPreferences.isKeyboardShortcutsEnabled();
+
     if (!mounted || _isDisposingSalesPage) return;
 
-    unawaited(_refreshCashSession());
-    unawaited(_ensureSessionBootstrap());
-  });
-
-  _loadScannerConfig();
-
-  _globalShortcutHandler = _handleGlobalShortcutKey;
-  HardwareKeyboard.instance.addHandler(_globalShortcutHandler);
-
-  RawKeyboard.instance.addListener(_handleScannerKey);
-  _clientSearchFocusNode.addListener(_handleClientSearchFocus);
-}
-
-@override
-void didChangeDependencies() {
-  super.didChangeDependencies();
-
-  // Guardamos referencias seguras para no llamar Navigator.of(context)
-  // cuando el widget ya esté desmontado.
-  _rootNavigator = Navigator.of(context, rootNavigator: true);
-  _scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
-}
-
-Future<void> _loadAccess() async {
-  final enabled = await UiPreferences.isKeyboardShortcutsEnabled();
-
-  if (!mounted || _isDisposingSalesPage) return;
-
-  setState(() => _keyboardShortcutsEnabled = enabled);
-}
-
-void _handleScannerKey(RawKeyEvent event) {
-  if (_isDisposingSalesPage || !mounted) return;
-
-  _scanner?.handleKeyEvent(event);
-}
-
-void _handleClientSearchFocus() {
-  if (_isDisposingSalesPage || !mounted) return;
-
-  if (_clientSearchFocusNode.hasFocus) {
-    _openClientSearchOverlay();
-  } else {
-    _closeClientSearchOverlay();
-    _syncClientFieldText();
+    setState(() => _keyboardShortcutsEnabled = enabled);
   }
-}
 
-void _syncClientFieldText({bool forceQuery = false}) {
-  if (_isDisposingSalesPage || !mounted) return;
-  if (forceQuery || _clientSearchFocusNode.hasFocus) return;
+  void _handleScannerKey(RawKeyEvent event) {
+    if (_isDisposingSalesPage || !mounted) return;
 
-  final client = _currentCart.selectedClient;
-
-  final clientName = client?.nombre.trim().isNotEmpty == true
-      ? client!.nombre.trim()
-      : '';
-
-  final clientMeta = client == null
-      ? ''
-      : (client.rnc?.trim().isNotEmpty == true
-            ? client.rnc!.trim()
-            : (client.cedula?.trim().isNotEmpty == true
-                  ? client.cedula!.trim()
-                  : (client.telefono?.trim().isNotEmpty == true
-                        ? client.telefono!.trim()
-                        : '')));
-
-  final display = clientName.isEmpty
-      ? ''
-      : (clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)');
-
-  if (_clientSearchController.text != display) {
-    _clientSearchController.text = display;
-    _clientSearchController.selection = TextSelection.collapsed(
-      offset: display.length,
-    );
+    _scanner?.handleKeyEvent(event);
   }
-}
 
-void _openClientSearchOverlay() {
-  if (_isDisposingSalesPage || !mounted) return;
-  if (_clientSearchOverlay != null) return;
+  void _handleClientSearchFocus() {
+    if (_isDisposingSalesPage || !mounted) return;
 
-  final overlayState = Overlay.maybeOf(context, rootOverlay: true);
-  if (overlayState == null) return;
+    if (_clientSearchFocusNode.hasFocus) {
+      _openClientSearchOverlay();
+    } else {
+      _closeClientSearchOverlay();
+      _syncClientFieldText();
+    }
+  }
 
-  _clientSearchOverlay = OverlayEntry(
-    builder: (overlayContext) {
-      final renderBox =
-          _clientSearchFieldKey.currentContext?.findRenderObject()
-              as RenderBox?;
+  void _syncClientFieldText({bool forceQuery = false}) {
+    if (_isDisposingSalesPage || !mounted) return;
+    if (forceQuery || _clientSearchFocusNode.hasFocus) return;
 
-      final fieldSize = renderBox?.size;
-      final width = fieldSize?.width ?? 320;
-      final height = fieldSize?.height ?? 48;
+    final client = _currentCart.selectedClient;
 
-      return Positioned.fill(
-        child: Stack(
-          children: [
-            GestureDetector(
-              onTap: _closeClientSearchOverlay,
-              behavior: HitTestBehavior.translucent,
-              child: const SizedBox.expand(),
-            ),
-            CompositedTransformFollower(
-              link: _clientSearchLayerLink,
-              showWhenUnlinked: false,
-              offset: Offset(0, height + 6),
-              child: Material(
-                color: Colors.transparent,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: width,
-                    minWidth: width,
-                    maxHeight: 320,
+    final clientName = client?.nombre.trim().isNotEmpty == true
+        ? client!.nombre.trim()
+        : '';
+
+    final clientMeta = client == null
+        ? ''
+        : (client.rnc?.trim().isNotEmpty == true
+              ? client.rnc!.trim()
+              : (client.cedula?.trim().isNotEmpty == true
+                    ? client.cedula!.trim()
+                    : (client.telefono?.trim().isNotEmpty == true
+                          ? client.telefono!.trim()
+                          : '')));
+
+    final display = clientName.isEmpty
+        ? ''
+        : (clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)');
+
+    if (_clientSearchController.text != display) {
+      _clientSearchController.text = display;
+      _clientSearchController.selection = TextSelection.collapsed(
+        offset: display.length,
+      );
+    }
+  }
+
+  void _openClientSearchOverlay() {
+    if (_isDisposingSalesPage || !mounted) return;
+    if (_clientSearchOverlay != null) return;
+
+    final overlayState = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlayState == null) return;
+
+    _clientSearchOverlay = OverlayEntry(
+      builder: (overlayContext) {
+        final renderBox =
+            _clientSearchFieldKey.currentContext?.findRenderObject()
+                as RenderBox?;
+
+        final fieldSize = renderBox?.size;
+        final width = fieldSize?.width ?? 320;
+        final height = fieldSize?.height ?? 48;
+
+        return Positioned.fill(
+          child: Stack(
+            children: [
+              GestureDetector(
+                onTap: _closeClientSearchOverlay,
+                behavior: HitTestBehavior.translucent,
+                child: const SizedBox.expand(),
+              ),
+              CompositedTransformFollower(
+                link: _clientSearchLayerLink,
+                showWhenUnlinked: false,
+                offset: Offset(0, height + 6),
+                child: Material(
+                  color: Colors.transparent,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: width,
+                      minWidth: width,
+                      maxHeight: 320,
+                    ),
+                    child: _buildClientSearchDropdown(),
                   ),
-                  child: _buildClientSearchDropdown(),
                 ),
               ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
+            ],
+          ),
+        );
+      },
+    );
 
-  overlayState.insert(_clientSearchOverlay!);
-}
-
-void _closeClientSearchOverlay() {
-  _clientSearchOverlay?.remove();
-  _clientSearchOverlay = null;
-}
-
-bool _handleGlobalShortcutKey(KeyEvent event) {
-  if (_isDisposingSalesPage) return false;
-  if (!mounted) return false;
-  if (event is! KeyDownEvent) return false;
-
-  final navigator = _rootNavigator;
-  if (navigator == null) return false;
-
-  // No usar Navigator.of(context) aquí.
-  // Esa línea era la que provocaba:
-  // Looking up a deactivated widget's ancestor is unsafe.
-  if (navigator.canPop()) return false;
-
-  final key = event.logicalKey;
-
-  if (key == LogicalKeyboardKey.f1) {
-    if (_searchFocusNode.canRequestFocus) {
-      _searchFocusNode.requestFocus();
-    }
-    return true;
+    overlayState.insert(_clientSearchOverlay!);
   }
 
-  if (key == LogicalKeyboardKey.f8) {
-    if (_currentCart.items.isEmpty) {
-      _scaffoldMessenger?.showSnackBar(
-        const SnackBar(
-          content: Text('Agrega productos antes de cobrar'),
-          backgroundColor: Color(0xFFDC2626),
-        ),
-      );
+  void _closeClientSearchOverlay() {
+    _clientSearchOverlay?.remove();
+    _clientSearchOverlay = null;
+  }
+
+  bool _handleGlobalShortcutKey(KeyEvent event) {
+    if (_isDisposingSalesPage) return false;
+    if (!mounted) return false;
+    if (event is! KeyDownEvent) return false;
+
+    final navigator = _rootNavigator;
+    if (navigator == null) return false;
+
+    // No usar Navigator.of(context) aquí.
+    // Esa línea era la que provocaba:
+    // Looking up a deactivated widget's ancestor is unsafe.
+    if (navigator.canPop()) return false;
+
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.f1) {
+      if (_searchFocusNode.canRequestFocus) {
+        _searchFocusNode.requestFocus();
+      }
       return true;
     }
 
-    unawaited(
-      _processPayment(
-        SaleKind.invoice,
-        initialPrintTicket: true,
-      ),
-    );
+    if (key == LogicalKeyboardKey.f8) {
+      if (_currentCart.items.isEmpty) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(
+            content: Text('Agrega productos antes de cobrar'),
+            backgroundColor: Color(0xFFDC2626),
+          ),
+        );
+        return true;
+      }
 
-    return true;
+      unawaited(_processPayment(SaleKind.invoice, initialPrintTicket: true));
+
+      return true;
+    }
+
+    return false;
   }
 
-  return false;
-}
+  Future<void> _loadScannerConfig() async {
+    final companyId = await SessionManager.companyId() ?? 1;
+    final terminalId =
+        await SessionManager.terminalId() ??
+        await SessionManager.ensureTerminalId();
 
-Future<void> _loadScannerConfig() async {
-  final companyId = await SessionManager.companyId() ?? 1;
-  final terminalId =
-      await SessionManager.terminalId() ??
-      await SessionManager.ensureTerminalId();
-
-  final config = await SecurityConfigRepository.load(
-    companyId: companyId,
-    terminalId: terminalId,
-  );
-
-  if (!mounted || _isDisposingSalesPage) return;
-
-  _scanner?.dispose();
-
-  _scanner = config.scannerEnabled
-      ? ScannerInputController(
-          enabled: true,
-          suffix: config.scannerSuffix,
-          prefix: config.scannerPrefix,
-          timeout: Duration(milliseconds: config.scannerTimeoutMs),
-          emitOnTimeout: false,
-          onScan: _handleBarcodeScan,
-        )
-      : null;
-}
-
-Future<void> _handleBarcodeScan(
-  String raw, {
-  bool clearSearchField = false,
-}) async {
-  if (_isDisposingSalesPage || !mounted) return;
-
-  final code = raw.trim();
-  if (code.isEmpty) return;
-
-  // Evita duplicados cuando la misma lectura dispara dos rutas:
-  // - RawKeyboard/ScannerInputController
-  // - TextField.onSubmitted
-  final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-  if (_lastScanCode == code && (nowMs - _lastScanAtMs) <= 200) {
-    return;
-  }
-
-  _lastScanCode = code;
-  _lastScanAtMs = nowMs;
-
-  final repo = ProductsRepository();
-
-  ProductModel? product = await ErrorHandler.instance.runSafe<ProductModel?>(
-    () => repo.getByCode(code),
-    context: context,
-    onRetry: () => _handleBarcodeScan(
-      code,
-      clearSearchField: clearSearchField,
-    ),
-    module: 'sales/scan/code',
-  );
-
-  if (!mounted || _isDisposingSalesPage) return;
-
-  if (product == null && code.toUpperCase() != code) {
-    product = await ErrorHandler.instance.runSafe<ProductModel?>(
-      () => repo.getByCode(code.toUpperCase()),
-      context: context,
-      onRetry: () => _handleBarcodeScan(
-        code,
-        clearSearchField: clearSearchField,
-      ),
-      module: 'sales/scan/code_upper',
-    );
-  }
-
-  if (!mounted || _isDisposingSalesPage) return;
-
-  if (product == null) {
-    final results = await ErrorHandler.instance.runSafe<List<ProductModel>>(
-      () => repo.search(code),
-      context: context,
-      onRetry: () => _handleBarcodeScan(
-        code,
-        clearSearchField: clearSearchField,
-      ),
-      module: 'sales/scan/search',
+    final config = await SecurityConfigRepository.load(
+      companyId: companyId,
+      terminalId: terminalId,
     );
 
     if (!mounted || _isDisposingSalesPage) return;
 
-    if (results != null && results.length == 1) {
-      product = results.first;
-    }
+    _scanner?.dispose();
+
+    _scanner = config.scannerEnabled
+        ? ScannerInputController(
+            enabled: true,
+            suffix: config.scannerSuffix,
+            prefix: config.scannerPrefix,
+            timeout: Duration(milliseconds: config.scannerTimeoutMs),
+            emitOnTimeout: false,
+            onScan: _handleBarcodeScan,
+          )
+        : null;
   }
 
-  if (!mounted || _isDisposingSalesPage) return;
+  Future<void> _handleBarcodeScan(
+    String raw, {
+    bool clearSearchField = false,
+  }) async {
+    if (_isDisposingSalesPage || !mounted) return;
 
-  if (product == null) {
-    _scaffoldMessenger?.showSnackBar(
-      SnackBar(
-        content: Text('No se encontró producto con código: $code'),
-        backgroundColor: const Color(0xFFDC2626),
-      ),
+    final code = raw.trim();
+    if (code.isEmpty) return;
+
+    // Evita duplicados cuando la misma lectura dispara dos rutas:
+    // - RawKeyboard/ScannerInputController
+    // - TextField.onSubmitted
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    if (_lastScanCode == code && (nowMs - _lastScanAtMs) <= 200) {
+      return;
+    }
+
+    _lastScanCode = code;
+    _lastScanAtMs = nowMs;
+
+    final repo = ProductsRepository();
+
+    ProductModel? product = await ErrorHandler.instance.runSafe<ProductModel?>(
+      () => repo.getByCode(code),
+      context: context,
+      onRetry: () =>
+          _handleBarcodeScan(code, clearSearchField: clearSearchField),
+      module: 'sales/scan/code',
     );
-    return;
-  }
 
-  await _addProductToCart(product);
+    if (!mounted || _isDisposingSalesPage) return;
 
-  if (!mounted || _isDisposingSalesPage) return;
-
-  if (clearSearchField) {
-    _searchController.clear();
-
-    if (_searchFocusNode.canRequestFocus) {
-      _searchFocusNode.requestFocus();
+    if (product == null && code.toUpperCase() != code) {
+      product = await ErrorHandler.instance.runSafe<ProductModel?>(
+        () => repo.getByCode(code.toUpperCase()),
+        context: context,
+        onRetry: () =>
+            _handleBarcodeScan(code, clearSearchField: clearSearchField),
+        module: 'sales/scan/code_upper',
+      );
     }
 
-    setState(() {
-      _searchResults = _allProducts;
-    });
+    if (!mounted || _isDisposingSalesPage) return;
+
+    if (product == null) {
+      final results = await ErrorHandler.instance.runSafe<List<ProductModel>>(
+        () => repo.search(code),
+        context: context,
+        onRetry: () =>
+            _handleBarcodeScan(code, clearSearchField: clearSearchField),
+        module: 'sales/scan/search',
+      );
+
+      if (!mounted || _isDisposingSalesPage) return;
+
+      if (results != null && results.length == 1) {
+        product = results.first;
+      }
+    }
+
+    if (!mounted || _isDisposingSalesPage) return;
+
+    if (product == null) {
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(
+          content: Text('No se encontró producto con código: $code'),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+      return;
+    }
+
+    await _addProductToCart(product);
+
+    if (!mounted || _isDisposingSalesPage) return;
+
+    if (clearSearchField) {
+      _searchController.clear();
+
+      if (_searchFocusNode.canRequestFocus) {
+        _searchFocusNode.requestFocus();
+      }
+
+      setState(() {
+        _searchResults = _allProducts;
+      });
+    }
   }
-}
 
   Future<void> _loadInitialData() async {
     final token = ++_initialLoadToken;
@@ -1764,6 +1751,36 @@ Future<void> _handleBarcodeScan(
     });
   }
 
+  Future<void> _refreshCatalogAfterProductChanges() async {
+    final productsRepo = ProductsRepository();
+    final categoriesRepo = CategoriesRepository();
+    final trimmed = _searchController.text.trim();
+
+    final results = await Future.wait([
+      trimmed.isEmpty ? productsRepo.getAll() : productsRepo.search(trimmed),
+      categoriesRepo.getAll(),
+    ]);
+
+    if (!mounted) return;
+
+    final products = results[0] as List<ProductModel>;
+    final categories = results[1] as List<CategoryModel>;
+
+    setState(() {
+      _searchResults = products;
+      if (trimmed.isEmpty) {
+        _allProducts = products;
+      }
+      _categories = categories;
+      if (_selectedCategoryId != null &&
+          !categories.any((category) => category.id == _selectedCategoryId)) {
+        _selectedCategoryId = null;
+      }
+      _filteredProductsCacheKey = null;
+      _isSearching = false;
+    });
+  }
+
   Future<void> _toggleProductFeatured(ProductModel product) async {
     final productId = product.id;
     if (productId == null) return;
@@ -2151,154 +2168,47 @@ Future<void> _handleBarcodeScan(
     }
   }
 
-Future<ClientModel?> _ensureDefaultCustomerSelected() async {
-  final selected = _resolveKnownClient(_currentCart.selectedClient);
+  Future<ClientModel?> _ensureDefaultCustomerSelected() async {
+    final selected = _resolveKnownClient(_currentCart.selectedClient);
 
-  if (selected != null && selected.id != null) {
-    if (!identical(selected, _currentCart.selectedClient) ||
-        _currentCart.name != selected.nombre) {
-      _updateCurrentCart(() {
-        _currentCart.selectedClient = selected;
-        _currentCart.name = selected.nombre;
-      });
+    if (selected != null && selected.id != null) {
+      if (!identical(selected, _currentCart.selectedClient) ||
+          _currentCart.name != selected.nombre) {
+        _updateCurrentCart(() {
+          _currentCart.selectedClient = selected;
+          _currentCart.name = selected.nombre;
+        });
+      }
+
+      _syncClientFieldText();
+      return selected;
     }
 
+    final fallback = await _resolveOrCreateDefaultClient();
+
+    if (!mounted || fallback == null || fallback.id == null) {
+      return null;
+    }
+
+    await _applySelectedClient(fallback);
     _syncClientFieldText();
-    return selected;
+
+    return fallback;
   }
 
-  final fallback = await _resolveOrCreateDefaultClient();
-
-  if (!mounted || fallback == null || fallback.id == null) {
-    return null;
-  }
-
-  await _applySelectedClient(fallback);
-  _syncClientFieldText();
-
-  return fallback;
-}
-
-Future<void> _showQuickItemDialog() async {
-  if (!mounted) return;
-
-  setState(() => _isQuickSalePressed = true);
-
-  final screenSize = MediaQuery.sizeOf(context);
-  final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
-
-  // Debe coincidir con el ancho del QuickItemDialog.
-  final dialogWidth = math.min(382.0, screenSize.width - 24);
-
-  final rightOffset = ticketPanelConstraints.maxWidth + 8;
-
- final blurRightInset = ticketPanelConstraints.maxWidth;
-
-  // No tapa el topbar.
-const blurTopOffset = 40.0;
-
-  // No tapa footer/tabs inferiores.
-const footerSafeInset = 45.0;
-  // Más hacia abajo, como en la referencia.
-  final topOffset = math.max(72.0, screenSize.height * 0.10);
-
-  final result = await showGeneralDialog<SaleItemModel>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.transparent,
-    pageBuilder: (dialogContext, animation, secondaryAnimation) {
-      return Material(
-        type: MaterialType.transparency,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: blurTopOffset,
-              bottom: footerSafeInset,
-              right: blurRightInset,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(dialogContext).maybePop(),
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: 9,
-                      sigmaY: 9,
-                    ),
-                    child: Container(
-                      color: const Color(0xFFF4F7FB).withOpacity(0.34),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            Positioned(
-              top: topOffset,
-              right: rightOffset.clamp(
-                4.0,
-                screenSize.width - dialogWidth - 4,
-              ),
-              width: dialogWidth,
-              child: const QuickItemDialog(),
-            ),
-          ],
-        ),
-      );
-    },
-    transitionDuration: const Duration(milliseconds: 220),
-    transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
-
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.08, 0.02),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
-      );
-    },
-  );
-
-  if (mounted) {
-    setState(() => _isQuickSalePressed = false);
-  }
-
-  if (!mounted || result == null) return;
-
-  _updateCurrentCart(() {
-    _currentCart.items.add(result);
-  });
-}
-
-Future<void> _showNewProductDialog() async {
-  if (!mounted) return;
-
-  try {
-    final categoriesRepo = CategoriesRepository();
-    final suppliersRepo = SuppliersRepository();
-
-    final results = await Future.wait([
-      categoriesRepo.getAll(),
-      suppliersRepo.getAll(),
-    ]);
-
+  Future<void> _showQuickItemDialog() async {
     if (!mounted) return;
 
-    final categories = results[0] as List<CategoryModel>;
-    final suppliers = results[1] as List<SupplierModel>;
+    setState(() => _isQuickSalePressed = true);
 
     final screenSize = MediaQuery.sizeOf(context);
     final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
 
-    // Deja libre el panel derecho de factura.
+    // Debe coincidir con el ancho del QuickItemDialog.
+    final dialogWidth = math.min(382.0, screenSize.width - 24);
+
+    final rightOffset = ticketPanelConstraints.maxWidth + 8;
+
     final blurRightInset = ticketPanelConstraints.maxWidth;
 
     // No tapa el topbar.
@@ -2306,8 +2216,10 @@ Future<void> _showNewProductDialog() async {
 
     // No tapa footer/tabs inferiores.
     const footerSafeInset = 45.0;
+    // Más hacia abajo, como en la referencia.
+    final topOffset = math.max(72.0, screenSize.height * 0.10);
 
-    final created = await showGeneralDialog<bool>(
+    final result = await showGeneralDialog<SaleItemModel>(
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
@@ -2327,10 +2239,7 @@ Future<void> _showNewProductDialog() async {
                   onTap: () => Navigator.of(dialogContext).maybePop(),
                   child: ClipRect(
                     child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(
-                        sigmaX: 8,
-                        sigmaY: 8,
-                      ),
+                      filter: ui.ImageFilter.blur(sigmaX: 9, sigmaY: 9),
                       child: Container(
                         color: const Color(0xFFF4F7FB).withOpacity(0.34),
                       ),
@@ -2339,11 +2248,14 @@ Future<void> _showNewProductDialog() async {
                 ),
               ),
 
-              Center(
-                child: ProductFormDialog(
-                  categories: categories,
-                  suppliers: suppliers,
+              Positioned(
+                top: topOffset,
+                right: rightOffset.clamp(
+                  4.0,
+                  screenSize.width - dialogWidth - 4,
                 ),
+                width: dialogWidth,
+                child: const QuickItemDialog(),
               ),
             ],
           ),
@@ -2354,15 +2266,14 @@ Future<void> _showNewProductDialog() async {
         final curved = CurvedAnimation(
           parent: animation,
           curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
         );
 
         return FadeTransition(
           opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(
-              begin: 0.985,
-              end: 1.0,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.08, 0.02),
+              end: Offset.zero,
             ).animate(curved),
             child: child,
           ),
@@ -2370,28 +2281,128 @@ Future<void> _showNewProductDialog() async {
       },
     );
 
-    if (created == true && mounted) {
-      await _searchProducts(_searchController.text);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Producto creado correctamente'),
-          backgroundColor: status.success,
-        ),
-      );
+    if (mounted) {
+      setState(() => _isQuickSalePressed = false);
     }
-  } catch (e, st) {
+
+    if (!mounted || result == null) return;
+
+    _updateCurrentCart(() {
+      _currentCart.items.add(result);
+    });
+  }
+
+  Future<void> _showNewProductDialog() async {
     if (!mounted) return;
 
-    await ErrorHandler.instance.handle(
-      e,
-      stackTrace: st,
-      context: context,
-      onRetry: _showNewProductDialog,
-      module: 'sales/new_product',
-    );
+    try {
+      final categoriesRepo = CategoriesRepository();
+      final suppliersRepo = SuppliersRepository();
+
+      final results = await Future.wait([
+        categoriesRepo.getAll(),
+        suppliersRepo.getAll(),
+      ]);
+
+      if (!mounted) return;
+
+      final categories = results[0] as List<CategoryModel>;
+      final suppliers = results[1] as List<SupplierModel>;
+
+      final screenSize = MediaQuery.sizeOf(context);
+      final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
+
+      // Deja libre el panel derecho de factura.
+      final blurRightInset = ticketPanelConstraints.maxWidth;
+
+      // No tapa el topbar.
+      const blurTopOffset = 40.0;
+
+      // No tapa footer/tabs inferiores.
+      const footerSafeInset = 45.0;
+
+      final created = await showGeneralDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: MaterialLocalizations.of(
+          context,
+        ).modalBarrierDismissLabel,
+        barrierColor: Colors.transparent,
+        pageBuilder: (dialogContext, animation, secondaryAnimation) {
+          return Material(
+            type: MaterialType.transparency,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: blurTopOffset,
+                  bottom: footerSafeInset,
+                  right: blurRightInset,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(dialogContext).maybePop(),
+                    child: ClipRect(
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(
+                          color: const Color(0xFFF4F7FB).withOpacity(0.34),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                Center(
+                  child: ProductFormDialog(
+                    categories: categories,
+                    suppliers: suppliers,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 220),
+        transitionBuilder:
+            (dialogContext, animation, secondaryAnimation, child) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              );
+
+              return FadeTransition(
+                opacity: curved,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.985, end: 1.0).animate(curved),
+                  child: child,
+                ),
+              );
+            },
+      );
+
+      if (created == true && mounted) {
+        await _refreshCatalogAfterProductChanges();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Producto creado correctamente'),
+            backgroundColor: status.success,
+          ),
+        );
+      }
+    } catch (e, st) {
+      if (!mounted) return;
+
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _showNewProductDialog,
+        module: 'sales/new_product',
+      );
+    }
   }
-}
 
   Future<void> _setSalesDocumentType(_SalesDocumentType type) async {
     if (type == _SalesDocumentType.consumidorFinal) {
@@ -4140,7 +4151,6 @@ Future<void> _showNewProductDialog() async {
     return collapsedSpaces;
   }
 
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -4422,6 +4432,16 @@ Future<void> _showNewProductDialog() async {
 
                   return Stack(
                     children: [
+                      // Thin black border line under the topbar/header, full width
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          height: 1,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
                       Container(
                         color: _allegraBackgroundColor,
                         child: Row(
@@ -4525,6 +4545,7 @@ Future<void> _showNewProductDialog() async {
                                                                         1;
                                                                     return GridView.builder(
                                                                       padding: const EdgeInsets.only(
+                                                                        top: 1,
                                                                         right:
                                                                             _productHorizontalMargin,
                                                                       ),
@@ -5193,8 +5214,8 @@ Future<void> _showNewProductDialog() async {
                 ),
                 child: Icon(
                   product.isFeatured
-                      ? Icons.star_rounded
-                      : Icons.star_outline_rounded,
+                      ? Icons.push_pin_rounded
+                      : Icons.push_pin_outlined,
                   color: Colors.white,
                   size: 16,
                 ),
@@ -5256,157 +5277,159 @@ Future<void> _showNewProductDialog() async {
     );
   }
 
-Widget _buildQuickSaleCard({required int index, required double cardSize}) {
-  final isHovered = _hoveredProductIndexes.contains(index);
-  const accentColor = _allegraAccentColor;
-  final isActive = isHovered || _isQuickSalePressed;
-  final borderColor = isActive
-      ? accentColor.withOpacity(0.92)
-      : const Color(0xFFE2E8F0);
+  Widget _buildQuickSaleCard({required int index, required double cardSize}) {
+    final isHovered = _hoveredProductIndexes.contains(index);
+    const accentColor = _allegraAccentColor;
+    final isActive = isHovered || _isQuickSalePressed;
+    final borderColor = isActive
+        ? accentColor.withOpacity(0.92)
+        : const Color(0xFFE2E8F0);
 
-  return MouseRegion(
-    onEnter: (_) =>
-        _setHoverStateDeferred(_hoveredProductIndexes, index, true),
-    onExit: (_) =>
-        _setHoverStateDeferred(_hoveredProductIndexes, index, false),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      transform: Matrix4.identity()
-        ..scale(_isQuickSalePressed ? 0.97 : (isHovered ? 0.985 : 1.0)),
-      transformAlignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.white,
-        border: Border.all(color: borderColor, width: 2.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isActive ? 0.07 : 0.04),
-            blurRadius: isActive ? 12 : 8,
-            spreadRadius: 0,
-            offset: Offset(0, isActive ? 5 : 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTapDown: (_) => setState(() => _isQuickSalePressed = true),
-            onTapCancel: () => setState(() => _isQuickSalePressed = false),
-            onTap: _showQuickItemDialog,
-            onTapUp: (_) => setState(() => _isQuickSalePressed = false),
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashColor: accentColor.withOpacity(0.10),
-            child: SizedBox(
-              height: cardSize,
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Align(
-                        alignment: const Alignment(0, 0.34),
-                        child: AnimatedScale(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOutCubic,
-                          scale: _isQuickSalePressed
-                              ? 0.94
-                              : (isHovered ? 1.10 : 1.0),
-                          child: AnimatedContainer(
+    return MouseRegion(
+      onEnter: (_) =>
+          _setHoverStateDeferred(_hoveredProductIndexes, index, true),
+      onExit: (_) =>
+          _setHoverStateDeferred(_hoveredProductIndexes, index, false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        transform: Matrix4.identity()
+          ..scale(_isQuickSalePressed ? 0.97 : (isHovered ? 0.985 : 1.0)),
+        transformAlignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white,
+          border: Border.all(color: borderColor, width: 2.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isActive ? 0.07 : 0.04),
+              blurRadius: isActive ? 12 : 8,
+              spreadRadius: 0,
+              offset: Offset(0, isActive ? 5 : 3),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTapDown: (_) => setState(() => _isQuickSalePressed = true),
+              onTapCancel: () => setState(() => _isQuickSalePressed = false),
+              onTap: _showQuickItemDialog,
+              onTapUp: (_) => setState(() => _isQuickSalePressed = false),
+              hoverColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              splashColor: accentColor.withOpacity(0.10),
+              child: SizedBox(
+                height: cardSize,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: const Alignment(0, 0.34),
+                          child: AnimatedScale(
                             duration: const Duration(milliseconds: 180),
                             curve: Curves.easeOutCubic,
-                            width: isHovered ? 112 : 104,
-                            height: isHovered ? 112 : 104,
-                            decoration: BoxDecoration(
-                              color: isHovered
-                                  ? const Color(0xFFEAF2FF)
-                                  : const Color(0xFFF3F6F8),
-                              shape: BoxShape.circle,
-                              border: Border.all(
+                            scale: _isQuickSalePressed
+                                ? 0.94
+                                : (isHovered ? 1.10 : 1.0),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOutCubic,
+                              width: isHovered ? 112 : 104,
+                              height: isHovered ? 112 : 104,
+                              decoration: BoxDecoration(
                                 color: isHovered
-                                    ? accentColor.withOpacity(0.16)
-                                    : Colors.transparent,
-                                width: 1,
+                                    ? const Color(0xFFEAF2FF)
+                                    : const Color(0xFFF3F6F8),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isHovered
+                                      ? accentColor.withOpacity(0.16)
+                                      : Colors.transparent,
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  if (isHovered)
+                                    BoxShadow(
+                                      color: accentColor.withOpacity(0.10),
+                                      blurRadius: 20,
+                                      spreadRadius: -10,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                ],
                               ),
-                              boxShadow: [
-                                if (isHovered)
-                                  BoxShadow(
-                                    color: accentColor.withOpacity(0.10),
-                                    blurRadius: 20,
-                                    spreadRadius: -10,
-                                    offset: const Offset(0, 10),
-                                  ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.add_shopping_cart_rounded,
-                              size: isHovered ? 58 : 54,
-                              color: const Color(0xFF76879A),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.add_shopping_cart_rounded,
+                                size: isHovered ? 58 : 54,
+                                color: const Color(0xFF76879A),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 34),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: const Offset(0, 0.12),
-                                end: Offset.zero,
-                              ).animate(animation),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: isHovered
-                            ? const Text(
-                                'Vender fuera de\ninventario',
-                                key: ValueKey('quick-sale-hover-text'),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Color(0xFF111827),
-                                  fontSize: 16.2,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.18,
-                                ),
-                              )
-                            : Text(
-                                'Venta común',
-                                key: const ValueKey('quick-sale-default-text'),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: const Color(0xFF111827),
-                                  fontSize: 16.8,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.08,
-                                ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 34),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.12),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
                               ),
+                            );
+                          },
+                          child: isHovered
+                              ? const Text(
+                                  'Vender fuera de\ninventario',
+                                  key: ValueKey('quick-sale-hover-text'),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Color(0xFF111827),
+                                    fontSize: 16.2,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.18,
+                                  ),
+                                )
+                              : Text(
+                                  'Venta común',
+                                  key: const ValueKey(
+                                    'quick-sale-default-text',
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: const Color(0xFF111827),
+                                    fontSize: 16.8,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.08,
+                                  ),
+                                ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // ignore: unused_element
   Widget _buildCategoryDropdown() {
@@ -5645,7 +5668,10 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
         width: isExpanded ? expandedWidth : collapsedWidth,
         decoration: const BoxDecoration(
           color: Colors.white,
-          border: Border(right: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+          border: Border(
+            top: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+            right: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
         ),
         child: Column(
           children: [
@@ -6537,23 +6563,21 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
               children: [
                 _buildPanelDocumentTypeDropdown(),
                 const SizedBox(height: 6),
-               SizedBox(
-  height: _customerRowControlHeight,
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Expanded(
-        child: _buildPanelClientControl(),
-      ),
-      const SizedBox(width: 8),
-      SizedBox(
-        width: _customerNewButtonWidth,
-        height: _customerRowControlHeight,
-        child: _buildPanelNewClientButton(),
-      ),
-    ],
-  ),
-),
+                SizedBox(
+                  height: _customerRowControlHeight,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _buildPanelClientControl()),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: _customerNewButtonWidth,
+                        height: _customerRowControlHeight,
+                        child: _buildPanelNewClientButton(),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -8353,398 +8377,375 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
     );
   }
 
-Widget _buildPanelDocumentTypeDropdown() {
-  final currentType = _currentSalesDocumentType;
-  final availableTypes = <_SalesDocumentType>[
-    _SalesDocumentType.consumidorFinal,
-    if (_isElectronicInvoicingFeatureEnabled)
-      _SalesDocumentType.creditoFiscal,
-    _SalesDocumentType.cotizacion,
-  ];
+  Widget _buildPanelDocumentTypeDropdown() {
+    final currentType = _currentSalesDocumentType;
+    final availableTypes = <_SalesDocumentType>[
+      _SalesDocumentType.consumidorFinal,
+      if (_isElectronicInvoicingFeatureEnabled)
+        _SalesDocumentType.creditoFiscal,
+      _SalesDocumentType.cotizacion,
+    ];
 
-  return Builder(
-    builder: (fieldContext) => _buildProfessionalDropdownField(
-      supportingText: 'Numeracion',
-      value: _salesDocumentTypeLabel(currentType),
-      onTap: () => unawaited(
-        _showAnchoredPopover<void>(
-          anchorContext: fieldContext,
-          width: 300,
-          maxHeight: 260,
-          childBuilder: (dialogContext, close) {
-            return _buildProfessionalDropdownSurface(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shrinkWrap: true,
-                children: [
-                  _buildDropdownGroupHeader('No electrónicas'),
-                  for (final type in availableTypes)
-                    _buildDropdownOptionTile(
-                      title: _salesDocumentTypeLabel(type),
-                      selected: type == currentType,
-                      onTap: () {
-                        close();
-                        unawaited(_setSalesDocumentType(type));
-                      },
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildPanelClientControl() {
-  final client = _currentCart.selectedClient;
-  _syncClientFieldText();
-
-  return CompositedTransformTarget(
-    link: _clientSearchLayerLink,
-    child: SizedBox.expand(
-      key: _clientSearchFieldKey,
-      child: TextField(
-        controller: _clientSearchController,
-        focusNode: _clientSearchFocusNode,
-        textAlignVertical: TextAlignVertical.center,
-        onTap: _openClientSearchOverlay,
-        onChanged: (value) {
-          _clientSearchQuery = value;
-          if (_clientSearchOverlay == null) {
-            _openClientSearchOverlay();
-          }
-          _clientSearchOverlay?.markNeedsBuild();
-        },
-        decoration: InputDecoration(
-          filled: true,
-          fillColor: Colors.white,
-          hintText: 'Buscar o seleccionar cliente',
-          hintStyle: const TextStyle(
-            color: Color(0xFF94A3B8),
-            fontSize: 13.4,
-            fontWeight: FontWeight.w500,
-            height: 1.0,
-          ),
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 0,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(_customerRowControlRadius),
-            borderSide: const BorderSide(
-              color: Color(0xFFD6E0EA),
-              width: 1,
-            ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(_customerRowControlRadius),
-            borderSide: const BorderSide(
-              color: Color(0xFFD6E0EA),
-              width: 1,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(_customerRowControlRadius),
-            borderSide: const BorderSide(
-              color: Color(0xFF1A56DB),
-              width: 1.2,
-            ),
-          ),
-          suffixIconConstraints: const BoxConstraints(
-            minWidth: 108,
-            maxWidth: 108,
-            minHeight: _customerRowControlHeight,
-            maxHeight: _customerRowControlHeight,
-          ),
-          suffixIcon: SizedBox(
-            width: 108,
-            height: _customerRowControlHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (client != null)
-                  _buildClientFieldIcon(
-                    icon: Icons.edit_outlined,
-                    onTap: () => unawaited(_showEditClientFromSales(client)),
-                  ),
-                if (client != null)
-                  _buildClientFieldIcon(
-                    icon: Icons.close_rounded,
-                    onTap: () {
-                      _removeClient();
-                      _clientSearchController.clear();
-                      _clientSearchQuery = '';
-                      _clientSearchOverlay?.markNeedsBuild();
-                    },
-                  ),
-                const Spacer(),
-                _buildClientFieldIcon(
-                  icon: Icons.keyboard_arrow_down_rounded,
-                  onTap: _openClientSearchOverlay,
+    return Builder(
+      builder: (fieldContext) => _buildProfessionalDropdownField(
+        supportingText: 'Numeracion',
+        value: _salesDocumentTypeLabel(currentType),
+        onTap: () => unawaited(
+          _showAnchoredPopover<void>(
+            anchorContext: fieldContext,
+            width: 300,
+            maxHeight: 260,
+            childBuilder: (dialogContext, close) {
+              return _buildProfessionalDropdownSurface(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shrinkWrap: true,
+                  children: [
+                    _buildDropdownGroupHeader('No electrónicas'),
+                    for (final type in availableTypes)
+                      _buildDropdownOptionTile(
+                        title: _salesDocumentTypeLabel(type),
+                        selected: type == currentType,
+                        onTap: () {
+                          close();
+                          unawaited(_setSalesDocumentType(type));
+                        },
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-              ],
-            ),
-          ),
-        ),
-        style: TextStyle(
-          color: salesDetailTextColor,
-          fontSize: 14.1,
-          fontWeight: FontWeight.w500,
-          height: 1.0,
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildClientSearchDropdown() {
-  final client = _currentCart.selectedClient;
-  final normalizedQuery = _clientSearchQuery.trim().toLowerCase();
-  final filteredClients = _clients.where((option) {
-    if (normalizedQuery.isEmpty) return true;
-
-    final name = option.nombre.toLowerCase();
-    final phone = option.telefono?.toLowerCase() ?? '';
-    final rnc = option.rnc?.toLowerCase() ?? '';
-    final cedula = option.cedula?.toLowerCase() ?? '';
-
-    return name.contains(normalizedQuery) ||
-        phone.contains(normalizedQuery) ||
-        rnc.contains(normalizedQuery) ||
-        cedula.contains(normalizedQuery);
-  }).toList();
-
-  Widget compactTile({
-    required String title,
-    String? subtitle,
-    required bool selected,
-    required VoidCallback onTap,
-    Widget? trailing,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          color: selected ? const Color(0xFFF5F8FE) : Colors.transparent,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.2,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: const Color(0xFF17324D),
-                  ),
-                ),
-              ),
-              if (subtitle != null && subtitle.isNotEmpty) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 11.8,
-                      fontWeight: FontWeight.w400,
-                      color: Color(0xFF6B7C8E),
-                    ),
-                  ),
-                ),
-              ],
-              if (trailing != null) ...[
-                const SizedBox(width: 6),
-                trailing,
-              ],
-            ],
+              );
+            },
           ),
         ),
       ),
     );
   }
 
-  return _buildProfessionalDropdownSurface(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 240),
-      child: Material(
-        color: Colors.transparent,
-        child: ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          shrinkWrap: true,
-          itemCount: filteredClients.isEmpty ? 1 : filteredClients.length + 1,
-          separatorBuilder: (context, index) {
-            return const Divider(
-              height: 1,
-              indent: 12,
-              endIndent: 12,
-            );
+  Widget _buildPanelClientControl() {
+    final client = _currentCart.selectedClient;
+    _syncClientFieldText();
+
+    return CompositedTransformTarget(
+      link: _clientSearchLayerLink,
+      child: SizedBox.expand(
+        key: _clientSearchFieldKey,
+        child: TextField(
+          controller: _clientSearchController,
+          focusNode: _clientSearchFocusNode,
+          textAlignVertical: TextAlignVertical.center,
+          onTap: _openClientSearchOverlay,
+          onChanged: (value) {
+            _clientSearchQuery = value;
+            if (_clientSearchOverlay == null) {
+              _openClientSearchOverlay();
+            }
+            _clientSearchOverlay?.markNeedsBuild();
           },
-          itemBuilder: (context, index) {
-            if (filteredClients.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                child: Text(
-                  'No se encontraron clientes',
-                  style: TextStyle(
-                    fontSize: 12.2,
-                    color: Color(0xFF6B7C8E),
-                    fontWeight: FontWeight.w500,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            hintText: 'Buscar o seleccionar cliente',
+            hintStyle: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 13.4,
+              fontWeight: FontWeight.w500,
+              height: 1.0,
+            ),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 0,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(_customerRowControlRadius),
+              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(_customerRowControlRadius),
+              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(_customerRowControlRadius),
+              borderSide: const BorderSide(
+                color: Color(0xFF1A56DB),
+                width: 1.2,
+              ),
+            ),
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 108,
+              maxWidth: 108,
+              minHeight: _customerRowControlHeight,
+              maxHeight: _customerRowControlHeight,
+            ),
+            suffixIcon: SizedBox(
+              width: 108,
+              height: _customerRowControlHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (client != null)
+                    _buildClientFieldIcon(
+                      icon: Icons.edit_outlined,
+                      onTap: () => unawaited(_showEditClientFromSales(client)),
+                    ),
+                  if (client != null)
+                    _buildClientFieldIcon(
+                      icon: Icons.close_rounded,
+                      onTap: () {
+                        _removeClient();
+                        _clientSearchController.clear();
+                        _clientSearchQuery = '';
+                        _clientSearchOverlay?.markNeedsBuild();
+                      },
+                    ),
+                  const Spacer(),
+                  _buildClientFieldIcon(
+                    icon: Icons.keyboard_arrow_down_rounded,
+                    onTap: _openClientSearchOverlay,
                   ),
-                ),
-              );
-            }
+                  const SizedBox(width: 6),
+                ],
+              ),
+            ),
+          ),
+          style: TextStyle(
+            color: salesDetailTextColor,
+            fontSize: 14.1,
+            fontWeight: FontWeight.w500,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
 
-            if (index == 0) {
-              final selected = client == null;
+  Widget _buildClientSearchDropdown() {
+    final client = _currentCart.selectedClient;
+    final normalizedQuery = _clientSearchQuery.trim().toLowerCase();
+    final filteredClients = _clients.where((option) {
+      if (normalizedQuery.isEmpty) return true;
 
-              return compactTile(
-                title: 'Consumidor Final',
-                subtitle: 'Cliente general',
-                selected: selected,
-                onTap: () {
-                  _closeClientSearchOverlay();
-                  _clientSearchFocusNode.unfocus();
-                  _removeClient();
-                  _clientSearchQuery = '';
-                  _clientSearchController.clear();
-                },
-              );
-            }
+      final name = option.nombre.toLowerCase();
+      final phone = option.telefono?.toLowerCase() ?? '';
+      final rnc = option.rnc?.toLowerCase() ?? '';
+      final cedula = option.cedula?.toLowerCase() ?? '';
 
-            final option = filteredClients[index - 1];
+      return name.contains(normalizedQuery) ||
+          phone.contains(normalizedQuery) ||
+          rnc.contains(normalizedQuery) ||
+          cedula.contains(normalizedQuery);
+    }).toList();
 
-            final optionMeta = (option.telefono?.trim().isNotEmpty ?? false)
-                ? option.telefono!.trim()
-                : ((option.rnc?.trim().isNotEmpty ?? false)
-                    ? option.rnc!.trim()
-                    : ((option.cedula?.trim().isNotEmpty ?? false)
-                        ? option.cedula!.trim()
-                        : ''));
-
-            final selected = option.id == client?.id;
-
-            return compactTile(
-              title: option.nombre,
-              subtitle: optionMeta.isEmpty ? null : optionMeta,
-              selected: selected,
-              onTap: () async {
-                _closeClientSearchOverlay();
-                _clientSearchFocusNode.unfocus();
-                await _applySelectedClient(option);
-                _clientSearchQuery = '';
-                _syncClientFieldText();
-              },
-              trailing: InkWell(
-                onTap: () async {
-                  _closeClientSearchOverlay();
-                  await _showEditClientFromSales(option);
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: Center(
-                    child: Icon(
-                      Icons.edit_outlined,
-                      size: 16,
-                      color: Color(0xFF64748B),
+    Widget compactTile({
+      required String title,
+      String? subtitle,
+      required bool selected,
+      required VoidCallback onTap,
+      Widget? trailing,
+    }) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            color: selected ? const Color(0xFFF5F8FE) : Colors.transparent,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.2,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: const Color(0xFF17324D),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildPanelNewClientButton() {
-  return SizedBox.expand(
-    child: ElevatedButton.icon(
-      onPressed: _showCreateClientFromSales,
-      style: ElevatedButton.styleFrom(
-        fixedSize: const Size(
-          _customerNewButtonWidth,
-          _customerRowControlHeight,
-        ),
-        minimumSize: const Size(
-          _customerNewButtonWidth,
-          _customerRowControlHeight,
-        ),
-        maximumSize: const Size(
-          _customerNewButtonWidth,
-          _customerRowControlHeight,
-        ),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        backgroundColor: const Color(0xFFF1F5FF),
-        foregroundColor: const Color(0xFF1A56DB),
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-        alignment: Alignment.center,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_customerRowControlRadius),
-          side: const BorderSide(
-            color: Color(0xFFC7D2FE),
-            width: 1,
+                if (subtitle != null && subtitle.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 11.8,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFF6B7C8E),
+                      ),
+                    ),
+                  ),
+                ],
+                if (trailing != null) ...[const SizedBox(width: 6), trailing],
+              ],
+            ),
           ),
         ),
-        textStyle: const TextStyle(
-          fontSize: 12.8,
-          fontWeight: FontWeight.w600,
-          height: 1.0,
-        ),
-      ),
-      icon: const Icon(
-        Icons.person_add_alt_1_rounded,
-        size: 16,
-      ),
-      label: const Text(
-        'Nuevo',
-        style: TextStyle(
-          fontSize: 12.8,
-          fontWeight: FontWeight.w600,
-          height: 1.0,
-        ),
-      ),
-    ),
-  );
-}
+      );
+    }
 
-Widget _buildClientFieldIcon({
-  required IconData icon,
-  required VoidCallback onTap,
-}) {
-  return InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(8),
-    child: SizedBox(
-      width: 28,
-      height: _customerRowControlHeight,
-      child: Center(
-        child: Icon(
-          icon,
-          size: 18,
-          color: salesDetailMutedTextColor,
+    return _buildProfessionalDropdownSurface(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 240),
+        child: Material(
+          color: Colors.transparent,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            shrinkWrap: true,
+            itemCount: filteredClients.isEmpty ? 1 : filteredClients.length + 1,
+            separatorBuilder: (context, index) {
+              return const Divider(height: 1, indent: 12, endIndent: 12);
+            },
+            itemBuilder: (context, index) {
+              if (filteredClients.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Text(
+                    'No se encontraron clientes',
+                    style: TextStyle(
+                      fontSize: 12.2,
+                      color: Color(0xFF6B7C8E),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }
+
+              if (index == 0) {
+                final selected = client == null;
+
+                return compactTile(
+                  title: 'Consumidor Final',
+                  subtitle: 'Cliente general',
+                  selected: selected,
+                  onTap: () {
+                    _closeClientSearchOverlay();
+                    _clientSearchFocusNode.unfocus();
+                    _removeClient();
+                    _clientSearchQuery = '';
+                    _clientSearchController.clear();
+                  },
+                );
+              }
+
+              final option = filteredClients[index - 1];
+
+              final optionMeta = (option.telefono?.trim().isNotEmpty ?? false)
+                  ? option.telefono!.trim()
+                  : ((option.rnc?.trim().isNotEmpty ?? false)
+                        ? option.rnc!.trim()
+                        : ((option.cedula?.trim().isNotEmpty ?? false)
+                              ? option.cedula!.trim()
+                              : ''));
+
+              final selected = option.id == client?.id;
+
+              return compactTile(
+                title: option.nombre,
+                subtitle: optionMeta.isEmpty ? null : optionMeta,
+                selected: selected,
+                onTap: () async {
+                  _closeClientSearchOverlay();
+                  _clientSearchFocusNode.unfocus();
+                  await _applySelectedClient(option);
+                  _clientSearchQuery = '';
+                  _syncClientFieldText();
+                },
+                trailing: InkWell(
+                  onTap: () async {
+                    _closeClientSearchOverlay();
+                    await _showEditClientFromSales(option);
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Center(
+                      child: Icon(
+                        Icons.edit_outlined,
+                        size: 16,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildPanelNewClientButton() {
+    return SizedBox.expand(
+      child: ElevatedButton.icon(
+        onPressed: _showCreateClientFromSales,
+        style: ElevatedButton.styleFrom(
+          fixedSize: const Size(
+            _customerNewButtonWidth,
+            _customerRowControlHeight,
+          ),
+          minimumSize: const Size(
+            _customerNewButtonWidth,
+            _customerRowControlHeight,
+          ),
+          maximumSize: const Size(
+            _customerNewButtonWidth,
+            _customerRowControlHeight,
+          ),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+          backgroundColor: const Color(0xFFF1F5FF),
+          foregroundColor: const Color(0xFF1A56DB),
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          alignment: Alignment.center,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(_customerRowControlRadius),
+            side: const BorderSide(color: Color(0xFFC7D2FE), width: 1),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 12.8,
+            fontWeight: FontWeight.w600,
+            height: 1.0,
+          ),
+        ),
+        icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+        label: const Text(
+          'Nuevo',
+          style: TextStyle(
+            fontSize: 12.8,
+            fontWeight: FontWeight.w600,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClientFieldIcon({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 28,
+        height: _customerRowControlHeight,
+        child: Center(
+          child: Icon(icon, size: 18, color: salesDetailMutedTextColor),
+        ),
+      ),
+    );
+  }
 
   Widget _buildProfessionalDropdownField({
     String? supportingText,

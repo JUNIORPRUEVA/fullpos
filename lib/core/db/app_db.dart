@@ -881,6 +881,7 @@ class AppDb {
         CREATE TABLE ${DbTables.categories} (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
+          image_path TEXT,
           is_active INTEGER NOT NULL DEFAULT 1,
           deleted_at_ms INTEGER,
           created_at_ms INTEGER NOT NULL,
@@ -2719,6 +2720,7 @@ class AppDb {
       CREATE TABLE ${DbTables.categories} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
+        image_path TEXT,
         is_active INTEGER NOT NULL DEFAULT 1,
         deleted_at_ms INTEGER,
         created_at_ms INTEGER NOT NULL,
@@ -5332,6 +5334,10 @@ class AppDb {
         CREATE INDEX IF NOT EXISTS idx_products_server_id
         ON ${DbTables.products}(server_id)
       ''');
+    }
+
+    if (await _tableExists(db, DbTables.categories)) {
+      await _addColumnIfMissing(db, DbTables.categories, 'image_path', 'TEXT');
     }
 
     await _ensureProductSyncOutboxTable(db);

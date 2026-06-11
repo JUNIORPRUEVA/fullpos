@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../../features/cash/data/operation_flow_service.dart';
 import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../../features/auth/services/logout_flow_service.dart';
+import '../../features/settings/providers/business_settings_provider.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
 import '../theme/app_tokens.dart';
@@ -130,11 +132,6 @@ class _TopbarState extends ConsumerState<Topbar> {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) return null;
     return trimmed;
-  }
-
-  String _businessDisplayName() {
-    // Cambia esta línea cuando tengas la variable real del negocio.
-    return 'Mi negocio';
   }
 
   String _activeUserName() {
@@ -379,6 +376,10 @@ class _TopbarState extends ConsumerState<Topbar> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
+    final businessSettings = ref.watch(businessSettingsProvider);
+    final businessName =
+        _cleanText(businessSettings.businessName) ?? 'Mi negocio';
+    final businessLogoPath = _cleanText(businessSettings.logoPath);
 
     const topbarBg = Colors.white;
 
@@ -420,7 +421,6 @@ class _TopbarState extends ConsumerState<Topbar> {
           minRatio: 3.0,
         );
 
-        final businessName = _businessDisplayName();
         final activeUser = _activeUserName();
 
         final businessMenuWidth = screenWidth < 430 ? 238.0 : 270.0;
@@ -443,10 +443,9 @@ class _TopbarState extends ConsumerState<Topbar> {
             color: topbarBg,
             border: widget.showBottomBorder
                 ? Border(
-                    bottom: BorderSide(
-                      color: chromeBorderColor,
-                      width: 1,
-                    ),
+                    left: BorderSide(color: chromeBorderColor, width: 1),
+                    right: BorderSide(color: chromeBorderColor, width: 1),
+                    bottom: BorderSide(color: chromeBorderColor, width: 1),
                   )
                 : null,
             boxShadow: [
@@ -531,15 +530,10 @@ class _TopbarState extends ConsumerState<Topbar> {
                     surfaceTintColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: brandAccent.withOpacity(0.12),
-                      ),
+                      side: BorderSide(color: brandAccent.withOpacity(0.12)),
                     ),
                     onSelected: _handleMenuAction,
-                    itemBuilder: (_) => _turnMenuItems(
-                      context,
-                      turnMenuWidth,
-                    ),
+                    itemBuilder: (_) => _turnMenuItems(context, turnMenuWidth),
                     child: _TurnMenuButton(
                       scale: s,
                       visibleLabel: showTurnLabel,
@@ -568,21 +562,18 @@ class _TopbarState extends ConsumerState<Topbar> {
                     surfaceTintColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: brandAccent.withOpacity(0.12),
-                      ),
+                      side: BorderSide(color: brandAccent.withOpacity(0.12)),
                     ),
                     onSelected: _handleMenuAction,
-                    itemBuilder: (_) => _businessMenuItems(
-                      context,
-                      businessMenuWidth,
-                    ),
+                    itemBuilder: (_) =>
+                        _businessMenuItems(context, businessMenuWidth),
                     child: Tooltip(
                       message: businessName,
                       waitDuration: const Duration(milliseconds: 350),
                       child: _BusinessMenuButton(
                         scale: s,
                         businessName: businessName,
+                        logoPath: businessLogoPath,
                         showText: showBusinessText,
                         accentColor: brandAccent,
                         borderColor: chromeBorderColor,
@@ -616,6 +607,7 @@ class _BusinessMenuButton extends StatelessWidget {
   const _BusinessMenuButton({
     required this.scale,
     required this.businessName,
+    required this.logoPath,
     required this.showText,
     required this.accentColor,
     required this.borderColor,
@@ -623,6 +615,7 @@ class _BusinessMenuButton extends StatelessWidget {
 
   final double scale;
   final String businessName;
+  final String? logoPath;
   final bool showText;
   final Color accentColor;
   final Color borderColor;
@@ -630,8 +623,9 @@ class _BusinessMenuButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final height = (36 * scale).clamp(34.0, 40.0);
-    final cleanName =
-        businessName.trim().isEmpty ? 'Mi negocio' : businessName.trim();
+    final cleanName = businessName.trim().isEmpty
+        ? 'Mi negocio'
+        : businessName.trim();
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
@@ -641,14 +635,9 @@ class _BusinessMenuButton extends StatelessWidget {
         right: showText ? (12 * scale).clamp(10.0, 14.0) : 6,
       ),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          accentColor.withOpacity(0.035),
-          Colors.white,
-        ),
+        color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
         borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: borderColor.withOpacity(0.85),
-        ),
+        border: Border.all(color: borderColor.withOpacity(0.85)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -657,6 +646,7 @@ class _BusinessMenuButton extends StatelessWidget {
             size: (26 * scale).clamp(24.0, 29.0),
             accentColor: accentColor,
             name: cleanName,
+            logoPath: logoPath,
           ),
           if (showText) ...[
             SizedBox(width: (8 * scale).clamp(6.0, 9.0)),
@@ -687,15 +677,20 @@ class _BusinessLogoMark extends StatelessWidget {
     required this.size,
     required this.accentColor,
     required this.name,
+    required this.logoPath,
   });
 
   final double size;
   final Color accentColor;
   final String name;
+  final String? logoPath;
 
   @override
   Widget build(BuildContext context) {
     final initials = _initials(name);
+    final normalizedPath = (logoPath ?? '').trim();
+    final hasLogo =
+        normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
 
     return Container(
       width: size,
@@ -707,10 +702,7 @@ class _BusinessLogoMark extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             accentColor,
-            Color.alphaBlend(
-              Colors.black.withOpacity(0.16),
-              accentColor,
-            ),
+            Color.alphaBlend(Colors.black.withOpacity(0.16), accentColor),
           ],
         ),
         boxShadow: [
@@ -722,17 +714,20 @@ class _BusinessLogoMark extends StatelessWidget {
           ),
         ],
       ),
-      child: Center(
-        child: Text(
-          initials,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: (10.8 * (size / 26)).clamp(9.5, 12.0),
-            fontWeight: FontWeight.w900,
-            height: 1,
-          ),
-        ),
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasLogo
+          ? Image.file(File(normalizedPath), fit: BoxFit.cover)
+          : Center(
+              child: Text(
+                initials,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: (10.8 * (size / 26)).clamp(9.5, 12.0),
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
     );
   }
 
@@ -772,10 +767,7 @@ class _TurnMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final height = (34 * scale).clamp(32.0, 38.0);
 
-    final bg = Color.alphaBlend(
-      accentColor.withOpacity(0.08),
-      Colors.white,
-    );
+    final bg = Color.alphaBlend(accentColor.withOpacity(0.08), Colors.white);
 
     return Tooltip(
       message: isOpen ? 'Turno abierto' : 'Gestionar turno',
@@ -788,9 +780,7 @@ class _TurnMenuButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: accentColor.withOpacity(0.30),
-          ),
+          border: Border.all(color: accentColor.withOpacity(0.30)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -860,9 +850,7 @@ class _ActiveCashierChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(9),
-          border: Border.all(
-            color: borderColor.withOpacity(0.75),
-          ),
+          border: Border.all(color: borderColor.withOpacity(0.75)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -929,9 +917,7 @@ class _TopbarIconAction extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(9),
-              border: Border.all(
-                color: borderColor.withOpacity(0.70),
-              ),
+              border: Border.all(color: borderColor.withOpacity(0.70)),
             ),
             child: Icon(
               icon,
@@ -965,9 +951,7 @@ class _CompanyProductsDialog extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: accentColor.withOpacity(0.13),
-            ),
+            border: Border.all(color: accentColor.withOpacity(0.13)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.16),
@@ -1107,19 +1091,11 @@ class _CompanyProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 13,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          accentColor.withOpacity(0.035),
-          Colors.white,
-        ),
+        color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: accentColor.withOpacity(0.10),
-        ),
+        border: Border.all(color: accentColor.withOpacity(0.10)),
       ),
       child: Row(
         children: [
@@ -1130,11 +1106,7 @@ class _CompanyProductCard extends StatelessWidget {
               color: accentColor.withOpacity(0.10),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              color: accentColor,
-              size: 21,
-            ),
+            child: Icon(icon, color: accentColor, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(

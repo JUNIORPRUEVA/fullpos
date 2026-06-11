@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../constants/app_sizes.dart';
 import 'topbar.dart';
 import 'footer.dart';
@@ -20,8 +21,17 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   static const double _breakpointHysteresis = 40;
+  static const String _salesRoute = '/sales';
   bool _didInitResponsive = false;
   bool _isShort = false;
+
+  String _currentPath() {
+    try {
+      return GoRouterState.of(context).uri.path;
+    } catch (_) {
+      return '';
+    }
+  }
 
   void _updateResponsive(BoxConstraints constraints) {
     if (!_didInitResponsive) {
@@ -59,9 +69,9 @@ class _AppShellState extends State<AppShell> {
         _updateResponsive(constraints);
 
         final isShort = _isShort;
-        final showFooter = !isShort;
+        final showSalesFooter = !isShort && _currentPath() == _salesRoute;
         final topbarHeight = AppSizes.topbarHeight;
-        final footerHeight = showFooter ? AppSizes.footerHeight : 0.0;
+        final footerHeight = showSalesFooter ? AppSizes.footerHeight : 0.0;
 
         final topbarWidget = Builder(
           builder: (context) => Column(
@@ -83,7 +93,7 @@ class _AppShellState extends State<AppShell> {
           children: [
             SizedBox(height: topbarHeight, child: topbarWidget),
             Expanded(child: widget.child),
-            if (showFooter)
+            if (showSalesFooter)
               SizedBox(
                 height: footerHeight,
                 child: Footer(scale: 1.0),

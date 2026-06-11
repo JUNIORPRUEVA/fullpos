@@ -12,6 +12,7 @@ import '../data/cash_movement_model.dart';
 import '../data/cash_session_model.dart';
 import '../data/cash_summary_model.dart';
 import '../data/cash_repository.dart';
+import 'cash_close_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Brand palette
@@ -36,6 +37,7 @@ class CashPanelSheet extends ConsumerStatefulWidget {
   static Future<void> show(BuildContext context, {required int sessionId}) {
     return showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => CashPanelSheet(sessionId: sessionId),
     );
   }
@@ -143,6 +145,31 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
     }
   }
 
+  void _openCloseDialog() {
+    Navigator.pop(context);
+    CashCloseDialog.show(
+      context,
+      sessionId: widget.sessionId,
+      logoutAfterClose: true,
+      initialSummary: _summary,
+      initialSession: _session,
+      initialMovements: _movements,
+    );
+  }
+
+  void _openCurrentCutView() {
+    // Already viewing the current cut - just close and reopen the close dialog
+    Navigator.pop(context);
+    CashCloseDialog.show(
+      context,
+      sessionId: widget.sessionId,
+      logoutAfterClose: false,
+      initialSummary: _summary,
+      initialSession: _session,
+      initialMovements: _movements,
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // BUILD
   // ─────────────────────────────────────────────────────────────────────────
@@ -182,82 +209,96 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
 
     return Material(
       type: MaterialType.transparency,
-      child: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 6, 10, 6),
-        child: Align(
-          alignment: Alignment.centerRight,
-          child: SizedBox(
+      child: Stack(
+        children: [
+          // Fondo semitransparente
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(color: Colors.black.withOpacity(0.15)),
+            ),
+          ),
+          // Panel pegado a la derecha, centrado verticalmente
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
             width: dialogWidth,
-            height: availableHeight,
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(isCompact ? 22 : 28),
-                border: Border.all(
-                  color: sidebarAccent.withOpacity(0.34),
-                  width: 1.3,
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color.alphaBlend(
-                      sidebarColor.withOpacity(0.22),
-                      scheme.surface,
+            child: Center(
+              child: SizedBox(
+                width: dialogWidth,
+                height: availableHeight,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(isCompact ? 14 : 16),
+                    border: Border.all(
+                      color: sidebarAccent.withOpacity(0.34),
+                      width: 1.3,
                     ),
-                    Color.alphaBlend(
-                      sidebarAccent.withOpacity(0.10),
-                      scheme.surface,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color.alphaBlend(
+                          sidebarColor.withOpacity(0.22),
+                          scheme.surface,
+                        ),
+                        Color.alphaBlend(
+                          sidebarAccent.withOpacity(0.10),
+                          scheme.surface,
+                        ),
+                        scheme.surface,
+                      ],
                     ),
-                    scheme.surface,
-                  ],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: sidebarColor.withOpacity(0.18),
-                    blurRadius: 38,
-                    offset: const Offset(0, 18),
-                  ),
-                  BoxShadow(
-                    color: theme.shadowColor.withOpacity(0.12),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  _buildShiftHeader(
-                    theme: theme,
-                    session: session,
-                    durationText: durationText,
-                    isCompact: isCompact,
-                    isUltraCompact: isUltraCompact,
-                    sidebarAccent: sidebarAccent,
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.fromLTRB(
-                        isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                        isUltraCompact ? 10 : 6,
-                        isUltraCompact ? 12 : (isCompact ? 14 : 18),
-                        isUltraCompact ? 12 : (isCompact ? 14 : 16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: sidebarColor.withOpacity(0.18),
+                        blurRadius: 38,
+                        offset: const Offset(0, 18),
                       ),
-                      child: _buildDashboard(
+                      BoxShadow(
+                        color: theme.shadowColor.withOpacity(0.12),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      _buildShiftHeader(
                         theme: theme,
+                        session: session,
+                        durationText: durationText,
                         isCompact: isCompact,
                         isUltraCompact: isUltraCompact,
-                        sidebarColor: sidebarColor,
                         sidebarAccent: sidebarAccent,
-                        sidebarText: sidebarText,
                       ),
-                    ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.fromLTRB(
+                            isUltraCompact ? 12 : (isCompact ? 14 : 18),
+                            isUltraCompact ? 10 : 6,
+                            isUltraCompact ? 12 : (isCompact ? 14 : 18),
+                            isUltraCompact ? 12 : (isCompact ? 14 : 16),
+                          ),
+                          child: _buildDashboard(
+                            theme: theme,
+                            isCompact: isCompact,
+                            isUltraCompact: isUltraCompact,
+                            sidebarColor: sidebarColor,
+                            sidebarAccent: sidebarAccent,
+                            sidebarText: sidebarText,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -484,7 +525,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       padding: EdgeInsets.all(isUltraCompact ? 14 : 16),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _softBorder),
         boxShadow: [
           BoxShadow(
@@ -635,7 +676,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: _softBorder),
       ),
       child: Column(
@@ -694,65 +735,128 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       padding: EdgeInsets.all(isUltraCompact ? 12 : 14),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _softBorder),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Cierre del turno',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: isUltraCompact ? 12.5 : 13.5,
-                    color: _darkText,
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Cierre del turno',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: isUltraCompact ? 12.5 : 13.5,
+                        color: _darkText,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Resumen y movimientos en una misma vista.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: isUltraCompact ? 10 : 11,
+                        color: _mutedText,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Resumen y movimientos en una misma vista.',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w500,
-                    fontSize: isUltraCompact ? 10 : 11,
-                    color: _mutedText,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _softBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _softBorder),
                 ),
-              ],
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.visibility_outlined,
+                      size: 15,
+                      color: _mutedText,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Solo vista',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: isUltraCompact ? 10 : 11,
+                        color: _mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: _softBg,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _softBorder),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.visibility_outlined,
-                  size: 15,
-                  color: _mutedText,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Solo vista',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: isUltraCompact ? 10 : 11,
-                    color: _mutedText,
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 36,
+                  child: OutlinedButton.icon(
+                    onPressed: _openCurrentCutView,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _primaryBlue,
+                      side: BorderSide(color: _primaryBlue.withOpacity(0.3)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.receipt_long_outlined, size: 15),
+                    label: Text(
+                      'Ver corte actual',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: isUltraCompact ? 10 : 11,
+                      ),
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SizedBox(
+                  height: 36,
+                  child: ElevatedButton.icon(
+                    onPressed: _openCloseDialog,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primaryBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.lock_outline, size: 15),
+                    label: Text(
+                      'Cerrar turno',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: isUltraCompact ? 10 : 11,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -818,7 +922,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       padding: EdgeInsets.all(isUltraCompact ? 12 : 14),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _softBorder),
       ),
       child: Column(
@@ -945,7 +1049,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: _surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _softBorder),
         ),
         child: Center(
@@ -964,7 +1068,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       padding: EdgeInsets.all(isUltraCompact ? 12 : 14),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _softBorder),
       ),
       child: Column(
@@ -1032,7 +1136,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       padding: EdgeInsets.all(isUltraCompact ? 14 : 16),
       decoration: BoxDecoration(
         color: _surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: _softBorder,
           strokeAlign: BorderSide.strokeAlignInside,

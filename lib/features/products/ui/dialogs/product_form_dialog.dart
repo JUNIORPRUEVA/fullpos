@@ -38,6 +38,125 @@ class ProductFormDialog extends StatefulWidget {
   State<ProductFormDialog> createState() => _ProductFormDialogState();
 }
 
+class _SelectorValueRow extends StatefulWidget {
+  const _SelectorValueRow({
+    required this.title,
+    required this.leading,
+    required this.isSelected,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final String title;
+  final Widget leading;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  State<_SelectorValueRow> createState() => _SelectorValueRowState();
+}
+
+class _SelectorValueRowState extends State<_SelectorValueRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final background = widget.isSelected
+        ? const Color(0xFFEAF2FF)
+        : _hovered
+        ? const Color(0xFFF8FAFC)
+        : Colors.transparent;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              widget.leading,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontWeight: widget.isSelected
+                        ? FontWeight.w700
+                        : FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (widget.trailing != null) ...[
+                const SizedBox(width: 8),
+                widget.trailing!,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectorActionRow extends StatelessWidget {
+  const _SelectorActionRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withOpacity(0.45),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF1A56DB)),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF1A56DB),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductFormDialogState extends State<ProductFormDialog> {
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
@@ -50,6 +169,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   final ProductsRepository _productsRepo = ProductsRepository();
   final CategoriesRepository _categoriesRepo = CategoriesRepository();
   final SuppliersRepository _suppliersRepo = SuppliersRepository();
+  final MenuController _categoryMenuController = MenuController();
+  final MenuController _supplierMenuController = MenuController();
 
   bool _isLoading = false;
   bool _isEdit = false;
@@ -63,6 +184,20 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   bool _removeImage = false;
   String _placeholderType = 'image';
   String? _placeholderColorHex;
+
+  CategoryModel? get _selectedCategory {
+    for (final category in _categories) {
+      if (category.id == _selectedCategoryId) return category;
+    }
+    return null;
+  }
+
+  SupplierModel? get _selectedSupplier {
+    for (final supplier in _suppliers) {
+      if (supplier.id == _selectedSupplierId) return supplier;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -191,93 +326,6 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       _removeImage = true;
       _placeholderType = 'color';
       _placeholderColorHex = _resolvePlaceholderColor();
-    });
-  }
-
-  void _setPlaceholderType(String type) {
-    if (type == _placeholderType) return;
-    setState(() {
-      _placeholderType = type;
-      if (type == 'color') {
-        _pendingImageSourcePath = null;
-        _imagePath = null;
-        _removeImage = true;
-        _placeholderColorHex = _resolvePlaceholderColor();
-      } else {
-        _removeImage = false;
-      }
-    });
-  }
-
-  void _generateColor() {
-    setState(() {
-      _placeholderType = 'color';
-      _placeholderColorHex = _resolvePlaceholderColor();
-      _pendingImageSourcePath = null;
-      _imagePath = null;
-      _removeImage = true;
-    });
-  }
-
-  Future<void> _pickColorManually() async {
-    const presets = [
-      Colors.teal,
-      Colors.blue,
-      Colors.indigo,
-      Colors.deepPurple,
-      Colors.orange,
-      Colors.deepOrange,
-      Colors.brown,
-      Colors.green,
-      Colors.pink,
-      Colors.amber,
-      Colors.blueGrey,
-    ];
-
-    final selected = await showDialog<Color>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Elige un color'),
-        content: SizedBox(
-          width: 320,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: presets
-                .map(
-                  (c) => GestureDetector(
-                    onTap: () => Navigator.pop(context, c),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: c,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.black12),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
-      ),
-    );
-
-    if (selected == null) return;
-    if (!mounted) return;
-    setState(() {
-      _placeholderType = 'color';
-      _placeholderColorHex = ColorUtils.colorToHex(selected);
-      _pendingImageSourcePath = null;
-      _imagePath = null;
-      _removeImage = true;
     });
   }
 
@@ -494,67 +542,139 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     }
   }
 
+  Future<void> _reloadCategories({int? autoSelectId}) async {
+    final categories = await _categoriesRepo.getAll();
+    if (!mounted) return;
+    setState(() {
+      _categories = categories;
+      if (autoSelectId != null && categories.any((c) => c.id == autoSelectId)) {
+        _selectedCategoryId = autoSelectId;
+      } else if (_selectedCategoryId != null &&
+          !categories.any((c) => c.id == _selectedCategoryId)) {
+        _selectedCategoryId = null;
+      }
+    });
+  }
+
+  Future<void> _reloadSuppliers({int? autoSelectId}) async {
+    final suppliers = await _suppliersRepo.getAll();
+    if (!mounted) return;
+    setState(() {
+      _suppliers = suppliers;
+      if (autoSelectId != null && suppliers.any((s) => s.id == autoSelectId)) {
+        _selectedSupplierId = autoSelectId;
+      } else if (_selectedSupplierId != null &&
+          !suppliers.any((s) => s.id == _selectedSupplierId)) {
+        _selectedSupplierId = null;
+      }
+    });
+  }
+
   Future<void> _quickCreateCategory() async {
+    _categoryMenuController.close();
     final previousCategoryIds = _categories
         .map((c) => c.id)
         .whereType<int>()
         .toSet();
-
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => const CategoryFormDialog(),
     );
+    if (!mounted || result != true) return;
 
-    if (!mounted) return;
+    var categories = await _categoriesRepo.getAll();
+    if (categories.length == _categories.length) {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      categories = await _categoriesRepo.getAll();
+    }
+
+    int? newCategoryId;
+    for (final category in categories) {
+      final id = category.id;
+      if (id != null && !previousCategoryIds.contains(id)) {
+        newCategoryId = id;
+        break;
+      }
+    }
+    await _reloadCategories(autoSelectId: newCategoryId);
+  }
+
+  Future<void> _editCategory(CategoryModel category) async {
+    _categoryMenuController.close();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => CategoryFormDialog(category: category),
+    );
     if (result == true) {
-      // Recargar categorías
-      var categories = await _categoriesRepo.getAll();
-
-      if (categories.length == _categories.length) {
-        await Future<void>.delayed(const Duration(milliseconds: 80));
-        categories = await _categoriesRepo.getAll();
-      }
-
-      int? newCategoryId;
-      for (final category in categories) {
-        final id = category.id;
-        if (id != null && !previousCategoryIds.contains(id)) {
-          newCategoryId = id;
-          break;
-        }
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _categories = categories;
-        if (newCategoryId != null) {
-          _selectedCategoryId = newCategoryId;
-        } else if (_selectedCategoryId != null &&
-            !categories.any((c) => c.id == _selectedCategoryId)) {
-          _selectedCategoryId = null;
-        }
-      });
+      await _reloadCategories(autoSelectId: category.id);
     }
   }
 
+  Future<void> _deleteCategory(CategoryModel category) async {
+    _categoryMenuController.close();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar categoría'),
+        content: Text('¿Está seguro de eliminar "${category.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final authorized = await requireAuthorizationIfNeeded(
+      context: context,
+      action: AppActions.deleteCategory,
+      resourceType: 'category',
+      resourceId: category.id?.toString(),
+      reason: 'Eliminar categoria',
+    );
+    if (!authorized || category.id == null) return;
+
+    await _categoriesRepo.softDelete(category.id!);
+    await _reloadCategories(
+      autoSelectId: _selectedCategoryId == category.id
+          ? null
+          : _selectedCategoryId,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Categoría "${category.name}" eliminada')),
+    );
+  }
+
   Future<void> _quickCreateSupplier() async {
+    _supplierMenuController.close();
+    final previousSupplierIds = _suppliers
+        .map((s) => s.id)
+        .whereType<int>()
+        .toSet();
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => const SupplierFormDialog(),
     );
+    if (!mounted || result != true) return;
 
-    if (!mounted) return;
-    if (result == true) {
-      // Recargar suplidores
-      final suppliers = await _suppliersRepo.getAll();
-      if (!mounted) return;
-      setState(() {
-        _suppliers = suppliers;
-        if (suppliers.isNotEmpty) {
-          _selectedSupplierId = suppliers.last.id;
-        }
-      });
+    final suppliers = await _suppliersRepo.getAll();
+    int? newSupplierId;
+    for (final supplier in suppliers) {
+      final id = supplier.id;
+      if (id != null && !previousSupplierIds.contains(id)) {
+        newSupplierId = id;
+        break;
+      }
     }
+    await _reloadSuppliers(autoSelectId: newSupplierId);
   }
 
   Widget _buildSectionLabel(
@@ -587,6 +707,282 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     );
   }
+
+  Widget _buildCategoryAvatar(CategoryModel? category, {double size = 28}) {
+    final label = category?.name.trim() ?? 'Sin categoría';
+    final imagePath = category?.imagePath?.trim() ?? '';
+    final hasImage = imagePath.isNotEmpty && File(imagePath).existsSync();
+    final initial = label.isEmpty ? '?' : label.substring(0, 1).toUpperCase();
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2FF),
+        borderRadius: BorderRadius.circular(size / 2),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasImage
+          ? Image.file(File(imagePath), fit: BoxFit.cover)
+          : Center(
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  color: Color(0xFF1A56DB),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildSelectorField({
+    required BuildContext context,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+    Widget? leading,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 9,
+          ),
+        ),
+        child: Row(
+          children: [
+            if (leading != null) ...[leading, const SizedBox(width: 10)],
+            Expanded(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.expand_more_rounded, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySelector(BuildContext context) {
+    final selectedCategory = _selectedCategory;
+    final menuWidth =
+        ((MediaQuery.sizeOf(context).width - 96).clamp(560.0, 700.0) - 64) / 2;
+
+    return MenuAnchor(
+      controller: _categoryMenuController,
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(Colors.white),
+        elevation: const WidgetStatePropertyAll(10),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        side: WidgetStatePropertyAll(
+          BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withOpacity(0.55),
+          ),
+        ),
+      ),
+      menuChildren: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: menuWidth, maxHeight: 320),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SelectorActionRow(
+                icon: Icons.add_rounded,
+                label: 'Nueva categoría',
+                onTap: _quickCreateCategory,
+              ),
+              const SizedBox(height: 6),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _SelectorValueRow(
+                        title: 'Sin categoría',
+                        leading: _buildCategoryAvatar(null),
+                        isSelected: _selectedCategoryId == null,
+                        onTap: () {
+                          setState(() => _selectedCategoryId = null);
+                          _categoryMenuController.close();
+                        },
+                      ),
+                      ..._categories.map(
+                        (category) => _SelectorValueRow(
+                          title: category.name,
+                          leading: _buildCategoryAvatar(category),
+                          isSelected: _selectedCategoryId == category.id,
+                          onTap: () {
+                            setState(() => _selectedCategoryId = category.id);
+                            _categoryMenuController.close();
+                          },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Editar',
+                                onPressed: () => _editCategory(category),
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                              ),
+                              IconButton(
+                                tooltip: 'Eliminar',
+                                onPressed: () => _deleteCategory(category),
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      builder: (context, controller, child) {
+        return _buildSelectorField(
+          context: context,
+          label: 'Categoría',
+          value: selectedCategory?.name ?? 'Sin categoría',
+          leading: _buildCategoryAvatar(selectedCategory),
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+        );
+      },
+    );
+  }
+
+  Widget _buildSupplierSelector(BuildContext context) {
+    final selectedSupplier = _selectedSupplier;
+    final menuWidth =
+        ((MediaQuery.sizeOf(context).width - 96).clamp(560.0, 700.0) - 64) / 2;
+
+    return MenuAnchor(
+      controller: _supplierMenuController,
+      style: MenuStyle(
+        backgroundColor: const WidgetStatePropertyAll(Colors.white),
+        elevation: const WidgetStatePropertyAll(10),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        side: WidgetStatePropertyAll(
+          BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.outlineVariant.withOpacity(0.55),
+          ),
+        ),
+      ),
+      menuChildren: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: menuWidth, maxHeight: 320),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SelectorActionRow(
+                icon: Icons.add_business_rounded,
+                label: 'Nuevo suplidor',
+                onTap: _quickCreateSupplier,
+              ),
+              const SizedBox(height: 6),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _SelectorValueRow(
+                        title: 'Sin suplidor',
+                        leading: _buildStaticCircle(
+                          icon: Icons.storefront_outlined,
+                          color: const Color(0xFF64748B),
+                        ),
+                        isSelected: _selectedSupplierId == null,
+                        onTap: () {
+                          setState(() => _selectedSupplierId = null);
+                          _supplierMenuController.close();
+                        },
+                      ),
+                      ..._suppliers.map(
+                        (supplier) => _SelectorValueRow(
+                          title: supplier.name,
+                          leading: _buildStaticCircle(
+                            icon: Icons.local_shipping_outlined,
+                            color: const Color(0xFF1A56DB),
+                          ),
+                          isSelected: _selectedSupplierId == supplier.id,
+                          onTap: () {
+                            setState(() => _selectedSupplierId = supplier.id);
+                            _supplierMenuController.close();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      builder: (context, controller, child) {
+        return _buildSelectorField(
+          context: context,
+          label: 'Suplidor',
+          value: selectedSupplier?.name ?? 'Sin suplidor',
+          leading: _buildStaticCircle(
+            icon: Icons.local_shipping_outlined,
+            color: const Color(0xFF1A56DB),
+          ),
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+        );
+      },
+    );
+  }
+
+  Widget _buildStaticCircle({required IconData icon, required Color color}) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(icon, size: 16, color: color),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -594,7 +990,9 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     final viewport = MediaQuery.sizeOf(context);
 
     final dialogWidth = (viewport.width - 96).clamp(560.0, 700.0).toDouble();
-    final dialogMaxHeight = (viewport.height - 110).clamp(560.0, 740.0).toDouble();
+    final dialogMaxHeight = (viewport.height - 110)
+        .clamp(560.0, 740.0)
+        .toDouble();
 
     return Shortcuts(
       shortcuts: {
@@ -685,7 +1083,8 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         _isEdit
@@ -695,10 +1094,10 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                         overflow: TextOverflow.ellipsis,
                                         style: theme.textTheme.titleSmall
                                             ?.copyWith(
-                                          color: scheme.onSurface,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1.05,
-                                        ),
+                                              color: scheme.onSurface,
+                                              fontWeight: FontWeight.w800,
+                                              height: 1.05,
+                                            ),
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
@@ -707,10 +1106,10 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                         overflow: TextOverflow.ellipsis,
                                         style: theme.textTheme.labelSmall
                                             ?.copyWith(
-                                          color: scheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.w500,
-                                          height: 1.1,
-                                        ),
+                                              color: scheme.onSurfaceVariant,
+                                              fontWeight: FontWeight.w500,
+                                              height: 1.1,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -742,9 +1141,9 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                 builder: (context, constraints) {
                                   final fieldWidth =
                                       ((constraints.maxWidth - 10) / 2).clamp(
-                                    240.0,
-                                    constraints.maxWidth,
-                                  );
+                                        240.0,
+                                        constraints.maxWidth,
+                                      );
 
                                   return Form(
                                     key: _formKey,
@@ -815,228 +1214,164 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                             children: [
                                               SizedBox(
                                                 width: fieldWidth,
-                                                child: Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child:
-                                                          DropdownButtonFormField<
-                                                              int?>(
-                                                        value:
-                                                            _selectedCategoryId,
-                                                        isExpanded: true,
-                                                        decoration:
-                                                            _fieldDecoration(
-                                                          'Categoría',
-                                                        ),
-                                                        items: [
-                                                          const DropdownMenuItem(
-                                                            value: null,
-                                                            child: Text(
-                                                              'Sin categoría',
-                                                            ),
-                                                          ),
-                                                          ..._categories.map(
-                                                            (c) =>
-                                                                DropdownMenuItem(
-                                                              value: c.id,
-                                                              child: Text(
-                                                                c.name,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                        onChanged: (value) =>
-                                                            setState(
-                                                          () =>
-                                                              _selectedCategoryId =
-                                                                  value,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    SizedBox(
-                                                      width: 42,
-                                                      height: 42,
-                                                      child: OutlinedButton(
-                                                        onPressed:
-                                                            _quickCreateCategory,
-                                                        style: OutlinedButton
-                                                            .styleFrom(
-                                                          padding:
-                                                              EdgeInsets.zero,
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.add,
-                                                          size: 18,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
+                                                child: _buildCategorySelector(
+                                                  context,
                                                 ),
                                               ),
                                               SizedBox(
                                                 width: fieldWidth,
-                                                child: Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child:
-                                                          DropdownButtonFormField<
-                                                              int?>(
-                                                        value:
-                                                            _selectedSupplierId,
-                                                        isExpanded: true,
-                                                        decoration:
-                                                            _fieldDecoration(
-                                                          'Suplidor',
-                                                        ),
-                                                        items: [
-                                                          const DropdownMenuItem(
-                                                            value: null,
-                                                            child: Text(
-                                                              'Sin suplidor',
-                                                            ),
-                                                          ),
-                                                          ..._suppliers.map(
-                                                            (s) =>
-                                                                DropdownMenuItem(
-                                                              value: s.id,
-                                                              child: Text(
-                                                                s.name,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                        onChanged: (value) =>
-                                                            setState(
-                                                          () =>
-                                                              _selectedSupplierId =
-                                                                  value,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    SizedBox(
-                                                      width: 42,
-                                                      height: 42,
-                                                      child: OutlinedButton(
-                                                        onPressed:
-                                                            _quickCreateSupplier,
-                                                        style: OutlinedButton
-                                                            .styleFrom(
-                                                          padding:
-                                                              EdgeInsets.zero,
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons.add,
-                                                          size: 18,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
+                                                child: _buildSupplierSelector(
+                                                  context,
                                                 ),
                                               ),
                                             ],
                                           ),
                                           const SizedBox(height: 12),
                                           _buildSectionLabel(
-  context,
-  'Imagen',
-  null,
-),
-Container(
-  width: double.infinity,
-  padding: const EdgeInsets.all(12),
-  decoration: BoxDecoration(
-    borderRadius: BorderRadius.circular(14),
-    border: Border.all(
-      color: scheme.outlineVariant,
-    ),
-    color: scheme.surface,
-  ),
-  child: Row(
-    children: [
-      ProductThumbnail(
-        name: _nameController.text.trim().isEmpty
-            ? 'Producto'
-            : _nameController.text.trim(),
-        imagePath: _previewImagePath,
-        placeholderType: 'image',
-        categoryId: _selectedCategoryId,
-        size: 68,
-        width: 68,
-        height: 68,
-        borderRadius: BorderRadius.circular(10),
-      ),
+                                            context,
+                                            'Imagen',
+                                            null,
+                                          ),
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              border: Border.all(
+                                                color: scheme.outlineVariant,
+                                              ),
+                                              color: scheme.surface,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                ProductThumbnail(
+                                                  name:
+                                                      _nameController.text
+                                                          .trim()
+                                                          .isEmpty
+                                                      ? 'Producto'
+                                                      : _nameController.text
+                                                            .trim(),
+                                                  imagePath: _previewImagePath,
+                                                  placeholderType: 'image',
+                                                  categoryId:
+                                                      _selectedCategoryId,
+                                                  size: 68,
+                                                  width: 68,
+                                                  height: 68,
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
 
-      const SizedBox(width: 12),
+                                                const SizedBox(width: 12),
 
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _nameController.text.trim().isEmpty
-                  ? 'Sin nombre'
-                  : _nameController.text.trim(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _previewImagePath == null
-                  ? 'Sin imagen personalizada. Se usará el ícono por defecto.'
-                  : 'Imagen personalizada seleccionada.',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-                height: 1.25,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _isLoading ? null : _pickImage,
-                    icon: const Icon(Icons.upload_file_rounded, size: 18),
-                    label: Text(
-                      _previewImagePath == null
-                          ? 'Seleccionar imagen'
-                          : 'Cambiar imagen',
-                    ),
-                  ),
-                ),
-                if (_previewImagePath != null) ...[
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 42,
-                    height: 42,
-                    child: OutlinedButton(
-                      onPressed: _isLoading ? null : _removeSelectedImage,
-                      style: OutlinedButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: const Icon(
-                        Icons.delete_outline_rounded,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    ],
-  ),
-),
-const SizedBox(height: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        _nameController.text
+                                                                .trim()
+                                                                .isEmpty
+                                                            ? 'Sin nombre'
+                                                            : _nameController
+                                                                  .text
+                                                                  .trim(),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodyMedium
+                                                            ?.copyWith(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        _previewImagePath ==
+                                                                null
+                                                            ? 'Sin imagen personalizada. Se usará el ícono por defecto.'
+                                                            : 'Imagen personalizada seleccionada.',
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: scheme
+                                                                  .onSurfaceVariant,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
+                                                              height: 1.25,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(
+                                                        height: 10,
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: FilledButton.icon(
+                                                              onPressed:
+                                                                  _isLoading
+                                                                  ? null
+                                                                  : _pickImage,
+                                                              icon: const Icon(
+                                                                Icons
+                                                                    .upload_file_rounded,
+                                                                size: 18,
+                                                              ),
+                                                              label: Text(
+                                                                _previewImagePath ==
+                                                                        null
+                                                                    ? 'Seleccionar imagen'
+                                                                    : 'Cambiar imagen',
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          if (_previewImagePath !=
+                                                              null) ...[
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            SizedBox(
+                                                              width: 42,
+                                                              height: 42,
+                                                              child: OutlinedButton(
+                                                                onPressed:
+                                                                    _isLoading
+                                                                    ? null
+                                                                    : _removeSelectedImage,
+                                                                style: OutlinedButton.styleFrom(
+                                                                  padding:
+                                                                      EdgeInsets
+                                                                          .zero,
+                                                                ),
+                                                                child: const Icon(
+                                                                  Icons
+                                                                      .delete_outline_rounded,
+                                                                  size: 18,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
                                           const SizedBox(height: 12),
                                           _buildSectionLabel(
                                             context,
@@ -1057,16 +1392,12 @@ const SizedBox(height: 12),
                                                     prefixText: '\$ ',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType
-                                                          .numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                                  inputFormatters: [
-                                                    FilteringTextInputFormatter
-                                                        .allow(
-                                                      RegExp(
-                                                        r'^\d+\.?\d{0,2}',
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
                                                       ),
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.allow(
+                                                      RegExp(r'^\d+\.?\d{0,2}'),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1076,8 +1407,8 @@ const SizedBox(height: 12),
                                                     }
                                                     final price =
                                                         double.tryParse(
-                                                      value.trim(),
-                                                    );
+                                                          value.trim(),
+                                                        );
                                                     if (price == null ||
                                                         price <= 0) {
                                                       return 'Debe ser mayor que 0';
@@ -1096,16 +1427,12 @@ const SizedBox(height: 12),
                                                     prefixText: '\$ ',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType
-                                                          .numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                                  inputFormatters: [
-                                                    FilteringTextInputFormatter
-                                                        .allow(
-                                                      RegExp(
-                                                        r'^\d+\.?\d{0,2}',
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
                                                       ),
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.allow(
+                                                      RegExp(r'^\d+\.?\d{0,2}'),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1115,8 +1442,8 @@ const SizedBox(height: 12),
                                                     }
                                                     final price =
                                                         double.tryParse(
-                                                      value.trim(),
-                                                    );
+                                                          value.trim(),
+                                                        );
                                                     if (price == null ||
                                                         price <= 0) {
                                                       return 'Debe ser mayor que 0';
@@ -1148,16 +1475,12 @@ const SizedBox(height: 12),
                                                         : 'Stock actual',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType
-                                                          .numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                                  inputFormatters: [
-                                                    FilteringTextInputFormatter
-                                                        .allow(
-                                                      RegExp(
-                                                        r'^\d+\.?\d{0,2}',
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
                                                       ),
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.allow(
+                                                      RegExp(r'^\d+\.?\d{0,2}'),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1167,8 +1490,8 @@ const SizedBox(height: 12),
                                                     }
                                                     final stock =
                                                         double.tryParse(
-                                                      value.trim(),
-                                                    );
+                                                          value.trim(),
+                                                        );
                                                     if (stock == null ||
                                                         stock < 0) {
                                                       return 'Inválido';
@@ -1186,16 +1509,12 @@ const SizedBox(height: 12),
                                                     'Stock mínimo',
                                                   ),
                                                   keyboardType:
-                                                      const TextInputType
-                                                          .numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                                  inputFormatters: [
-                                                    FilteringTextInputFormatter
-                                                        .allow(
-                                                      RegExp(
-                                                        r'^\d+\.?\d{0,2}',
+                                                      const TextInputType.numberWithOptions(
+                                                        decimal: true,
                                                       ),
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.allow(
+                                                      RegExp(r'^\d+\.?\d{0,2}'),
                                                     ),
                                                   ],
                                                   validator: (value) {
@@ -1205,8 +1524,8 @@ const SizedBox(height: 12),
                                                     }
                                                     final stock =
                                                         double.tryParse(
-                                                      value.trim(),
-                                                    );
+                                                          value.trim(),
+                                                        );
                                                     if (stock == null ||
                                                         stock < 0) {
                                                       return 'Inválido';
@@ -1230,9 +1549,7 @@ const SizedBox(height: 12),
                             decoration: BoxDecoration(
                               color: scheme.surface,
                               border: Border(
-                                top: BorderSide(
-                                  color: scheme.outlineVariant,
-                                ),
+                                top: BorderSide(color: scheme.outlineVariant),
                               ),
                               borderRadius: const BorderRadius.vertical(
                                 bottom: Radius.circular(16),
@@ -1250,6 +1567,22 @@ const SizedBox(height: 12),
                                 const SizedBox(width: 8),
                                 FilledButton(
                                   onPressed: _isLoading ? null : _save,
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(156, 46),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    backgroundColor: const Color(0xFF1A56DB),
+                                    foregroundColor: Colors.white,
+                                    textStyle: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                   child: _isLoading
                                       ? const SizedBox(
                                           width: 18,
@@ -1258,7 +1591,11 @@ const SizedBox(height: 12),
                                             strokeWidth: 2,
                                           ),
                                         )
-                                      : Text(_isEdit ? 'Guardar' : 'Crear'),
+                                      : Text(
+                                          _isEdit
+                                              ? 'Guardar cambios'
+                                              : 'Crear producto',
+                                        ),
                                 ),
                               ],
                             ),
@@ -1275,5 +1612,4 @@ const SizedBox(height: 12),
       ),
     );
   }
-
 }
