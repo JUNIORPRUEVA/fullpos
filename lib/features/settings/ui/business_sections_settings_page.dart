@@ -24,6 +24,13 @@ class CompanyProfileSettingsPage extends ConsumerStatefulWidget {
 
 class _CompanyProfileSettingsPageState
     extends ConsumerState<CompanyProfileSettingsPage> {
+  static const List<Map<String, String>> _currencies = [
+    {'code': 'DOP', 'symbol': 'RD\$'},
+    {'code': 'USD', 'symbol': '\$'},
+    {'code': 'EUR', 'symbol': '€'},
+    {'code': 'MXN', 'symbol': 'MX\$'},
+  ];
+
   final _businessNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _phone2Controller = TextEditingController();
@@ -32,12 +39,14 @@ class _CompanyProfileSettingsPageState
   final _cityController = TextEditingController();
   final _rncController = TextEditingController();
   final _sloganController = TextEditingController();
+  final _currencySymbolController = TextEditingController();
   final _websiteController = TextEditingController();
 
   bool _didLoadInitialValues = false;
   bool _isSaving = false;
   bool _isUpdatingLogo = false;
   bool _hasChanges = false;
+  String _currencyCode = 'DOP';
 
   @override
   void dispose() {
@@ -49,6 +58,7 @@ class _CompanyProfileSettingsPageState
     _cityController.dispose();
     _rncController.dispose();
     _sloganController.dispose();
+    _currencySymbolController.dispose();
     _websiteController.dispose();
     super.dispose();
   }
@@ -64,6 +74,8 @@ class _CompanyProfileSettingsPageState
     _cityController.text = settings.city ?? '';
     _rncController.text = settings.rnc ?? '';
     _sloganController.text = settings.slogan ?? '';
+    _currencyCode = settings.defaultCurrency;
+    _currencySymbolController.text = settings.currencySymbol;
     _websiteController.text = settings.website ?? '';
   }
 
@@ -183,6 +195,10 @@ class _CompanyProfileSettingsPageState
         rnc: _normalizeOptional(_rncController.text),
         slogan: _normalizeOptional(_sloganController.text),
         website: _normalizeOptional(_websiteController.text),
+        defaultCurrency: _currencyCode,
+        currencySymbol: _currencySymbolController.text.trim().isEmpty
+            ? 'RD\$'
+            : _currencySymbolController.text.trim(),
       );
       await ref.read(businessSettingsProvider.notifier).saveSettings(updated);
       String feedback = 'Información de empresa guardada';
@@ -300,6 +316,54 @@ class _CompanyProfileSettingsPageState
                   label: 'Sitio web',
                   icon: Icons.language_outlined,
                   keyboardType: TextInputType.url,
+                  onChanged: _markDirty,
+                ),
+              ],
+            ),
+          ),
+          _SettingsSectionCard(
+            title: 'Moneda',
+            child: _ResponsiveFieldWrap(
+              children: [
+                _SettingsDropdownField<String>(
+                  value:
+                      _currencies.any((item) => item['code'] == _currencyCode)
+                      ? _currencyCode
+                      : _currencies.first['code']!,
+                  label: 'Código de moneda',
+                  icon: Icons.currency_exchange_outlined,
+                  items: [
+                    for (final item in _currencies)
+                      DropdownMenuItem<String>(
+                        value: item['code'],
+                        child: Text('${item['code']} · ${item['symbol']}'),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    final matched = _currencies.firstWhere(
+                      (item) => item['code'] == value,
+                      orElse: () => _currencies.first,
+                    );
+                    setState(() {
+                      _currencyCode = value;
+                      if (_currencySymbolController.text.trim().isEmpty ||
+                          _currencies.any(
+                            (item) =>
+                                item['symbol'] ==
+                                _currencySymbolController.text.trim(),
+                          )) {
+                        _currencySymbolController.text =
+                            matched['symbol'] ?? 'RD\$';
+                      }
+                      _hasChanges = true;
+                    });
+                  },
+                ),
+                _SettingsTextField(
+                  controller: _currencySymbolController,
+                  label: 'Símbolo mostrado',
+                  icon: Icons.sell_outlined,
                   onChanged: _markDirty,
                 ),
               ],

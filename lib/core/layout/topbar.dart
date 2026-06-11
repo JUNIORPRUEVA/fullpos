@@ -5,13 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/cash/data/operation_flow_service.dart';
+import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
-import '../../features/license/data/license_models.dart';
-import '../../features/license/services/license_storage.dart';
+import '../../features/auth/services/logout_flow_service.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
 import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
+import 'topbar_utility_panels.dart';
 
 /// Topbar principal de FullPOS.
 /// Orden: Menú | Vender                                      Apps | Turno | Usuario | Mi negocio
@@ -62,9 +63,6 @@ class _TopbarState extends ConsumerState<Topbar> {
 
   String? _username;
   String? _displayName;
-  LicenseInfo? _licenseInfo;
-
-  final LicenseStorage _licenseStorage = LicenseStorage();
 
   bool _loadingOpenCashSessionId = false;
   int? _openCashSessionId;
@@ -95,7 +93,6 @@ class _TopbarState extends ConsumerState<Topbar> {
   void _refreshTopbarData() {
     unawaited(_loadUserSummary());
     unawaited(_loadOpenCashSessionId());
-    unawaited(_loadLicenseInfo());
   }
 
   Future<void> _loadUserSummary() async {
@@ -129,17 +126,6 @@ class _TopbarState extends ConsumerState<Topbar> {
     }
   }
 
-  Future<void> _loadLicenseInfo() async {
-    try {
-      final info = await _licenseStorage.getLastInfo();
-      if (!mounted) return;
-      setState(() => _licenseInfo = info);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _licenseInfo = null);
-    }
-  }
-
   static String? _cleanText(String? value) {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) return null;
@@ -154,81 +140,6 @@ class _TopbarState extends ConsumerState<Topbar> {
   String _activeUserName() {
     final name = (_displayName ?? _username ?? '').trim();
     return name.isEmpty ? 'Usuario' : name;
-  }
-
-  String _licenseBadgeTitle() {
-    final info = _licenseInfo;
-    if (info == null) return 'Licencia pendiente';
-    if (info.isBlocked) return 'Licencia bloqueada';
-    if (info.isExpired) return 'Licencia vencida';
-    if (info.isActive) return 'Licencia activa';
-    return 'Licencia pendiente';
-  }
-
-  String _licenseBadgeSubtitle() {
-    final info = _licenseInfo;
-    if (info == null) return 'Verifica tu licencia';
-    if (info.isBlocked) return 'Contacta soporte';
-    if (info.isExpired) return 'Renovación requerida';
-
-    final end = info.fechaFin;
-    if (end == null) {
-      return info.isActive ? 'Sin vencimiento visible' : 'Pendiente de validar';
-    }
-
-    final today = DateTime.now();
-    final baseDate = DateTime(today.year, today.month, today.day);
-    final days = end.difference(baseDate).inDays;
-
-    if (days < 0) return 'Licencia vencida';
-    if (days == 0) return 'Vence hoy';
-    if (days == 1) return 'Vence en 1 día';
-    return 'Vence en $days días';
-  }
-
-  Color _licenseBadgeColor(ColorScheme scheme) {
-    final info = _licenseInfo;
-    if (info == null) return const Color(0xFFF59E0B);
-    if (info.isExpired || info.isBlocked) return scheme.error;
-    if (info.isActive) return const Color(0xFF16A34A);
-    return const Color(0xFFF59E0B);
-  }
-
-  void _showSnack(String message, {Color? backgroundColor}) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: backgroundColor),
-    );
-  }
-
-  Future<void> _showLicenseDetailsDialog() async {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-
-    final accent = ColorUtils.ensureReadableColor(
-      tokens.buttonPrimary,
-      Colors.white,
-      minRatio: 3.0,
-    );
-
-    final badgeColor = _licenseBadgeColor(scheme);
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return _LicenseDetailsDialog(
-          title: _licenseBadgeTitle(),
-          subtitle: _licenseBadgeSubtitle(),
-          badgeColor: badgeColor,
-          accentColor: accent,
-          onOpenLicense: () {
-            Navigator.of(dialogContext).pop();
-            context.go('/settings/license');
-          },
-        );
-      },
-    );
   }
 
   Future<void> _showCompanyProductsDialog() async {
@@ -256,25 +167,41 @@ class _TopbarState extends ConsumerState<Topbar> {
   Future<void> _handleMenuAction(_TopbarMenuAction action) async {
     switch (action) {
       case _TopbarMenuAction.profile:
-        context.go('/account');
+        await TopbarUtilityPanels.showProfile(context);
         return;
       case _TopbarMenuAction.support:
-        _showSnack('Soporte estará disponible pronto.');
+        await TopbarUtilityPanels.showSupport(context);
         return;
       case _TopbarMenuAction.license:
-        await _showLicenseDetailsDialog();
+        await TopbarUtilityPanels.showLicense(context);
         return;
       case _TopbarMenuAction.cloud:
-        _showSnack('Nube estará disponible pronto.');
+        await TopbarUtilityPanels.showCloud(context);
         return;
       case _TopbarMenuAction.settings:
         context.go('/settings');
         return;
       case _TopbarMenuAction.logout:
-        context.go('/login');
+        await LogoutFlowService.requestLogout(
+          context,
+          performLogout: () => LogoutFlowService.defaultPerformLogout(context),
+        );
         return;
       case _TopbarMenuAction.makeShiftCut:
-        context.go('/cash');
+        final sessionId = _openCashSessionId;
+        if (sessionId == null) {
+          context.go('/cash');
+          return;
+        }
+
+        await CashCloseDialog.show(
+          context,
+          sessionId: sessionId,
+          logoutAfterClose: false,
+        );
+
+        if (!mounted) return;
+        unawaited(_loadOpenCashSessionId());
         return;
       case _TopbarMenuAction.currentShift:
         final sessionId = _openCashSessionId;
@@ -290,7 +217,7 @@ class _TopbarState extends ConsumerState<Topbar> {
         unawaited(_loadOpenCashSessionId());
         return;
       case _TopbarMenuAction.shiftHistory:
-        context.go('/cash');
+        context.go('/cash/history');
         return;
     }
   }
@@ -1247,240 +1174,6 @@ class _CompanyProductCard extends StatelessWidget {
             size: 20,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _LicenseDetailsDialog extends StatelessWidget {
-  const _LicenseDetailsDialog({
-    required this.title,
-    required this.subtitle,
-    required this.badgeColor,
-    required this.accentColor,
-    required this.onOpenLicense,
-  });
-
-  final String title;
-  final String subtitle;
-  final Color badgeColor;
-  final Color accentColor;
-  final VoidCallback onOpenLicense;
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 390),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: accentColor.withOpacity(0.14),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.16),
-                blurRadius: 34,
-                spreadRadius: -14,
-                offset: const Offset(0, 18),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 14, 12),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            accentColor.withOpacity(0.14),
-                            badgeColor.withOpacity(0.12),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: accentColor.withOpacity(0.14),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.workspace_premium_rounded,
-                        color: badgeColor,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 13),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Licencia del cliente',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _TopbarState._strongTextColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              height: 1.1,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Estado y vigencia del sistema',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _TopbarState._softTextColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                      color: _TopbarState._softTextColor,
-                      splashRadius: 20,
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Color.alphaBlend(
-                      badgeColor.withOpacity(0.075),
-                      Colors.white,
-                    ),
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(
-                      color: badgeColor.withOpacity(0.20),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: badgeColor.withOpacity(0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          title.toLowerCase().contains('activa')
-                              ? Icons.verified_rounded
-                              : Icons.info_outline_rounded,
-                          color: badgeColor,
-                          size: 21,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: badgeColor,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w900,
-                                height: 1.1,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _TopbarState._softTextColor,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                height: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(44),
-                          side: BorderSide(
-                            color: accentColor.withOpacity(0.22),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Cerrar',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: onOpenLicense,
-                        icon: const Icon(
-                          Icons.open_in_new_rounded,
-                          size: 17,
-                        ),
-                        label: const Text('Ver licencia'),
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(44),
-                          backgroundColor: accentColor,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          textStyle: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

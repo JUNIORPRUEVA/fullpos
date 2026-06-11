@@ -18,12 +18,30 @@
     "dart.env": {
         "FLUTTER_ROOT": "C:/src/flutter",
         "ComSpec": "C:\\Windows\\System32\\cmd.exe",
-        "Path": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
-        "PATH": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+        "Path": "${env:Path};C:\\Users\\pc\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\src\\flutter\\bin;C:\\Program Files\\Git\\cmd",
+        "PATH": "${env:PATH};C:\\Users\\pc\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\src\\flutter\\bin;C:\\Program Files\\Git\\cmd"
     },
     "terminal.integrated.env.windows": {
         "ComSpec": "C:\\Windows\\System32\\cmd.exe",
-        "Path": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:Path}",
-        "PATH": "C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd;C:\\src\\flutter\\bin;${env:PATH}"
+        "Path": "${env:Path};C:\\Users\\pc\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\src\\flutter\\bin;C:\\Program Files\\Git\\cmd",
+        "PATH": "${env:PATH};C:\\Users\\pc\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Windows\\System32\\WindowsPowerShell\\v1.0;C:\\src\\flutter\\bin;C:\\Program Files\\Git\\cmd"
+    },
+    "terminal.integrated.defaultProfile.windows": "PowerShell Core",
+    "terminal.integrated.profiles.windows": {
+        "PowerShell Core": {
+            "source": "PowerShell",
+            "path": "pwsh.exe",
+            "args": []
+        },
+        "Windows PowerShell": {
+            "source": "PowerShell",
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": []
+        },
+        "Command Prompt": {
+            "source": "Windows PowerShell",
+            "path": "C:\\Windows\\System32\\cmd.exe",
+            "args": []
+        }
     }
 }

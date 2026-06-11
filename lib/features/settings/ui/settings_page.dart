@@ -1,22 +1,14 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'backup_database_page.dart';
 import 'business_sections_settings_page.dart';
 import 'database_settings_page.dart';
 import 'device_hardware_settings_page.dart';
 import 'printer_settings_page.dart';
-import 'system_about_page.dart';
-import 'system_license_summary_page.dart';
 import 'permissions_page.dart';
 import 'users_page.dart';
-import 'theme_settings_page.dart' as theme_page;
-import 'logs_page.dart';
-import 'security_settings_page.dart';
-import 'cloud_settings_page.dart';
 import 'settings_layout.dart';
-import '../../tools/ui/authorizations_page.dart';
 import '../../tools/ui/cash_drawer_settings_page.dart';
-import '../../tools/ui/electronic_invoicing_page.dart';
 import '../../tools/ui/scanner_settings_page.dart';
 import '../../license/data/license_models.dart';
 import '../../license/services/license_file_storage.dart';
@@ -68,36 +60,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final sections = <_SettingsSectionData>[
       _SettingsSectionData(
         title: 'Negocio',
-        description:
-            'Empresa, documentos electrónicos y configuración general del POS.',
+        description: 'Empresa y ajustes comerciales base del negocio.',
         icon: Icons.storefront_outlined,
         items: [
           _SettingsItemData(
             title: 'Empresa',
-            subtitle: 'Datos del negocio, contacto y branding.',
+            subtitle: 'Datos del negocio, contacto, branding y moneda.',
             icon: Icons.business_outlined,
             onTap: _openCompanySettingsPage,
           ),
           _SettingsItemData(
-            title: 'Facturación electrónica',
-            subtitle: 'Empresa emisora, DGII y estado e-CF.',
-            icon: Icons.description_outlined,
-            onTap: _openElectronicInvoicingPage,
-          ),
-          _SettingsItemData(
-            title: 'Impuestos',
-            subtitle: 'ITBIS, documentos electrónicos y ventas.',
-            icon: Icons.receipt_long_outlined,
-            onTap: _openTaxSettingsPage,
-          ),
-          _SettingsItemData(
-            title: 'Moneda',
-            subtitle: 'Moneda base y símbolo de operación.',
-            icon: Icons.attach_money_outlined,
-            onTap: _openCurrencySettingsPage,
-          ),
-          _SettingsItemData(
-            title: 'General POS settings',
+            title: 'Configuración general',
             subtitle: 'Comportamiento comercial y ajustes base.',
             icon: Icons.tune_outlined,
             onTap: _openPosGeneralSettingsPage,
@@ -105,8 +78,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
       _SettingsSectionData(
-        title: 'Usuarios y seguridad',
-        description: 'Accesos, permisos y aprobaciones operativas.',
+        title: 'Usuarios y permisos',
+        description: 'Cuentas, roles y acceso por módulo.',
         icon: Icons.admin_panel_settings_outlined,
         items: [
           _SettingsItemData(
@@ -121,17 +94,24 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.badge_outlined,
             onTap: _openUserPermissionsPage,
           ),
+        ],
+      ),
+      _SettingsSectionData(
+        title: 'Respaldo y base de datos',
+        description: 'Copias, restauración, diagnóstico y mantenimiento.',
+        icon: Icons.storage_outlined,
+        items: [
           _SettingsItemData(
-            title: 'Autorizaciones',
-            subtitle: 'Auditoría y flujo de aprobaciones.',
-            icon: Icons.verified_user_outlined,
-            onTap: _openAuthorizationsPage,
+            title: 'Respaldo',
+            subtitle: 'Copias, restauración y resguardo local.',
+            icon: Icons.backup_outlined,
+            onTap: _openBackupPage,
           ),
           _SettingsItemData(
-            title: 'Seguridad',
-            subtitle: 'PIN local, terminal y aprobaciones remotas.',
-            icon: Icons.shield_outlined,
-            onTap: _openSecuritySettingsPage,
+            title: 'Base de datos',
+            subtitle: 'Estado, diagnóstico y mantenimiento.',
+            icon: Icons.storage_outlined,
+            onTap: _openDatabaseSettingsPage,
           ),
         ],
       ),
@@ -141,7 +121,7 @@ class _SettingsPageState extends State<SettingsPage> {
         icon: Icons.devices_outlined,
         items: [
           _SettingsItemData(
-            title: 'Impresora',
+            title: 'Impresoras',
             subtitle: 'Ticket, pruebas y preferencias de impresión.',
             icon: Icons.print_outlined,
             onTap: _openPrinterSettingsPage,
@@ -166,76 +146,17 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
-      _SettingsSectionData(
-        title: 'Sistema',
-        description: 'Respaldo, nube, base local y soporte.',
-        icon: Icons.settings_suggest_outlined,
-        items: [
-          _SettingsItemData(
-            title: 'Backup',
-            subtitle: 'Copias, restauración y resguardo local.',
-            icon: Icons.backup_outlined,
-            onTap: _openBackupPage,
-          ),
-          _SettingsItemData(
-            title: 'Base de datos',
-            subtitle: 'Estado, diagnóstico y mantenimiento.',
-            icon: Icons.storage_outlined,
-            onTap: _openDatabaseSettingsPage,
-          ),
-          _SettingsItemData(
-            title: 'Nube',
-            subtitle: 'Sincronización, owner app y conectividad.',
-            icon: Icons.cloud_outlined,
-            onTap: _openCloudSettingsPage,
-          ),
-          _SettingsItemData(
-            title: 'Licencia',
-            subtitle: 'Estado actual, vigencia y origen.',
-            icon: Icons.vpn_key_outlined,
-            onTap: _openLicenseSummaryPage,
-          ),
-          _SettingsItemData(
-            title: 'Logs / Soporte',
-            subtitle: 'Eventos, diagnóstico y apoyo operativo.',
-            icon: Icons.support_agent_outlined,
-            onTap: _openLogsPage,
-          ),
-          _SettingsItemData(
-            title: 'Acerca de',
-            subtitle: 'Versión, atajos y referencia del sistema.',
-            icon: Icons.info_outline,
-            onTap: _openAboutPage,
-          ),
-        ],
-      ),
-      _SettingsSectionData(
-        title: 'Apariencia',
-        description: 'Tema, colores y presentación visual.',
-        icon: Icons.palette_outlined,
-        items: [
-          _SettingsItemData(
-            title: 'Tema y diseño visual',
-            subtitle:
-                'Colores, estilo general y personalización de la interfaz.',
-            icon: Icons.palette_outlined,
-            onTap: _openThemeSettings,
-          ),
-        ],
-      ),
     ];
 
     final negocioSection = _filterSection(sections[0]);
     final usuariosSection = _filterSection(sections[1]);
-    final dispositivosSection = _filterSection(sections[2]);
-    final sistemaSection = _filterSection(sections[3]);
-    final aparienciaSection = _filterSection(sections[4]);
+    final respaldoSection = _filterSection(sections[2]);
+    final dispositivosSection = _filterSection(sections[3]);
     final visibleSections = [
       negocioSection,
       usuariosSection,
+      respaldoSection,
       dispositivosSection,
-      sistemaSection,
-      aparienciaSection,
     ].whereType<_SettingsSectionData>().toList(growable: false);
 
     return Theme(
@@ -270,9 +191,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       final gridSections = [
                         negocioSection,
                         usuariosSection,
-                        sistemaSection,
+                        respaldoSection,
                         dispositivosSection,
-                        aparienciaSection,
                       ].whereType<_SettingsSectionData>();
 
                       return Wrap(
@@ -320,24 +240,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _openSecuritySettingsPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SecuritySettingsPage()),
-    );
-  }
-
   void _openUserPermissionsPage() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const PermissionsPage()),
-    );
-  }
-
-  void _openAuthorizationsPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AuthorizationsPage()),
     );
   }
 
@@ -362,45 +268,10 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _openElectronicInvoicingPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ElectronicInvoicingPage()),
-    );
-  }
-
-  void _openCloudSettingsPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const CloudSettingsPage()),
-    );
-  }
-
-  void _openThemeSettings() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const theme_page.ThemeSettingsPage()),
-    );
-  }
-
   void _openCompanySettingsPage() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const CompanyProfileSettingsPage()),
-    );
-  }
-
-  void _openTaxSettingsPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const TaxSettingsPage()),
-    );
-  }
-
-  void _openCurrencySettingsPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const CurrencySettingsPage()),
     );
   }
 
@@ -418,13 +289,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _openLogsPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const LogsPage()),
-    );
-  }
-
   void _openBackupPage() {
     Navigator.push(
       context,
@@ -436,20 +300,6 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const DatabaseSettingsPage()),
-    );
-  }
-
-  void _openLicenseSummaryPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SystemLicenseSummaryPage()),
-    );
-  }
-
-  void _openAboutPage() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SystemAboutPage()),
     );
   }
 
@@ -469,7 +319,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Accesos agrupados y densos para escritorio.',
+              'Accesos agrupados para escritorio.',
               style: textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),

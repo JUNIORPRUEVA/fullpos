@@ -351,9 +351,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
       TextEditingController();
   final FocusNode _inlineTotalDiscountFocusNode = FocusNode();
 
-  bool _keyboardShortcutsEnabled = true;
-  ScannerInputController? _scanner;
-  late final bool Function(KeyEvent) _globalShortcutHandler;
+ bool _keyboardShortcutsEnabled = true;
+ FooterTicketController? _footerTicketController;
+ScannerInputController? _scanner;
+late final bool Function(KeyEvent) _globalShortcutHandler;
+
+NavigatorState? _rootNavigator;
+ScaffoldMessengerState? _scaffoldMessenger;
+bool _isDisposingSalesPage = false;
 
   String? _lastScanCode;
   int _lastScanAtMs = 0;
@@ -464,16 +469,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
     });
   }
 
-  void _bindFooterTicketController() {
-    ref
-        .read(footerTicketControllerProvider)
-        .bind(
-          onAdd: _addFooterTicket,
-          onSelect: _selectFooterTicket,
-          onRename: _renameFooterTicket,
-          onDelete: _deleteFooterTicket,
-        );
-  }
+void _bindFooterTicketController() {
+  final controller = ref.read(footerTicketControllerProvider);
+
+  _footerTicketController = controller;
+
+  controller.bind(
+    onAdd: _addFooterTicket,
+    onSelect: _selectFooterTicket,
+    onRename: _renameFooterTicket,
+    onDelete: _deleteFooterTicket,
+  );
+}
 
   bool get _isElectronicInvoicingFeatureEnabled =>
       ref.read(businessSettingsProvider).electronicInvoicingEnabled;
@@ -553,245 +560,328 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _bindFooterTicketController();
-    TopbarActionBus.salesMovementToggle.addListener(_handleMovementPanelToggle);
-    _loadAccess();
-    _loadInitialData();
-    unawaited(_loadRecentSales());
-    // Evitar modificar providers durante el build inicial (Riverpod lo prohíbe).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(_refreshCashSession());
-      unawaited(_ensureSessionBootstrap());
-    });
-    _loadScannerConfig();
-    _globalShortcutHandler = _handleGlobalShortcutKey;
-    HardwareKeyboard.instance.addHandler(_globalShortcutHandler);
-    RawKeyboard.instance.addListener(_handleScannerKey);
-    _clientSearchFocusNode.addListener(_handleClientSearchFocus);
+void initState() {
+  super.initState();
+
+  WidgetsBinding.instance.addObserver(this);
+
+  _bindFooterTicketController();
+
+  TopbarActionBus.salesMovementToggle.addListener(
+    _handleMovementPanelToggle,
+  );
+
+  _loadAccess();
+  _loadInitialData();
+  unawaited(_loadRecentSales());
+
+  // Evitar modificar providers durante el build inicial.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted || _isDisposingSalesPage) return;
+
+    unawaited(_refreshCashSession());
+    unawaited(_ensureSessionBootstrap());
+  });
+
+  _loadScannerConfig();
+
+  _globalShortcutHandler = _handleGlobalShortcutKey;
+  HardwareKeyboard.instance.addHandler(_globalShortcutHandler);
+
+  RawKeyboard.instance.addListener(_handleScannerKey);
+  _clientSearchFocusNode.addListener(_handleClientSearchFocus);
+}
+
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+
+  // Guardamos referencias seguras para no llamar Navigator.of(context)
+  // cuando el widget ya esté desmontado.
+  _rootNavigator = Navigator.of(context, rootNavigator: true);
+  _scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+}
+
+Future<void> _loadAccess() async {
+  final enabled = await UiPreferences.isKeyboardShortcutsEnabled();
+
+  if (!mounted || _isDisposingSalesPage) return;
+
+  setState(() => _keyboardShortcutsEnabled = enabled);
+}
+
+void _handleScannerKey(RawKeyEvent event) {
+  if (_isDisposingSalesPage || !mounted) return;
+
+  _scanner?.handleKeyEvent(event);
+}
+
+void _handleClientSearchFocus() {
+  if (_isDisposingSalesPage || !mounted) return;
+
+  if (_clientSearchFocusNode.hasFocus) {
+    _openClientSearchOverlay();
+  } else {
+    _closeClientSearchOverlay();
+    _syncClientFieldText();
   }
+}
 
-  Future<void> _loadAccess() async {
-    final enabled = await UiPreferences.isKeyboardShortcutsEnabled();
-    if (!mounted) return;
-    setState(() => _keyboardShortcutsEnabled = enabled);
+void _syncClientFieldText({bool forceQuery = false}) {
+  if (_isDisposingSalesPage || !mounted) return;
+  if (forceQuery || _clientSearchFocusNode.hasFocus) return;
+
+  final client = _currentCart.selectedClient;
+
+  final clientName = client?.nombre.trim().isNotEmpty == true
+      ? client!.nombre.trim()
+      : '';
+
+  final clientMeta = client == null
+      ? ''
+      : (client.rnc?.trim().isNotEmpty == true
+            ? client.rnc!.trim()
+            : (client.cedula?.trim().isNotEmpty == true
+                  ? client.cedula!.trim()
+                  : (client.telefono?.trim().isNotEmpty == true
+                        ? client.telefono!.trim()
+                        : '')));
+
+  final display = clientName.isEmpty
+      ? ''
+      : (clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)');
+
+  if (_clientSearchController.text != display) {
+    _clientSearchController.text = display;
+    _clientSearchController.selection = TextSelection.collapsed(
+      offset: display.length,
+    );
   }
+}
 
-  void _handleScannerKey(RawKeyEvent event) {
-    _scanner?.handleKeyEvent(event);
-  }
+void _openClientSearchOverlay() {
+  if (_isDisposingSalesPage || !mounted) return;
+  if (_clientSearchOverlay != null) return;
 
-  void _handleClientSearchFocus() {
-    if (_clientSearchFocusNode.hasFocus) {
-      _openClientSearchOverlay();
-    } else {
-      _closeClientSearchOverlay();
-      _syncClientFieldText();
-    }
-  }
+  final overlayState = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlayState == null) return;
 
-  void _syncClientFieldText({bool forceQuery = false}) {
-    if (forceQuery || _clientSearchFocusNode.hasFocus) return;
-    final client = _currentCart.selectedClient;
-    final clientName = client?.nombre.trim().isNotEmpty == true
-        ? client!.nombre.trim()
-        : '';
-    final clientMeta = client == null
-        ? ''
-        : (client.rnc?.trim().isNotEmpty == true
-              ? client.rnc!.trim()
-              : (client.cedula?.trim().isNotEmpty == true
-                    ? client.cedula!.trim()
-                    : (client.telefono?.trim().isNotEmpty == true
-                          ? client.telefono!.trim()
-                          : '')));
-    final display = clientName.isEmpty
-        ? ''
-        : (clientMeta.isEmpty ? clientName : '$clientName ($clientMeta)');
+  _clientSearchOverlay = OverlayEntry(
+    builder: (overlayContext) {
+      final renderBox =
+          _clientSearchFieldKey.currentContext?.findRenderObject()
+              as RenderBox?;
 
-    if (_clientSearchController.text != display) {
-      _clientSearchController.text = display;
-      _clientSearchController.selection = TextSelection.collapsed(
-        offset: display.length,
-      );
-    }
-  }
+      final fieldSize = renderBox?.size;
+      final width = fieldSize?.width ?? 320;
+      final height = fieldSize?.height ?? 48;
 
-  void _openClientSearchOverlay() {
-    if (_clientSearchOverlay != null) return;
-
-    _clientSearchOverlay = OverlayEntry(
-      builder: (context) {
-        final renderBox =
-            _clientSearchFieldKey.currentContext?.findRenderObject()
-                as RenderBox?;
-        final fieldSize = renderBox?.size;
-        final width = fieldSize?.width ?? 320;
-        final height = fieldSize?.height ?? 48;
-
-        return Positioned.fill(
-          child: Stack(
-            children: [
-              GestureDetector(
-                onTap: _closeClientSearchOverlay,
-                behavior: HitTestBehavior.translucent,
-                child: const SizedBox.expand(),
-              ),
-              CompositedTransformFollower(
-                link: _clientSearchLayerLink,
-                showWhenUnlinked: false,
-                offset: Offset(0, height + 6),
-                child: Material(
-                  color: Colors.transparent,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: width,
-                      minWidth: width,
-                      maxHeight: 320,
-                    ),
-                    child: _buildClientSearchDropdown(),
+      return Positioned.fill(
+        child: Stack(
+          children: [
+            GestureDetector(
+              onTap: _closeClientSearchOverlay,
+              behavior: HitTestBehavior.translucent,
+              child: const SizedBox.expand(),
+            ),
+            CompositedTransformFollower(
+              link: _clientSearchLayerLink,
+              showWhenUnlinked: false,
+              offset: Offset(0, height + 6),
+              child: Material(
+                color: Colors.transparent,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: width,
+                    minWidth: width,
+                    maxHeight: 320,
                   ),
+                  child: _buildClientSearchDropdown(),
                 ),
               ),
-            ],
-          ),
-        );
-      },
-    );
-
-    Overlay.of(context, rootOverlay: true).insert(_clientSearchOverlay!);
-  }
-
-  void _closeClientSearchOverlay() {
-    _clientSearchOverlay?.remove();
-    _clientSearchOverlay = null;
-  }
-
-  bool _handleGlobalShortcutKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return false;
-    if (Navigator.of(context, rootNavigator: true).canPop()) return false;
-    final key = event.logicalKey;
-
-    if (key == LogicalKeyboardKey.f1) {
-      _searchFocusNode.requestFocus();
-      return true;
-    }
-
-    if (key == LogicalKeyboardKey.f8) {
-      if (_currentCart.items.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Agrega productos antes de cobrar'),
-            backgroundColor: scheme.error,
-          ),
-        );
-        return true;
-      }
-      _processPayment(SaleKind.invoice, initialPrintTicket: true);
-      return true;
-    }
-
-    return false;
-  }
-
-  Future<void> _loadScannerConfig() async {
-    final companyId = await SessionManager.companyId() ?? 1;
-    final terminalId =
-        await SessionManager.terminalId() ??
-        await SessionManager.ensureTerminalId();
-    final config = await SecurityConfigRepository.load(
-      companyId: companyId,
-      terminalId: terminalId,
-    );
-
-    if (!mounted) return;
-
-    _scanner?.dispose();
-    _scanner = config.scannerEnabled
-        ? ScannerInputController(
-            enabled: true,
-            suffix: config.scannerSuffix,
-            prefix: config.scannerPrefix,
-            timeout: Duration(milliseconds: config.scannerTimeoutMs),
-            emitOnTimeout: false,
-            onScan: _handleBarcodeScan,
-          )
-        : null;
-  }
-
-  Future<void> _handleBarcodeScan(
-    String raw, {
-    bool clearSearchField = false,
-  }) async {
-    final code = raw.trim();
-    if (code.isEmpty) return;
-
-    // Evita duplicados cuando la misma lectura dispara dos rutas:
-    // - RawKeyboard/ScannerInputController
-    // - TextField.onSubmitted
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (_lastScanCode == code && (nowMs - _lastScanAtMs) <= 200) {
-      return;
-    }
-    _lastScanCode = code;
-    _lastScanAtMs = nowMs;
-
-    final repo = ProductsRepository();
-    ProductModel? product = await ErrorHandler.instance.runSafe<ProductModel?>(
-      () => repo.getByCode(code),
-      context: context,
-      onRetry: () =>
-          _handleBarcodeScan(code, clearSearchField: clearSearchField),
-      module: 'sales/scan/code',
-    );
-
-    if (product == null && code.toUpperCase() != code) {
-      product = await ErrorHandler.instance.runSafe<ProductModel?>(
-        () => repo.getByCode(code.toUpperCase()),
-        context: context,
-        onRetry: () =>
-            _handleBarcodeScan(code, clearSearchField: clearSearchField),
-        module: 'sales/scan/code_upper',
-      );
-    }
-
-    if (product == null) {
-      final results = await ErrorHandler.instance.runSafe<List<ProductModel>>(
-        () => repo.search(code),
-        context: context,
-        onRetry: () =>
-            _handleBarcodeScan(code, clearSearchField: clearSearchField),
-        module: 'sales/scan/search',
-      );
-      if (results != null && results.length == 1) {
-        product = results.first;
-      }
-    }
-
-    if (!mounted) return;
-
-    if (product == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se encontro producto con codigo: $code'),
-          backgroundColor: scheme.error,
+            ),
+          ],
         ),
       );
-      return;
+    },
+  );
+
+  overlayState.insert(_clientSearchOverlay!);
+}
+
+void _closeClientSearchOverlay() {
+  _clientSearchOverlay?.remove();
+  _clientSearchOverlay = null;
+}
+
+bool _handleGlobalShortcutKey(KeyEvent event) {
+  if (_isDisposingSalesPage) return false;
+  if (!mounted) return false;
+  if (event is! KeyDownEvent) return false;
+
+  final navigator = _rootNavigator;
+  if (navigator == null) return false;
+
+  // No usar Navigator.of(context) aquí.
+  // Esa línea era la que provocaba:
+  // Looking up a deactivated widget's ancestor is unsafe.
+  if (navigator.canPop()) return false;
+
+  final key = event.logicalKey;
+
+  if (key == LogicalKeyboardKey.f1) {
+    if (_searchFocusNode.canRequestFocus) {
+      _searchFocusNode.requestFocus();
+    }
+    return true;
+  }
+
+  if (key == LogicalKeyboardKey.f8) {
+    if (_currentCart.items.isEmpty) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Agrega productos antes de cobrar'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+      return true;
     }
 
-    await _addProductToCart(product);
-    if (clearSearchField && mounted) {
-      _searchController.clear();
-      _searchFocusNode.requestFocus();
-      setState(() {
-        _searchResults = _allProducts;
-      });
+    unawaited(
+      _processPayment(
+        SaleKind.invoice,
+        initialPrintTicket: true,
+      ),
+    );
+
+    return true;
+  }
+
+  return false;
+}
+
+Future<void> _loadScannerConfig() async {
+  final companyId = await SessionManager.companyId() ?? 1;
+  final terminalId =
+      await SessionManager.terminalId() ??
+      await SessionManager.ensureTerminalId();
+
+  final config = await SecurityConfigRepository.load(
+    companyId: companyId,
+    terminalId: terminalId,
+  );
+
+  if (!mounted || _isDisposingSalesPage) return;
+
+  _scanner?.dispose();
+
+  _scanner = config.scannerEnabled
+      ? ScannerInputController(
+          enabled: true,
+          suffix: config.scannerSuffix,
+          prefix: config.scannerPrefix,
+          timeout: Duration(milliseconds: config.scannerTimeoutMs),
+          emitOnTimeout: false,
+          onScan: _handleBarcodeScan,
+        )
+      : null;
+}
+
+Future<void> _handleBarcodeScan(
+  String raw, {
+  bool clearSearchField = false,
+}) async {
+  if (_isDisposingSalesPage || !mounted) return;
+
+  final code = raw.trim();
+  if (code.isEmpty) return;
+
+  // Evita duplicados cuando la misma lectura dispara dos rutas:
+  // - RawKeyboard/ScannerInputController
+  // - TextField.onSubmitted
+  final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+  if (_lastScanCode == code && (nowMs - _lastScanAtMs) <= 200) {
+    return;
+  }
+
+  _lastScanCode = code;
+  _lastScanAtMs = nowMs;
+
+  final repo = ProductsRepository();
+
+  ProductModel? product = await ErrorHandler.instance.runSafe<ProductModel?>(
+    () => repo.getByCode(code),
+    context: context,
+    onRetry: () => _handleBarcodeScan(
+      code,
+      clearSearchField: clearSearchField,
+    ),
+    module: 'sales/scan/code',
+  );
+
+  if (!mounted || _isDisposingSalesPage) return;
+
+  if (product == null && code.toUpperCase() != code) {
+    product = await ErrorHandler.instance.runSafe<ProductModel?>(
+      () => repo.getByCode(code.toUpperCase()),
+      context: context,
+      onRetry: () => _handleBarcodeScan(
+        code,
+        clearSearchField: clearSearchField,
+      ),
+      module: 'sales/scan/code_upper',
+    );
+  }
+
+  if (!mounted || _isDisposingSalesPage) return;
+
+  if (product == null) {
+    final results = await ErrorHandler.instance.runSafe<List<ProductModel>>(
+      () => repo.search(code),
+      context: context,
+      onRetry: () => _handleBarcodeScan(
+        code,
+        clearSearchField: clearSearchField,
+      ),
+      module: 'sales/scan/search',
+    );
+
+    if (!mounted || _isDisposingSalesPage) return;
+
+    if (results != null && results.length == 1) {
+      product = results.first;
     }
   }
+
+  if (!mounted || _isDisposingSalesPage) return;
+
+  if (product == null) {
+    _scaffoldMessenger?.showSnackBar(
+      SnackBar(
+        content: Text('No se encontró producto con código: $code'),
+        backgroundColor: const Color(0xFFDC2626),
+      ),
+    );
+    return;
+  }
+
+  await _addProductToCart(product);
+
+  if (!mounted || _isDisposingSalesPage) return;
+
+  if (clearSearchField) {
+    _searchController.clear();
+
+    if (_searchFocusNode.canRequestFocus) {
+      _searchFocusNode.requestFocus();
+    }
+
+    setState(() {
+      _searchResults = _allProducts;
+    });
+  }
+}
 
   Future<void> _loadInitialData() async {
     final token = ++_initialLoadToken;
@@ -4054,7 +4144,12 @@ Future<void> _showNewProductDialog() async {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    ref.read(footerTicketControllerProvider).clear();
+    // Se difiere el clear para evitar modificar un provider de Riverpod
+    // mientras el widget tree se está destruyendo.
+    Future(() {
+      _footerTicketController?.clear();
+    });
+    _footerTicketController = null;
     TopbarActionBus.salesMovementToggle.removeListener(
       _handleMovementPanelToggle,
     );
@@ -4836,8 +4931,8 @@ Future<void> _showNewProductDialog() async {
                               style: TextStyle(
                                 color: cardTextColor,
                                 fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                height: 1.15,
+                                fontWeight: FontWeight.w500,
+                                height: 1.2,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -4849,7 +4944,7 @@ Future<void> _showNewProductDialog() async {
                                     style: TextStyle(
                                       color: codeColor,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   TextSpan(
@@ -4857,7 +4952,7 @@ Future<void> _showNewProductDialog() async {
                                     style: TextStyle(
                                       color: codeColor,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   TextSpan(
@@ -4865,7 +4960,7 @@ Future<void> _showNewProductDialog() async {
                                     style: TextStyle(
                                       color: stockColor,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.w700,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
@@ -4886,7 +4981,7 @@ Future<void> _showNewProductDialog() async {
                             style: TextStyle(
                               color: cardTextColor.withOpacity(0.72),
                               fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -4897,7 +4992,7 @@ Future<void> _showNewProductDialog() async {
                             style: TextStyle(
                               color: priceColor,
                               fontSize: 16,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w600,
                               height: 1,
                             ),
                           ),
@@ -5283,7 +5378,7 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
                                 style: TextStyle(
                                   color: Color(0xFF111827),
                                   fontSize: 16.2,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                   height: 1.18,
                                 ),
                               )
@@ -5296,7 +5391,7 @@ Widget _buildQuickSaleCard({required int index, required double cardSize}) {
                                 style: TextStyle(
                                   color: const Color(0xFF111827),
                                   fontSize: 16.8,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                   height: 1.08,
                                 ),
                               ),

@@ -120,7 +120,10 @@ class PermissionsPage extends StatefulWidget {
 
 class _PermissionsPageState extends State<PermissionsPage> {
   static const double _matrixMinWidth = 860;
-  static const double _contentMaxWidth = 1880;
+  static const double _contentMaxWidth = 1120;
+  static const double _panelBorderRadius = 18;
+  static const Color _panelBorderColor = Color(0xFFE2E8F0);
+  static const double _bottomSafePadding = 72;
 
   static final Map<_UserPermissionCategory, List<_PermissionDef>>
   _permissionMap = {
@@ -808,32 +811,37 @@ class _PermissionsPageState extends State<PermissionsPage> {
             resourceId: 'settings.permissions',
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final padding = EdgeInsets.fromLTRB(
-                  constraints.maxWidth < 1200 ? 8 : 12,
-                  6,
-                  constraints.maxWidth < 1200 ? 8 : 12,
-                  12,
-                );
-                final boundedHeight = constraints.maxHeight - padding.vertical;
-                final availableWidth = math.min(
-                  _contentMaxWidth,
-                  math.max(0.0, constraints.maxWidth - padding.horizontal),
-                );
-                return Align(
-                  alignment: Alignment.topCenter,
+                return Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
                       maxWidth: _contentMaxWidth,
                     ),
                     child: Padding(
-                      padding: padding,
-                      child: SizedBox(
-                        height: boundedHeight > 0 ? boundedHeight : null,
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        18,
+                        24,
+                        _bottomSafePadding,
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(_panelBorderRadius),
+                          border: Border.all(color: _panelBorderColor),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _buildCompactControlBar(
-                              availableWidth: availableWidth,
+                              availableWidth: _contentMaxWidth - 48,
                               categories: categories,
                               allDefs: allDefs,
                               currentUser: currentUser,
@@ -869,161 +877,382 @@ class _PermissionsPageState extends State<PermissionsPage> {
     );
   }
 
-  Widget _buildCompactControlBar({
-    required double availableWidth,
-    required List<_PermissionCategory> categories,
-    required List<_PermissionDef> allDefs,
-    required UserModel? currentUser,
-    required int enabledCount,
-    required int totalCount,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    final editingEnabled =
-        !_isSaving &&
-        !_isFetching &&
-        !_isLoadingUsers &&
-        currentUser != null &&
-        !currentUser.isAdmin;
-    final minRowWidth = math.max(availableWidth, 1260.0);
+ Widget _buildCompactControlBar({
+  required double availableWidth,
+  required List<_PermissionCategory> categories,
+  required List<_PermissionDef> allDefs,
+  required UserModel? currentUser,
+  required int enabledCount,
+  required int totalCount,
+}) {
+  final scheme = Theme.of(context).colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.42)),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withOpacity(0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: minRowWidth),
-          child: SizedBox(
-            width: minRowWidth,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 228,
-                  height: 40,
-                  child: DropdownButtonFormField<int>(
-                    key: ValueKey(currentUser?.id),
-                    initialValue: currentUser?.id,
-                    isDense: true,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      hintText: 'Usuario',
-                      prefixIcon: Icon(Icons.person_outline),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                    ),
-                    items: [
-                      for (final user in _users)
-                        DropdownMenuItem<int>(
-                          value: user.id,
-                          child: Text(
-                            '${user.displayLabel} · ${user.roleLabel}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: _isLoadingUsers
-                        ? null
-                        : (value) {
-                            final nextUser = _users
-                                .where((user) => user.id == value)
-                                .firstOrNull;
-                            _changeSelectedUser(nextUser);
-                          },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 140,
-                  height: 40,
-                  child: DropdownButtonFormField<String>(
-                    key: ValueKey(_selectedCategory?.name ?? '__all__'),
-                    initialValue: _selectedCategory?.name ?? '__all__',
-                    isDense: true,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      hintText: 'Modulo',
-                      prefixIcon: Icon(Icons.filter_list_outlined),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                    ),
-                    items: [
-                      const DropdownMenuItem<String>(
-                        value: '__all__',
-                        child: Text('Todos'),
-                      ),
-                      for (final category in categories)
-                        DropdownMenuItem<String>(
-                          value: category.id.name,
-                          child: Text(category.label),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedCategory = value == null || value == '__all__'
-                            ? null
-                            : _UserPermissionCategory.values.firstWhere(
-                                (category) => category.name == value,
-                              );
-                      });
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: TextField(
-                      onChanged: (value) =>
-                          setState(() => _searchQuery = value),
-                      decoration: const InputDecoration(
-                        hintText: 'Buscar permiso o modulo',
-                        prefixIcon: Icon(Icons.search_outlined),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _buildHeaderBadge(
-                  icon: Icons.badge_outlined,
-                  label: currentUser == null
-                      ? 'Sin usuario'
-                      : currentUser.roleLabel,
-                  tone: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                _buildHeaderBadge(
-                  icon: Icons.check_box_outlined,
-                  label: '$enabledCount / $totalCount',
-                  tone: scheme.primary,
-                ),
-                const SizedBox(width: 8),
-                _buildControlActions(editingEnabled, allDefs, currentUser),
-              ],
+  final editingEnabled =
+      !_isSaving &&
+      !_isFetching &&
+      !_isLoadingUsers &&
+      currentUser != null &&
+      !currentUser.isAdmin;
+
+  return Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xFFE2E8F0)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.035),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 940;
+
+        final userSelector = _buildCleanUserSelector(
+          currentUser: currentUser,
+        );
+
+        final categorySelector = _buildCleanCategorySelector(
+          categories: categories,
+        );
+
+        final searchField = SizedBox(
+          height: 40,
+          child: TextField(
+            onChanged: (value) => setState(() => _searchQuery = value),
+            style: const TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 13.2,
+              fontWeight: FontWeight.w600,
+              height: 1,
             ),
+            decoration: InputDecoration(
+              hintText: 'Buscar permiso o módulo',
+              hintStyle: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 12.8,
+                fontWeight: FontWeight.w500,
+              ),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                size: 18,
+                color: Color(0xFF64748B),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 0,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: scheme.primary.withOpacity(0.45),
+                  width: 1.1,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final badgesAndActions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeaderBadge(
+              icon: Icons.badge_outlined,
+              label: currentUser == null ? 'Sin usuario' : currentUser.roleLabel,
+              tone: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            _buildHeaderBadge(
+              icon: Icons.check_box_outlined,
+              label: '$enabledCount / $totalCount',
+              tone: scheme.primary,
+            ),
+            const SizedBox(width: 8),
+            _buildControlActions(editingEnabled, allDefs, currentUser),
+          ],
+        );
+
+        if (isCompact) {
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              userSelector,
+              categorySelector,
+              SizedBox(
+                width: constraints.maxWidth,
+                child: searchField,
+              ),
+              badgesAndActions,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            userSelector,
+            const SizedBox(width: 8),
+            categorySelector,
+            const SizedBox(width: 8),
+            Expanded(child: searchField),
+            const SizedBox(width: 8),
+            badgesAndActions,
+          ],
+        );
+      },
+    ),
+  );
+}
+
+Widget _buildCleanUserSelector({
+  required UserModel? currentUser,
+}) {
+  final selectedLabel = currentUser == null
+      ? 'Seleccionar usuario'
+      : '${currentUser.displayLabel} · ${currentUser.roleLabel}';
+
+  return SizedBox(
+    width: 250,
+    height: 40,
+    child: MenuAnchor(
+      style: _cleanMenuStyle(),
+      builder: (context, controller, child) {
+        return _selectorButton(
+          icon: Icons.person_outline_rounded,
+          label: selectedLabel,
+          enabled: !_isLoadingUsers && _users.isNotEmpty,
+          onTap: () {
+            if (_isLoadingUsers || _users.isEmpty) return;
+
+            if (controller.isOpen) {
+              controller.close();
+            } else {
+              controller.open();
+            }
+          },
+        );
+      },
+      menuChildren: [
+        for (final user in _users)
+          _cleanMenuItem(
+            width: 250,
+            label: '${user.displayLabel} · ${user.roleLabel}',
+            selected: user.id == currentUser?.id,
+            onPressed: () => _changeSelectedUser(user),
+          ),
+      ],
+    ),
+  );
+}
+
+Widget _buildCleanCategorySelector({
+  required List<_PermissionCategory> categories,
+}) {
+  final selectedCategory = _selectedCategory;
+
+  final selectedLabel = selectedCategory == null
+      ? 'Todos'
+      : categories
+            .where((category) => category.id == selectedCategory)
+            .map((category) => category.label)
+            .firstOrNull ??
+          'Todos';
+
+  return SizedBox(
+    width: 156,
+    height: 40,
+    child: MenuAnchor(
+      style: _cleanMenuStyle(),
+      builder: (context, controller, child) {
+        return _selectorButton(
+          icon: Icons.filter_list_rounded,
+          label: selectedLabel,
+          enabled: true,
+          onTap: () {
+            if (controller.isOpen) {
+              controller.close();
+            } else {
+              controller.open();
+            }
+          },
+        );
+      },
+      menuChildren: [
+        _cleanMenuItem(
+          width: 156,
+          label: 'Todos',
+          selected: _selectedCategory == null,
+          onPressed: () {
+            setState(() => _selectedCategory = null);
+          },
+        ),
+        for (final category in categories)
+          _cleanMenuItem(
+            width: 156,
+            label: category.label,
+            selected: _selectedCategory == category.id,
+            onPressed: () {
+              setState(() => _selectedCategory = category.id);
+            },
+          ),
+      ],
+    ),
+  );
+}
+
+MenuStyle _cleanMenuStyle() {
+  return MenuStyle(
+    backgroundColor: const WidgetStatePropertyAll(Colors.white),
+    surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+    elevation: const WidgetStatePropertyAll(0),
+    shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+    padding: const WidgetStatePropertyAll(
+      EdgeInsets.symmetric(vertical: 6),
+    ),
+    shape: WidgetStatePropertyAll(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+    ),
+  );
+}
+
+Widget _selectorButton({
+  required IconData icon,
+  required String label,
+  required bool enabled,
+  required VoidCallback onTap,
+}) {
+  return Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: enabled
+                  ? const Color(0xFF64748B)
+                  : const Color(0xFF94A3B8),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: enabled
+                      ? const Color(0xFF0F172A)
+                      : const Color(0xFF94A3B8),
+                  fontSize: 13.4,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: enabled
+                  ? const Color(0xFF64748B)
+                  : const Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _cleanMenuItem({
+  required double width,
+  required String label,
+  required bool selected,
+  required VoidCallback onPressed,
+}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    child: MenuItemButton(
+      onPressed: onPressed,
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(0, 38)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 10),
+        ),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (selected) return const Color(0xFFEAF2FF);
+          if (states.contains(WidgetState.hovered)) {
+            return const Color(0xFFF8FAFC);
+          }
+          return Colors.white;
+        }),
+        foregroundColor: const WidgetStatePropertyAll(Color(0xFF0F172A)),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
       ),
-    );
-  }
+      child: SizedBox(
+        width: width - 24,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected
+                      ? const Color(0xFF1A56DB)
+                      : const Color(0xFF0F172A),
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  height: 1,
+                ),
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.check_rounded,
+                size: 16,
+                color: Color(0xFF1A56DB),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
   Widget _buildControlActions(
     bool editingEnabled,
@@ -1760,4 +1989,149 @@ class _PermissionsPageState extends State<PermissionsPage> {
       ),
     );
   }
+}
+
+Widget _cleanSelector({
+  required String value,
+  required List<String> items,
+  required ValueChanged<String> onChanged,
+  IconData icon = Icons.tune_rounded,
+  double width = 220,
+  String? tooltip,
+}) {
+  return SizedBox(
+    width: width,
+    height: 40,
+    child: MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: const WidgetStatePropertyAll(Colors.white),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        elevation: const WidgetStatePropertyAll(0),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 6)),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+        ),
+        shadowColor: WidgetStatePropertyAll(
+          Colors.black.withOpacity(0.08),
+        ),
+      ),
+      builder: (context, controller, child) {
+        return Tooltip(
+          message: tooltip ?? value,
+          waitDuration: const Duration(milliseconds: 400),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                if (controller.isOpen) {
+                  controller.close();
+                } else {
+                  controller.open();
+                }
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      icon,
+                      size: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: Color(0xFF64748B),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      menuChildren: items.map((item) {
+        final selected = item == value;
+
+        return MenuItemButton(
+          onPressed: () => onChanged(item),
+          style: ButtonStyle(
+            minimumSize: const WidgetStatePropertyAll(Size(0, 40)),
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+            ),
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (selected) return const Color(0xFFEAF2FF);
+              if (states.contains(WidgetState.hovered)) {
+                return const Color(0xFFF8FAFC);
+              }
+              return Colors.white;
+            }),
+            foregroundColor: const WidgetStatePropertyAll(Color(0xFF0F172A)),
+            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          child: SizedBox(
+            width: width - 24,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected
+                          ? const Color(0xFF1A56DB)
+                          : const Color(0xFF0F172A),
+                      fontSize: 13.2,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      height: 1,
+                    ),
+                  ),
+                ),
+                if (selected) ...[
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: Color(0xFF1A56DB),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    ),
+  );
 }
