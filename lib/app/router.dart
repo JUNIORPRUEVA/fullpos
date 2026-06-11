@@ -35,9 +35,10 @@ import '../features/purchases/ui/purchase_order_create_auto_page.dart';
 import '../features/purchases/ui/purchase_order_create_manual_page.dart';
 import '../features/purchases/ui/purchase_order_receive_page.dart';
 import '../features/purchases/ui/purchase_orders_list_page.dart';
+import '../features/purchases/ui/suppliers_management_pages.dart';
 import '../features/reports/ui/reports_page.dart';
 import '../core/security/authz/blank_permission_gate.dart';
-import '../features/sales/ui/credits_page.dart';
+import '../features/sales/ui/client_credit_pages.dart';
 import '../features/sales/ui/quotes_page.dart';
 import '../features/sales/ui/factura_page.dart';
 import '../features/sales/ui/sales_page.dart';
@@ -461,7 +462,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               permission: Permissions.creditsView,
               autoPromptOnce: false,
               reason: 'Acceso a creditos',
-              child: const CreditsPage(),
+              child: const ClientCreditsPage(),
             ),
           ),
           GoRoute(
@@ -470,7 +471,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               permission: Permissions.creditsView,
               autoPromptOnce: false,
               reason: 'Acceso a creditos',
-              child: const CreditsPage(),
+              child: const ClientCreditsPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/layaways',
+            builder: (context, state) => PermissionGate(
+              permission: Permissions.creditsView,
+              autoPromptOnce: false,
+              reason: 'Acceso a apartados',
+              child: const ClientLayawaysPage(),
             ),
           ),
           GoRoute(
@@ -489,7 +499,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Compras / Órdenes de compra
           GoRoute(
             path: '/purchases',
-            builder: (context, state) => const PurchaseManualPage(),
+            builder: (context, state) => const PurchaseOrdersListPage(),
           ),
           GoRoute(
             path: '/purchases/manual',
@@ -498,6 +508,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/purchases/new',
             builder: (context, state) => const PurchaseOrderCreateManualPage(),
+          ),
+          GoRoute(
+            path: '/suppliers',
+            builder: (context, state) => const SuppliersListPage(),
+          ),
+          GoRoute(
+            path: '/suppliers/new',
+            builder: (context, state) => const SupplierRegistrationPage(),
           ),
           // Alias legacy: mantener el listado original accesible.
           GoRoute(

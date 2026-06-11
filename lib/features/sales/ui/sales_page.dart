@@ -28,14 +28,17 @@ import '../../../core/layout/footer_ticket_controller.dart';
 import '../../../core/layout/topbar_action_bus.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
+import '../../../core/utils/accounting_amount_formatter.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/theme/sales_page_theme.dart';
 import '../../../core/theme/sales_products_theme.dart';
 import '../../../core/widgets/branded_loading_view.dart';
 import '../../cash/providers/cash_providers.dart';
 import '../../cash/data/cash_movement_model.dart';
+import '../../cash/data/cash_repository.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
 import '../../cash/ui/cash_open_dialog.dart';
+import '../../cash/ui/cash_close_dialog.dart';
 import '../../clients/data/client_model.dart';
 import '../../clients/data/clients_repository.dart';
 import '../../clients/ui/widgets/client_form_side_panel.dart';
@@ -282,6 +285,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   void _handleMovementPanelToggle() {
     if (!mounted) return;
+    final pendingAction = TopbarActionBus.consumePendingSalesOverlay();
+    if (pendingAction.movementType != null) {
+      unawaited(_openCashMovementDialogInCenter(pendingAction.movementType!));
+      return;
+    }
+    if (pendingAction.openCurrentCut) {
+      unawaited(_openCurrentCutDialogInCenter());
+      return;
+    }
     setState(() => _showMovementPanel = !_showMovementPanel);
   }
 
@@ -578,6 +590,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
       unawaited(_refreshCashSession());
       unawaited(_ensureSessionBootstrap());
+      final pendingAction = TopbarActionBus.consumePendingSalesOverlay();
+      if (pendingAction.movementType != null) {
+        unawaited(_openCashMovementDialogInCenter(pendingAction.movementType!));
+      } else if (pendingAction.openCurrentCut) {
+        unawaited(_openCurrentCutDialogInCenter());
+      }
     });
 
     _loadScannerConfig();
@@ -1111,7 +1129,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     return null;
   }
 
-  Future<void> _openCashMovement(String type) async {
+  Future<void> _openCashMovementDialogInCenter(String type) async {
     var sessionId = await _ensureActiveShiftOrRedirect(showMessage: true);
     if (sessionId == null) {
       final opened = await CashOpenDialog.show(context);
@@ -1120,15 +1138,72 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
 
     if (!mounted) return;
+    if (sessionId == null) return;
+    final int safeSessionId = sessionId;
 
+    final isIncome = type == CashMovementType.income;
+    final screenSize = MediaQuery.sizeOf(context);
+    final dialogSize = math.min(screenSize.width, screenSize.height) * 0.42;
+    final clampedSize = dialogSize.clamp(340.0, 440.0);
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.3),
+      useSafeArea: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) Navigator.of(dialogContext).pop();
+          },
+          child: Stack(
+            children: [
+              // Blur overlay
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                  child: Container(color: Colors.transparent),
+                ),
+              ),
+              Center(
+                child: _AnimatedCashDialog(
+                  size: clampedSize,
+                  child: _CompactCashMovementForm(
+                    type: type,
+                    sessionId: safeSessionId,
+                    isIncome: isIncome,
+                    onDone: () {
+                      Navigator.of(dialogContext).pop();
+                      _refreshCashSession();
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openCurrentCutDialogInCenter() async {
+    var sessionId = await _ensureActiveShiftOrRedirect(showMessage: true);
     if (sessionId == null) {
-      // Solo mostrar el mensaje si el usuario intenta abrir un movimiento de caja, no al cargar la pantalla.
-      // Si la acción fue disparada por el usuario (por botón, etc.), mostrar el mensaje. Si es por navegación, no hacer nada.
-      // Aquí simplemente retornamos silenciosamente.
-      return;
+      final opened = await CashOpenDialog.show(context);
+      if (opened == true) await _refreshCashSession();
+      sessionId = await _ensureActiveShiftOrRedirect(showMessage: false);
     }
 
-    await CashMovementDialog.show(context, type: type, sessionId: sessionId);
+    if (!mounted || sessionId == null) return;
+
+    await CashCloseDialog.show(
+      context,
+      sessionId: sessionId,
+      logoutAfterClose: false,
+      autoCloseImmediately: false,
+    );
+    if (!mounted) return;
     await _refreshCashSession();
   }
 
@@ -6011,7 +6086,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Movimiento',
+                    'Movimiento de efectivo',
                     style: TextStyle(
                       color: salesDetailTextColor,
                       fontSize: 15,
@@ -6031,7 +6106,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           Divider(height: 1, color: dividerColor),
           const SizedBox(height: 14),
           Text(
-            'Registrar movimientos de caja',
+            'Opciones de efectivo',
             style: TextStyle(
               color: salesDetailTextColor,
               fontSize: 13,
@@ -6040,7 +6115,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           ),
           const SizedBox(height: 6),
           Text(
-            'Accede rápidamente a ingresos y gastos sin ocupar espacio debajo del catálogo.',
+            'Registra ingresos, salidas o consulta el historial de movimientos.',
             style: TextStyle(
               color: salesDetailMutedTextColor,
               fontSize: 12,
@@ -6049,19 +6124,36 @@ class _SalesPageState extends ConsumerState<SalesPage>
           ),
           const SizedBox(height: 18),
           movementCard(
-            title: 'Ingreso',
-            subtitle: 'Registrar entrada de efectivo en caja',
+            title: 'Registrar Ingreso',
+            subtitle: 'Entrada de efectivo a caja',
             icon: Icons.add_circle_outline_rounded,
             accent: status.success,
-            onTap: () => _openCashMovement(CashMovementType.income),
+            onTap: () {
+              setState(() => _showMovementPanel = false);
+              _openCashMovementDialogInCenter(CashMovementType.income);
+            },
           ),
           const SizedBox(height: 12),
           movementCard(
-            title: 'Gastos',
-            subtitle: 'Registrar salida o gasto operativo',
+            title: 'Registrar Salida',
+            subtitle: 'Salida o gasto operativo',
             icon: Icons.remove_circle_outline_rounded,
             accent: status.warning,
-            onTap: () => _openCashMovement(CashMovementType.outcome),
+            onTap: () {
+              setState(() => _showMovementPanel = false);
+              _openCashMovementDialogInCenter(CashMovementType.outcome);
+            },
+          ),
+          const SizedBox(height: 12),
+          movementCard(
+            title: 'Movimiento de Efectivo',
+            subtitle: 'Ver historial de movimientos',
+            icon: Icons.history_rounded,
+            accent: const Color(0xFF2563EB),
+            onTap: () {
+              setState(() => _showMovementPanel = false);
+              context.push('/cash/history');
+            },
           ),
           const Spacer(),
         ],
@@ -11035,4 +11127,433 @@ class _ShineSweepPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ShineSweepPainter oldDelegate) =>
       oldDelegate.progress != progress || oldDelegate.color != color;
+}
+
+/// Widget animado que envuelve el diálogo de efectivo con escala y fade.
+class _AnimatedCashDialog extends StatefulWidget {
+  final double size;
+  final Widget child;
+
+  const _AnimatedCashDialog({
+    required this.size,
+    required this.child,
+  });
+
+  @override
+  State<_AnimatedCashDialog> createState() => _AnimatedCashDialogState();
+}
+
+class _AnimatedCashDialogState extends State<_AnimatedCashDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _scaleAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Material(
+          color: Theme.of(context).colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 12,
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: widget.size,
+            height: widget.size,
+            child: widget.child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Formulario compacto para registrar ingreso/salida de efectivo dentro del diálogo cuadrado centrado.
+class _CompactCashMovementForm extends ConsumerStatefulWidget {
+  final String type;
+  final int sessionId;
+  final bool isIncome;
+  final VoidCallback onDone;
+
+  const _CompactCashMovementForm({
+    required this.type,
+    required this.sessionId,
+    required this.isIncome,
+    required this.onDone,
+  });
+
+  @override
+  ConsumerState<_CompactCashMovementForm> createState() =>
+      _CompactCashMovementFormState();
+}
+
+class _CompactCashMovementFormState
+    extends ConsumerState<_CompactCashMovementForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  final _reasonController = TextEditingController();
+  bool _isLoading = false;
+
+  bool get isIncome => widget.isIncome;
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveMovement() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final authorized = await requireAuthorizationIfNeeded(
+      context: context,
+      action: AppActions.cashMovement,
+      resourceType: 'cash_session',
+      resourceId: widget.sessionId.toString(),
+      reason: isIncome ? 'Entrada de efectivo' : 'Salida de efectivo',
+    );
+    if (!mounted) return;
+    if (!authorized) return;
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final amount = AccountingAmountFormatter.parse(_amountController.text);
+      final reason = _reasonController.text.trim();
+      final userId = await SessionManager.userId() ?? 1;
+
+      if (!isIncome) {
+        final summary = await CashRepository.buildSummary(
+          sessionId: widget.sessionId,
+        );
+        final available = summary.expectedCash;
+
+        if (amount > available + 0.009) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+
+          final decision = await showDialog<String>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Caja sin efectivo suficiente'),
+              content: Text(
+                'Disponible en caja: RD\$${available.toStringAsFixed(2)}\n'
+                'Intentas retirar: RD\$${amount.toStringAsFixed(2)}\n\n'
+                'Ingresa efectivo antes de registrar este retiro.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'add'),
+                  child: const Text('Agregar efectivo'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'cancel'),
+                  child: const Text('Cancelar'),
+                ),
+              ],
+            ),
+          );
+
+          if (!mounted) return;
+          if (decision == 'add') {
+            await CashMovementDialog.show(
+              context,
+              type: CashMovementType.income,
+              sessionId: widget.sessionId,
+            );
+          }
+
+          return;
+        }
+      }
+
+      await ref
+          .read(activeSessionControllerProvider.notifier)
+          .addMovement(
+            sessionId: widget.sessionId,
+            type: widget.type,
+            amount: amount,
+            movementType: isIncome
+                ? CashMovementAccountingType.transfer
+                : CashMovementAccountingType.expense,
+            affectsProfit: !isIncome,
+            reason: reason.isEmpty
+                ? (isIncome ? 'Entrada de efectivo' : 'Salida de efectivo')
+                : reason,
+            userId: userId,
+          );
+
+      if (mounted) {
+        widget.onDone();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isIncome
+                  ? 'Entrada de RD\$${amount.toStringAsFixed(2)} registrada'
+                  : 'Salida de RD\$${amount.toStringAsFixed(2)} registrada',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
+        );
+      }
+    } catch (e, st) {
+      if (mounted) {
+        await ErrorHandler.instance.handle(
+          e,
+          stackTrace: st,
+          context: context,
+          onRetry: _saveMovement,
+          module: 'cash/movement',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final primaryColor = isIncome ? scheme.primary : scheme.error;
+    final onPrimaryColor = isIncome ? scheme.onPrimary : scheme.onError;
+    final title = isIncome ? 'Registrar Ingreso' : 'Registrar Salida';
+    final icon = isIncome
+        ? Icons.add_circle_outline_rounded
+        : Icons.remove_circle_outline_rounded;
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: primaryColor, size: 26),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  icon: Icon(Icons.close_rounded,
+                      color: scheme.onSurface.withOpacity(0.6)),
+                  splashRadius: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Monto
+            Text(
+              'Monto',
+              style: TextStyle(
+                color: scheme.onSurface.withOpacity(0.7),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+                TextFormField(
+              controller: _amountController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                AccountingAmountFormatter(allowEmpty: false),
+              ],
+              autofocus: true,
+              style: TextStyle(
+                color: primaryColor,
+                    fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+              decoration: InputDecoration(
+                prefixText: r'$ ',
+                prefixStyle: TextStyle(
+                  color: primaryColor,
+                      fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+                hintText: '0.00',
+                hintStyle: TextStyle(
+                  color: scheme.onSurface.withOpacity(0.25),
+                      fontSize: 26,
+                ),
+                filled: true,
+                fillColor: scheme.surfaceContainerHighest,
+                border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: primaryColor, width: 1.25),
+                ),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Ingrese el monto';
+                }
+                final amount = AccountingAmountFormatter.parse(value);
+                if (amount <= 0) {
+                  return 'Monto debe ser mayor a 0';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Motivo
+            Text(
+              'Motivo',
+              style: TextStyle(
+                color: scheme.onSurface.withOpacity(0.7),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: TextFormField(
+                controller: _reasonController,
+                maxLines: 3,
+                style: TextStyle(
+                  color: scheme.onSurface,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: isIncome
+                      ? 'Ej: Cambio adicional, ajuste...'
+                      : 'Ej: Pago de proveedor, gastos...',
+                  hintStyle: TextStyle(
+                    color: scheme.onSurface.withOpacity(0.4),
+                    fontSize: 13,
+                  ),
+                  filled: true,
+                  fillColor: scheme.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Ingrese el motivo';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Botones
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed:
+                        _isLoading ? null : () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.onSurface.withOpacity(0.8),
+                      side: BorderSide(
+                          color: scheme.outlineVariant.withOpacity(0.65)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text('Cancelar',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _saveMovement,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: onPrimaryColor,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      elevation: 0,
+                    ),
+                    icon: _isLoading
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  onPrimaryColor),
+                            ),
+                          )
+                        : Icon(icon, size: 20),
+                    label: Text(
+                      isIncome ? 'Registrar Ingreso' : 'Registrar Salida',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

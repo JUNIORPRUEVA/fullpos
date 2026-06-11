@@ -36,16 +36,16 @@ const String _kReportsRoute = '/reports';
 
 const String _kClientsRoute = '/clients';
 const String _kClientCreditsRoute = '/credits';
-const String _kClientLayawaysRoute = ''; // No existe aún
+const String _kClientLayawaysRoute = '/layaways';
 
-const String _kMoneyIncomeRoute = '/cash/expenses';
-const String _kMoneyOutcomeRoute = '/cash/expenses';
+const String _kMoneyIncomeRoute = '/sales';
+const String _kMoneyOutcomeRoute = '/sales';
 const String _kMoneyHistoryRoute = '/cash/history';
 
 const String _kPurchaseCreateRoute = '/purchases/new';
 const String _kPurchaseHistoryRoute = '/purchases';
-const String _kSupplierCreateRoute = ''; // No existe aún
-const String _kSuppliersHistoryRoute = ''; // No existe aún
+const String _kSupplierCreateRoute = '/suppliers/new';
+const String _kSuppliersHistoryRoute = '/suppliers';
 
 const String _kElectronicBillingRoute = '/electronic-documents';
 
@@ -142,22 +142,19 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
     });
   }
 
-  void _handleMovementToggle() {
-    TopbarActionBus.toggleSalesMovementPanel();
-    _closeDrawer();
-  }
-
-  void _openComingSoon(String moduleName) {
-    _closeDrawer();
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        content: Text('$moduleName disponible próximamente'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      ),
-    );
+  void _closeDrawerThen(VoidCallback action) {
+    final router = GoRouter.of(context);
+    _controller.reverse().then((_) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      action();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        router.go(_kSalesRoute);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          TopbarActionBus.dispatchPendingSalesOverlay();
+        });
+      });
+    });
   }
 
   @override
@@ -205,7 +202,12 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                       child: Column(
                         children: [
                           _DrawerHeader(onClose: _closeDrawer),
-                          _DrawerCurrentShift(onTap: () => _navigate('/cash')),
+                          _DrawerCurrentShift(
+                            onTap: () {
+                              TopbarActionBus.queueSalesCurrentCutView();
+                              _closeDrawerThen(() {});
+                            },
+                          ),
                           Expanded(
                             child: ListView(
                               padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
@@ -348,8 +350,9 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                         PhosphorIconsStyle.regular,
                                       ),
                                       title: 'Apartados',
-                                      isActive: false,
-                                      onTap: () => _openComingSoon('Apartados'),
+                                      isActive: _isActive(_kClientLayawaysRoute),
+                                      onTap: () =>
+                                          _navigate(_kClientLayawaysRoute),
                                     ),
                                   ],
                                 ),
@@ -382,35 +385,35 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                         PhosphorIconsStyle.regular,
                                       ),
                                       title: 'Registrar ingreso',
-                                      isActive: _isActive(_kMoneyIncomeRoute),
-                                      onTap: () =>
-                                          _navigate(_kMoneyIncomeRoute),
+                                      isActive: false,
+                                      onTap: () {
+                                        TopbarActionBus.queueSalesCashMovementDialog(
+                                          'income',
+                                        );
+                                        _closeDrawerThen(() {});
+                                      },
                                     ),
                                     _DrawerSubItem(
                                       icon: PhosphorIcons.arrowCircleUp(
                                         PhosphorIconsStyle.regular,
                                       ),
                                       title: 'Registrar salida',
-                                      isActive: _isActive(_kMoneyOutcomeRoute),
-                                      onTap: () =>
-                                          _navigate(_kMoneyOutcomeRoute),
+                                      isActive: false,
+                                      onTap: () {
+                                        TopbarActionBus.queueSalesCashMovementDialog(
+                                          'outcome',
+                                        );
+                                        _closeDrawerThen(() {});
+                                      },
                                     ),
                                     _DrawerSubItem(
                                       icon: PhosphorIcons.clockCounterClockwise(
                                         PhosphorIconsStyle.regular,
                                       ),
-                                      title: 'Historial de movimiento',
+                                      title: 'Movimiento de efectivo',
                                       isActive: _isActive(_kMoneyHistoryRoute),
                                       onTap: () =>
                                           _navigate(_kMoneyHistoryRoute),
-                                    ),
-                                    _DrawerSubItem(
-                                      icon: PhosphorIcons.lightning(
-                                        PhosphorIconsStyle.regular,
-                                      ),
-                                      title: 'Movimiento rápido',
-                                      isActive: false,
-                                      onTap: _handleMovementToggle,
                                     ),
                                   ],
                                 ),
@@ -455,7 +458,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                       icon: PhosphorIcons.listChecks(
                                         PhosphorIconsStyle.regular,
                                       ),
-                                      title: 'Historial compra',
+                                      title: 'Historial de compras',
                                       isActive: _isActive(
                                         _kPurchaseHistoryRoute,
                                       ),
@@ -466,20 +469,23 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                       icon: PhosphorIcons.userPlus(
                                         PhosphorIconsStyle.regular,
                                       ),
-                                      title: 'Agregar suplidor',
-                                      isActive: false,
+                                      title: 'Registrar suplidor',
+                                      isActive: _isActive(
+                                        _kSupplierCreateRoute,
+                                      ),
                                       onTap: () =>
-                                          _openComingSoon('Agregar suplidor'),
+                                          _navigate(_kSupplierCreateRoute),
                                     ),
                                     _DrawerSubItem(
                                       icon: PhosphorIcons.truck(
                                         PhosphorIconsStyle.regular,
                                       ),
-                                      title: 'Historial de suplidores',
-                                      isActive: false,
-                                      onTap: () => _openComingSoon(
-                                        'Historial de suplidores',
+                                      title: 'Ver suplidores',
+                                      isActive: _isActive(
+                                        _kSuppliersHistoryRoute,
                                       ),
+                                      onTap: () =>
+                                          _navigate(_kSuppliersHistoryRoute),
                                     ),
                                   ],
                                 ),

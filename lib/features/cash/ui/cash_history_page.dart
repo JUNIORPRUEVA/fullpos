@@ -49,8 +49,8 @@ class _SessionDetailData {
 enum _CortesHeaderAction { pickRange, showSessions, showMovements }
 
 class _CashHistoryPageState extends State<CashHistoryPage> {
-  static const double _compactMaxContentWidth = 1120;
-  static const double _wideMaxContentWidth = 1320;
+  static const double _compactMaxContentWidth = 1080;
+  static const double _wideMaxContentWidth = 1240;
 
   late DateTime _from;
   late DateTime _to;
@@ -305,6 +305,62 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SizedBox(width: 520, child: row),
+      ),
+    );
+  }
+
+  Widget _buildPageHero(
+    BuildContext context, {
+    required EdgeInsets contentPadding,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        contentPadding.left,
+        contentPadding.top,
+        contentPadding.right,
+        14,
+      ),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'CAJA',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Movimiento de efectivo',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Consulta sesiones, entradas y salidas en una vista más compacta, limpia y fácil de revisar.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurface.withOpacity(0.66),
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -985,11 +1041,12 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             length: 2,
             child: Column(
               children: [
+                _buildPageHero(context, contentPadding: padding),
                 Builder(
                   builder: (headerContext) => _buildTopHeaderLine(
                     headerContext,
                     isNarrow: isNarrow,
-                    contentPadding: padding,
+                    contentPadding: padding.copyWith(top: 0),
                   ),
                 ),
                 Expanded(
