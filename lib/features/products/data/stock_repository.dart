@@ -13,15 +13,15 @@ import '../models/stock_movement_model.dart';
 
 /// Repositorio para operaciones de movimientos de stock
 class StockRepository {
-    String? _sanitizeSyncImageUrl(String? rawUrl) {
-      final value = rawUrl?.trim();
-      if (value == null || value.isEmpty) return null;
-      if (value.startsWith('/uploads/')) return value;
-      final uri = Uri.tryParse(value);
-      if (uri == null) return null;
-      if (uri.scheme == 'http' || uri.scheme == 'https') return value;
-      return null;
-    }
+  String? _sanitizeSyncImageUrl(String? rawUrl) {
+    final value = rawUrl?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('/uploads/')) return value;
+    final uri = Uri.tryParse(value);
+    if (uri == null) return null;
+    if (uri.scheme == 'http' || uri.scheme == 'https') return value;
+    return null;
+  }
 
   final ProductSyncOutboxRepository _productOutbox =
       ProductSyncOutboxRepository();
@@ -174,7 +174,7 @@ class StockRepository {
 
       // 3. Actualizar el stock del producto
       final now = DateTime.now().millisecondsSinceEpoch;
-      await txn.update(
+      final updatedRows = await txn.update(
         DbTables.products,
         {
           'stock': newStock,
@@ -188,6 +188,11 @@ class StockRepository {
         where: 'id = ?',
         whereArgs: [productId],
       );
+      if (updatedRows != 1) {
+        throw StateError(
+          'No se pudo confirmar la actualización de stock del producto $productId.',
+        );
+      }
 
       updatedProduct = ProductModel.fromMap({
         ...currentProduct.toMap(),
@@ -219,12 +224,30 @@ class StockRepository {
 
       final movementMap = movement.toMap();
 
-      try {
-        final columns = await _tableColumns(txn, DbTables.stockMovements);
-        movementMap.removeWhere((key, _) => !columns.contains(key));
-        movementId = await txn.insert(DbTables.stockMovements, movementMap);
-      } catch (_) {
-        movementId = 0;
+      final columns = await _tableColumns(txn, DbTables.stockMovements);
+      movementMap.removeWhere((key, _) => !columns.contains(key));
+      movementId = await txn.insert(DbTables.stockMovements, movementMap);
+      if (movementId <= 0) {
+        throw StateError(
+          'El stock no se modificó porque no pudo registrarse la auditoría.',
+        );
+      }
+
+      final verification = await txn.query(
+        DbTables.products,
+        columns: ['stock'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1,
+      );
+      final persistedStock = verification.isEmpty
+          ? null
+          : (verification.first['stock'] as num?)?.toDouble();
+      if (persistedStock == null ||
+          (persistedStock - newStock).abs() > 0.0001) {
+        throw StateError(
+          'La verificación del stock falló. Esperado: $newStock, guardado: $persistedStock.',
+        );
       }
 
       if (updatedProduct != null) {
@@ -240,7 +263,9 @@ class StockRepository {
             'serverProductId': updatedProduct!.serverId,
             'operationType': 'stock',
             'baseVersion': updatedProduct!.version,
-            'occurredAt': updatedProduct!.localUpdatedAt.toUtc().toIso8601String(),
+            'occurredAt': updatedProduct!.localUpdatedAt
+                .toUtc()
+                .toIso8601String(),
             'lastModifiedBy': updatedProduct!.lastModifiedBy,
             'product': {
               'businessId': updatedProduct!.businessId,

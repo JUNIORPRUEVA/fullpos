@@ -1172,7 +1172,10 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
                   ),
                   TextSpan(
                     text: _numberFormat.format(previewStock),
-                    style: TextStyle(fontWeight: FontWeight.w900, color: color),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
                   ),
                 ],
               ),
@@ -1191,15 +1194,19 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
     return Expanded(
       flex: flex,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Text(
-          label,
+          label.toUpperCase(),
           textAlign: align,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 11.5,
+            fontSize: 11,
+            height: 1.0,
             fontWeight: FontWeight.w800,
             color: Color(0xFF64748B),
-            letterSpacing: 0.2,
+            letterSpacing: 0.35,
           ),
         ),
       ),
@@ -1223,11 +1230,13 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+              height: 62,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
               decoration: BoxDecoration(
+                color: Colors.white,
                 border: Border(
                   bottom: BorderSide(
-                    color: scheme.outlineVariant.withOpacity(0.4),
+                    color: scheme.outlineVariant.withOpacity(0.38),
                   ),
                 ),
               ),
@@ -1247,43 +1256,62 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text(
-                    'Productos',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'Inter',
-                      color: const Color(0xFF0F172A),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Productos',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            fontFamily: 'Inter',
+                            color: const Color(0xFF0F172A),
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${products.length} resultados disponibles',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF64748B),
+                            height: 1.1,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
-                      color: scheme.primary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${products.length} resultados',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w800,
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color(0xFFE2E8F0),
                       ),
+                    ),
+                    child: Icon(
+                      Icons.inventory_2_outlined,
+                      size: 16,
+                      color: scheme.primary,
                     ),
                   ),
                 ],
               ),
             ),
+
             Container(
-              height: 44,
+              height: 46,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
                 border: Border(
                   bottom: BorderSide(
-                    color: scheme.outlineVariant.withOpacity(0.4),
+                    color: Color(0xFFE2E8F0),
                   ),
                 ),
               ),
@@ -1295,39 +1323,28 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
                   _headerCell('Stock', flex: 1, align: TextAlign.right),
                   _headerCell('Mínimo', flex: 1, align: TextAlign.right),
                   _headerCell('Estado', flex: 2),
-                  SizedBox(
-                    width: isCompact ? 80 : 96,
-                    child: const Text(
-                      'Acción',
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
+
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : products.isEmpty
-                  ? _buildEmptyProductsState(theme, scheme)
-                  : ListView.builder(
-                      itemCount: products.length,
-                      padding: EdgeInsets.zero,
-                      itemBuilder: (context, index) {
-                        return _buildProductRow(
-                          theme: theme,
-                          scheme: scheme,
-                          product: products[index],
-                          canAdjustStock: canAdjustStock,
-                          isCompact: isCompact,
-                        );
-                      },
-                    ),
+                      ? _buildEmptyProductsState(theme, scheme)
+                      : ListView.builder(
+                          itemCount: products.length,
+                          padding: EdgeInsets.zero,
+                          itemBuilder: (context, index) {
+                            return _buildProductRow(
+                              theme: theme,
+                              scheme: scheme,
+                              product: products[index],
+                              canAdjustStock: canAdjustStock,
+                              isCompact: isCompact,
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -1361,7 +1378,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
           ),
         ],
       ),
-    );
+     );
   }
 
   Widget _buildProductRow({
@@ -1488,26 +1505,6 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: isCompact ? 80 : 96,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: IconButton(
-                    onPressed: canAdjustStock
-                        ? () => _openAdjustDialog(product)
-                        : null,
-                    tooltip: 'Ajustar stock',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.tune_rounded,
-                      size: 20,
-                      color: canAdjustStock
-                          ? scheme.primary
-                          : scheme.onSurface.withOpacity(0.3),
                     ),
                   ),
                 ),

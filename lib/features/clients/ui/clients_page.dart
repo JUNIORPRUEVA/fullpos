@@ -13,8 +13,8 @@ import '../data/client_model.dart';
 import '../data/clients_repository.dart';
 import '../../sales/data/sales_repository.dart';
 import 'client_details_dialog.dart';
-import 'client_form_dialog.dart';
 import 'package:fullpos/features/clients/ui/widgets/client_row_tile.dart';
+import 'package:fullpos/features/clients/ui/widgets/client_form_side_panel.dart';
 
 /// Filtros para la lista de clientes
 class ClientFilters {
@@ -82,7 +82,6 @@ class _ClientsPageState extends State<ClientsPage> {
   List<ClientModel> _clients = [];
   ClientModel? _selectedClient;
   int? _selectedClientId;
-  bool _showDetailsPanel = false;
   bool _isLoading = false;
 
   @override
@@ -121,73 +120,75 @@ class _ClientsPageState extends State<ClientsPage> {
         orderBy: _filters.orderBy,
       );
 
-      if (mounted) {
-        setState(() {
-          _clients = clients;
-          if (clients.isEmpty) {
+      if (!mounted) return;
+
+      setState(() {
+        _clients = clients;
+
+        if (clients.isEmpty) {
+          _selectedClient = null;
+          _selectedClientId = null;
+        } else {
+          final currentId = _selectedClientId;
+
+          if (currentId != null) {
+            final match = clients.firstWhere(
+              (client) => client.id == currentId,
+              orElse: () => clients.first,
+            );
+            _selectedClient = match;
+            _selectedClientId = match.id;
+          } else if (_selectedClient != null) {
+            final fallback = clients.firstWhere(
+              (client) => client.id == _selectedClient?.id,
+              orElse: () => clients.first,
+            );
+            _selectedClient = fallback;
+            _selectedClientId = fallback.id;
+          } else {
             _selectedClient = null;
             _selectedClientId = null;
-            _showDetailsPanel = false;
-          } else {
-            final currentId = _selectedClientId;
-            if (currentId != null) {
-              final match = clients.firstWhere(
-                (c) => c.id == currentId,
-                orElse: () => clients.first,
-              );
-              _selectedClient = match;
-              _selectedClientId = match.id;
-            } else if (_selectedClient != null) {
-              final fallback = clients.firstWhere(
-                (c) => c.id == _selectedClient?.id,
-                orElse: () => clients.first,
-              );
-              _selectedClient = fallback;
-              _selectedClientId = fallback.id;
-            } else {
-              _selectedClient = null;
-              _selectedClientId = null;
-            }
           }
-          _isLoading = false;
-        });
-      }
+        }
+
+        _isLoading = false;
+      });
     } catch (e, st) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _loadClients,
-          module: 'clients/list',
-        );
-      }
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _loadClients,
+        module: 'clients/list',
+      );
     }
   }
 
   Future<void> _showClientDialog([ClientModel? client]) async {
     final scheme = Theme.of(context).colorScheme;
-    final result = await showDialog<ClientModel>(
-      context: context,
-      builder: (context) => ClientFormDialog(client: client),
+    final result = await showClientFormSidePanel(
+      context,
+      initialClient: client,
     );
 
-    if (result != null) {
-      _loadClients();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              client == null
-                  ? 'Cliente creado exitosamente'
-                  : 'Cliente actualizado exitosamente',
-            ),
-            backgroundColor: scheme.tertiary,
-          ),
-        );
-      }
-    }
+    if (result == null) return;
+
+    await _loadClients();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          client == null
+              ? 'Cliente creado exitosamente'
+              : 'Cliente actualizado exitosamente',
+        ),
+        backgroundColor: scheme.tertiary,
+      ),
+    );
   }
 
   void _showClientDetails(ClientModel client) {
@@ -199,57 +200,57 @@ class _ClientsPageState extends State<ClientsPage> {
 
   Future<void> _toggleActive(ClientModel client) async {
     final scheme = Theme.of(context).colorScheme;
+
     try {
       await ClientsRepository.toggleActive(client.id!, !client.isActive);
-      _loadClients();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              client.isActive ? 'Cliente desactivado' : 'Cliente activado',
-            ),
-            backgroundColor: scheme.tertiary,
+      await _loadClients();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            client.isActive ? 'Cliente desactivado' : 'Cliente activado',
           ),
-        );
-      }
+          backgroundColor: scheme.tertiary,
+        ),
+      );
     } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _toggleActive(client),
-          module: 'clients/toggle_active',
-        );
-      }
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: () => _toggleActive(client),
+        module: 'clients/toggle_active',
+      );
     }
   }
 
   Future<void> _toggleCredit(ClientModel client) async {
     final scheme = Theme.of(context).colorScheme;
+
     try {
       await ClientsRepository.toggleCredit(client.id!, !client.hasCredit);
-      _loadClients();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              client.hasCredit ? 'Crédito desactivado' : 'Crédito activado',
-            ),
-            backgroundColor: scheme.tertiary,
+      await _loadClients();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            client.hasCredit ? 'Crédito desactivado' : 'Crédito activado',
           ),
-        );
-      }
+          backgroundColor: scheme.tertiary,
+        ),
+      );
     } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _toggleCredit(client),
-          module: 'clients/toggle_credit',
-        );
-      }
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: () => _toggleCredit(client),
+        module: 'clients/toggle_credit',
+      );
     }
   }
 
@@ -274,54 +275,53 @@ class _ClientsPageState extends State<ClientsPage> {
       ),
     );
 
-    if (confirm == true) {
-      try {
-        final authorized = await requireAuthorizationIfNeeded(
-          context: context,
-          action: AppActions.deleteClient,
-          resourceType: 'client',
-          resourceId: client.id?.toString(),
-          reason: 'Eliminar cliente',
-        );
-        if (!authorized) return;
+    if (confirm != true) return;
 
-        await ClientsRepository.delete(client.id!);
-        _loadClients();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Cliente eliminado'),
-              backgroundColor: scheme.tertiary,
-            ),
-          );
-        }
-      } catch (e, st) {
-        if (mounted) {
-          await ErrorHandler.instance.handle(
-            e,
-            stackTrace: st,
-            context: context,
-            onRetry: () => _deleteClient(client),
-            module: 'clients/delete',
-          );
-        }
-      }
+    try {
+      final authorized = await requireAuthorizationIfNeeded(
+        context: context,
+        action: AppActions.deleteClient,
+        resourceType: 'client',
+        resourceId: client.id?.toString(),
+        reason: 'Eliminar cliente',
+      );
+
+      if (!authorized) return;
+
+      await ClientsRepository.delete(client.id!);
+      await _loadClients();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Cliente eliminado'),
+          backgroundColor: scheme.tertiary,
+        ),
+      );
+    } catch (e, st) {
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: () => _deleteClient(client),
+        module: 'clients/delete',
+      );
     }
   }
 
   Future<void> _exportClientsToExcel() async {
     final scheme = Theme.of(context).colorScheme;
-    try {
-      // Crear contenido CSV
-      final StringBuffer csvBuffer = StringBuffer();
 
-      // Encabezados
+    try {
+      final csvBuffer = StringBuffer();
+
       csvBuffer.writeln(
         'ID,Nombre,Teléfono,Dirección,RNC,Cédula,Estado,Crédito,Fecha Registro',
       );
 
-      // Datos de clientes
       final dateFormat = DateFormat('dd/MM/yyyy');
+
       for (final client in _clients) {
         final status = client.isActive ? 'Activo' : 'Inactivo';
         final credit = client.hasCredit ? 'Sí' : 'No';
@@ -329,7 +329,6 @@ class _ClientsPageState extends State<ClientsPage> {
           DateTime.fromMillisecondsSinceEpoch(client.createdAtMs),
         );
 
-        // Escapar comillas en valores
         final nombre = '"${client.nombre.replaceAll('"', '""')}"';
         final direccion = '"${(client.direccion ?? '').replaceAll('"', '""')}"';
 
@@ -338,68 +337,247 @@ class _ClientsPageState extends State<ClientsPage> {
         );
       }
 
-      // Obtener directorio de descargas
-      final Directory? downloadsDir = await getDownloadsDirectory();
+      final downloadsDir = await getDownloadsDirectory();
+
       if (downloadsDir == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'No se pudo acceder al directorio de descargas',
-              ),
-              backgroundColor: scheme.error,
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'No se pudo acceder al directorio de descargas',
             ),
-          );
-        }
+            backgroundColor: scheme.error,
+          ),
+        );
         return;
       }
 
-      // Crear archivo
-      final String timestamp = DateFormat(
-        'yyyyMMdd_HHmmss',
-      ).format(DateTime.now());
-      final File file = File('${downloadsDir.path}/Clientes_$timestamp.csv');
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File('${downloadsDir.path}/Clientes_$timestamp.csv');
 
       await file.writeAsString(csvBuffer.toString());
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Archivo exportado: ${file.path}'),
-            backgroundColor: scheme.tertiary,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Archivo exportado: ${file.path}'),
+          backgroundColor: scheme.tertiary,
+        ),
+      );
     } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _exportClientsToExcel,
-          module: 'clients/export',
-        );
-      }
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _exportClientsToExcel,
+        module: 'clients/export',
+      );
     }
   }
 
-  void _showFiltersDialog() {
-    showDialog(
+  void _showFiltersSidePanel() {
+    showGeneralDialog<void>(
       context: context,
-      builder: (context) => _FiltersDialog(
-        filters: _filters,
-        onApply: () {
-          Navigator.pop(context);
-          _loadClients();
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar filtros',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 392,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    offset: const Offset(-8, 0),
+                  ),
+                ],
+              ),
+              child: _FiltersSidePanel(
+                filters: _filters,
+                onApply: () {
+                  Navigator.pop(context);
+                  _loadClients();
+                },
+                onClear: () {
+                  setState(() {
+                    _filters.reset();
+                    _searchController.clear();
+                  });
+                  Navigator.pop(context);
+                  _loadClients();
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
+    );
+  }
+
+  void _showClientDetailsSidePanel(ClientModel client) {
+    if (!mounted) return;
+
+    setState(() {
+      _selectedClient = client;
+      _selectedClientId = client.id;
+    });
+
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar ficha del cliente',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 392,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    offset: const Offset(-8, 0),
+                  ),
+                ],
+              ),
+              child: _ClientSideDetailsPanel(
+                client: client,
+                onClose: () => Navigator.of(context).pop(),
+                onEdit: () {
+                  Navigator.of(context).pop();
+                  _showClientDialog(client);
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
+    );
+  }
+
+  Widget _buildClientsActionsMenu() {
+    return SizedBox(
+      height: 48,
+      child: PopupMenuButton<String>(
+        tooltip: 'Acciones',
+        onSelected: (value) {
+          switch (value) {
+            case 'new':
+              _showClientDialog();
+              break;
+            case 'export':
+              _exportClientsToExcel();
+              break;
+            case 'details':
+              if (_selectedClient != null) {
+                _showClientDetailsSidePanel(_selectedClient!);
+              }
+              break;
+          }
         },
-        onClear: () {
-          setState(() {
-            _filters.reset();
-            _searchController.clear();
-          });
-          Navigator.pop(context);
-          _loadClients();
-        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'new',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.add_rounded),
+              title: Text('Nuevo cliente'),
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'export',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.download_rounded),
+              title: Text('Exportar clientes'),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'details',
+            enabled: _selectedClient != null,
+            child: ListTile(
+              dense: true,
+              leading: const Icon(Icons.visibility_outlined),
+              title: const Text('Abrir ficha'),
+            ),
+          ),
+        ],
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A56DB),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF1A56DB)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Acciones',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.expand_more_rounded, color: Colors.white, size: 18),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -412,8 +590,8 @@ class _ClientsPageState extends State<ClientsPage> {
     final scheme = theme.colorScheme;
 
     final total = _clients.length;
-    final activeCount = _clients.where((c) => c.isActive).length;
-    final creditCount = _clients.where((c) => c.hasCredit).length;
+    final activeCount = _clients.where((client) => client.isActive).length;
+    final creditCount = _clients.where((client) => client.hasCredit).length;
 
     Widget summaryBadge({
       required String label,
@@ -424,10 +602,10 @@ class _ClientsPageState extends State<ClientsPage> {
     }) {
       return Expanded(
         child: Container(
-          height: 42,
+          height: 38,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: backgroundColor ?? scheme.surface,
+            color: backgroundColor ?? Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: borderColor),
           ),
@@ -450,7 +628,7 @@ class _ClientsPageState extends State<ClientsPage> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                   color: textColor ?? scheme.onSurface,
                 ),
               ),
@@ -464,19 +642,35 @@ class _ClientsPageState extends State<ClientsPage> {
       height: 48,
       child: TextField(
         controller: _searchController,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
         decoration: InputDecoration(
-          hintText: 'Buscar cliente por nombre, teléfono o RNC...',
-          prefixIcon: const Icon(Icons.search, size: 18),
+          hintText: 'Buscar cliente, teléfono, RNC o cédula',
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 20,
+            color: scheme.onSurface.withOpacity(0.48),
+          ),
           isDense: true,
           filled: true,
-          fillColor: scheme.surface,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(color: scheme.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF1A56DB), width: 1.6),
           ),
           suffixIcon: _searchController.text.trim().isNotEmpty
               ? IconButton(
@@ -488,225 +682,113 @@ class _ClientsPageState extends State<ClientsPage> {
                     });
                     _loadClients();
                   },
-                  icon: const Icon(Icons.clear, size: 18),
+                  icon: const Icon(Icons.close_rounded, size: 18),
                 )
               : null,
         ),
         onChanged: (value) {
-          setState(() {
-            _filters.query = value;
-          });
+          setState(() => _filters.query = value);
+
           Future.delayed(const Duration(milliseconds: 500), () {
             if (!mounted) return;
-            if (_filters.query == value) {
-              _loadClients();
-            }
+            if (_filters.query == value) _loadClients();
           });
         },
       ),
     );
 
-    final selectedName = _selectedClient?.nombre;
-
-    Widget panelButton() {
-      return SizedBox(
-        height: 48,
-        child: OutlinedButton.icon(
-          onPressed: isWide && _selectedClient != null
-              ? () {
-                  setState(() {
-                    _showDetailsPanel = !_showDetailsPanel;
-                  });
-                }
-              : null,
-          icon: Icon(
-            _showDetailsPanel
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
-            size: 18,
-          ),
-          label: Text(_showDetailsPanel ? 'Ocultar ficha' : 'Abrir ficha'),
-          style: OutlinedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget selectedBadge() {
-      return Container(
-        height: 42,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: scheme.primary.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: scheme.primary.withOpacity(0.20)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.person_outline, size: 16, color: scheme.primary),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: Text(
-                selectedName ?? 'Sin selección',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: selectedName != null
-                      ? scheme.primary
-                      : scheme.onSurface.withOpacity(0.62),
-                ),
+    final searchRow = Row(
+      children: [
+        Expanded(child: searchField),
+        const SizedBox(width: 10),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: _showFiltersSidePanel,
+            icon: const Icon(Icons.filter_list_rounded, size: 18),
+            label: const Text('Filtros'),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: scheme.onSurface,
+              side: BorderSide(color: scheme.outlineVariant),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
-          ],
+          ),
         ),
-      );
-    }
+        const SizedBox(width: 8),
+        _buildClientsActionsMenu(),
+      ],
+    );
+
+    final summaryRow = Row(
+      children: [
+        summaryBadge(
+          label: 'Clientes',
+          value: '$total',
+          borderColor: scheme.outlineVariant,
+        ),
+        const SizedBox(width: 8),
+        summaryBadge(
+          label: 'Activos',
+          value: '$activeCount',
+          borderColor: scheme.tertiary.withOpacity(0.28),
+          backgroundColor: scheme.tertiary.withOpacity(0.10),
+        ),
+        const SizedBox(width: 8),
+        summaryBadge(
+          label: 'Crédito',
+          value: '$creditCount',
+          borderColor: scheme.primary.withOpacity(0.26),
+          backgroundColor: scheme.primary.withOpacity(0.10),
+          textColor: scheme.primary,
+        ),
+      ],
+    );
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: LayoutBuilder(
-          builder: (context, headerConstraints) {
-            final stacked = headerConstraints.maxWidth < 1080;
-            final searchRow = Row(
-              children: [
-                Expanded(child: searchField),
-                if (!stacked && isWide) ...[
-                  const SizedBox(width: 10),
-                  selectedBadge(),
-                ],
-                const SizedBox(width: 10),
-                SizedBox(
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: _showFiltersDialog,
-                    icon: const Icon(Icons.filter_list, size: 18),
-                    label: const Text('Filtros'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                if (isWide) ...[const SizedBox(width: 8), panelButton()],
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: _exportClientsToExcel,
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Exportar'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showClientDialog(),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Nuevo'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A8A),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: LayoutBuilder(
+        builder: (context, headerConstraints) {
+          final stacked = headerConstraints.maxWidth < 760;
 
-            final summaryRow = Row(
-              children: [
-                summaryBadge(
-                  label: 'Clientes',
-                  value: '$total',
-                  borderColor: scheme.outlineVariant,
-                ),
-                const SizedBox(width: 8),
-                summaryBadge(
-                  label: 'Activos',
-                  value: '$activeCount',
-                  borderColor: scheme.tertiary.withOpacity(0.28),
-                  backgroundColor: scheme.tertiary.withOpacity(0.10),
-                ),
-                const SizedBox(width: 8),
-                summaryBadge(
-                  label: 'Crédito',
-                  value: '$creditCount',
-                  borderColor: scheme.primary.withOpacity(0.26),
-                  backgroundColor: scheme.primary.withOpacity(0.10),
-                  textColor: scheme.primary,
-                ),
-              ],
+          if (stacked) {
+            return Column(
+              children: [searchRow, const SizedBox(height: 10), summaryRow],
             );
+          }
 
-            if (stacked) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (isWide) ...[
-                    SizedBox(width: double.infinity, child: selectedBadge()),
-                    const SizedBox(height: 10),
-                  ],
-                  searchRow,
-                  const SizedBox(height: 10),
-                  summaryRow,
-                ],
-              );
-            }
-
-            return ConstrainedBox(
-              constraints: BoxConstraints(minWidth: minWidth),
-              child: Column(
-                children: [searchRow, const SizedBox(height: 10), summaryRow],
-              ),
-            );
-          },
-        ),
+          return ConstrainedBox(
+            constraints: BoxConstraints(minWidth: minWidth),
+            child: Column(
+              children: [searchRow, const SizedBox(height: 10), summaryRow],
+            ),
+          );
+        },
       ),
     );
   }
 
   void _selectClient(ClientModel client, {required bool showDetails}) {
     if (!mounted) return;
+
     setState(() {
       _selectedClient = client;
       _selectedClientId = client.id;
-      if (showDetails) {
-        _showDetailsPanel = true;
-      }
     });
-    if (!showDetails) {
+
+    if (showDetails) {
+      _showClientDetailsSidePanel(client);
+    } else {
       _showClientDetails(client);
     }
-  }
-
-  void _hideDetailsPanel() {
-    if (!mounted) return;
-    setState(() {
-      _showDetailsPanel = false;
-    });
   }
 
   Widget _buildClientsListHeader() {
@@ -757,456 +839,14 @@ class _ClientsPageState extends State<ClientsPage> {
     );
   }
 
-  Widget _buildClientDetailsPanel(ClientModel? client) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final muted = scheme.onSurface.withOpacity(0.7);
-    final dateLabel = DateFormat('dd/MM/yy');
-
-    if (client == null) {
-      return const SizedBox.shrink();
-    }
-
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(client.createdAtMs);
-    final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
-    final initials = client.nombre.trim().isNotEmpty
-        ? client.nombre.trim().substring(0, 1).toUpperCase()
-        : '?';
-    final activeColor = client.isActive ? scheme.tertiary : scheme.outline;
-    final creditColor = client.hasCredit ? scheme.primary : scheme.outline;
-    final phone = (client.telefono?.isNotEmpty == true)
-        ? client.telefono!
-        : '-';
-    final rnc = (client.rnc?.isNotEmpty == true) ? client.rnc! : '-';
-    final cedula = (client.cedula?.isNotEmpty == true) ? client.cedula! : '-';
-    final direccion = (client.direccion?.isNotEmpty == true)
-        ? client.direccion!
-        : '-';
-
-    Future<Map<String, dynamic>> loadActivityData() =>
-        SalesRepository.getCustomerPurchaseSummary(client.id!);
-
-    Widget badge(String label, String value, Color color, {IconData? icon}) {
-      return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withOpacity(0.28)),
-          ),
-          child: Row(
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 14, color: color),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: muted,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    Widget infoCard(String label, String value, {IconData? icon}) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 16, color: scheme.primary),
-                  const SizedBox(width: 6),
-                ],
-                Text(
-                  label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: muted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    Widget miniStat({
-      required String label,
-      required String value,
-      required IconData icon,
-    }) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 16, color: scheme.primary),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: muted,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    Widget buildActivityPanel(Map<String, dynamic> data) {
-      final purchasesCount = (data['count'] as int?) ?? 0;
-      final lastAtMs = (data['lastAtMs'] as int?) ?? 0;
-      final hasLastDate = lastAtMs > 0;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Actividad',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: miniStat(
-                  label: 'Compras registradas',
-                  value: purchasesCount.toString(),
-                  icon: Icons.receipt_long,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: miniStat(
-                  label: 'Última compra',
-                  value: hasLastDate
-                      ? dateLabel.format(
-                          DateTime.fromMillisecondsSinceEpoch(lastAtMs),
-                        )
-                      : 'Sin actividad',
-                  icon: Icons.history_toggle_off,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: miniStat(
-                  label: 'Cliente desde',
-                  value: createdLabel,
-                  icon: Icons.credit_card,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              badge(
-                'Estado',
-                client.isActive ? 'Operativo' : 'Inactivo',
-                scheme.primary,
-              ),
-              const SizedBox(width: 8),
-              badge(
-                'Crédito',
-                client.hasCredit ? 'Habilitado' : 'No disponible',
-                scheme.tertiary,
-                icon: client.hasCredit
-                    ? Icons.credit_card
-                    : Icons.block_outlined,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: scheme.outlineVariant),
-            ),
-            child: Text(
-              hasLastDate
-                  ? 'Última interacción registrada el ${dateLabel.format(DateTime.fromMillisecondsSinceEpoch(lastAtMs))}.'
-                  : 'Sin actividad comercial registrada todavía.',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: muted,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Ficha operativa',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Detalle activo del cliente seleccionado.',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: muted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Ocultar ficha',
-                onPressed: _hideDetailsPanel,
-                icon: const Icon(Icons.close, size: 18),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scheme.primary.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: scheme.primary.withOpacity(0.18),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CircleAvatar(
-                              radius: 20,
-                              backgroundColor: scheme.primary.withOpacity(0.12),
-                              foregroundColor: scheme.primary,
-                              child: Text(
-                                initials,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Cliente activo',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: muted,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    client.nombre,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.w800),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'Editar cliente',
-                              onPressed: () => _showClientDialog(client),
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            badge(
-                              'Estado',
-                              client.isActive ? 'Activo' : 'Inactivo',
-                              activeColor,
-                            ),
-                            const SizedBox(width: 8),
-                            badge(
-                              'Crédito',
-                              client.hasCredit ? 'Sí' : 'No',
-                              creditColor,
-                              icon: client.hasCredit
-                                  ? Icons.credit_card
-                                  : Icons.block,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 2.45,
-                    children: [
-                      infoCard('Teléfono', phone, icon: Icons.phone_outlined),
-                      infoCard('RNC', rnc, icon: Icons.business_outlined),
-                      infoCard('Cédula', cedula, icon: Icons.badge_outlined),
-                      infoCard(
-                        'Creado',
-                        createdLabel,
-                        icon: Icons.event_outlined,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  infoCard(
-                    'Dirección',
-                    direccion,
-                    icon: Icons.location_on_outlined,
-                  ),
-                  const SizedBox(height: 12),
-                  FutureBuilder<Map<String, dynamic>>(
-                    future: loadActivityData(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-
-                      if (snapshot.hasError) {
-                        return Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: scheme.error.withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: scheme.error.withOpacity(0.28),
-                            ),
-                          ),
-                          child: Text(
-                            'No se pudo cargar la actividad del cliente.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurface,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }
-
-                      return buildActivityPanel(
-                        snapshot.data ?? const <String, dynamic>{},
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   EdgeInsets _contentPadding(BoxConstraints constraints) {
-    const maxContentWidth = 1280.0;
-    final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
+    const maxContentWidth = 1440.0;
+    final contentWidth = math.min(constraints.maxWidth * 0.92, maxContentWidth);
     final side = ((constraints.maxWidth - contentWidth) / 2)
-        .clamp(12.0, 40.0)
+        .clamp(24.0, 160.0)
         .toDouble();
-    return EdgeInsets.fromLTRB(side, 12, side, 24);
+
+    return EdgeInsets.fromLTRB(side, 22, side, 24);
   }
 
   @override
@@ -1219,10 +859,6 @@ class _ClientsPageState extends State<ClientsPage> {
       builder: (context, constraints) {
         final padding = _contentPadding(constraints);
         final isWide = constraints.maxWidth >= 1200;
-        final isNarrow = constraints.maxWidth < 980;
-        final detailWidth = (constraints.maxWidth * 0.33)
-            .clamp(340.0, 460.0)
-            .toDouble();
         final headerMinWidth = math
             .max(0.0, constraints.maxWidth - padding.left - padding.right)
             .toDouble();
@@ -1231,8 +867,8 @@ class _ClientsPageState extends State<ClientsPage> {
           width: double.infinity,
           decoration: BoxDecoration(
             color: scheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: scheme.outlineVariant.withOpacity(0.85)),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -1286,6 +922,7 @@ class _ClientsPageState extends State<ClientsPage> {
                             final isSelected = client.id != null
                                 ? client.id == _selectedClientId
                                 : identical(client, _selectedClient);
+
                             return ClientRowTile(
                               client: client,
                               isSelected: isSelected,
@@ -1314,45 +951,7 @@ class _ClientsPageState extends State<ClientsPage> {
                 isWide: isWide,
               ),
               const SizedBox(height: AppSizes.spaceL),
-              Expanded(
-                child: isWide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: listCard),
-                          if (_showDetailsPanel && _selectedClient != null) ...[
-                            const SizedBox(width: AppSizes.spaceL),
-                            SizedBox(
-                              width: detailWidth,
-                              child: SizedBox.expand(
-                                child: _buildClientDetailsPanel(
-                                  _selectedClient,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      )
-                    : Column(
-                        children: [
-                          Flexible(
-                            flex: _showDetailsPanel && _selectedClient != null
-                                ? 2
-                                : 1,
-                            child: listCard,
-                          ),
-                          if (isNarrow &&
-                              _showDetailsPanel &&
-                              _selectedClient != null) ...[
-                            const SizedBox(height: AppSizes.spaceM),
-                            Flexible(
-                              flex: 3,
-                              child: _buildClientDetailsPanel(_selectedClient),
-                            ),
-                          ],
-                        ],
-                      ),
-              ),
+              Expanded(child: listCard),
             ],
           ),
         );
@@ -1361,23 +960,404 @@ class _ClientsPageState extends State<ClientsPage> {
   }
 }
 
-/// Dialog para configurar filtros
-class _FiltersDialog extends StatefulWidget {
-  final ClientFilters filters;
-  final VoidCallback onApply;
-  final VoidCallback onClear;
+class _ClientSideDetailsPanel extends StatelessWidget {
+  const _ClientSideDetailsPanel({
+    required this.client,
+    required this.onClose,
+    required this.onEdit,
+  });
 
-  const _FiltersDialog({
+  final ClientModel client;
+  final VoidCallback onClose;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.62);
+    final border = scheme.outlineVariant.withOpacity(0.85);
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    final dateTimeFormat = DateFormat('dd/MM/yy HH:mm');
+
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(client.createdAtMs);
+    final initials = client.nombre.trim().isNotEmpty
+        ? client.nombre.trim().substring(0, 1).toUpperCase()
+        : '?';
+
+    final phone = client.telefono?.trim().isNotEmpty == true
+        ? client.telefono!.trim()
+        : '-';
+    final rnc = client.rnc?.trim().isNotEmpty == true
+        ? client.rnc!.trim()
+        : '-';
+    final cedula = client.cedula?.trim().isNotEmpty == true
+        ? client.cedula!.trim()
+        : '-';
+    final address = client.direccion?.trim().isNotEmpty == true
+        ? client.direccion!.trim()
+        : '-';
+
+    Future<Map<String, dynamic>> loadActivity() {
+      final id = client.id;
+
+      if (id == null) {
+        return Future.value(const {'count': 0, 'total': 0.0, 'lastAtMs': null});
+      }
+
+      return SalesRepository.getCustomerPurchaseSummary(
+        id,
+      ).catchError((_) => const {'count': 0, 'total': 0.0, 'lastAtMs': null});
+    }
+
+    Widget sectionTitle(String title) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 20, bottom: 10),
+        child: Text(
+          title,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: scheme.onSurface,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.1,
+          ),
+        ),
+      );
+    }
+
+    Widget cleanDivider() {
+      return Divider(height: 1, thickness: 1, color: border);
+    }
+
+    Widget infoLine({
+      required IconData icon,
+      required String label,
+      required String value,
+      int maxLines = 1,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF2FF),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, size: 16, color: const Color(0xFF1A56DB)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: muted,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    value,
+                    maxLines: maxLines,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                      height: 1.18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget pill({
+      required String text,
+      required bool active,
+      required IconData icon,
+    }) {
+      final color = active
+          ? const Color(0xFF1A56DB)
+          : scheme.onSurfaceVariant.withOpacity(0.85);
+
+      return Expanded(
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFFEAF2FF) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active ? const Color(0xFFBFD1F7) : scheme.outlineVariant,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget activityBlock(Map<String, dynamic> data) {
+      final count = (data['count'] as int?) ?? 0;
+      final lastAtMs = data['lastAtMs'] as int?;
+      final hasLast = lastAtMs != null && lastAtMs > 0;
+
+      return Column(
+        children: [
+          infoLine(
+            icon: Icons.receipt_long_outlined,
+            label: 'Compras registradas',
+            value: count.toString(),
+          ),
+          cleanDivider(),
+          infoLine(
+            icon: Icons.history_rounded,
+            label: 'Última compra',
+            value: hasLast
+                ? dateFormat.format(
+                    DateTime.fromMillisecondsSinceEpoch(lastAtMs),
+                  )
+                : 'Sin actividad',
+          ),
+          cleanDivider(),
+          infoLine(
+            icon: Icons.calendar_month_outlined,
+            label: 'Cliente desde',
+            value: dateTimeFormat.format(createdAt),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: border),
+            ),
+            child: Text(
+              hasLast
+                  ? 'Última interacción registrada el ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(lastAtMs))}.'
+                  : 'Sin actividad comercial registrada todavía.',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(left: BorderSide(color: border, width: 1)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 64,
+            padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: border)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Ficha del cliente',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.15,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Ocultar ficha',
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded, size: 19),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: const Color(0xFFEAF2FF),
+                        foregroundColor: const Color(0xFF1A56DB),
+                        child: Text(
+                          initials,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Cliente seleccionado',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                client.nombre,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.05,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Editar cliente',
+                        onPressed: onEdit,
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      pill(
+                        text: client.isActive ? 'Activo' : 'Inactivo',
+                        active: client.isActive,
+                        icon: client.isActive
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.pause_circle_outline_rounded,
+                      ),
+                      const SizedBox(width: 8),
+                      pill(
+                        text: client.hasCredit ? 'Crédito' : 'Sin crédito',
+                        active: client.hasCredit,
+                        icon: client.hasCredit
+                            ? Icons.credit_card_rounded
+                            : Icons.block_rounded,
+                      ),
+                    ],
+                  ),
+                  sectionTitle('Datos del cliente'),
+                  infoLine(
+                    icon: Icons.phone_outlined,
+                    label: 'Teléfono',
+                    value: phone,
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.business_outlined,
+                    label: 'RNC',
+                    value: rnc,
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.badge_outlined,
+                    label: 'Cédula',
+                    value: cedula,
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.location_on_outlined,
+                    label: 'Dirección',
+                    value: address,
+                    maxLines: 3,
+                  ),
+                  sectionTitle('Actividad'),
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: loadActivity(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 28),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      return activityBlock(
+                        snapshot.data ?? const <String, dynamic>{},
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FiltersSidePanel extends StatefulWidget {
+  const _FiltersSidePanel({
     required this.filters,
     required this.onApply,
     required this.onClear,
   });
 
+  final ClientFilters filters;
+  final VoidCallback onApply;
+  final VoidCallback onClear;
+
   @override
-  State<_FiltersDialog> createState() => _FiltersDialogState();
+  State<_FiltersSidePanel> createState() => _FiltersSidePanelState();
 }
 
-class _FiltersDialogState extends State<_FiltersDialog> {
+class _FiltersSidePanelState extends State<_FiltersSidePanel> {
   late bool? _isActive;
   late bool? _hasCredit;
   late DateTime? _fromDate;
@@ -1407,7 +1387,7 @@ class _FiltersDialogState extends State<_FiltersDialog> {
     );
 
     if (date == null) return;
-    if (!mounted) return;
+
     setState(() {
       if (isFrom) {
         _fromDate = date;
@@ -1433,178 +1413,220 @@ class _FiltersDialogState extends State<_FiltersDialog> {
     final scheme = theme.colorScheme;
     final dateFormat = DateFormat('dd/MM/yyyy');
 
-    return Dialog(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 500),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSizes.paddingXL),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Título
-              Row(
-                children: [
-                  Icon(Icons.filter_list, color: scheme.primary, size: 28),
-                  const SizedBox(width: AppSizes.spaceM),
-                  Text(
-                    'Filtros',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+    return SafeArea(
+      child: Column(
+        children: [
+          Container(
+            height: 66,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.filter_list_rounded,
+                  color: scheme.primary,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Filtros de clientes',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: AppSizes.spaceXL),
-
-              // Estado
-              const Text(
-                'Estado',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: AppSizes.spaceS),
-              SegmentedButton<bool?>(
-                segments: const [
-                  ButtonSegment(value: null, label: Text('Todos')),
-                  ButtonSegment(value: true, label: Text('Activos')),
-                  ButtonSegment(value: false, label: Text('Inactivos')),
-                ],
-                selected: {_isActive},
-                onSelectionChanged: (Set<bool?> newSelection) {
-                  setState(() => _isActive = newSelection.first);
-                },
-              ),
-              const SizedBox(height: AppSizes.spaceL),
-
-              // Crédito
-              const Text(
-                'Crédito',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: AppSizes.spaceS),
-              SegmentedButton<bool?>(
-                segments: const [
-                  ButtonSegment(value: null, label: Text('Todos')),
-                  ButtonSegment(value: true, label: Text('Con crédito')),
-                  ButtonSegment(value: false, label: Text('Sin crédito')),
-                ],
-                selected: {_hasCredit},
-                onSelectionChanged: (Set<bool?> newSelection) {
-                  setState(() => _hasCredit = newSelection.first);
-                },
-              ),
-              const SizedBox(height: AppSizes.spaceL),
-
-              // Rango de fechas
-              const Text(
-                'Fecha de ingreso',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: AppSizes.spaceS),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _selectDate(true),
-                      icon: const Icon(Icons.calendar_today, size: 16),
-                      label: Text(
-                        _fromDate != null
-                            ? dateFormat.format(_fromDate!)
-                            : 'Desde',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSizes.spaceM),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _selectDate(false),
-                      icon: const Icon(Icons.calendar_today, size: 16),
-                      label: Text(
-                        _toDate != null ? dateFormat.format(_toDate!) : 'Hasta',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              if (_fromDate != null || _toDate != null) ...[
-                const SizedBox(height: AppSizes.spaceS),
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _fromDate = null;
-                      _toDate = null;
-                    });
-                  },
-                  icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('Limpiar fechas'),
+                ),
+                IconButton(
+                  tooltip: 'Cerrar',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
                 ),
               ],
-              const SizedBox(height: AppSizes.spaceL),
-
-              // Orden
-              const Text(
-                'Ordenar por',
-                style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Estado',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<bool?>(
+                    segments: const [
+                      ButtonSegment(value: null, label: Text('Todos')),
+                      ButtonSegment(value: true, label: Text('Activos')),
+                      ButtonSegment(value: false, label: Text('Inactivos')),
+                    ],
+                    selected: {_isActive},
+                    onSelectionChanged: (value) {
+                      setState(() => _isActive = value.first);
+                    },
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'Crédito',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<bool?>(
+                    segments: const [
+                      ButtonSegment(value: null, label: Text('Todos')),
+                      ButtonSegment(value: true, label: Text('Con crédito')),
+                      ButtonSegment(value: false, label: Text('Sin crédito')),
+                    ],
+                    selected: {_hasCredit},
+                    onSelectionChanged: (value) {
+                      setState(() => _hasCredit = value.first);
+                    },
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'Fecha de ingreso',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _selectDate(true),
+                          icon: const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _fromDate != null
+                                ? dateFormat.format(_fromDate!)
+                                : 'Desde',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _selectDate(false),
+                          icon: const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _toDate != null
+                                ? dateFormat.format(_toDate!)
+                                : 'Hasta',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_fromDate != null || _toDate != null) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _fromDate = null;
+                          _toDate = null;
+                        });
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 16),
+                      label: const Text('Limpiar fechas'),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  Text(
+                    'Ordenar por',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: _orderBy,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: scheme.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'recent',
+                        child: Text('Más recientes'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'old',
+                        child: Text('Más antiguos'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'name',
+                        child: Text('Nombre A-Z'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _orderBy = value);
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Mostrar clientes eliminados'),
+                    value: _includeDeleted,
+                    onChanged: (value) {
+                      setState(() => _includeDeleted = value);
+                    },
+                    activeThumbColor: scheme.primary,
+                  ),
+                ],
               ),
-              const SizedBox(height: AppSizes.spaceS),
-              DropdownButtonFormField<String>(
-                initialValue: _orderBy,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: AppSizes.paddingM,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              border: Border(top: BorderSide(color: scheme.outlineVariant)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: widget.onClear,
+                    child: const Text('Limpiar'),
                   ),
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'recent',
-                    child: Text('Más recientes'),
-                  ),
-                  DropdownMenuItem(value: 'old', child: Text('Más antiguos')),
-                  DropdownMenuItem(value: 'name', child: Text('Nombre A-Z')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _orderBy = value);
-                  }
-                },
-              ),
-              const SizedBox(height: AppSizes.spaceL),
-
-              // Incluir eliminados
-              SwitchListTile(
-                title: const Text('Mostrar clientes eliminados'),
-                value: _includeDeleted,
-                onChanged: (value) {
-                  setState(() => _includeDeleted = value);
-                },
-                activeThumbColor: scheme.primary,
-              ),
-              const SizedBox(height: AppSizes.spaceXL),
-
-              // Botones
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: widget.onClear,
-                    child: const Text('Limpiar todo'),
-                  ),
-                  const SizedBox(width: AppSizes.spaceM),
-                  ElevatedButton.icon(
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
                     onPressed: _applyFilters,
-                    icon: const Icon(Icons.check),
+                    icon: const Icon(Icons.check_rounded),
                     label: const Text('Aplicar'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: scheme.primary,
                       foregroundColor: scheme.onPrimary,
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

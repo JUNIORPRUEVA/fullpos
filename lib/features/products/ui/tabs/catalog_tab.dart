@@ -936,7 +936,7 @@ Widget build(BuildContext context) {
 
       Widget buildSearchField() {
         return SizedBox(
-          height: 40,
+          height: 44,
           child: TextField(
             controller: _searchController,
             textInputAction: TextInputAction.search,
@@ -945,14 +945,14 @@ Widget build(BuildContext context) {
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
               fontFamily: 'Inter',
-              fontSize: 13,
+              fontSize: 14,
               color: scheme.onSurface,
             ),
             decoration: InputDecoration(
               hintText: 'Buscar producto, código o referencia',
               prefixIcon: Icon(
                 Icons.search_rounded,
-                size: 19,
+                size: 20,
                 color: scheme.onSurfaceVariant,
               ),
               suffixIcon: _searchController.text.isNotEmpty
@@ -966,26 +966,28 @@ Widget build(BuildContext context) {
               fillColor: Colors.white,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 9,
+                horizontal: 14,
+                vertical: 11,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: scheme.outlineVariant.withOpacity(0.45),
+                  color: scheme.outlineVariant.withOpacity(0.60),
+                  width: 1.5,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: scheme.outlineVariant.withOpacity(0.45),
+                  color: scheme.outlineVariant.withOpacity(0.60),
+                  width: 1.5,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: ui_colors.AppColors.primaryBlue.withOpacity(0.75),
-                  width: 1,
+                  color: ui_colors.AppColors.primaryBlue.withOpacity(0.85),
+                  width: 2,
                 ),
               ),
             ),
@@ -1351,14 +1353,19 @@ Widget build(BuildContext context) {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: const Color(0xFFE2E8F0),
-              width: 1.0,
+              color: const Color(0xFFD1D9E6),
+              width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.028),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -1575,12 +1582,8 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
         : (product.hasLowStock ? scheme.tertiary : scheme.onSurface);
 
     final rowColor = widget.isChecked
-        ? const Color(0xFFEFF6FF)
-        : (widget.isFocused
-            ? const Color(0xFFEFF6FF).withOpacity(0.28)
-            : (_hovered
-                ? const Color(0xFFF8FAFC)
-                : Colors.transparent));
+    ? const Color(0xFFEFF6FF)
+    : Colors.transparent;
 
     Widget buildCell(
       String value, {
@@ -1593,17 +1596,17 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
       return Expanded(
         flex: flex,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
           child: Text(
             value,
             textAlign: textAlign,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               color: color ?? scheme.onSurface,
               fontWeight: fontWeight,
-              fontSize: 12,
-              height: 1.0,
+              fontSize: 13.5,
+              height: 1.15,
               decoration: decoration,
               fontFamily: 'Inter',
             ),

@@ -852,12 +852,11 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
 
   @override
   Widget build(BuildContext context) {
-    final highlighted = widget.isActive || _hovered;
-    final bgColor = widget.isActive
-        ? _kActiveBg
-        : _hovered
-        ? _kHoverBg
-        : Colors.transparent;
+   final highlighted = widget.isActive;
+
+final bgColor = widget.isActive
+    ? _kActiveBg
+    : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.8),
