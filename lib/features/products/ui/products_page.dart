@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fullpos/features/products/ui/stock_history_page.dart';
+import 'package:fullpos/features/products/ui/inventory_module_pages.dart';
 import 'package:fullpos/features/products/ui/tabs/add_product_page.dart';
 import 'package:fullpos/features/products/ui/tabs/catalog_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/categories_tab.dart';
 import 'package:fullpos/features/products/ui/tabs/inventory_tab.dart';
-import 'package:fullpos/features/products/ui/tabs/stock_adjustments_page.dart';
 
 enum _ProductsModuleSection {
   catalog,
@@ -66,10 +66,7 @@ class _ProductsPageState extends State<ProductsPage> {
       case _ProductsModuleSection.movements:
         return StockHistoryPage(embedded: true, onBack: _goBack);
       case _ProductsModuleSection.stockAdjustments:
-        return StockAdjustmentsPage(
-          onOpenInventory: () =>
-              _selectSection(_ProductsModuleSection.inventory),
-        );
+        return const StockAdjustmentWorkspacePage();
       case _ProductsModuleSection.addProduct:
         return AddProductPage(
           onBack: _goBack,

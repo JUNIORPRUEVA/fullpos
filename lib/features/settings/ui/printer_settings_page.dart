@@ -348,7 +348,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
           builder: (context, constraints) {
             return SettingsLayout.pageFrame(
               constraints,
-              max: 1360,
+              max: 760,
               child: _buildSettingsPanel(constraints),
             );
           },
@@ -356,7 +356,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
         bottomNavigationBar: SafeArea(
           top: false,
           child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
             decoration: BoxDecoration(
               color: _scheme.surface.withOpacity(0.98),
               border: Border(
@@ -370,7 +370,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               children: [
                 Expanded(
                   child: Text(
-                    'Los cambios se aplican automaticamente en todo el sistema.',
+                    'Los cambios se guardan para ticket, prueba de impresión y salida al cobrar.',
                     style: TextStyle(
                       fontSize: 12,
                       color: _scheme.onSurfaceVariant,
@@ -404,36 +404,59 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
   }
 
   Widget _buildSettingsPanel(BoxConstraints constraints) {
-    final gap = SettingsLayout.itemGap(constraints);
-    final isDesktop = constraints.maxWidth >= 1120;
-    final isTablet = constraints.maxWidth >= 760;
-    final sectionWidth = isDesktop
-        ? ((constraints.maxWidth - (gap * 2)) / 3)
-        : isTablet
-        ? ((constraints.maxWidth - gap) / 2)
-        : constraints.maxWidth;
+    final gap = constraints.maxWidth < 640 ? 12.0 : 14.0;
 
-    final sections = <Widget>[
-      _buildCompactSection(
-        width: isDesktop ? (sectionWidth * 2) + gap : sectionWidth,
-        child: _buildPrintSetupSection(),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildSectionIntro(),
+          SizedBox(height: gap),
+          _buildPrintSetupSection(),
+          SizedBox(height: gap),
+          _buildBrandSection(),
+          SizedBox(height: gap),
+          _buildTextSizeSection(),
+          SizedBox(height: gap),
+          _buildFormatSection(),
+          SizedBox(height: gap),
+          _buildMessagesSection(),
+        ],
       ),
-      _buildCompactSection(width: sectionWidth, child: _buildBrandSection()),
-      _buildCompactSection(width: sectionWidth, child: _buildTextSizeSection()),
-      _buildCompactSection(width: sectionWidth, child: _buildFormatSection()),
-      _buildCompactSection(
-        width: isDesktop ? constraints.maxWidth : sectionWidth,
-        child: _buildMessagesSection(),
+    );
+  }
+
+  Widget _buildSectionIntro() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _scheme.outlineVariant.withOpacity(0.45)),
       ),
-    ];
-
-    final content = Wrap(spacing: gap, runSpacing: gap, children: sections);
-
-    if (isTablet || isDesktop) {
-      return Align(alignment: Alignment.topCenter, child: content);
-    }
-
-    return SingleChildScrollView(child: content);
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Impresora y ticket',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0F172A),
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ajusta la impresora térmica, el formato del ticket y el contenido final con una vista más compacta.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF64748B),
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPrintSetupSection() {
@@ -447,9 +470,6 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               child: DropdownButtonFormField<String>(
                 decoration: InputDecoration(
                   labelText: 'Seleccionar impresora',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
                   prefixIcon: const Icon(Icons.print_outlined),
                 ),
                 initialValue:
@@ -467,18 +487,24 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                       ),
                     )
                     .toList(),
+                dropdownColor: Colors.white,
+                menuMaxHeight: 300,
+                borderRadius: BorderRadius.circular(12),
                 onChanged: (value) => _updateSetting(
                   (s) => s.copyWith(selectedPrinterName: value),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton.filled(
+            const SizedBox(width: 10),
+            IconButton(
               onPressed: _refreshPrinters,
               icon: const Icon(Icons.refresh),
               tooltip: 'Buscar impresoras',
               style: IconButton.styleFrom(
-                backgroundColor: _scheme.primaryContainer,
+                minimumSize: const Size(44, 44),
+                backgroundColor: Colors.white,
+                foregroundColor: _scheme.primary,
+                side: BorderSide(color: _scheme.outlineVariant.withOpacity(0.6)),
               ),
             ),
           ],
@@ -529,6 +555,9 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 padding: const EdgeInsets.symmetric(
                   horizontal: 18,
                   vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             );
@@ -673,6 +702,16 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
       icon: Icons.policy_outlined,
       title: 'Mensaje y garantía',
       children: [
+        TextField(
+          controller: _headerExtraCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Encabezado adicional',
+            hintText: 'Ej: Abierto de lunes a sábado',
+            prefixIcon: Icon(Icons.short_text_rounded),
+          ),
+          onChanged: (_) => _scheduleAutoSave(),
+        ),
+        const SizedBox(height: 12),
         LayoutBuilder(
           builder: (context, constraints) {
             final stack = constraints.maxWidth < 760;
@@ -720,10 +759,10 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
 
   Widget _buildWarrantyField() {
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _scheme.surface.withOpacity(0.76),
-        borderRadius: BorderRadius.circular(12),
+        color: _scheme.surface.withOpacity(0.90),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _scheme.outlineVariant.withOpacity(0.5)),
       ),
       child: Column(
@@ -743,7 +782,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             'Se imprimirá organizada al final de la factura.',
             style: TextStyle(fontSize: 11.5, color: _scheme.onSurfaceVariant),
@@ -766,23 +805,26 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     );
   }
 
-  Widget _buildCompactSection({required double width, required Widget child}) {
-    return SizedBox(width: width, child: child);
-  }
-
   Widget _buildSection({
     required IconData icon,
     required String title,
     required List<Widget> children,
   }) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: _scheme.surfaceVariant),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _scheme.outlineVariant.withOpacity(0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -798,9 +840,9 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                       Text(
                         title,
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: _scheme.primary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14.5,
+                          color: const Color(0xFF0F172A),
                         ),
                       ),
                     ],
@@ -808,7 +850,7 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             ...children,
           ],
         ),

@@ -1,21 +1,23 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import 'backup_database_page.dart';
 import 'business_sections_settings_page.dart';
 import 'database_settings_page.dart';
 import 'device_hardware_settings_page.dart';
-import 'printer_settings_page.dart';
 import 'permissions_page.dart';
-import 'users_page.dart';
+import 'printer_settings_page.dart';
 import 'settings_layout.dart';
-import '../../tools/ui/cash_drawer_settings_page.dart';
-import '../../tools/ui/scanner_settings_page.dart';
+import 'users_page.dart' as users_ui;
+
 import '../../license/data/license_models.dart';
 import '../../license/services/license_file_storage.dart';
 import '../../license/services/license_storage.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../../registration/services/business_registration_service.dart';
 import '../../registration/services/pending_registration_queue.dart';
+import '../../tools/ui/cash_drawer_settings_page.dart';
+import '../../tools/ui/scanner_settings_page.dart';
 import '../../../theme/app_colors.dart';
 
 /// Pantalla de configuración con diseño de tarjetas
@@ -152,6 +154,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final usuariosSection = _filterSection(sections[1]);
     final respaldoSection = _filterSection(sections[2]);
     final dispositivosSection = _filterSection(sections[3]);
+
     final visibleSections = [
       negocioSection,
       usuariosSection,
@@ -168,8 +171,8 @@ class _SettingsPageState extends State<SettingsPage> {
           final columns = width >= 1360
               ? 3
               : width >= 920
-              ? 2
-              : 1;
+                  ? 2
+                  : 1;
 
           return SettingsLayout.pageFrame(
             constraints,
@@ -186,8 +189,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       final sectionWidth = columns == 1
                           ? gridConstraints.maxWidth
                           : (gridConstraints.maxWidth -
-                                    ((columns - 1) * gridSpacing)) /
-                                columns;
+                                  ((columns - 1) * gridSpacing)) /
+                              columns;
+
                       final gridSections = [
                         negocioSection,
                         usuariosSection,
@@ -236,70 +240,90 @@ class _SettingsPageState extends State<SettingsPage> {
   void _openUsersPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const UsersPage()),
+      MaterialPageRoute(
+        builder: (_) => const users_ui.UsersPage(),
+      ),
     );
   }
 
   void _openUserPermissionsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PermissionsPage()),
+      MaterialPageRoute(
+        builder: (_) => const PermissionsPage(),
+      ),
     );
   }
 
   void _openScannerSettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ScannerSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const ScannerSettingsPage(),
+      ),
     );
   }
 
   void _openCashDrawerSettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CashDrawerSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const CashDrawerSettingsPage(),
+      ),
     );
   }
 
   void _openHardwareSettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const DeviceHardwareSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const DeviceHardwareSettingsPage(),
+      ),
     );
   }
 
   void _openCompanySettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CompanyProfileSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const CompanyProfileSettingsPage(),
+      ),
     );
   }
 
   void _openPosGeneralSettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PosGeneralSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const PosGeneralSettingsPage(),
+      ),
     );
   }
 
   void _openPrinterSettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PrinterSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const PrinterSettingsPage(),
+      ),
     );
   }
 
   void _openBackupPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const BackupDatabasePage()),
+      MaterialPageRoute(
+        builder: (_) => const BackupDatabasePage(),
+      ),
     );
   }
 
   void _openDatabaseSettingsPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const DatabaseSettingsPage()),
+      MaterialPageRoute(
+        builder: (_) => const DatabaseSettingsPage(),
+      ),
     );
   }
 
@@ -307,6 +331,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final useHorizontalLayout = constraints.maxWidth >= 860;
+
         final titleBlock = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -387,11 +412,15 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.borderSoft.withOpacity(0.45)),
+          borderSide: BorderSide(
+            color: AppColors.borderSoft.withOpacity(0.45),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.primary.withOpacity(0.42)),
+          borderSide: BorderSide(
+            color: scheme.primary.withOpacity(0.42),
+          ),
         ),
       ),
     );
@@ -407,7 +436,9 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           Text(
             'No se encontraron configuraciones',
-            style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -463,9 +494,15 @@ class _SettingsPageState extends State<SettingsPage> {
         onTap: item.onTap,
         borderRadius: BorderRadius.circular(8),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 50, maxHeight: 56),
+          constraints: const BoxConstraints(
+            minHeight: 50,
+            maxHeight: 56,
+          ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 2,
+              vertical: 6,
+            ),
             child: Row(
               children: [
                 SizedBox(
@@ -532,7 +569,9 @@ class _SettingsSectionData {
     required this.items,
   });
 
-  _SettingsSectionData copyWith({List<_SettingsItemData>? items}) {
+  _SettingsSectionData copyWith({
+    List<_SettingsItemData>? items,
+  }) {
     return _SettingsSectionData(
       title: title,
       description: description,
@@ -592,12 +631,15 @@ class _LicenseSummaryDialogContentState
       final businessId = await _identityStorage.getBusinessId();
 
       if (!mounted) return;
+
       setState(() {
         _info = info;
         _source = source;
         _licenseFilePath = file.path;
+
         final normalized = (businessId ?? '').trim();
         _businessId = normalized.isEmpty ? null : normalized;
+
         _isLoading = false;
       });
     } catch (_) {
@@ -634,24 +676,30 @@ class _LicenseSummaryDialogContentState
     try {
       await _licenseFileStorage.delete();
     } catch (_) {}
+
     try {
       await _licenseStorage.clearAll();
     } catch (_) {}
+
     try {
       await BusinessIdentityStorage().clearProfile();
     } catch (_) {}
+
     try {
       await PendingRegistrationQueue().clear();
     } catch (_) {}
 
     if (!mounted) return;
+
     setState(() {
       _info = null;
       _source = null;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Licencia reseteada (debug).')),
+      const SnackBar(
+        content: Text('Licencia reseteada (debug).'),
+      ),
     );
   }
 
@@ -659,8 +707,10 @@ class _LicenseSummaryDialogContentState
     if (!kDebugMode) return;
 
     final identity = await _identityStorage.getIdentity();
+
     if (identity == null) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No hay identidad local para reenviar a nube.'),
@@ -688,33 +738,45 @@ class _LicenseSummaryDialogContentState
     await _registrationService.retryPendingOnce();
 
     final pending = await PendingRegistrationQueue().load();
+
     if (!mounted) return;
+
     if (pending.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registro reenviado a nube (debug).')),
+        const SnackBar(
+          content: Text('Registro reenviado a nube (debug).'),
+        ),
       );
     } else {
       final lastError = (pending.last.lastError ?? '').trim();
+
       final msg = lastError.isEmpty
           ? 'No se pudo enviar ahora. Quedó en cola para reintento (debug).'
           : 'No se pudo enviar ahora. Motivo: $lastError';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
     }
   }
 
   String _formatDate(DateTime? value) {
     if (value == null) return 'No disponible';
+
     final local = value.toLocal();
     final day = local.day.toString().padLeft(2, '0');
     final month = local.month.toString().padLeft(2, '0');
     final year = local.year.toString();
+
     return '$day/$month/$year';
   }
 
   String _maskLicenseKey(String key) {
     final trimmed = key.trim();
+
     if (trimmed.isEmpty) return 'No disponible';
     if (trimmed.length <= 8) return '****';
+
     return '${trimmed.substring(0, 4)}...${trimmed.substring(trimmed.length - 4)}';
   }
 
@@ -727,12 +789,15 @@ class _LicenseSummaryDialogContentState
     final days = remainingAfterYears % 30;
 
     final parts = <String>[];
+
     if (years > 0) {
       parts.add('$years ${years == 1 ? 'año' : 'años'}');
     }
+
     if (months > 0) {
       parts.add('$months ${months == 1 ? 'mes' : 'meses'}');
     }
+
     if (days > 0 && years == 0) {
       parts.add('$days ${days == 1 ? 'día' : 'días'}');
     }
@@ -740,23 +805,22 @@ class _LicenseSummaryDialogContentState
     if (parts.isEmpty) {
       return '$totalDays ${totalDays == 1 ? 'día' : 'días'}';
     }
+
     return parts.join(' ');
   }
 
   String _remainingTimeText(LicenseInfo? info) {
     if (info == null) return 'No disponible';
+
     final end = info.fechaFin;
     if (end == null) return 'Sin fecha de vencimiento';
 
     final now = DateTime.now();
     final daysDiff = end.difference(now).inDays;
 
-    if (daysDiff < 0) {
-      return 'Vencida';
-    }
-    if (daysDiff == 0) {
-      return 'Vence hoy';
-    }
+    if (daysDiff < 0) return 'Vencida';
+    if (daysDiff == 0) return 'Vence hoy';
+
     return _humanizeDays(daysDiff);
   }
 
@@ -765,6 +829,7 @@ class _LicenseSummaryDialogContentState
     if (info.isExpired) return 'Vencida';
     if (info.isBlocked) return 'Bloqueada';
     if (info.isActive) return 'Activa';
+
     return 'Pendiente';
   }
 
@@ -788,9 +853,11 @@ class _LicenseSummaryDialogContentState
     if (usados == null && max == null) {
       return 'No reportado por servidor';
     }
+
     if (usados == null && max != null) {
       return 'No reportado de $max';
     }
+
     if (usados != null && max == null) {
       return '$usados en uso';
     }
@@ -798,7 +865,10 @@ class _LicenseSummaryDialogContentState
     return '$usados de $max';
   }
 
-  Widget _infoRow({required String label, required String value}) {
+  Widget _infoRow({
+    required String label,
+    required String value,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -808,10 +878,14 @@ class _LicenseSummaryDialogContentState
             width: 130,
             child: Text(
               '$label:',
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          Expanded(child: Text(value)),
+          Expanded(
+            child: Text(value),
+          ),
         ],
       ),
     );
@@ -822,14 +896,18 @@ class _LicenseSummaryDialogContentState
     final scheme = Theme.of(context).colorScheme;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Container(
         width: 560,
         padding: const EdgeInsets.all(20),
         child: _isLoading
             ? const SizedBox(
                 height: 220,
-                child: Center(child: CircularProgressIndicator()),
+                child: Center(
+                  child: CircularProgressIndicator(),
+                ),
               )
             : Column(
                 mainAxisSize: MainAxisSize.min,
@@ -874,7 +952,10 @@ class _LicenseSummaryDialogContentState
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _infoRow(label: 'Estado', value: _statusText(_info)),
+                  _infoRow(
+                    label: 'Estado',
+                    value: _statusText(_info),
+                  ),
                   _infoRow(
                     label: 'Business ID',
                     value: _businessId ?? 'No disponible',
@@ -903,9 +984,18 @@ class _LicenseSummaryDialogContentState
                     label: 'Inicio',
                     value: _formatDate(_info?.fechaInicio),
                   ),
-                  _infoRow(label: 'Vence', value: _formatDate(_info?.fechaFin)),
-                  _infoRow(label: 'Dispositivos', value: _devicesText(_info)),
-                  _infoRow(label: 'Origen', value: _sourceText(_source)),
+                  _infoRow(
+                    label: 'Vence',
+                    value: _formatDate(_info?.fechaFin),
+                  ),
+                  _infoRow(
+                    label: 'Dispositivos',
+                    value: _devicesText(_info),
+                  ),
+                  _infoRow(
+                    label: 'Origen',
+                    value: _sourceText(_source),
+                  ),
                   _infoRow(
                     label: 'Ubicación archivo',
                     value: _licenseFilePath ?? 'No disponible',

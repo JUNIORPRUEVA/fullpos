@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -34,8 +32,6 @@ class _StockAdjustmentWorkspacePageState
     extends State<StockAdjustmentWorkspacePage> {
   final ProductsRepository _productsRepository = ProductsRepository();
   final StockRepository _stockRepository = StockRepository();
-  final TextEditingController _productSearchController =
-      TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final NumberFormat _numberFormat = NumberFormat.decimalPattern('en_US');
@@ -52,14 +48,10 @@ class _StockAdjustmentWorkspacePageState
   void initState() {
     super.initState();
     _loadData();
-    _productSearchController.addListener(() {
-      if (mounted) setState(() {});
-    });
   }
 
   @override
   void dispose() {
-    _productSearchController.dispose();
     _quantityController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -93,15 +85,6 @@ class _StockAdjustmentWorkspacePageState
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  List<ProductModel> _filteredProducts() {
-    final query = _productSearchController.text.trim().toLowerCase();
-    if (query.isEmpty) return _products;
-    return _products.where((product) {
-      return product.name.toLowerCase().contains(query) ||
-          product.code.toLowerCase().contains(query);
-    }).toList();
   }
 
   double? _parsedQuantity() {
@@ -178,22 +161,15 @@ class _StockAdjustmentWorkspacePageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final filteredProducts = _filteredProducts();
     final selectedProduct = _selectedProduct;
     final previewStock = _previewNewStock();
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final contentWidth = math.min(constraints.maxWidth, 1280.0);
-        final side = ((constraints.maxWidth - contentWidth) / 2).clamp(
-          12.0,
-          40.0,
-        );
-
         return RefreshIndicator(
           onRefresh: _loadData,
           child: ListView(
-            padding: EdgeInsets.fromLTRB(side, 14, side, 18),
+            padding: productsResponsivePagePadding(constraints),
             children: [
               ProductsSurface(
                 child: Column(
@@ -205,66 +181,60 @@ class _StockAdjustmentWorkspacePageState
                           'Ajusta cantidades del inventario y deja trazabilidad clara de cada cambio realizado.',
                       eyebrow: 'Inventario',
                     ),
-                    const SizedBox(height: 18),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: 320,
-                          child: TextField(
-                            controller: _productSearchController,
-                            decoration: InputDecoration(
-                              labelText: 'Buscar producto',
-                              hintText: 'Nombre o código',
-                              prefixIcon: const Icon(Icons.search_rounded),
-                              filled: true,
-                              fillColor: scheme.surfaceContainerHighest
-                                  .withOpacity(0.22),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                          ),
+                    const SizedBox(height: 16),
+                    if (_products.isEmpty && !_loading)
+                      ProductsEmptyState(
+                        icon: Icons.inventory_2_outlined,
+                        title: 'No hay productos disponibles',
+                        message:
+                            'Crea un producto activo antes de registrar movimientos de stock.',
+                        action: OutlinedButton.icon(
+                          onPressed: _loadData,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Actualizar'),
                         ),
-                        SizedBox(
-                          width: 360,
-                          child: DropdownButtonFormField<int>(
-                            value: selectedProduct?.id,
-                            items: filteredProducts
-                                .where((product) => product.id != null)
-                                .map(
-                                  (product) => DropdownMenuItem<int>(
-                                    value: product.id,
-                                    child: Text(
-                                      '${product.name} • ${product.code}',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: DropdownButtonFormField<int>(
+                          value: selectedProduct?.id,
+                          isExpanded: true,
+                          items: _products
+                              .where((product) => product.id != null)
+                              .map(
+                                (product) => DropdownMenuItem<int>(
+                                  value: product.id,
+                                  child: Text(
+                                    '${product.name}  ·  ${product.code}',
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                )
-                                .toList(),
-                            onChanged: _saving
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _selectedProduct = _products.firstWhere(
-                                        (product) => product.id == value,
-                                      );
-                                    });
-                                  },
-                            decoration: InputDecoration(
-                              labelText: 'Producto',
-                              filled: true,
-                              fillColor: scheme.surfaceContainerHighest
-                                  .withOpacity(0.22),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _saving
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _selectedProduct = _products.firstWhere(
+                                      (product) => product.id == value,
+                                    );
+                                  });
+                                },
+                          decoration: InputDecoration(
+                            labelText: 'Producto a ajustar',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            helperText:
+                                '${_products.length} productos disponibles',
+                            filled: true,
+                            fillColor: scheme.surfaceContainerHighest
+                                .withOpacity(0.22),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
                     const SizedBox(height: 18),
                     Wrap(
                       spacing: 12,
@@ -395,7 +365,8 @@ class _StockAdjustmentWorkspacePageState
                             ),
                           ),
                           FilledButton.icon(
-                            onPressed: _loading || _saving
+                            onPressed:
+                                _loading || _saving || selectedProduct == null
                                 ? null
                                 : _saveAdjustment,
                             icon: _saving
@@ -498,14 +469,8 @@ class InventoryMovementsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final contentWidth = math.min(constraints.maxWidth, 1280.0);
-        final side = ((constraints.maxWidth - contentWidth) / 2).clamp(
-          12.0,
-          40.0,
-        );
-
         return ListView(
-          padding: EdgeInsets.fromLTRB(side, 14, side, 18),
+          padding: productsResponsivePagePadding(constraints),
           children: const [
             _InventoryMovementsHeader(),
             SizedBox(height: 14),
@@ -843,95 +808,500 @@ class _InventoryMovementsWorkspaceState
   }
 }
 
-class InventoryCountPage extends StatelessWidget {
+class InventoryCountPage extends StatefulWidget {
   const InventoryCountPage({super.key});
 
   @override
+  State<InventoryCountPage> createState() => _InventoryCountPageState();
+}
+
+class _InventoryCountPageState extends State<InventoryCountPage> {
+  final ProductsRepository _productsRepo = ProductsRepository();
+  final NumberFormat _currencyFormat = NumberFormat.currency(
+    locale: 'en_US',
+    symbol: 'RD\$ ',
+    decimalDigits: 2,
+  );
+  final NumberFormat _unitsFormat = NumberFormat.decimalPattern();
+
+  bool _isLoading = true;
+  int _totalProducts = 0;
+  double _totalUnits = 0;
+  double _totalInventoryValue = 0;
+  double _totalPotentialRevenue = 0;
+  double _totalPotentialProfit = 0;
+  double _averageMargin = 0;
+  List<Map<String, dynamic>> _inventoryByCategory = [];
+  List<Map<String, dynamic>> _inventoryBySupplier = [];
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadReportData);
+  }
+
+  Future<void> _loadReportData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final results = await Future.wait([
+        _productsRepo.getAll(filters: const ProductFilters(isActive: true)),
+        _productsRepo.calculateTotalInventoryValue(),
+        _productsRepo.calculateTotalPotentialRevenue(),
+        _productsRepo.calculateTotalPotentialProfit(),
+        _productsRepo.getInventoryByCategory(),
+        _productsRepo.getInventoryBySupplier(),
+      ]);
+
+      final products = results[0] as List<ProductModel>;
+      final inventoryValue = results[1] as double;
+      final potentialRevenue = results[2] as double;
+      final potentialProfit = results[3] as double;
+      final byCategory = results[4] as List<Map<String, dynamic>>;
+      final bySupplier = results[5] as List<Map<String, dynamic>>;
+
+      final totalUnits = products.fold<double>(0, (sum, p) => sum + p.stock);
+
+      if (!mounted) return;
+
+      setState(() {
+        _totalProducts = products.length;
+        _totalUnits = totalUnits;
+        _totalInventoryValue = inventoryValue;
+        _totalPotentialRevenue = potentialRevenue;
+        _totalPotentialProfit = potentialProfit;
+        _averageMargin = inventoryValue > 0
+            ? (potentialProfit / inventoryValue) * 100
+            : 0;
+        _inventoryByCategory = byCategory;
+        _inventoryBySupplier = bySupplier;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error al cargar reporte: $e')));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final contentWidth = math.min(constraints.maxWidth, 1280.0);
-        final side = ((constraints.maxWidth - contentWidth) / 2).clamp(
-          12.0,
-          40.0,
-        );
-
-        return ListView(
-          padding: EdgeInsets.fromLTRB(side, 14, side, 18),
-          children: [
-            ProductsSurface(
-              child: ProductsSectionHeader(
-                title: 'Recuento de inventario',
-                subtitle:
-                    'Organiza conteos físicos, compara diferencias contra el sistema y prepara futuras conciliaciones.',
-                eyebrow: 'Inventario',
-                trailing: FilledButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'TODO: conectar la creación de recuentos cuando exista la lógica de negocio.',
+        return RefreshIndicator(
+          onRefresh: _loadReportData,
+          child: ListView(
+            padding: productsResponsivePagePadding(constraints),
+            children: [
+              ProductsSurface(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'INVENTARIO',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
                         ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.add_task_rounded),
-                  label: const Text('Nuevo recuento'),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Recuento y reporte de inventario',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'Inter',
+                        letterSpacing: -0.8,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Resumen completo del inventario: productos, inversión, ganancia potencial y distribución por categoría y suplidor.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontFamily: 'Inter',
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 14),
-            ProductsSurface(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sesiones de conteo',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'La interfaz queda preparada para integrar recuentos por almacén y conciliación de diferencias cuando el módulo esté disponible.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(fontFamily: 'Inter'),
-                  ),
-                  const SizedBox(height: 16),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      columns: const [
-                        DataColumn(label: Text('Fecha')),
-                        DataColumn(label: Text('Almacén')),
-                        DataColumn(label: Text('Estado')),
-                        DataColumn(label: Text('Productos contados')),
-                        DataColumn(label: Text('Diferencias')),
-                        DataColumn(label: Text('Acciones')),
-                      ],
-                      rows: const [
-                        DataRow(
-                          cells: [
-                            DataCell(Text('Pendiente')),
-                            DataCell(Text('Por definir')),
-                            DataCell(Text('Sin sesiones')),
-                            DataCell(Text('0')),
-                            DataCell(Text('0')),
-                            DataCell(Text('TODO')),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              if (_isLoading)
+                const ProductsSurface(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else ...[
+                _buildKpiGrid(theme, scheme),
+                const SizedBox(height: 14),
+                _buildCategoryBreakdown(theme, scheme),
+                const SizedBox(height: 14),
+                _buildSupplierBreakdown(theme, scheme),
+              ],
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildKpiGrid(ThemeData theme, ColorScheme scheme) {
+    return ProductsSurface(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.dashboard_rounded,
+                  size: 18,
+                  color: scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Resumen general',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Inter',
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _buildKpiCard(
+                scheme: scheme,
+                icon: Icons.inventory_2_rounded,
+                label: 'Productos activos',
+                value: _unitsFormat.format(_totalProducts),
+                color: Colors.indigo,
+              ),
+              _buildKpiCard(
+                scheme: scheme,
+                icon: Icons.inventory_rounded,
+                label: 'Unidades en stock',
+                value: _unitsFormat.format(_totalUnits),
+                color: Colors.blue,
+              ),
+              _buildKpiCard(
+                scheme: scheme,
+                icon: Icons.account_balance_wallet_rounded,
+                label: 'Inversión total',
+                value: _currencyFormat.format(_totalInventoryValue),
+                color: Colors.teal,
+              ),
+              _buildKpiCard(
+                scheme: scheme,
+                icon: Icons.attach_money_rounded,
+                label: 'Valor de venta',
+                value: _currencyFormat.format(_totalPotentialRevenue),
+                color: Colors.green,
+              ),
+              _buildKpiCard(
+                scheme: scheme,
+                icon: Icons.trending_up_rounded,
+                label: 'Ganancia potencial',
+                value: _currencyFormat.format(_totalPotentialProfit),
+                color: Colors.purple,
+              ),
+              _buildKpiCard(
+                scheme: scheme,
+                icon: Icons.percent_rounded,
+                label: 'Margen promedio',
+                value: '${_averageMargin.toStringAsFixed(1)}%',
+                color: Colors.orange,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKpiCard({
+    required ColorScheme scheme,
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.15), width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Inter',
+              color: const Color(0xFF0F172A),
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurfaceVariant,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryBreakdown(ThemeData theme, ColorScheme scheme) {
+    return ProductsSurface(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.category_rounded,
+                  size: 18,
+                  color: scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Inventario por categoría',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Inter',
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_inventoryByCategory.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  'No hay datos de inventario por categoría',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowHeight: 44,
+                dataRowMinHeight: 52,
+                dataRowMaxHeight: 56,
+                columnSpacing: 24,
+                headingTextStyle: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                ),
+                columns: const [
+                  DataColumn(label: Text('Categoría')),
+                  DataColumn(label: Text('Productos'), numeric: true),
+                  DataColumn(label: Text('Unidades'), numeric: true),
+                  DataColumn(label: Text('Inversión'), numeric: true),
+                  DataColumn(label: Text('Venta potencial'), numeric: true),
+                  DataColumn(label: Text('Ganancia'), numeric: true),
+                ],
+                rows: _inventoryByCategory.map((item) {
+                  final name = (item['name'] as String?) ?? 'Sin categoría';
+                  final count = (item['product_count'] as num?)?.toInt() ?? 0;
+                  final units = (item['total_units'] as num?)?.toDouble() ?? 0;
+                  final invValue =
+                      (item['inventory_value'] as num?)?.toDouble() ?? 0;
+                  final revValue =
+                      (item['potential_revenue'] as num?)?.toDouble() ?? 0;
+                  final profit =
+                      (item['potential_profit'] as num?)?.toDouble() ?? 0;
+
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DataCell(Text(_unitsFormat.format(count))),
+                      DataCell(Text(_unitsFormat.format(units))),
+                      DataCell(Text(_currencyFormat.format(invValue))),
+                      DataCell(Text(_currencyFormat.format(revValue))),
+                      DataCell(Text(_currencyFormat.format(profit))),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupplierBreakdown(ThemeData theme, ColorScheme scheme) {
+    return ProductsSurface(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.tertiary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.local_shipping_rounded,
+                  size: 18,
+                  color: scheme.tertiary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Inventario por suplidor',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Inter',
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_inventoryBySupplier.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  'No hay datos de inventario por suplidor',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowHeight: 44,
+                dataRowMinHeight: 52,
+                dataRowMaxHeight: 56,
+                columnSpacing: 24,
+                headingTextStyle: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                ),
+                columns: const [
+                  DataColumn(label: Text('Suplidor')),
+                  DataColumn(label: Text('Productos'), numeric: true),
+                  DataColumn(label: Text('Unidades'), numeric: true),
+                  DataColumn(label: Text('Inversión'), numeric: true),
+                  DataColumn(label: Text('Venta potencial'), numeric: true),
+                  DataColumn(label: Text('Ganancia'), numeric: true),
+                ],
+                rows: _inventoryBySupplier.map((item) {
+                  final name = (item['name'] as String?) ?? 'Sin suplidor';
+                  final count = (item['product_count'] as num?)?.toInt() ?? 0;
+                  final units = (item['total_units'] as num?)?.toDouble() ?? 0;
+                  final invValue =
+                      (item['inventory_value'] as num?)?.toDouble() ?? 0;
+                  final revValue =
+                      (item['potential_revenue'] as num?)?.toDouble() ?? 0;
+                  final profit =
+                      (item['potential_profit'] as num?)?.toDouble() ?? 0;
+
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DataCell(Text(_unitsFormat.format(count))),
+                      DataCell(Text(_unitsFormat.format(units))),
+                      DataCell(Text(_currencyFormat.format(invValue))),
+                      DataCell(Text(_currencyFormat.format(revValue))),
+                      DataCell(Text(_currencyFormat.format(profit))),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

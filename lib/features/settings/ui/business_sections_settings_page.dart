@@ -325,22 +325,14 @@ class _CompanyProfileSettingsPageState
             title: 'Moneda',
             child: _ResponsiveFieldWrap(
               children: [
-                _SettingsDropdownField<String>(
-                  value:
-                      _currencies.any((item) => item['code'] == _currencyCode)
+                _CurrencyDropdownField(
+                  value: _currencies.any((item) => item['code'] == _currencyCode)
                       ? _currencyCode
                       : _currencies.first['code']!,
                   label: 'Código de moneda',
                   icon: Icons.currency_exchange_outlined,
-                  items: [
-                    for (final item in _currencies)
-                      DropdownMenuItem<String>(
-                        value: item['code'],
-                        child: Text('${item['code']} · ${item['symbol']}'),
-                      ),
-                  ],
+                  items: _currencies,
                   onChanged: (value) {
-                    if (value == null) return;
                     final matched = _currencies.firstWhere(
                       (item) => item['code'] == value,
                       orElse: () => _currencies.first,
@@ -1272,6 +1264,182 @@ class _SettingsDropdownField<T> extends _SettingsFieldSpec {
       ),
       items: items,
       onChanged: onChanged,
+    );
+  }
+}
+
+class _CurrencyDropdownField extends _SettingsFieldSpec {
+  const _CurrencyDropdownField({
+    required this.value,
+    required this.label,
+    required this.icon,
+    required this.items,
+    required this.onChanged,
+    super.expandWide = false,
+  });
+
+  final String value;
+  final String label;
+  final IconData icon;
+  final List<Map<String, String>> items;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = items.firstWhere(
+      (item) => item['code'] == value,
+      orElse: () => items.first,
+    );
+
+    return _CurrencyDropdownButton(
+      label: label,
+      icon: icon,
+      selectedCode: selected['code'] ?? value,
+      selectedSymbol: selected['symbol'] ?? '',
+      items: items,
+      onSelected: onChanged,
+    );
+  }
+}
+
+class _CurrencyDropdownButton extends StatelessWidget {
+  const _CurrencyDropdownButton({
+    required this.label,
+    required this.icon,
+    required this.selectedCode,
+    required this.selectedSymbol,
+    required this.items,
+    required this.onSelected,
+  });
+
+  final String label;
+  final IconData icon;
+  final String selectedCode;
+  final String selectedSymbol;
+  final List<Map<String, String>> items;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: const WidgetStatePropertyAll(Colors.white),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        shadowColor: WidgetStatePropertyAll(Colors.black.withOpacity(0.10)),
+        elevation: const WidgetStatePropertyAll(10),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+        ),
+      ),
+      menuChildren: items.map((item) {
+        final code = item['code'] ?? '';
+        final symbol = item['symbol'] ?? '';
+        final selected = code == selectedCode;
+
+        return MenuItemButton(
+          onPressed: () => onSelected(code),
+          style: ButtonStyle(
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (selected) return const Color(0xFFEFF6FF);
+              if (states.contains(WidgetState.hovered)) {
+                return const Color(0xFFF8FAFC);
+              }
+              return Colors.white;
+            }),
+            foregroundColor: const WidgetStatePropertyAll(Color(0xFF0F172A)),
+            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      color: Color(0xFF0F172A),
+                    ),
+                    children: [
+                      TextSpan(
+                        text: code,
+                        style: TextStyle(
+                          fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
+                          color: selected ? const Color(0xFF1A56DB) : const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const TextSpan(text: ' · '),
+                      TextSpan(
+                        text: symbol,
+                        style: const TextStyle(color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(Icons.check_rounded, size: 16, color: Color(0xFF1A56DB)),
+            ],
+          ),
+        );
+      }).toList(),
+      builder: (context, controller, child) {
+        return InkWell(
+          onTap: () => controller.isOpen ? controller.close() : controller.open(),
+          borderRadius: BorderRadius.circular(12),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              isDense: true,
+              labelText: label,
+              prefixIcon: Icon(icon),
+              suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
+              filled: true,
+              fillColor: Colors.white,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: scheme.primary.withOpacity(0.55),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  selectedCode,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '· $selectedSymbol',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../data/categories_repository.dart';
@@ -175,11 +174,9 @@ class _CategoriesTabState extends State<CategoriesTab> {
       builder: (context, constraints) {
         final theme = Theme.of(context);
         final scheme = theme.colorScheme;
-        const maxContentWidth = 940.0;
-        final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-        final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
-        final padding = EdgeInsets.fromLTRB(side, 14, side, 16);
-        final compact = contentWidth < 760;
+        const maxContentWidth = 1180.0;
+        final padding = productsResponsivePagePadding(constraints);
+        final compact = constraints.maxWidth < 760;
         return Padding(
           padding: padding,
           child: Center(
@@ -246,21 +243,23 @@ class _CategoriesTabState extends State<CategoriesTab> {
                                     flex: 4,
                                     child: Text(
                                       'Categoría',
-                                      style: theme.textTheme.labelMedium?.copyWith(
-                                        color: AppColors.textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontFamily: 'Inter',
-                                      ),
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w700,
+                                            fontFamily: 'Inter',
+                                          ),
                                     ),
                                   ),
                                   Expanded(
                                     child: Text(
                                       'Estado',
-                                      style: theme.textTheme.labelMedium?.copyWith(
-                                        color: AppColors.textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontFamily: 'Inter',
-                                      ),
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w700,
+                                            fontFamily: 'Inter',
+                                          ),
                                     ),
                                   ),
                                   SizedBox(
@@ -268,11 +267,12 @@ class _CategoriesTabState extends State<CategoriesTab> {
                                     child: Text(
                                       'Activa',
                                       textAlign: TextAlign.center,
-                                      style: theme.textTheme.labelMedium?.copyWith(
-                                        color: AppColors.textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontFamily: 'Inter',
-                                      ),
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w700,
+                                            fontFamily: 'Inter',
+                                          ),
                                     ),
                                   ),
                                   SizedBox(
@@ -280,11 +280,12 @@ class _CategoriesTabState extends State<CategoriesTab> {
                                     child: Text(
                                       'Acciones',
                                       textAlign: TextAlign.right,
-                                      style: theme.textTheme.labelMedium?.copyWith(
-                                        color: AppColors.textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontFamily: 'Inter',
-                                      ),
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w700,
+                                            fontFamily: 'Inter',
+                                          ),
                                     ),
                                   ),
                                 ],
@@ -292,12 +293,15 @@ class _CategoriesTabState extends State<CategoriesTab> {
                             ),
                           Expanded(
                             child: _isLoading
-                                ? const Center(child: CircularProgressIndicator())
+                                ? const Center(
+                                    child: CircularProgressIndicator(),
+                                  )
                                 : _categories.isEmpty
                                 ? ProductsEmptyState(
                                     icon: Icons.category_outlined,
                                     title: 'Sin categorías',
-                                    message: 'Crea la primera categoría para comenzar a organizar el inventario.',
+                                    message:
+                                        'Crea la primera categoría para comenzar a organizar el inventario.',
                                     action: FilledButton.icon(
                                       onPressed: () => _showCategoryForm(),
                                       icon: const Icon(Icons.add),
@@ -307,11 +311,15 @@ class _CategoriesTabState extends State<CategoriesTab> {
                                 : RefreshIndicator(
                                     onRefresh: _loadCategories,
                                     child: ListView.separated(
-                                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                      ),
                                       itemCount: _categories.length,
                                       separatorBuilder: (_, _) => Divider(
                                         height: 1,
-                                        color: AppColors.borderSoft.withOpacity(0.75),
+                                        color: AppColors.borderSoft.withOpacity(
+                                          0.75,
+                                        ),
                                       ),
                                       itemBuilder: (context, index) {
                                         final category = _categories[index];
@@ -348,15 +356,16 @@ class _CategoriesTabState extends State<CategoriesTab> {
     final badgeColor = category.isDeleted
         ? scheme.error
         : (isActive ? scheme.tertiary : const Color(0xFFF59E0B));
-    final titleStyle = (compact
-            ? theme.textTheme.titleSmall
-            : theme.textTheme.bodyLarge)
-        ?.copyWith(
-          fontWeight: FontWeight.w700,
-          fontFamily: 'Inter',
-          decoration: category.isDeleted ? TextDecoration.lineThrough : null,
-          color: AppColors.textPrimary,
-        );
+    final titleStyle =
+        (compact ? theme.textTheme.titleSmall : theme.textTheme.bodyLarge)
+            ?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Inter',
+              decoration: category.isDeleted
+                  ? TextDecoration.lineThrough
+                  : null,
+              color: AppColors.textPrimary,
+            );
 
     if (compact) {
       return Padding(
@@ -400,7 +409,9 @@ class _CategoriesTabState extends State<CategoriesTab> {
                 const SizedBox(width: 8),
                 Switch.adaptive(
                   value: category.isActive,
-                  onChanged: category.isDeleted ? null : (_) => _toggleActive(category),
+                  onChanged: category.isDeleted
+                      ? null
+                      : (_) => _toggleActive(category),
                   activeColor: AppColors.primaryBlue,
                 ),
                 const Spacer(),
@@ -462,7 +473,9 @@ class _CategoriesTabState extends State<CategoriesTab> {
             child: Center(
               child: Switch.adaptive(
                 value: category.isActive,
-                onChanged: category.isDeleted ? null : (_) => _toggleActive(category),
+                onChanged: category.isDeleted
+                    ? null
+                    : (_) => _toggleActive(category),
                 activeColor: AppColors.primaryBlue,
               ),
             ),

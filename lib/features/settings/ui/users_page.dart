@@ -1,23 +1,14 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/errors/error_handler.dart';
-import '../../../core/security/app_actions.dart';
-import '../../../core/security/authorization_guard.dart';
 import '../../../core/security/authz/permission.dart';
 import '../../../core/security/authz/permission_gate.dart';
 import '../data/user_model.dart';
 import '../data/users_repository.dart';
-import '../data/business_settings_repository.dart';
-import '../../../core/services/cloud_sync_service.dart';
 import 'dialogs/user_detail_dialog.dart';
 import 'permissions_page.dart';
 import 'settings_layout.dart';
 
-/// Página de gestión de usuarios
 class UsersPage extends StatefulWidget {
   const UsersPage({super.key});
 
@@ -26,11 +17,35 @@ class UsersPage extends StatefulWidget {
 }
 
 class _UsersPageState extends State<UsersPage> {
-  ColorScheme get _scheme => Theme.of(context).colorScheme;
-  List<UserModel> _users = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
-  int _loadSeq = 0;
+  static const Color _brandBlue = Color(0xFF1A56DB);
+  static const Color _pageBg = Color(0xFFF2F6F9);
+  static const Color _border = Color(0xFFE2E8F0);
+  static const Color _darkText = Color(0xFF0F172A);
+  static const Color _secondaryText = Color(0xFF64748B);
+
+  final TextEditingController _searchController = TextEditingController();
+
+  List<UserModel> _users = const [];
+  bool _loading = true;
+  bool _refreshing = false;
+  int? _busyUserId;
+
+  String get _query => _searchController.text.trim().toLowerCase();
+
+  List<UserModel> get _visibleUsers {
+    final query = _query;
+    if (query.isEmpty) return _users;
+    return _users.where((user) {
+      final haystack =
+          '${user.displayLabel} ${user.username} ${user.roleLabel}'.toLowerCase();
+      return haystack.contains(query);
+    }).toList(growable: false);
+  }
+
+  int get _activeCount => _users.where((user) => user.isActiveUser).length;
+  int get _adminCount => _users.where((user) => user.isAdmin).length;
+  int get _pinCount =>
+      _users.where((user) => (user.pin ?? '').trim().isNotEmpty).length;
 
   @override
   void initState() {
@@ -38,63 +53,212 @@ class _UsersPageState extends State<UsersPage> {
     _loadUsers();
   }
 
-  void _safeSetState(VoidCallback fn) {
-    if (!mounted) return;
-    setState(fn);
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadUsers() async {
+  Future<void> _loadUsers({bool silent = false}) async {
     if (!mounted) return;
-    final seq = ++_loadSeq;
-    _safeSetState(() => _isLoading = true);
-    try {
-      final users = await DbHardening.instance.runDbSafe<List<UserModel>>(
-        UsersRepository.getAll,
-        stage: 'settings/users/load',
-      );
+    setState(() {
+      if (silent) {
+        _refreshing = true;
+      } else {
+        _loading = true;
+      }
+    });
 
-      if (!mounted || seq != _loadSeq) return;
-      _safeSetState(() => _users = users);
-    } catch (e, st) {
-      if (!mounted || seq != _loadSeq) return;
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
-        context: context,
-        onRetry: _loadUsers,
-        module: 'settings/users/load',
-      );
+    try {
+      final users = await UsersRepository.getAll();
+      if (!mounted) return;
+      setState(() => _users = users);
+    } catch (error, stackTrace) {
+      if (mounted) {
+        await ErrorHandler.instance.handle(
+          error,
+          stackTrace: stackTrace,
+          context: context,
+          onRetry: _loadUsers,
+          module: 'settings/users/load',
+        );
+      }
     } finally {
-      if (mounted && seq == _loadSeq) {
-        _safeSetState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _refreshing = false;
+        });
       }
     }
   }
 
-  List<UserModel> get _filteredUsers {
-    if (_searchQuery.isEmpty) return _users;
-    final query = _searchQuery.toLowerCase();
-    return _users
-        .where(
-          (u) =>
-              u.username.toLowerCase().contains(query) ||
-              (u.displayName?.toLowerCase().contains(query) ?? false),
-        )
-        .toList();
+  Future<void> _runUserAction(
+    UserModel user,
+    Future<void> Function() action, {
+    String successMessage = '',
+  }) async {
+    if (!mounted) return;
+    setState(() => _busyUserId = user.id);
+    try {
+      await action();
+      if (!mounted) return;
+      if (successMessage.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage)),
+        );
+      }
+      await _loadUsers(silent: true);
+    } catch (error, stackTrace) {
+      if (mounted) {
+        await ErrorHandler.instance.handle(
+          error,
+          stackTrace: stackTrace,
+          context: context,
+          module: 'settings/users/action',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyUserId = null);
+    }
   }
 
-  Future<bool> _authorizeUserAction({
-    required AppAction action,
-    required String reason,
-    String? resourceId,
-    String resourceType = 'user',
-  }) {
-    return requireAuthorizationIfNeeded(
+  Future<void> _openUserForm({UserModel? user}) async {
+    final result = await showDialog<_UserFormResult>(
       context: context,
-      action: action,
-      resourceType: resourceType,
-      resourceId: resourceId,
-      reason: reason,
+      builder: (context) => _UserFormDialog(user: user),
+    );
+
+    if (result == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    if (user == null) {
+      final newUser = UserModel(
+        username: result.username,
+        displayName: result.displayName,
+        role: result.role,
+        isActive: result.isActive ? 1 : 0,
+        pin: result.pin,
+        passwordHash: UsersRepository.hashPassword(result.password!),
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      await _runUserAction(
+        newUser,
+        () => UsersRepository.create(newUser),
+        successMessage: 'Usuario creado correctamente.',
+      );
+      return;
+    }
+
+    final updated = user.copyWith(
+      username: result.username,
+      displayName: result.displayName,
+      role: result.role,
+      isActive: result.isActive ? 1 : 0,
+      pin: result.pin,
+    );
+
+    await _runUserAction(
+      user,
+      () async {
+        await UsersRepository.update(updated);
+        if ((result.password ?? '').trim().isNotEmpty && updated.id != null) {
+          await UsersRepository.changePassword(updated.id!, result.password!);
+        }
+      },
+      successMessage: 'Usuario actualizado correctamente.',
+    );
+  }
+
+  Future<void> _openPasswordDialog(UserModel user) async {
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => _SecretValueDialog(
+        title: 'Cambiar contraseña',
+        subtitle: 'Define una nueva contraseña para ${user.displayLabel}.',
+        label: 'Nueva contraseña',
+        confirmLabel: 'Confirmar contraseña',
+        obscure: true,
+        minLength: 4,
+      ),
+    );
+
+    if (value == null || user.id == null) return;
+
+    await _runUserAction(
+      user,
+      () => UsersRepository.changePassword(user.id!, value),
+      successMessage: 'Contraseña actualizada.',
+    );
+  }
+
+  Future<void> _openPinDialog(UserModel user) async {
+    final value = await showDialog<String?>(
+      context: context,
+      builder: (context) => _SecretValueDialog(
+        title: 'Cambiar PIN',
+        subtitle:
+            'Puedes dejar el campo vacío para quitar el PIN rápido de ${user.displayLabel}.',
+        label: 'PIN',
+        confirmLabel: 'Confirmar PIN',
+        obscure: true,
+        digitsOnly: true,
+        minLength: 4,
+        allowEmptyValue: true,
+      ),
+    );
+
+    if (value == null || user.id == null) return;
+
+    await _runUserAction(
+      user,
+      () => UsersRepository.changePin(
+        user.id!,
+        value.trim().isEmpty ? null : value,
+      ),
+      successMessage:
+          value.trim().isEmpty ? 'PIN eliminado.' : 'PIN actualizado.',
+    );
+  }
+
+  Future<void> _openPermissions(UserModel user) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PermissionsPage(user: user)),
+    );
+    await _loadUsers(silent: true);
+  }
+
+  Future<void> _showUserDetail(UserModel user) async {
+    final permissions = user.id == null
+        ? UserPermissions.none()
+        : await UsersRepository.getPermissions(user.id!);
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => UserDetailDialog(
+        user: user,
+        permissions: permissions,
+        onEdit: () => _openUserForm(user: user),
+        onPermissions: () => _openPermissions(user),
+        onChangePassword: () => _openPasswordDialog(user),
+        onChangePin: () => _openPinDialog(user),
+      ),
+    );
+  }
+
+  Future<void> _toggleActive(UserModel user) async {
+    if (user.id == null) return;
+    await _runUserAction(
+      user,
+      () => UsersRepository.toggleActive(user.id!, !user.isActiveUser),
+      successMessage: user.isActiveUser
+          ? 'Usuario desactivado.'
+          : 'Usuario activado.',
     );
   }
 
@@ -103,697 +267,333 @@ class _UsersPageState extends State<UsersPage> {
     return Theme(
       data: SettingsLayout.brandedTheme(context),
       child: Scaffold(
-        appBar: AppBar(title: const Text('Usuarios')),
-        body: PermissionGate(
-          permission: Permissions.settingsPermissions,
-          autoPromptOnce: true,
-          reason: 'Acceso a gestion de usuarios',
-          resourceType: 'screen',
-          resourceId: 'settings.users',
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SettingsLayout.pageFrame(
-                constraints,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SettingsLayout.sectionHeading(
-                      context,
-                      title: 'Gestión de usuarios',
-                      subtitle:
-                          'Administra cuentas, credenciales y estado operativo del personal.',
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            onChanged: (v) => setState(() => _searchQuery = v),
-                            decoration: const InputDecoration(
-                              hintText: 'Buscar usuario...',
-                              prefixIcon: Icon(Icons.search, size: 20),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          onPressed: () => _showUserDialog(),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Nuevo usuario'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 8,
-                      children: [
-                        _buildStatCard(
-                          'Total usuarios',
-                          _users.length.toString(),
-                          Icons.people,
-                          _scheme.primary,
-                        ),
-                        _buildStatCard(
-                          'Administradores',
-                          _users.where((u) => u.isAdmin).length.toString(),
-                          Icons.admin_panel_settings,
-                          _scheme.tertiary,
-                        ),
-                        _buildStatCard(
-                          'Cajeros',
-                          _users.where((u) => u.isCashier).length.toString(),
-                          Icons.point_of_sale,
-                          _scheme.secondary,
-                        ),
-                        _buildStatCard(
-                          'Activos',
-                          _users.where((u) => u.isActiveUser).length.toString(),
-                          Icons.check_circle,
-                          _scheme.tertiary,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : _filteredUsers.isEmpty
-                          ? Center(
-                              child: Text(
-                                _searchQuery.isEmpty
-                                    ? 'No hay usuarios registrados'
-                                    : 'No se encontraron resultados',
-                                style: TextStyle(
-                                  color: _scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            )
-                          : ListView.separated(
-                              itemCount: _filteredUsers.length,
-                              separatorBuilder: (_, _) => const Divider(),
-                              itemBuilder: (context, index) {
-                                final user = _filteredUsers[index];
-                                return _buildUserCard(user);
-                              },
-                            ),
-                    ),
-                  ],
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: const Text('Usuarios'),
+        ),
+        backgroundColor: _pageBg,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            return SettingsLayout.pageFrame(
+              constraints,
+              max: 1080,
+              child: SizedBox.expand(
+                child: PermissionGate(
+                  permission: Permissions.settingsPermissions,
+                  reason: 'Gestión de usuarios',
+                  child: _buildBody(),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return SizedBox(
-      width: 180,
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-              Text(
-                title,
-                style: TextStyle(fontSize: 12, color: _scheme.onSurfaceVariant),
-              ),
-            ],
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final users = _visibleUsers;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 18),
+        _buildToolbar(),
+        const SizedBox(height: 16),
+        _buildStats(),
+        const SizedBox(height: 16),
+        Expanded(
+          child: users.isEmpty
+              ? _buildEmptyState(hasQuery: _query.isNotEmpty)
+              : _buildUsersList(users),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text(
+            'Gestión de usuarios',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: _darkText,
+              letterSpacing: -0.4,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Administra cuentas, acceso operativo y credenciales rápidas desde un solo lugar.',
+            style: TextStyle(
+              fontSize: 13.5,
+              color: _secondaryText,
+              height: 1.35,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildUserCard(UserModel user) {
-    final isAdmin = user.isAdmin;
-    final roleColor = isAdmin ? _scheme.tertiary : _scheme.secondary;
+  Widget _buildToolbar() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 760;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _showUserDetailDialog(user),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: roleColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(
-                    user.displayLabel.substring(0, 1).toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: roleColor,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          user.displayLabel,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (!user.isActiveUser) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _scheme.error.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'INACTIVO',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: _scheme.error.withOpacity(0.9),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '@${user.username}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: _scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: roleColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: roleColor.withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isAdmin
-                          ? Icons.admin_panel_settings
-                          : Icons.point_of_sale,
-                      size: 16,
-                      color: roleColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      user.roleLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: roleColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: user.pin != null
-                      ? _scheme.tertiary.withOpacity(0.12)
-                      : _scheme.secondary.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      user.pin != null ? Icons.lock : Icons.lock_open,
-                      size: 14,
-                      color: user.pin != null
-                          ? _scheme.tertiary
-                          : _scheme.secondary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      user.pin != null ? 'PIN' : 'Sin PIN',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: user.pin != null
-                            ? _scheme.tertiary.withOpacity(0.9)
-                            : _scheme.secondary.withOpacity(0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              PopupMenuButton<String>(
-                onSelected: (action) => _handleUserAction(action, user),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit, size: 18),
-                        SizedBox(width: 8),
-                        Text('Editar'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'permissions',
-                    child: Row(
-                      children: [
-                        Icon(Icons.security, size: 18),
-                        SizedBox(width: 8),
-                        Text('Permisos'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'password',
-                    child: Row(
-                      children: [
-                        Icon(Icons.lock, size: 18),
-                        SizedBox(width: 8),
-                        Text('Cambiar contraseña'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'pin',
-                    child: Row(
-                      children: [
-                        Icon(Icons.password, size: 18),
-                        SizedBox(width: 8),
-                        Text('Cambiar PIN'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'toggle',
-                    child: Row(
-                      children: [
-                        Icon(
-                          user.isActiveUser ? Icons.block : Icons.check_circle,
-                          size: 18,
-                          color: user.isActiveUser
-                              ? _scheme.secondary
-                              : _scheme.tertiary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(user.isActiveUser ? 'Desactivar' : 'Activar'),
-                      ],
-                    ),
-                  ),
-                  if (user.username != 'admin')
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, size: 18, color: _scheme.error),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Eliminar',
-                            style: TextStyle(color: _scheme.error),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _scheme.surfaceVariant,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.more_vert, size: 20),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showUserDetailDialog(UserModel user) {
-    showDialog(
-      context: context,
-      builder: (context) => UserDetailDialog(
-        user: user,
-        onEdit: () => _showUserDialog(user: user),
-        onPermissions: () => _showPermissionsDialog(user),
-        onChangePassword: () => _showChangePasswordDialog(user),
-        onChangePin: () => _showChangePinDialog(user),
-      ),
-    );
-  }
-
-  void _handleUserAction(String action, UserModel user) {
-    switch (action) {
-      case 'edit':
-        _showUserDialog(user: user);
-        break;
-      case 'permissions':
-        _showPermissionsDialog(user);
-        break;
-      case 'password':
-        _showChangePasswordDialog(user);
-        break;
-      case 'pin':
-        _showChangePinDialog(user);
-        break;
-      case 'toggle':
-        _toggleUserActive(user);
-        break;
-      case 'delete':
-        _confirmDeleteUser(user);
-        break;
-    }
-  }
-
-  Future<void> _showUserDialog({UserModel? user}) async {
-    final isEditing = user != null;
-    final usernameController = TextEditingController(
-      text: user?.username ?? '',
-    );
-    final cloudUsernameController = TextEditingController(
-      text: user?.cloudUsername ?? '',
-    );
-    final displayNameController = TextEditingController(
-      text: user?.displayName ?? '',
-    );
-    final passwordController = TextEditingController();
-    final pinController = TextEditingController(text: user?.pin ?? '');
-    String selectedRole = user?.role ?? 'cashier';
-    bool obscurePassword = true;
-
-    bool cloudUsernameChecking = false;
-    bool? cloudUsernameAvailable;
-    String? cloudUsernameError;
-    Timer? cloudUsernameDebounce;
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _scheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  isEditing ? Icons.edit : Icons.person_add,
-                  color: _scheme.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(isEditing ? 'EDITAR USUARIO' : 'NUEVO USUARIO'),
-            ],
-          ),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Username
-                  TextField(
-                    controller: usernameController,
-                    enabled: !isEditing || user.username != 'admin',
-                    decoration: InputDecoration(
-                      labelText: 'Usuario *',
-                      hintText: 'nombre.usuario',
-                      prefixIcon: const Icon(Icons.person),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9._]')),
-                      LengthLimitingTextInputFormatter(20),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  if (selectedRole == 'admin') ...[
-                    TextField(
-                      controller: cloudUsernameController,
-                      decoration: InputDecoration(
-                        labelText: 'Usuario de la nube *',
-                        hintText: 'ej: admin_101234567 o tu correo',
-                        prefixIcon: const Icon(Icons.cloud),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        helperText:
-                            'Este usuario es para iniciar sesión en FULLPOS Owner (nube).',
-                        errorText: cloudUsernameError,
-                        suffixIcon: cloudUsernameChecking
-                            ? const Padding(
-                                padding: EdgeInsets.all(12),
-                                child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              )
-                            : (cloudUsernameAvailable == null)
-                            ? null
-                            : Icon(
-                                cloudUsernameAvailable == true
-                                    ? Icons.check_circle
-                                    : Icons.error,
-                                color: cloudUsernameAvailable == true
-                                    ? _scheme.tertiary
-                                    : _scheme.error,
-                              ),
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'[a-z0-9._@-]'),
-                        ),
-                        LengthLimitingTextInputFormatter(50),
-                      ],
-                      onChanged: (v) {
-                        final value = v.trim().toLowerCase();
-                        if (value != v) {
-                          cloudUsernameController.value =
-                              cloudUsernameController.value.copyWith(
-                                text: value,
-                                selection: TextSelection.collapsed(
-                                  offset: value.length,
-                                ),
-                              );
-                        }
-                        setDialogState(() {
-                          cloudUsernameError = null;
-                          cloudUsernameAvailable = null;
-                        });
-
-                        cloudUsernameDebounce?.cancel();
-                        if (value.length < 3) return;
-                        cloudUsernameDebounce = Timer(
-                          const Duration(milliseconds: 500),
-                          () async {
-                            setDialogState(() {
-                              cloudUsernameChecking = true;
-                              cloudUsernameError = null;
-                            });
-                            final result = await CloudSyncService.instance
-                                .checkCloudUsernameAvailableDetailed(
-                                  cloudUsername: value,
-                                );
-                            final ok = result.available;
-                            if (!context.mounted) return;
-                            setDialogState(() {
-                              cloudUsernameChecking = false;
-                              cloudUsernameAvailable = ok;
-                              if (!ok) {
-                                cloudUsernameError =
-                                    result.error ??
-                                    'No se pudo validar en la nube. Revisa URL y API Key.';
-                              }
-                            });
-                          },
-                        );
+        final searchField = SizedBox(
+          height: 48,
+          child: TextField(
+            controller: _searchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Buscar por nombre, usuario o rol',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {});
                       },
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Limpiar',
                     ),
-                    const SizedBox(height: 16),
-                  ],
+            ),
+          ),
+        );
 
-                  // Display Name
-                  TextField(
-                    controller: displayNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Nombre completo',
-                      hintText: 'Juan Pérez',
-                      prefixIcon: const Icon(Icons.badge),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+        final actions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: IconButton(
+                onPressed: _refreshing ? null : () => _loadUsers(silent: true),
+                tooltip: 'Actualizar',
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  side: const BorderSide(color: _border),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: () => _openUserForm(),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Nuevo usuario'),
+              style: FilledButton.styleFrom(
+                backgroundColor: _brandBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            ),
+          ],
+        );
+
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              searchField,
+              const SizedBox(height: 12),
+              actions,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: searchField),
+            const SizedBox(width: 12),
+            actions,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStats() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _StatCard(
+          label: 'Registrados',
+          value: _users.length.toString(),
+          icon: Icons.group_outlined,
+          accent: _brandBlue,
+        ),
+        _StatCard(
+          label: 'Activos',
+          value: _activeCount.toString(),
+          icon: Icons.verified_user_outlined,
+          accent: const Color(0xFF16A34A),
+        ),
+        _StatCard(
+          label: 'Administradores',
+          value: _adminCount.toString(),
+          icon: Icons.admin_panel_settings_outlined,
+          accent: const Color(0xFFF59E0B),
+        ),
+        _StatCard(
+          label: 'Con PIN',
+          value: _pinCount.toString(),
+          icon: Icons.pin_outlined,
+          accent: const Color(0xFF7C3AED),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUsersList(List<UserModel> users) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+            child: Row(
+              children: const [
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    'Usuario',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: _secondaryText,
                     ),
-                    textCapitalization: TextCapitalization.words,
                   ),
-                  const SizedBox(height: 16),
-
-                  // Password
-                  TextField(
-                    controller: passwordController,
-                    obscureText: obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: isEditing
-                          ? 'Nueva contraseña'
-                          : 'Contraseña *',
-                      hintText: isEditing
-                          ? 'Dejar vacío para no cambiar'
-                          : 'Mínimo 6 caracteres',
-                      prefixIcon: const Icon(Icons.lock),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () => setDialogState(
-                          () => obscurePassword = !obscurePassword,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      helperText: isEditing
-                          ? 'Solo si desea cambiarla'
-                          : 'Requerida para iniciar sesión',
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Rol',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: _secondaryText,
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // PIN
-                  TextField(
-                    controller: pinController,
-                    decoration: InputDecoration(
-                      labelText: 'PIN de acceso',
-                      hintText: '4-6 dígitos',
-                      prefixIcon: const Icon(Icons.password),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      helperText: 'Opcional - para acceso rápido',
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Acceso rápido',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: _secondaryText,
                     ),
-                    keyboardType: TextInputType.number,
-                    obscureText: true,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(6),
-                    ],
                   ),
-                  const SizedBox(height: 16),
+                ),
+                SizedBox(width: 48),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: _border),
+          Expanded(
+            child: ListView.separated(
+              itemCount: users.length,
+              separatorBuilder: (context, _) =>
+                  const Divider(height: 1, color: _border),
+              itemBuilder: (context, index) => _buildUserRow(users[index]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                  // Role selector
+  Widget _buildUserRow(UserModel user) {
+    final busy = _busyUserId == user.id;
+    final initial = user.displayLabel.isEmpty
+        ? '?'
+        : user.displayLabel.substring(0, 1).toUpperCase();
+
+    return InkWell(
+      onTap: busy ? null : () => _showUserDetail(user),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 4,
+              child: Row(
+                children: [
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
-                      border: Border.all(color: _scheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        color: _brandBlue,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Rol del usuario',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
                         Row(
                           children: [
-                            Expanded(
-                              child: _buildRoleOption(
-                                'admin',
-                                'Administrador',
-                                Icons.admin_panel_settings,
-                                _scheme.tertiary,
-                                selectedRole,
-                                user?.username == 'admin',
-                                (role) => setDialogState(() {
-                                  selectedRole = role;
-                                  cloudUsernameError = null;
-                                  cloudUsernameAvailable = null;
-                                }),
+                            Flexible(
+                              child: Text(
+                                user.displayLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: _darkText,
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildRoleOption(
-                                'cashier',
-                                'Cajero',
-                                Icons.point_of_sale,
-                                _scheme.secondary,
-                                selectedRole,
-                                user?.username == 'admin',
-                                (role) => setDialogState(() {
-                                  selectedRole = role;
-                                  cloudUsernameError = null;
-                                  cloudUsernameAvailable = null;
-                                }),
-                              ),
-                            ),
+                            const SizedBox(width: 8),
+                            _StatusPill(active: user.isActiveUser),
                           ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '@${user.username}',
+                          style: const TextStyle(
+                            fontSize: 12.8,
+                            color: _secondaryText,
+                          ),
                         ),
                       ],
                     ),
@@ -801,323 +601,78 @@ class _UsersPageState extends State<UsersPage> {
                 ],
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCELAR'),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _RolePill(role: user.role),
+              ),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                final username = usernameController.text.trim();
-                final pin = pinController.text.trim();
-                final cloudUsername = cloudUsernameController.text.trim();
-
-                if (username.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('El nombre de usuario es requerido'),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
-
-                if (username.length < 3) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'El usuario debe tener al menos 3 caracteres',
-                      ),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
-
-                // Verificar contraseña para nuevos usuarios
-                final password = passwordController.text;
-                if (!isEditing && password.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('La contraseña es requerida'),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
-
-                if (password.isNotEmpty && password.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'La contraseña debe tener al menos 6 caracteres',
-                      ),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
-
-                // Verificar si username ya existe
-                final exists = await UsersRepository.usernameExists(
-                  username,
-                  excludeId: user?.id,
-                );
-                if (exists) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Este nombre de usuario ya existe'),
-                        backgroundColor: _scheme.error,
-                      ),
-                    );
-                  }
-                  return;
-                }
-
-                if (pin.isNotEmpty && pin.length < 4) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('El PIN debe tener al menos 4 dígitos'),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
-
-                // Validación de usuario cloud para Admin
-                if (selectedRole == 'admin') {
-                  final settings = await BusinessSettingsRepository()
-                      .loadSettings();
-                  final cloudEnabled = settings.cloudEnabled;
-
-                  // Si la nube está desactivada, no bloqueamos la creación/edición.
-                  if (cloudEnabled) {
-                    if (cloudUsername.isEmpty || cloudUsername.length < 3) {
-                      setDialogState(() {
-                        cloudUsernameError =
-                            'Usuario de la nube requerido (mínimo 3 caracteres)';
-                      });
-                      return;
-                    }
-
-                    // Validar disponibilidad en nube antes de guardar
-                    setDialogState(() {
-                      cloudUsernameChecking = true;
-                      cloudUsernameError = null;
-                    });
-                    final result = await CloudSyncService.instance
-                        .checkCloudUsernameAvailableDetailed(
-                          cloudUsername: cloudUsername.toLowerCase(),
-                        );
-                    final ok = result.available;
-                    if (!context.mounted) return;
-                    setDialogState(() {
-                      cloudUsernameChecking = false;
-                      cloudUsernameAvailable = ok;
-                      if (!ok) {
-                        cloudUsernameError =
-                            result.error ??
-                            'No se pudo validar en la nube. Revisa URL y API Key.';
-                      }
-                    });
-                    if (!ok) return;
-
-                    // Si está editando y cambió el usuario cloud, debe indicar contraseña
-                    final prevCloud = (user?.cloudUsername ?? '')
-                        .trim()
-                        .toLowerCase();
-                    final nextCloud = cloudUsername.trim().toLowerCase();
-                    if (isEditing &&
-                        prevCloud != nextCloud &&
-                        password.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Para cambiar el usuario de la nube, indique una contraseña',
-                          ),
-                          backgroundColor: _scheme.secondary,
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _PinPill(hasPin: (user.pin ?? '').trim().isNotEmpty),
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : PopupMenuButton<_UserAction>(
+                      tooltip: 'Acciones',
+                      onSelected: (action) {
+                        switch (action) {
+                          case _UserAction.view:
+                            _showUserDetail(user);
+                            break;
+                          case _UserAction.edit:
+                            _openUserForm(user: user);
+                            break;
+                          case _UserAction.permissions:
+                            _openPermissions(user);
+                            break;
+                          case _UserAction.password:
+                            _openPasswordDialog(user);
+                            break;
+                          case _UserAction.pin:
+                            _openPinDialog(user);
+                            break;
+                          case _UserAction.toggleActive:
+                            _toggleActive(user);
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: _UserAction.view,
+                          child: Text('Ver detalle'),
                         ),
-                      );
-                      return;
-                    }
-                  }
-                }
-
-                Navigator.pop(context, true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _scheme.primary,
-                foregroundColor: _scheme.onPrimary,
-              ),
-              child: Text(isEditing ? 'GUARDAR' : 'CREAR'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result == true) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final username = usernameController.text.trim().toLowerCase();
-      final cloudUsername = cloudUsernameController.text.trim().toLowerCase();
-      final displayName = displayNameController.text.trim();
-      final password = passwordController.text;
-      final pin = pinController.text.trim();
-      final nextPin = pin.isEmpty ? null : pin;
-
-      try {
-        if (isEditing) {
-          final roleChanged = selectedRole != user.role;
-          final pinChanged = (user.pin ?? '') != (nextPin ?? '');
-
-          final authorizedUpdate = await _authorizeUserAction(
-            action: AppActions.updateUser,
-            resourceId: user.id?.toString(),
-            reason: 'Editar usuario ${user.displayLabel}',
-          );
-          if (!authorizedUpdate || !mounted) return;
-
-          if (roleChanged) {
-            final authorizedRoleChange = await _authorizeUserAction(
-              action: AppActions.updateRole,
-              resourceId: user.id?.toString(),
-              reason: 'Cambiar rol de ${user.displayLabel}',
-            );
-            if (!authorizedRoleChange || !mounted) return;
-          }
-
-          if (password.isNotEmpty || pinChanged) {
-            final authorizedCredentials = await _authorizeUserAction(
-              action: AppActions.resetPin,
-              resourceId: user.id?.toString(),
-              reason: 'Actualizar credenciales de ${user.displayLabel}',
-            );
-            if (!authorizedCredentials || !mounted) return;
-          }
-
-          await UsersRepository.update(
-            user.copyWith(
-              username: username,
-              cloudUsername: selectedRole == 'admin'
-                  ? (cloudUsername.isEmpty ? null : cloudUsername)
-                  : null,
-              displayName: displayName.isEmpty ? null : displayName,
-              pin: nextPin,
-              role: selectedRole,
-              updatedAtMs: now,
-            ),
-          );
-          // Actualizar contraseña si se proporcionó una nueva
-          if (password.isNotEmpty) {
-            await UsersRepository.changePassword(user.id!, password);
-          }
-          if (selectedRole == 'admin' &&
-              cloudUsername.isNotEmpty &&
-              password.isNotEmpty) {
-            await CloudSyncService.instance.provisionAdminUser(
-              cloudUsername: cloudUsername,
-              password: password,
-            );
-          }
-        } else {
-          final authorizedCreate = await _authorizeUserAction(
-            action: AppActions.createUser,
-            resourceId: username,
-            reason: 'Crear usuario $username',
-          );
-          if (!authorizedCreate || !mounted) return;
-
-          // Crear usuario con contraseña
-          final passwordHash = UsersRepository.hashPassword(password);
-          await UsersRepository.create(
-            UserModel(
-              username: username,
-              cloudUsername: selectedRole == 'admin'
-                  ? (cloudUsername.isEmpty ? null : cloudUsername)
-                  : null,
-              displayName: displayName.isEmpty ? null : displayName,
-              passwordHash: passwordHash,
-              pin: pin.isEmpty ? null : pin,
-              role: selectedRole,
-              createdAtMs: now,
-              updatedAtMs: now,
-            ),
-          );
-          if (selectedRole == 'admin') {
-            await CloudSyncService.instance.provisionAdminUser(
-              cloudUsername: cloudUsername,
-              password: password,
-            );
-          }
-        }
-
-        await _loadUsers();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                isEditing ? '✅ Usuario actualizado' : '✅ Usuario creado',
-              ),
-              backgroundColor: _scheme.tertiary,
-            ),
-          );
-        }
-      } catch (e, st) {
-        if (mounted) {
-          await ErrorHandler.instance.handle(
-            e,
-            stackTrace: st,
-            context: context,
-            onRetry: () => _showUserDialog(user: user),
-            module: 'settings/users/save',
-          );
-        }
-      }
-    }
-  }
-
-  Widget _buildRoleOption(
-    String role,
-    String label,
-    IconData icon,
-    Color color,
-    String selectedRole,
-    bool disabled,
-    Function(String) onSelect,
-  ) {
-    final isSelected = selectedRole == role;
-
-    return GestureDetector(
-      onTap: disabled ? null : () => onSelect(role),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : _scheme.surfaceVariant,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? color : _scheme.outlineVariant,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? color : _scheme.onSurfaceVariant,
-              size: 28,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? color : _scheme.onSurfaceVariant,
-              ),
+                        const PopupMenuItem(
+                          value: _UserAction.edit,
+                          child: Text('Editar usuario'),
+                        ),
+                        const PopupMenuItem(
+                          value: _UserAction.permissions,
+                          child: Text('Permisos'),
+                        ),
+                        const PopupMenuItem(
+                          value: _UserAction.password,
+                          child: Text('Cambiar contraseña'),
+                        ),
+                        const PopupMenuItem(
+                          value: _UserAction.pin,
+                          child: Text('Cambiar PIN'),
+                        ),
+                        PopupMenuItem(
+                          value: _UserAction.toggleActive,
+                          child: Text(user.isActiveUser ? 'Desactivar' : 'Activar'),
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -1125,412 +680,601 @@ class _UsersPageState extends State<UsersPage> {
     );
   }
 
-  Future<void> _showPermissionsDialog(UserModel user) async {
-    // Navegar a la página de permisos dedicada
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => PermissionsPage(user: user)),
-    );
-    // Recargar usuarios por si cambió algo
-    _loadUsers();
-  }
-
-  Future<void> _showChangePasswordDialog(UserModel user) async {
-    final passwordController = TextEditingController();
-    final confirmController = TextEditingController();
-    bool obscurePassword = true;
-    bool obscureConfirm = true;
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
+  Widget _buildEmptyState({required bool hasQuery}) {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _scheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.lock, color: _scheme.primary),
+              Icon(
+                hasQuery ? Icons.search_off_rounded : Icons.people_outline_rounded,
+                size: 46,
+                color: _secondaryText,
               ),
-              const SizedBox(width: 12),
-              const Text('CAMBIAR CONTRASEÑA'),
+              const SizedBox(height: 14),
+              Text(
+                hasQuery
+                    ? 'No se encontraron usuarios con ese filtro.'
+                    : 'Todavía no hay usuarios registrados.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: _darkText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                hasQuery
+                    ? 'Prueba con otro nombre, usuario o rol.'
+                    : 'Crea el primer usuario para empezar a asignar accesos y credenciales.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  height: 1.4,
+                  color: _secondaryText,
+                ),
+              ),
+              if (!hasQuery) ...[
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => _openUserForm(),
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  label: const Text('Nuevo usuario'),
+                ),
+              ],
             ],
           ),
-          content: SizedBox(
-            width: 350,
+        ),
+      ),
+    );
+  }
+}
+
+enum _UserAction { view, edit, permissions, password, pin, toggleActive }
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.accent,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: accent.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: accent, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Usuario: ${user.displayLabel}',
-                  style: TextStyle(color: _scheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: passwordController,
-                  autofocus: true,
-                  obscureText: obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Nueva contraseña',
-                    hintText: 'Mínimo 6 caracteres',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
-                      onPressed: () => setDialogState(
-                        () => obscurePassword = !obscurePassword,
-                      ),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: confirmController,
-                  obscureText: obscureConfirm,
-                  decoration: InputDecoration(
-                    labelText: 'Confirmar contraseña',
-                    hintText: 'Repita la contraseña',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscureConfirm
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
-                      onPressed: () => setDialogState(
-                        () => obscureConfirm = !obscureConfirm,
-                      ),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF64748B),
                   ),
                 ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCELAR'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final password = passwordController.text;
-                final confirm = confirmController.text;
+        ],
+      ),
+    );
+  }
+}
 
-                if (password.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('La contraseña es requerida'),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.active});
 
-                if (password.length < 6) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'La contraseña debe tener al menos 6 caracteres',
-                      ),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
+  final bool active;
 
-                if (password != confirm) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Las contraseñas no coinciden'),
-                      backgroundColor: _scheme.secondary,
-                    ),
-                  );
-                  return;
-                }
-
-                Navigator.pop(context, true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _scheme.primary,
-                foregroundColor: _scheme.onPrimary,
-              ),
-              child: const Text('GUARDAR'),
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    final background = active ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2);
+    final foreground = active ? const Color(0xFF166534) : const Color(0xFFB91C1C);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        active ? 'Activo' : 'Inactivo',
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: foreground,
         ),
       ),
     );
+  }
+}
 
-    if (result == true) {
-      try {
-        final authorized = await _authorizeUserAction(
-          action: AppActions.resetPin,
-          resourceId: user.id?.toString(),
-          reason: 'Cambiar contraseña de ${user.displayLabel}',
+class _RolePill extends StatelessWidget {
+  const _RolePill({required this.role});
+
+  final String role;
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color accent;
+    late final String label;
+
+    switch (role) {
+      case 'admin':
+        accent = const Color(0xFFF59E0B);
+        label = 'Administrador';
+        break;
+      case 'supervisor':
+        accent = const Color(0xFF7C3AED);
+        label = 'Supervisor';
+        break;
+      default:
+        accent = const Color(0xFF1A56DB);
+        label = 'Cajero';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: accent,
+        ),
+      ),
+    );
+  }
+}
+
+class _PinPill extends StatelessWidget {
+  const _PinPill({required this.hasPin});
+
+  final bool hasPin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: hasPin ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        hasPin ? 'Configurado' : 'Sin PIN',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: hasPin ? const Color(0xFF1A56DB) : const Color(0xFF64748B),
+        ),
+      ),
+    );
+  }
+}
+
+class _UserFormDialog extends StatefulWidget {
+  const _UserFormDialog({this.user});
+
+  final UserModel? user;
+
+  @override
+  State<_UserFormDialog> createState() => _UserFormDialogState();
+}
+
+class _UserFormDialogState extends State<_UserFormDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  late final TextEditingController _displayNameController;
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
+  late final TextEditingController _pinController;
+
+  late String _role;
+  late bool _isActive;
+  bool _saving = false;
+  bool _showPassword = false;
+
+  bool get _isEditing => widget.user != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = widget.user;
+    _displayNameController = TextEditingController(text: user?.displayName ?? '');
+    _usernameController = TextEditingController(text: user?.username ?? '');
+    _passwordController = TextEditingController();
+    _pinController = TextEditingController(text: user?.pin ?? '');
+    _role = user?.role ?? 'cashier';
+    _isActive = user?.isActiveUser ?? true;
+  }
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+    if (_formKey.currentState?.validate() != true) return;
+
+    setState(() => _saving = true);
+    try {
+      final exists = await UsersRepository.usernameExists(
+        _usernameController.text.trim(),
+        excludeId: widget.user?.id,
+      );
+      if (!mounted) return;
+      if (exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ese nombre de usuario ya existe.')),
         );
-        if (!authorized || !mounted) return;
-
-        await UsersRepository.changePassword(user.id!, passwordController.text);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Contraseña actualizada'),
-              backgroundColor: _scheme.tertiary,
-            ),
-          );
-        }
-      } catch (e, st) {
-        if (mounted) {
-          await ErrorHandler.instance.handle(
-            e,
-            stackTrace: st,
-            context: context,
-            onRetry: () => _showChangePasswordDialog(user),
-            module: 'settings/users/password',
-          );
-        }
+        setState(() => _saving = false);
+        return;
       }
+
+      Navigator.pop(
+        context,
+        _UserFormResult(
+          username: _usernameController.text.trim(),
+          displayName: _displayNameController.text.trim().isEmpty
+              ? null
+              : _displayNameController.text.trim(),
+          password: _passwordController.text.trim().isEmpty
+              ? null
+              : _passwordController.text.trim(),
+          pin: _pinController.text.trim().isEmpty ? null : _pinController.text.trim(),
+          role: _role,
+          isActive: _isActive,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _showChangePinDialog(UserModel user) async {
-    final pinController = TextEditingController();
-
-    final result = await showDialog<String?>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _scheme.secondary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(Icons.password, color: _scheme.secondary),
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Editar usuario' : 'Nuevo usuario'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 540),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _displayNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre para mostrar',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _usernameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Usuario',
+                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  ),
+                  validator: (value) {
+                    final text = (value ?? '').trim();
+                    if (text.isEmpty) return 'Ingresa un usuario.';
+                    if (text.length < 3) return 'Debe tener al menos 3 caracteres.';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _role,
+                  decoration: const InputDecoration(
+                    labelText: 'Rol',
+                    prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'cashier', child: Text('Cajero')),
+                    DropdownMenuItem(
+                      value: 'supervisor',
+                      child: Text('Supervisor'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'admin',
+                      child: Text('Administrador'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => _role = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: !_showPassword,
+                  decoration: InputDecoration(
+                    labelText: _isEditing
+                        ? 'Nueva contraseña (opcional)'
+                        : 'Contraseña inicial',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: () =>
+                          setState(() => _showPassword = !_showPassword),
+                      icon: Icon(
+                        _showPassword
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                      ),
+                    ),
+                  ),
+                  validator: (value) {
+                    final text = (value ?? '').trim();
+                    if (!_isEditing && text.isEmpty) {
+                      return 'Ingresa una contraseña inicial.';
+                    }
+                    if (text.isNotEmpty && text.length < 4) {
+                      return 'Debe tener al menos 4 caracteres.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _pinController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'PIN rápido (opcional)',
+                    prefixIcon: Icon(Icons.pin_outlined),
+                  ),
+                  validator: (value) {
+                    final text = (value ?? '').trim();
+                    if (text.isEmpty) return null;
+                    if (!RegExp(r'^\d+$').hasMatch(text)) {
+                      return 'El PIN debe contener solo números.';
+                    }
+                    if (text.length < 4) {
+                      return 'El PIN debe tener al menos 4 dígitos.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  value: _isActive,
+                  onChanged: (value) => setState(() => _isActive = value),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Usuario activo'),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            const Text('CAMBIAR PIN'),
-          ],
+          ),
         ),
-        content: SizedBox(
-          width: 300,
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _submit,
+          child: _saving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _UserFormResult {
+  const _UserFormResult({
+    required this.username,
+    required this.displayName,
+    required this.password,
+    required this.pin,
+    required this.role,
+    required this.isActive,
+  });
+
+  final String username;
+  final String? displayName;
+  final String? password;
+  final String? pin;
+  final String role;
+  final bool isActive;
+}
+
+class _SecretValueDialog extends StatefulWidget {
+  const _SecretValueDialog({
+    required this.title,
+    required this.subtitle,
+    required this.label,
+    required this.confirmLabel,
+    this.obscure = true,
+    this.digitsOnly = false,
+    this.minLength = 4,
+    this.allowEmptyValue = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final String label;
+  final String confirmLabel;
+  final bool obscure;
+  final bool digitsOnly;
+  final int minLength;
+  final bool allowEmptyValue;
+
+  @override
+  State<_SecretValueDialog> createState() => _SecretValueDialogState();
+}
+
+class _SecretValueDialogState extends State<_SecretValueDialog> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _valueController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+  bool _showValue = false;
+  bool _showConfirm = false;
+
+  @override
+  void dispose() {
+    _valueController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Form(
+          key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'Usuario: ${user.displayLabel}',
-                style: TextStyle(color: _scheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: pinController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Nuevo PIN',
-                  hintText: '4-6 dígitos',
-                  prefixIcon: const Icon(Icons.lock),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  widget.subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    height: 1.4,
                   ),
-                  helperText: 'Dejar vacío para quitar el PIN',
                 ),
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _valueController,
+                keyboardType:
+                    widget.digitsOnly ? TextInputType.number : TextInputType.text,
+                obscureText: widget.obscure && !_showValue,
+                decoration: InputDecoration(
+                  labelText: widget.label,
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  suffixIcon: widget.obscure
+                      ? IconButton(
+                          onPressed: () => setState(() => _showValue = !_showValue),
+                          icon: Icon(
+                            _showValue
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                          ),
+                        )
+                      : null,
+                ),
+                validator: (value) {
+                  final text = (value ?? '').trim();
+                  if (text.isEmpty && widget.allowEmptyValue) return null;
+                  if (text.isEmpty) return 'Completa este campo.';
+                  if (widget.digitsOnly && !RegExp(r'^\d+$').hasMatch(text)) {
+                    return 'Solo se permiten números.';
+                  }
+                  if (text.length < widget.minLength) {
+                    return 'Debe tener al menos ${widget.minLength} caracteres.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _confirmController,
+                keyboardType:
+                    widget.digitsOnly ? TextInputType.number : TextInputType.text,
+                obscureText: widget.obscure && !_showConfirm,
+                decoration: InputDecoration(
+                  labelText: widget.confirmLabel,
+                  prefixIcon: const Icon(Icons.lock_reset_rounded),
+                  suffixIcon: widget.obscure
+                      ? IconButton(
+                          onPressed: () =>
+                              setState(() => _showConfirm = !_showConfirm),
+                          icon: Icon(
+                            _showConfirm
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                          ),
+                        )
+                      : null,
+                ),
+                validator: (value) {
+                  if ((value ?? '').trim() != _valueController.text.trim()) {
+                    return 'Los valores no coinciden.';
+                  }
+                  return null;
+                },
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final pin = pinController.text.trim();
-              if (pin.isNotEmpty && pin.length < 4) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('El PIN debe tener al menos 4 dígitos'),
-                    backgroundColor: _scheme.secondary,
-                  ),
-                );
-                return;
-              }
-              Navigator.pop(context, pin);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _scheme.secondary,
-              foregroundColor: _scheme.onPrimary,
-            ),
-            child: const Text('GUARDAR'),
-          ),
-        ],
       ),
-    );
-
-    if (result != null) {
-      try {
-        final authorized = await _authorizeUserAction(
-          action: AppActions.resetPin,
-          resourceId: user.id?.toString(),
-          reason: 'Cambiar PIN de ${user.displayLabel}',
-        );
-        if (!authorized || !mounted) return;
-
-        await UsersRepository.changePin(
-          user.id!,
-          result.isEmpty ? null : result,
-        );
-        await _loadUsers();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                result.isEmpty ? '✅ PIN eliminado' : '✅ PIN actualizado',
-              ),
-              backgroundColor: _scheme.tertiary,
-            ),
-          );
-        }
-      } catch (e, st) {
-        if (mounted) {
-          await ErrorHandler.instance.handle(
-            e,
-            stackTrace: st,
-            context: context,
-            onRetry: () => _showChangePinDialog(user),
-            module: 'settings/users/pin',
-          );
-        }
-      }
-    }
-  }
-
-  Future<void> _toggleUserActive(UserModel user) async {
-    final newState = !user.isActiveUser;
-
-    try {
-      final authorized = await _authorizeUserAction(
-        action: AppActions.toggleUserStatus,
-        resourceId: user.id?.toString(),
-        reason:
-            '${newState ? 'Activar' : 'Desactivar'} usuario ${user.displayLabel}',
-      );
-      if (!authorized || !mounted) return;
-
-      await UsersRepository.toggleActive(user.id!, newState);
-      await _loadUsers();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              newState ? '✅ Usuario activado' : '⚠️ Usuario desactivado',
-            ),
-            backgroundColor: newState ? _scheme.tertiary : _scheme.secondary,
-          ),
-        );
-      }
-    } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _toggleUserActive(user),
-          module: 'settings/users/toggle_active',
-        );
-      }
-    }
-  }
-
-  Future<void> _confirmDeleteUser(UserModel user) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: Icon(Icons.warning, color: _scheme.error, size: 48),
-        title: const Text('ELIMINAR USUARIO'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('¿Está seguro de eliminar a ${user.displayLabel}?'),
-            const SizedBox(height: 8),
-            Text(
-              'Esta acción no se puede deshacer',
-              style: TextStyle(color: _scheme.onSurfaceVariant, fontSize: 12),
-            ),
-          ],
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCELAR'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: _scheme.error),
-            child: const Text('ELIMINAR'),
-          ),
-        ],
-      ),
+        FilledButton(
+          onPressed: () {
+            if (_formKey.currentState?.validate() != true) return;
+            Navigator.pop(context, _valueController.text.trim());
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
     );
-
-    if (confirmed == true) {
-      try {
-        final authorized = await _authorizeUserAction(
-          action: AppActions.deleteUser,
-          resourceId: user.id?.toString(),
-          reason: 'Eliminar usuario ${user.displayLabel}',
-        );
-        if (!authorized || !mounted) return;
-
-        await UsersRepository.delete(user.id!);
-        await _loadUsers();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ Usuario eliminado'),
-              backgroundColor: _scheme.tertiary,
-            ),
-          );
-        }
-      } catch (e, st) {
-        if (mounted) {
-          await ErrorHandler.instance.handle(
-            e,
-            stackTrace: st,
-            context: context,
-            onRetry: () => _confirmDeleteUser(user),
-            module: 'settings/users/delete',
-          );
-        }
-      }
-    }
   }
 }

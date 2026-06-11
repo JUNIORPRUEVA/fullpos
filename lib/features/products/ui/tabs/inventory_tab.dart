@@ -305,10 +305,11 @@ class _InventoryTabState extends State<InventoryTab> {
   }
 
   EdgeInsets _contentPadding(BoxConstraints constraints) {
-    const maxContentWidth = 1320.0;
-    final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-    final side = ((constraints.maxWidth - contentWidth) / 2).clamp(12.0, 40.0);
-    return EdgeInsets.fromLTRB(side, widget.embedded ? 4 : 8, side, 16);
+    return productsResponsivePagePadding(
+      constraints,
+      top: widget.embedded ? 8 : 14,
+      bottom: 18,
+    );
   }
 
   bool _matchesSelectedCategory(ProductModel product) {

@@ -319,11 +319,9 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
       child: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                widget.embedded ? 8 : 14,
-                16,
-                16,
+              padding: productsResponsivePagePadding(
+                BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+                top: widget.embedded ? 8 : 14,
               ),
               children: [
                 if (widget.onBack != null)

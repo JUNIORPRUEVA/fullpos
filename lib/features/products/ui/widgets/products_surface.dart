@@ -1,5 +1,17 @@
 import 'package:flutter/material.dart';
 
+EdgeInsets productsResponsivePagePadding(
+  BoxConstraints constraints, {
+  double top = 14,
+  double bottom = 18,
+}) {
+  final width = constraints.maxWidth;
+  final fraction = width >= 1200 ? 0.80 : (width >= 760 ? 0.90 : 0.95);
+  final contentWidth = (width * fraction).clamp(0.0, 1180.0);
+  final horizontal = ((width - contentWidth) / 2).clamp(10.0, 96.0);
+  return EdgeInsets.fromLTRB(horizontal, top, horizontal, bottom);
+}
+
 class ProductsSurface extends StatelessWidget {
   const ProductsSurface({
     super.key,
@@ -18,14 +30,22 @@ class ProductsSurface extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.surface.withOpacity(0.96),
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(
+          color: scheme.outlineVariant.withOpacity(0.65),
+          width: 0.8,
+        ),
         boxShadow: [
           BoxShadow(
-            color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),

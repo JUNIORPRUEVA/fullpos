@@ -1283,10 +1283,10 @@ Widget build(BuildContext context) {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontFamily: 'Inter',
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontSize: 11.8,
+                fontWeight: FontWeight.w700,
                 color: scheme.onSurfaceVariant,
-                letterSpacing: 0.5,
+                letterSpacing: 0.35,
               ),
             ),
           ),
@@ -1349,21 +1349,16 @@ Widget build(BuildContext context) {
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.black.withOpacity(0.25),
+              color: const Color(0xFFE2E8F0),
               width: 1.0,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 6),
-              ),
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(0.028),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -1409,13 +1404,13 @@ Widget build(BuildContext context) {
                   child: Column(
                     children: [
                       Container(
-                        height: 42,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF7FAFC),
+                          color: const Color(0xFFF1F5F9),
                           border: Border(
                             bottom: BorderSide(
-                              color: scheme.outlineVariant.withOpacity(0.45),
+                              color: const Color(0xFFE2E8F0),
                             ),
                           ),
                         ),
@@ -1428,6 +1423,19 @@ Widget build(BuildContext context) {
                                     ? true
                                     : (someVisibleSelected ? null : false),
                                 tristate: true,
+                                fillColor: WidgetStateProperty.resolveWith(
+                                  (states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return const Color(0xFF1A56DB);
+                                    }
+                                    if (states.contains(WidgetState.hovered)) {
+                                      return const Color(0xFFEFF6FF);
+                                    }
+                                    return Colors.white;
+                                  },
+                                ),
+                                checkColor: Colors.white,
+                                side: const BorderSide(color: Color(0xFFD1D9E6)),
                                 visualDensity: const VisualDensity(
                                   horizontal: -4,
                                   vertical: -4,
@@ -1567,11 +1575,11 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
         : (product.hasLowStock ? scheme.tertiary : scheme.onSurface);
 
     final rowColor = widget.isChecked
-        ? scheme.primary.withOpacity(0.09)
+        ? const Color(0xFFEFF6FF)
         : (widget.isFocused
-            ? scheme.primary.withOpacity(0.045)
+            ? const Color(0xFFEFF6FF).withOpacity(0.28)
             : (_hovered
-                ? const Color(0xFFF7FAFC)
+                ? const Color(0xFFF8FAFC)
                 : Colors.transparent));
 
     Widget buildCell(
@@ -1611,16 +1619,26 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
         color: Colors.transparent,
         child: InkWell(
           onTap: widget.onSelectRow,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return const Color(0xFFEFF6FF).withOpacity(0.14);
+            }
+            return Colors.transparent;
+          }),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
+            duration: const Duration(milliseconds: 150),
             curve: Curves.easeOut,
-            height: 48,
+            height: 50,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
               color: rowColor,
               border: Border(
                 bottom: BorderSide(
-                  color: scheme.outlineVariant.withOpacity(0.24),
+                  color: const Color(0xFFF1F5F9),
                 ),
               ),
             ),
@@ -1648,9 +1666,9 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
-                        height: 1.0,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13.8,
+                        height: 1.08,
                         color: scheme.onSurface,
                         fontFamily: 'Inter',
                         decoration: product.isDeleted
@@ -1664,13 +1682,13 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
                   product.code,
                   flex: 15,
                   color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
                 buildCell(
                   currency.format(product.salePrice),
                   flex: 12,
                   textAlign: TextAlign.right,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
                 buildCell(
                   purchaseText,
@@ -1685,7 +1703,7 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
                   flex: 8,
                   textAlign: TextAlign.right,
                   color: stockColor,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
                 buildCell(
                   number.format(product.stockMin),

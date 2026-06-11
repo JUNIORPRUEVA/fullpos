@@ -1,396 +1,695 @@
-import 'dart:convert';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../data/user_model.dart';
 
-/// Diálogo para mostrar el detalle completo de un usuario
 class UserDetailDialog extends StatelessWidget {
-  final UserModel user;
-  final VoidCallback? onEdit;
-  final VoidCallback? onChangePassword;
-  final VoidCallback? onChangePin;
-  final VoidCallback? onPermissions;
-
   const UserDetailDialog({
     super.key,
     required this.user,
+    this.permissions,
     this.onEdit,
+    this.onPermissions,
     this.onChangePassword,
     this.onChangePin,
-    this.onPermissions,
   });
 
-  UserPermissions get _permissions {
-    if (user.isAdmin) return UserPermissions.admin();
-    if (user.permissions == null || user.permissions!.isEmpty) {
-      return UserPermissions.cashier();
-    }
+  final dynamic user;
+  final dynamic permissions;
+  final VoidCallback? onEdit;
+  final VoidCallback? onPermissions;
+  final VoidCallback? onChangePassword;
+  final VoidCallback? onChangePin;
+
+  static const Color _brandBlue = Color(0xFF1A56DB);
+  static const Color _darkText = Color(0xFF0F172A);
+  static const Color _secondaryText = Color(0xFF64748B);
+  static const Color _pageBg = Color(0xFFF2F6F9);
+  static const Color _softBlueBg = Color(0xFFEFF6FF);
+  static const Color _border = Color(0xFFE2E8F0);
+  static const Color _successGreen = Color(0xFF16A34A);
+  static const Color _dangerRed = Color(0xFFDC2626);
+  static const Color _warningOrange = Color(0xFFF59E0B);
+
+  dynamic get _permissions {
+    if (permissions != null) return permissions;
     try {
-      return UserPermissions.fromMap(
-        jsonDecode(user.permissions!) as Map<String, dynamic>,
-      );
+      final value = user.permissions;
+      if (value != null) return value;
+    } catch (_) {}
+    return _EmptyPermissions();
+  }
+
+  bool get _hasPin {
+    try {
+      final value = user.pin;
+      if (value != null && value.toString().trim().isNotEmpty) return true;
+    } catch (_) {}
+    try {
+      if (user.hasPin == true) return true;
+    } catch (_) {}
+    try {
+      if (user.pinConfigured == true) return true;
+    } catch (_) {}
+    try {
+      final value = user.pinHash;
+      if (value != null && value.toString().trim().isNotEmpty) return true;
+    } catch (_) {}
+    return false;
+  }
+
+  bool get _isActive {
+    try {
+      return user.isActiveUser == true;
+    } catch (_) {}
+    try {
+      return user.isActive == true;
+    } catch (_) {}
+    return false;
+  }
+
+  bool get _isAdmin {
+    try {
+      return user.isAdmin == true;
+    } catch (_) {}
+    try {
+      final role = user.role?.toString().toLowerCase();
+      return role == 'admin' || role == 'administrator';
+    } catch (_) {}
+    return false;
+  }
+
+  String get _displayName {
+    try {
+      final value = user.displayLabel?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    } catch (_) {}
+    try {
+      final value = user.displayName?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    } catch (_) {}
+    try {
+      final value = user.name?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    } catch (_) {}
+    return 'Usuario';
+  }
+
+  String get _username {
+    try {
+      final value = user.username?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    } catch (_) {}
+    return 'usuario';
+  }
+
+  String get _roleLabel {
+    try {
+      final value = user.roleLabel?.toString().trim();
+      if (value != null && value.isNotEmpty) return value;
+    } catch (_) {}
+    try {
+      final role = user.role?.toString().trim();
+      if (role != null && role.isNotEmpty) {
+        if (role == 'admin') return 'Administrador';
+        if (role == 'supervisor') return 'Supervisor';
+        if (role == 'cashier') return 'Cajero';
+        return role;
+      }
+    } catch (_) {}
+    return 'Usuario';
+  }
+
+  String get _roleValue {
+    try {
+      return user.role?.toString() ?? '';
     } catch (_) {
-      return UserPermissions.cashier();
+      return '';
     }
+  }
+
+  DateTime? get _createdAt =>
+      _coerceDateTime(_readDynamic('createdAt'), 'createdAtMs');
+
+  DateTime? get _updatedAt =>
+      _coerceDateTime(_readDynamic('updatedAt'), 'updatedAtMs');
+
+  dynamic _readDynamic(String property) {
+    try {
+      switch (property) {
+        case 'createdAt':
+          return user.createdAt;
+        case 'updatedAt':
+          return user.updatedAt;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  DateTime? _coerceDateTime(dynamic value, String fallbackMsField) {
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    try {
+      final ms = fallbackMsField == 'createdAtMs'
+          ? user.createdAtMs
+          : user.updatedAtMs;
+      if (ms is int && ms > 0) {
+        return DateTime.fromMillisecondsSinceEpoch(ms);
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(user.createdAtMs);
-    final updatedAt = DateTime.fromMillisecondsSinceEpoch(user.updatedAtMs);
-    final roleColor = user.isAdmin ? Colors.purple : Colors.teal;
+    final screenSize = MediaQuery.sizeOf(context);
+    final isSmallScreen = screenSize.width < 600;
+
+    final dialogWidth = isSmallScreen
+        ? screenSize.width * 0.96
+        : screenSize.width >= 1200
+            ? 920.0
+            : 840.0;
+
+    final maxDialogHeight = screenSize.height * 0.92;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 550,
-        constraints: const BoxConstraints(maxHeight: 700),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header con info principal
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [roleColor, roleColor.withOpacity(0.7)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                children: [
-                  // Avatar grande
-                  Container(
-                    width: 70,
-                    height: 70,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
-                        width: 2,
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 8 : 24,
+        vertical: 16,
+      ),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: Center(
+          child: SizedBox(
+            width: dialogWidth,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxDialogHeight),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 34,
+                        offset: const Offset(0, 18),
                       ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        user.displayLabel.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  // Info
-                  Expanded(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                user.displayLabel,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (!user.isActiveUser) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'INACTIVO',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '@${user.username}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.white.withOpacity(0.9),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
+                        _buildHeader(context),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          color: _pageBg,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Icon(
-                                user.isAdmin
-                                    ? Icons.admin_panel_settings
-                                    : Icons.point_of_sale,
-                                size: 16,
-                                color: Colors.white,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                user.roleLabel,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  24, 24, 24, 24,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _buildUserInfoPanel(context),
+                                    const SizedBox(height: 20),
+                                    _buildPermissionsSection(),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        _buildBottomActions(context),
                       ],
                     ),
                   ),
-                  // Close button
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-
-            // Content scrollable
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Información básica
-                    _buildSection('Información General', Icons.info_outline, [
-                      _buildInfoRow('Usuario', '@${user.username}'),
-                      _buildInfoRow(
-                        'Nombre',
-                        user.displayName ?? 'No especificado',
-                      ),
-                      _buildInfoRow('Rol', user.roleLabel),
-                      _buildInfoRow(
-                        'Estado',
-                        user.isActiveUser ? 'Activo' : 'Inactivo',
-                        valueColor: user.isActiveUser
-                            ? Colors.green
-                            : Colors.red,
-                      ),
-                    ]),
-
-                    const SizedBox(height: 16),
-
-                    // Seguridad
-                    _buildSection('Seguridad', Icons.security, [
-                      _buildInfoRow(
-                        'Contraseña',
-                        user.hasPassword ? '••••••••' : 'Sin contraseña',
-                        trailing: user.hasPassword
-                            ? const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                                size: 18,
-                              )
-                            : const Icon(
-                                Icons.warning,
-                                color: Colors.orange,
-                                size: 18,
-                              ),
-                      ),
-                      _buildInfoRow(
-                        'PIN de acceso rápido',
-                        user.pin != null ? '••••' : 'No configurado',
-                        trailing: user.pin != null
-                            ? const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                                size: 18,
-                              )
-                            : const Icon(
-                                Icons.info_outline,
-                                color: Colors.grey,
-                                size: 18,
-                              ),
-                      ),
-                    ]),
-
-                    const SizedBox(height: 16),
-
-                    // Fechas
-                    _buildSection('Registro', Icons.calendar_today, [
-                      _buildInfoRow('Creado', dateFormat.format(createdAt)),
-                      _buildInfoRow(
-                        'Última modificación',
-                        dateFormat.format(updatedAt),
-                      ),
-                    ]),
-
-                    const SizedBox(height: 16),
-
-                    // Permisos
-                    _buildPermissionsSection(),
-                  ],
                 ),
               ),
             ),
-
-            // Actions
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, size: 18),
-                      label: const Text('Cerrar'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (onPermissions != null)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          onPermissions!();
-                        },
-                        icon: const Icon(Icons.security, size: 18),
-                        label: const Text('Permisos'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.orange,
-                          side: const BorderSide(color: Colors.orange),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                  if (onEdit != null)
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          onEdit!();
-                        },
-                        icon: const Icon(Icons.edit, size: 18),
-                        label: const Text('Editar'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.teal700,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSection(String title, IconData icon, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 18, color: Colors.grey.shade600),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
+  Widget _buildHeader(BuildContext context) {
+    final initial = _displayName.isEmpty
+        ? '?'
+        : _displayName.substring(0, 1).toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 18, 18, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 5,
+            height: 80,
+            decoration: BoxDecoration(
+              color: _brandBlue,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 22),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: _softBlueBg,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Center(
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: _brandBlue,
+                  letterSpacing: -0.5,
+                ),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
           ),
-          child: Column(children: children),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: _darkText,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _buildStatusChip(
+                      _isActive ? 'Activo' : 'Inactivo',
+                      isActive: _isActive,
+                      compact: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '@$_username',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _secondaryText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _buildRoleBadge(),
+                    const SizedBox(width: 8),
+                    if (_isAdmin)
+                      _buildSoftChip(
+                        label: 'Acceso total',
+                        icon: Icons.verified_user_rounded,
+                        color: _warningOrange,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded, size: 20),
+              color: _secondaryText,
+              tooltip: 'Cerrar',
+              style: IconButton.styleFrom(
+                backgroundColor: const Color(0xFFF8FAFC),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoleBadge() {
+    final icon = _isAdmin
+        ? Icons.admin_panel_settings_rounded
+        : _roleValue == 'supervisor'
+            ? Icons.supervisor_account_rounded
+            : Icons.point_of_sale_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _softBlueBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: _brandBlue),
+          const SizedBox(width: 6),
+          Text(
+            _roleLabel,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: _brandBlue,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserInfoPanel(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          _buildCleanSectionHeader(
+            icon: Icons.info_outline_rounded,
+            title: 'Información del usuario',
+          ),
+          _buildInfoGrid(
+            children: [
+              _InfoItem('Usuario', '@$_username'),
+              _InfoItem('Nombre', _displayName),
+              _InfoItem('Rol', _roleLabel),
+              _InfoItem(
+                'Estado',
+                _isActive ? 'Activo' : 'Inactivo',
+                customValue: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildStatusChip(
+                    _isActive ? 'Activo' : 'Inactivo',
+                    isActive: _isActive,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const _DialogDivider(),
+          _buildCleanSectionHeader(
+            icon: Icons.shield_outlined,
+            title: 'Seguridad',
+          ),
+          _buildInfoGrid(
+            children: [
+              _InfoItem(
+                'Contraseña',
+                'Configurada',
+                customValue: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildSecurityActionChip(
+                    context: context,
+                    label: 'Configurada',
+                    icon: Icons.check_circle_rounded,
+                    color: _successGreen,
+                    actionLabel:
+                        onChangePassword == null ? null : 'Cambiar',
+                    onTap: onChangePassword,
+                  ),
+                ),
+              ),
+              _InfoItem(
+                'PIN de acceso rápido',
+                _hasPin ? 'Configurado' : 'No configurado',
+                customValue: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildSecurityActionChip(
+                    context: context,
+                    label: _hasPin ? 'Configurado' : 'No configurado',
+                    icon: _hasPin
+                        ? Icons.lock_rounded
+                        : Icons.info_outline_rounded,
+                    color: _hasPin ? _successGreen : _secondaryText,
+                    actionLabel: onChangePin == null
+                        ? null
+                        : (_hasPin ? 'Cambiar' : 'Crear'),
+                    onTap: onChangePin,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const _DialogDivider(),
+          _buildCleanSectionHeader(
+            icon: Icons.calendar_today_outlined,
+            title: 'Registro',
+          ),
+          _buildInfoGrid(
+            children: [
+              _InfoItem('Creado', _formatDate(_createdAt)),
+              _InfoItem('Última modificación', _formatDate(_updatedAt)),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCleanSectionHeader({
+    required IconData icon,
+    required String title,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: _brandBlue),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: _darkText,
+              letterSpacing: -0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoGrid({required List<_InfoItem> children}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 600;
+          final itemWidth = isWide
+              ? (constraints.maxWidth - 18) / 2
+              : constraints.maxWidth;
+
+          return Wrap(
+            spacing: 18,
+            runSpacing: 12,
+            children: children
+                .map(
+                  (item) => SizedBox(
+                    width: itemWidth,
+                    child: _buildInfoItem(item),
+                  ),
+                )
+                .toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(_InfoItem item) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 130,
+          child: Text(
+            item.label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _secondaryText,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: item.customValue ??
+              Text(
+                item.value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: _darkText,
+                ),
+              ),
         ),
       ],
     );
   }
 
-  Widget _buildInfoRow(
-    String label,
-    String value, {
-    Color? valueColor,
-    Widget? trailing,
+  Widget _buildStatusChip(
+    String label, {
+    required bool isActive,
+    bool compact = false,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    final bgColor =
+        isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2);
+    final textColor = isActive ? _successGreen : _dangerRed;
+    final icon = isActive ? Icons.check_circle : Icons.cancel;
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 4 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          Icon(icon, size: compact ? 12 : 14, color: textColor),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: compact ? 11 : 12,
+              fontWeight: FontWeight.w800,
+              color: textColor,
             ),
           ),
-          Expanded(
-            flex: 3,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: valueColor ?? Colors.black87,
-                    ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSoftChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecurityActionChip({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required Color color,
+    String? actionLabel,
+    VoidCallback? onTap,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          if (actionLabel != null && onTap != null) ...[
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () {
+                Navigator.pop(context);
+                onTap();
+              },
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  actionLabel,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    color: _brandBlue,
                   ),
                 ),
-                if (trailing != null) trailing,
-              ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -399,148 +698,434 @@ class UserDetailDialog extends StatelessWidget {
   Widget _buildPermissionsSection() {
     final perms = _permissions;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.verified_user, size: 18, color: Colors.grey.shade600),
-            const SizedBox(width: 8),
-            Text(
-              'Permisos',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const Spacer(),
-            if (user.isAdmin)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'ACCESO TOTAL',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.purple.shade700,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Column(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              _buildPermissionCategory('Ventas', [
-                _PermissionItem('Realizar ventas', perms.canSell),
-                _PermissionItem('Anular ventas', perms.canVoidSale),
-                _PermissionItem('Aplicar descuentos', perms.canApplyDiscount),
-                _PermissionItem('Ver historial', perms.canViewSalesHistory),
-              ]),
-              const Divider(height: 24),
-              _buildPermissionCategory('Productos', [
-                _PermissionItem('Ver productos', perms.canViewProducts),
-                _PermissionItem('Editar productos', perms.canEditProducts),
-                _PermissionItem('Eliminar productos', perms.canDeleteProducts),
-                _PermissionItem('Ajustar stock', perms.canAdjustStock),
-              ]),
-              const Divider(height: 24),
-              _buildPermissionCategory('Clientes', [
-                _PermissionItem('Ver clientes', perms.canViewClients),
-                _PermissionItem('Editar clientes', perms.canEditClients),
-                _PermissionItem('Eliminar clientes', perms.canDeleteClients),
-              ]),
-              const Divider(height: 24),
-              _buildPermissionCategory('Caja', [
-                _PermissionItem('Iniciar sesión de caja', perms.canOpenCash),
-                _PermissionItem('Cerrar sesión de caja', perms.canCloseCash),
-                _PermissionItem('Ver historial caja', perms.canViewCashHistory),
-                _PermissionItem('Movimientos', perms.canMakeCashMovements),
-              ]),
-              const Divider(height: 24),
-              _buildPermissionCategory('Otros', [
-                _PermissionItem('Ver reportes', perms.canViewReports),
-                _PermissionItem('Herramientas', perms.canAccessTools),
-                _PermissionItem('Configuración', perms.canAccessSettings),
-              ]),
+              const Icon(
+                Icons.verified_user_outlined,
+                size: 18,
+                color: _brandBlue,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Permisos',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: _darkText,
+                  letterSpacing: -0.1,
+                ),
+              ),
+              const Spacer(),
+              if (_isAdmin)
+                _buildSoftChip(
+                  label: 'Acceso total',
+                  icon: Icons.star_rounded,
+                  color: _warningOrange,
+                ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 18),
+          _buildPermissionCategory(
+            'Ventas',
+            [
+              _PermissionItem('Realizar ventas', _readBool(perms, 'canSell')),
+              _PermissionItem(
+                'Anular ventas',
+                _readBool(perms, 'canVoidSale'),
+              ),
+              _PermissionItem(
+                'Aplicar descuentos',
+                _readBool(perms, 'canApplyDiscount'),
+              ),
+              _PermissionItem(
+                'Ver historial',
+                _readBool(perms, 'canViewSalesHistory'),
+              ),
+            ],
+          ),
+          _buildPermissionCategory(
+            'Productos',
+            [
+              _PermissionItem(
+                'Ver productos',
+                _readBool(perms, 'canViewProducts'),
+              ),
+              _PermissionItem(
+                'Editar productos',
+                _readBool(perms, 'canEditProducts'),
+              ),
+              _PermissionItem(
+                'Eliminar productos',
+                _readBool(perms, 'canDeleteProducts'),
+              ),
+              _PermissionItem(
+                'Ajustar stock',
+                _readBool(perms, 'canAdjustStock'),
+              ),
+            ],
+          ),
+          _buildPermissionCategory(
+            'Clientes',
+            [
+              _PermissionItem(
+                'Ver clientes',
+                _readBool(perms, 'canViewClients'),
+              ),
+              _PermissionItem(
+                'Editar clientes',
+                _readBool(perms, 'canEditClients'),
+              ),
+              _PermissionItem(
+                'Eliminar clientes',
+                _readBool(perms, 'canDeleteClients'),
+              ),
+            ],
+          ),
+          _buildPermissionCategory(
+            'Caja',
+            [
+              _PermissionItem(
+                'Iniciar sesión de caja',
+                _readBool(perms, 'canOpenCash'),
+              ),
+              _PermissionItem(
+                'Cerrar sesión de caja',
+                _readBool(perms, 'canCloseCash'),
+              ),
+              _PermissionItem(
+                'Ver historial caja',
+                _readBool(perms, 'canViewCashHistory'),
+              ),
+              _PermissionItem(
+                'Movimientos',
+                _readBool(perms, 'canMakeCashMovements'),
+              ),
+            ],
+          ),
+          _buildPermissionCategory(
+            'Otros',
+            [
+              _PermissionItem(
+                'Ver reportes',
+                _readBool(perms, 'canViewReports'),
+              ),
+              _PermissionItem(
+                'Herramientas',
+                _readBool(perms, 'canAccessTools'),
+              ),
+              _PermissionItem(
+                'Configuración',
+                _readBool(perms, 'canAccessSettings'),
+              ),
+            ],
+            isLast: true,
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildPermissionCategory(String title, List<_PermissionItem> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey.shade600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          children: items
-              .map((item) => _buildPermissionChip(item.name, item.enabled))
-              .toList(),
-        ),
-      ],
+  bool _readBool(dynamic object, String name) {
+    try {
+      switch (name) {
+        case 'canSell':
+          return object.canSell == true;
+        case 'canVoidSale':
+          return object.canVoidSale == true;
+        case 'canApplyDiscount':
+          return object.canApplyDiscount == true;
+        case 'canViewSalesHistory':
+          return object.canViewSalesHistory == true;
+        case 'canViewProducts':
+          return object.canViewProducts == true;
+        case 'canEditProducts':
+          return object.canEditProducts == true;
+        case 'canDeleteProducts':
+          return object.canDeleteProducts == true;
+        case 'canAdjustStock':
+          return object.canAdjustStock == true;
+        case 'canViewClients':
+          return object.canViewClients == true;
+        case 'canEditClients':
+          return object.canEditClients == true;
+        case 'canDeleteClients':
+          return object.canDeleteClients == true;
+        case 'canOpenCash':
+          return object.canOpenCash == true;
+        case 'canCloseCash':
+          return object.canCloseCash == true;
+        case 'canViewCashHistory':
+          return object.canViewCashHistory == true;
+        case 'canMakeCashMovements':
+          return object.canMakeCashMovements == true;
+        case 'canViewReports':
+          return object.canViewReports == true;
+        case 'canAccessTools':
+          return object.canAccessTools == true;
+        case 'canAccessSettings':
+          return object.canAccessSettings == true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  Widget _buildPermissionCategory(
+    String title,
+    List<_PermissionItem> items, {
+    bool isLast = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 18),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 500;
+
+          if (isWide) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 110,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: _darkText,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: items
+                        .map((item) =>
+                            _buildPermissionChip(item.name, item.enabled))
+                        .toList(),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: _darkText,
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: items
+                    .map((item) =>
+                        _buildPermissionChip(item.name, item.enabled))
+                    .toList(),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
   Widget _buildPermissionChip(String name, bool enabled) {
+    final color = enabled ? _successGreen : _secondaryText;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: enabled ? Colors.green.shade50 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: enabled ? Colors.green.shade200 : Colors.grey.shade300,
-        ),
+        color: enabled ? const Color(0xFFEAFBF0) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            enabled ? Icons.check : Icons.close,
-            size: 14,
-            color: enabled ? Colors.green : Colors.grey,
+            enabled ? Icons.check_rounded : Icons.remove_rounded,
+            size: 13,
+            color: color,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Text(
             name,
             style: TextStyle(
-              fontSize: 11,
-              color: enabled ? Colors.green.shade700 : Colors.grey.shade600,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: enabled ? const Color(0xFF166534) : _secondaryText,
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildBottomActions(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(22),
+          bottomRight: Radius.circular(22),
+        ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            height: 42,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded, size: 17),
+              label: const Text('Cerrar'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _darkText,
+                side: const BorderSide(color: _border),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+            ),
+          ),
+          const Spacer(),
+          if (onPermissions != null) ...[
+            SizedBox(
+              height: 42,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  onPermissions!();
+                },
+                icon: const Icon(Icons.security_rounded, size: 17),
+                label: const Text('Permisos'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _warningOrange,
+                  side: const BorderSide(color: _warningOrange),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
+          if (onEdit != null) ...[
+            SizedBox(
+              height: 42,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  onEdit!();
+                },
+                icon: const Icon(Icons.edit_rounded, size: 17),
+                label: const Text('Editar'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _brandBlue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '—';
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _EmptyPermissions {
+  bool get canSell => false;
+  bool get canVoidSale => false;
+  bool get canApplyDiscount => false;
+  bool get canViewSalesHistory => false;
+  bool get canViewProducts => false;
+  bool get canEditProducts => false;
+  bool get canDeleteProducts => false;
+  bool get canAdjustStock => false;
+  bool get canViewClients => false;
+  bool get canEditClients => false;
+  bool get canDeleteClients => false;
+  bool get canOpenCash => false;
+  bool get canCloseCash => false;
+  bool get canViewCashHistory => false;
+  bool get canMakeCashMovements => false;
+  bool get canViewReports => false;
+  bool get canAccessTools => false;
+  bool get canAccessSettings => false;
+}
+
+class _DialogDivider extends StatelessWidget {
+  const _DialogDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 22),
+      child: Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
+    );
+  }
+}
+
+class _InfoItem {
+  final String label;
+  final String value;
+  final Widget? customValue;
+
+  const _InfoItem(this.label, this.value, {this.customValue});
 }
 
 class _PermissionItem {
   final String name;
   final bool enabled;
 
-  _PermissionItem(this.name, this.enabled);
+  const _PermissionItem(this.name, this.enabled);
 }
