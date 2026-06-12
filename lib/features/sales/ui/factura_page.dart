@@ -18,8 +18,6 @@ import '../../cash/data/cash_movement_model.dart';
 import '../../cash/data/cash_repository.dart';
 import '../../cash/ui/cash_movement_dialog.dart';
 import '../../settings/data/printer_settings_repository.dart';
-import '../../reports/data/report_data_service.dart' as reporting;
-import '../../reports/data/reports_repository.dart';
 import '../data/sales_model.dart';
 import '../data/sales_repository.dart';
 import '../data/returns_repository.dart';
@@ -54,7 +52,10 @@ bool _supportsElectronicCreditNote(SaleModel sale) {
 
 /// Pantalla de facturas con devolucion integrada por factura.
 class FacturaPage extends StatefulWidget {
-  const FacturaPage({super.key});
+  const FacturaPage({super.key, this.initialSaleId, this.openRefund = false});
+
+  final int? initialSaleId;
+  final bool openRefund;
 
   @override
   State<FacturaPage> createState() => _FacturaPageState();
@@ -76,6 +77,7 @@ class _FacturaPageState extends State<FacturaPage> {
   bool _isLoading = false;
   String _searchQuery = '';
   int _loadSeq = 0;
+  bool _initialRefundHandled = false;
 
   // Filtros de fecha
   DateFilter _selectedFilter = DateFilter.thisMonth;
@@ -125,6 +127,10 @@ class _FacturaPageState extends State<FacturaPage> {
   @override
   void initState() {
     super.initState();
+    _selectedSaleId = widget.initialSaleId;
+    if (widget.initialSaleId != null) {
+      _selectedFilter = DateFilter.all;
+    }
     Future.delayed(const Duration(milliseconds: 50), () {
       if (!mounted) return;
       _loadData();
@@ -269,36 +275,18 @@ class _FacturaPageState extends State<FacturaPage> {
       final (dateFrom, dateTo) = _getDateRange();
 
       final result = await DbHardening.instance
-          .runDbSafe<
-            (
-              List<SaleModel>,
-              List<Map<String, dynamic>>,
-              List<CategoryPerformanceData>,
-            )
-          >(() async {
-            final salesFilter = reporting.DateFilter(
-              start: dateFrom ?? DateTime(2020),
-              end: dateTo ?? DateTime.now(),
+          .runDbSafe<(List<SaleModel>, List<Map<String, dynamic>>)>(() async {
+            final sales = await SalesRepository.listCompletedSales(
+              dateFrom: dateFrom,
+              dateTo: dateTo,
             );
-            final report = await reporting.ReportDataService.getReportData(
-              salesFilter,
-            );
-            final sales = report.sales;
             final returns = await ReturnsRepository.listReturns(
               dateFrom: dateFrom,
               dateTo: dateTo,
             );
-            final now = DateTime.now();
-            final startMs = dateFrom?.millisecondsSinceEpoch ?? 0;
-            final endMs = (dateTo ?? now).millisecondsSinceEpoch;
-            final categoryPerformance =
-                await ReportsRepository.getCategoryPerformance(
-                  startMs: startMs,
-                  endMs: endMs,
-                );
-            return (sales, returns, categoryPerformance);
+            return (sales, returns);
           }, stage: 'sales/returns_list/load');
-      final (sales, returns, categoryPerformance) = result;
+      final (sales, returns) = result;
       final cashierNames = await _loadCashierNames([
         ...sales.map((sale) => sale.sessionId).whereType<int>(),
         ...returns.map((ret) => ret['session_id'] as int?).whereType<int>(),
@@ -307,7 +295,11 @@ class _FacturaPageState extends State<FacturaPage> {
       if (!mounted || seq != _loadSeq) return;
       _safeSetState(() {
         _completedSales = sales
-            .where((s) => s.kind == 'invoice' && s.status != 'cancelled')
+            .where(
+              (sale) =>
+                  const {'invoice', 'sale'}.contains(sale.kind) &&
+                  sale.status != 'cancelled',
+            )
             .toList();
         _returns = returns;
         _cashierNameBySessionId = cashierNames;
@@ -318,6 +310,16 @@ class _FacturaPageState extends State<FacturaPage> {
 
         _ensureSelection();
       });
+      final selected = _selectedSale;
+      if (widget.openRefund &&
+          !_initialRefundHandled &&
+          selected != null &&
+          selected.status.toUpperCase() != 'REFUNDED') {
+        _initialRefundHandled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_showRefundDialog(selected));
+        });
+      }
     } catch (e, st) {
       if (!mounted || seq != _loadSeq) return;
       await ErrorHandler.instance.handle(
@@ -526,7 +528,11 @@ class _FacturaPageState extends State<FacturaPage> {
           );
           final verticalPadding = 10.0;
           final isWide = constraints.maxWidth >= 1200;
-          final detailWidth = (constraints.maxWidth * 0.28).clamp(320.0, 460.0);
+          final detailWidth = constraints.maxWidth < 1100
+              ? 450.0
+              : constraints.maxWidth < 1400
+              ? 500.0
+              : 550.0;
 
           final listPadding = EdgeInsets.fromLTRB(
             horizontalPadding,
@@ -2035,20 +2041,21 @@ class _FacturaPageState extends State<FacturaPage> {
     final createdMs = (ret['created_at_ms'] as int?) ?? 0;
     final creditNoteEcf =
         (ret['electronic_credit_note_ecf'] as String?)?.trim() ?? '';
-    final originalEcf = (ret['original_electronic_ecf'] as String?)?.trim() ?? '';
+    final originalEcf =
+        (ret['original_electronic_ecf'] as String?)?.trim() ?? '';
     final originalDocumentType =
-      (ret['original_electronic_document_type'] as String?)?.trim() ?? '';
+        (ret['original_electronic_document_type'] as String?)?.trim() ?? '';
     final creditNoteStatusRaw =
         (ret['electronic_credit_note_status'] as String?)?.trim() ?? '';
     final creditNoteRequested =
         ((ret['electronic_credit_note_requested'] as int?) ?? 0) == 1;
     final originalRelationLabel = originalEcf.isNotEmpty
-      ? 'Sobre $originalEcf'
-      : switch (originalDocumentType.toUpperCase()) {
-        '31' => 'Sobre factura fiscal E31',
-        '32' => 'Sobre factura fiscal E32',
-        _ => '',
-        };
+        ? 'Sobre $originalEcf'
+        : switch (originalDocumentType.toUpperCase()) {
+            '31' => 'Sobre factura fiscal E31',
+            '32' => 'Sobre factura fiscal E32',
+            _ => '',
+          };
 
     String creditNoteStatusLabel() {
       switch (creditNoteStatusRaw.toUpperCase()) {
@@ -2277,6 +2284,8 @@ class _FacturaPageState extends State<FacturaPage> {
 
     try {
       final items = await SalesRepository.getItemsBySaleId(saleId);
+      final returnedQuantities =
+          await ReturnsRepository.returnedQuantitiesForSale(saleId);
       if (!mounted) return;
 
       // Evita pantalla negra por force-unwraps si existieran items corruptos.
@@ -2288,7 +2297,11 @@ class _FacturaPageState extends State<FacturaPage> {
       final result = await showDialog<_RefundDialogResult>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => _RefundDialog(sale: sale, items: items),
+        builder: (context) => _RefundDialog(
+          sale: sale,
+          items: items,
+          returnedQuantities: returnedQuantities,
+        ),
       );
 
       if (result == _RefundDialogResult.refunded) {
@@ -2716,8 +2729,13 @@ class _SaleTicketDialog extends StatelessWidget {
 class _RefundDialog extends StatefulWidget {
   final SaleModel sale;
   final List<SaleItemModel> items;
+  final Map<int, double> returnedQuantities;
 
-  const _RefundDialog({required this.sale, required this.items});
+  const _RefundDialog({
+    required this.sale,
+    required this.items,
+    required this.returnedQuantities,
+  });
 
   @override
   State<_RefundDialog> createState() => _RefundDialogState();
@@ -2729,7 +2747,7 @@ class _RefundDialogState extends State<_RefundDialog> {
   bool _isProcessing = false;
   bool _refundAll = false;
 
-    bool get _supportsE34 => _supportsElectronicCreditNote(widget.sale);
+  bool get _supportsE34 => _supportsElectronicCreditNote(widget.sale);
 
   String get _refundActionLabel =>
       _supportsE34 ? 'Generar nota de credito E34' : 'Procesar';
@@ -2737,13 +2755,21 @@ class _RefundDialogState extends State<_RefundDialog> {
   String get _refundDialogTitle =>
       _supportsE34 ? 'Generar Nota de Crédito E34' : 'Procesar Devolución';
 
-    String get _refundDialogSubtitle => _supportsE34
+  String get _refundDialogSubtitle => _supportsE34
       ? '${widget.sale.localCode} · ${widget.sale.electronicInvoiceCode ?? 'e-CF original'}'
       : widget.sale.localCode;
 
-    String get _refundSelectionHint => _supportsE34
+  String get _refundSelectionHint => _supportsE34
       ? 'Selecciona los productos a acreditar. La DGII recibirá una E34 enlazada al comprobante original.'
       : 'Selecciona los productos que deseas devolver.';
+
+  double _remainingQuantity(int index) {
+    final item = widget.items[index];
+    final itemId = item.id;
+    if (itemId == null) return 0;
+    final returned = widget.returnedQuantities[itemId] ?? 0;
+    return (item.qty - returned).clamp(0, item.qty).toDouble();
+  }
 
   @override
   void initState() {
@@ -2762,7 +2788,7 @@ class _RefundDialogState extends State<_RefundDialog> {
     for (var i = 0; i < widget.items.length; i++) {
       final item = widget.items[i];
       final qty = _returnQuantities[i];
-      total += qty * item.unitPrice;
+      total += qty * _refundUnitPrice(item);
     }
     if (widget.sale.itbisEnabled == 1) {
       total += total * widget.sale.itbisRate;
@@ -2771,6 +2797,14 @@ class _RefundDialogState extends State<_RefundDialog> {
   }
 
   bool get _hasSelectedItems => _returnQuantities.any((qty) => qty > 0);
+  bool get _hasPreviousReturns =>
+      widget.returnedQuantities.values.any((quantity) => quantity > 0.0001);
+
+  double _refundUnitPrice(SaleItemModel item) {
+    if (item.qty <= 0) return item.unitPrice;
+    final netLine = (item.unitPrice * item.qty) - item.discountLine;
+    return (netLine / item.qty).clamp(0, item.unitPrice).toDouble();
+  }
 
   Future<bool> _ensureCashAvailableForRefund(double amount) async {
     if (amount <= 0) return true;
@@ -2881,7 +2915,7 @@ class _RefundDialogState extends State<_RefundDialog> {
     setState(() {
       _refundAll = !_refundAll;
       for (var i = 0; i < widget.items.length; i++) {
-        _returnQuantities[i] = _refundAll ? widget.items[i].qty : 0;
+        _returnQuantities[i] = _refundAll ? _remainingQuantity(i) : 0;
       }
     });
   }
@@ -2929,7 +2963,7 @@ class _RefundDialogState extends State<_RefundDialog> {
             'product_id': item.productId,
             'description': item.productNameSnapshot,
             'qty': qty,
-            'price': item.unitPrice,
+            'price': _refundUnitPrice(item),
           });
         }
       }
@@ -2959,6 +2993,17 @@ class _RefundDialogState extends State<_RefundDialog> {
   }
 
   Future<void> _cancelFullSale() async {
+    if (_hasPreviousReturns) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Esta factura ya tiene devoluciones. Devuelve únicamente los productos restantes.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final reason = await showRefundReasonDialog(context);
     if (reason == null || reason.trim().isEmpty) return;
     _noteController.text = reason.trim();
@@ -3170,6 +3215,8 @@ class _RefundDialogState extends State<_RefundDialog> {
                   final item = widget.items[index];
                   final returnQty = _returnQuantities[index];
                   final isSelected = returnQty > 0;
+                  final remainingQty = _remainingQuantity(index);
+                  final hasRemaining = remainingQty > 0.0001;
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -3189,10 +3236,14 @@ class _RefundDialogState extends State<_RefundDialog> {
                                 ),
                               ),
                               Text(
-                                '${currencyFormat.format(item.unitPrice)} × ${item.qty.toInt()}',
+                                hasRemaining
+                                    ? '${currencyFormat.format(_refundUnitPrice(item))} × ${item.qty.toInt()} · Disponible: ${remainingQty.toInt()}'
+                                    : 'Este producto ya fue devuelto por completo',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: scheme.onSurfaceVariant,
+                                  color: hasRemaining
+                                      ? scheme.onSurfaceVariant
+                                      : status.error,
                                 ),
                               ),
                             ],
@@ -3254,7 +3305,7 @@ class _RefundDialogState extends State<_RefundDialog> {
                                       ? scheme.primary
                                       : scheme.onSurfaceVariant,
                                 ),
-                                onPressed: returnQty < item.qty
+                                onPressed: returnQty < remainingQty
                                     ? () => setState(
                                         () => _returnQuantities[index] =
                                             returnQty + 1,
@@ -3339,9 +3390,11 @@ class _RefundDialogState extends State<_RefundDialog> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _isProcessing ? null : _cancelFullSale,
+                          onPressed: _isProcessing || _hasPreviousReturns
+                              ? null
+                              : _cancelFullSale,
                           icon: const Icon(Icons.cancel_outlined, size: 18),
-                          label: const Text('Anular'),
+                          label: const Text('Anular factura'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: status.error,
                             side: BorderSide(color: status.error),

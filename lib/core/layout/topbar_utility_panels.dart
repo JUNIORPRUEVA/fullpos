@@ -20,12 +20,12 @@ import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/settings/data/user_model.dart';
 import '../../features/settings/data/users_repository.dart';
-import '../../features/settings/ui/cloud_settings_page.dart';
 import '../config/app_config.dart';
 import '../services/cloud_sync_service.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
 import '../sync/product_sync_service.dart';
+import '../ui/app_toast.dart';
 import '../window/window_service.dart';
 import 'app_side_sheet.dart';
 
@@ -85,9 +85,9 @@ class _PanelFooterHint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: const Color(0xFF64748B),
-      ),
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
     );
   }
 }
@@ -124,8 +124,7 @@ class _ProfileUtilityPanelState extends State<_ProfileUtilityPanel> {
     String? profileImagePath;
     if (userKey != null) {
       profileImagePath = await UiPreferences.getProfileImagePath(userKey);
-      if (profileImagePath != null &&
-          !await File(profileImagePath).exists()) {
+      if (profileImagePath != null && !await File(profileImagePath).exists()) {
         await UiPreferences.setProfileImagePath(userKey, null);
         profileImagePath = null;
       }
@@ -502,8 +501,8 @@ class _ProfileUtilityPanelState extends State<_ProfileUtilityPanel> {
     final name = (_displayName?.trim().isNotEmpty ?? false)
         ? _displayName!.trim()
         : (_username ?? 'Usuario');
-    final roleLabel = user?.roleLabel ??
-        (_role == 'admin' ? 'Administrador' : 'Cajero');
+    final roleLabel =
+        user?.roleLabel ?? (_role == 'admin' ? 'Administrador' : 'Cajero');
     final statusLabel = user?.isActiveUser == false ? 'Inactivo' : 'Activo';
 
     return Column(
@@ -531,9 +530,7 @@ class _ProfileUtilityPanelState extends State<_ProfileUtilityPanel> {
                           children: [
                             Text(
                               name,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
+                              style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),
@@ -645,33 +642,35 @@ class _SupportUtilityPanelState extends State<_SupportUtilityPanel> {
   bool _loading = true;
   BusinessSettings? _settings;
 
-  static const List<({IconData icon, String title, String subtitle})> _topics = [
-    (
-      icon: Icons.point_of_sale_outlined,
-      title: 'Cómo vender',
-      subtitle: 'Abrir un ticket, agregar productos y confirmar la venta.'
-    ),
-    (
-      icon: Icons.payments_outlined,
-      title: 'Cómo cobrar',
-      subtitle: 'Seleccionar método de pago y finalizar correctamente.'
-    ),
-    (
-      icon: Icons.inventory_2_outlined,
-      title: 'Cómo crear productos',
-      subtitle: 'Registrar artículos con precio, código y existencias.'
-    ),
-    (
-      icon: Icons.people_outline_rounded,
-      title: 'Cómo usar clientes',
-      subtitle: 'Asociar clientes, consultar historial y datos básicos.'
-    ),
-    (
-      icon: Icons.backup_outlined,
-      title: 'Cómo hacer respaldo',
-      subtitle: 'Proteger la información y mantener copias locales seguras.'
-    ),
-  ];
+  static const List<({IconData icon, String title, String subtitle})> _topics =
+      [
+        (
+          icon: Icons.point_of_sale_outlined,
+          title: 'Cómo vender',
+          subtitle: 'Abrir un ticket, agregar productos y confirmar la venta.',
+        ),
+        (
+          icon: Icons.payments_outlined,
+          title: 'Cómo cobrar',
+          subtitle: 'Seleccionar método de pago y finalizar correctamente.',
+        ),
+        (
+          icon: Icons.inventory_2_outlined,
+          title: 'Cómo crear productos',
+          subtitle: 'Registrar artículos con precio, código y existencias.',
+        ),
+        (
+          icon: Icons.people_outline_rounded,
+          title: 'Cómo usar clientes',
+          subtitle: 'Asociar clientes, consultar historial y datos básicos.',
+        ),
+        (
+          icon: Icons.backup_outlined,
+          title: 'Cómo hacer respaldo',
+          subtitle:
+              'Proteger la información y mantener copias locales seguras.',
+        ),
+      ];
 
   @override
   void initState() {
@@ -739,9 +738,9 @@ class _SupportUtilityPanelState extends State<_SupportUtilityPanel> {
               children: [
                 Text(
                   'Atención y acompañamiento',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -771,10 +770,7 @@ class _SupportUtilityPanelState extends State<_SupportUtilityPanel> {
             decoration: _cardDecoration(),
             child: Column(
               children: [
-                _InfoLine(
-                  label: 'WhatsApp',
-                  value: _supportWhatsappLabel(),
-                ),
+                _InfoLine(label: 'WhatsApp', value: _supportWhatsappLabel()),
                 _InfoLine(
                   label: 'Correo del negocio',
                   value: companyEmail.isEmpty ? 'No configurado' : companyEmail,
@@ -1044,10 +1040,22 @@ class _LicenseUtilityPanelState extends State<_LicenseUtilityPanel> {
                       ? 'No disponible'
                       : info!.tipo!.trim().toUpperCase(),
                 ),
-                _InfoLine(label: 'Tiempo restante', value: _remainingTimeText(info)),
-                _InfoLine(label: 'Inicio', value: _formatDate(info?.fechaInicio)),
-                _InfoLine(label: 'Vencimiento', value: _formatDate(info?.fechaFin)),
-                _InfoLine(label: 'Business ID', value: _businessId ?? 'No disponible'),
+                _InfoLine(
+                  label: 'Tiempo restante',
+                  value: _remainingTimeText(info),
+                ),
+                _InfoLine(
+                  label: 'Inicio',
+                  value: _formatDate(info?.fechaInicio),
+                ),
+                _InfoLine(
+                  label: 'Vencimiento',
+                  value: _formatDate(info?.fechaFin),
+                ),
+                _InfoLine(
+                  label: 'Business ID',
+                  value: _businessId ?? 'No disponible',
+                ),
                 _InfoLine(label: 'Origen', value: _sourceText()),
                 _InfoLine(
                   label: 'Última revisión',
@@ -1064,9 +1072,9 @@ class _LicenseUtilityPanelState extends State<_LicenseUtilityPanel> {
             const SizedBox(height: 14),
             Text(
               'Ubicación local: ${_licenseFilePath!.trim()}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF64748B),
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
             ),
           ],
           if (kDebugMode) ...[
@@ -1106,7 +1114,12 @@ class _CloudUtilityPanel extends StatefulWidget {
 
 class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
   bool _loading = true;
+  bool _changingCloudState = false;
+  bool _syncingNow = false;
+  bool _reconnecting = false;
+  bool _refreshing = false;
   Map<String, dynamic>? _summary;
+  String? _loadError;
 
   @override
   void initState() {
@@ -1114,74 +1127,141 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     _reload();
   }
 
-  Future<void> _reload() async {
-    setState(() => _loading = true);
-    final settings = await BusinessSettingsRepository().loadSettings();
-    final companyId = await SessionManager.companyId();
-    final syncRows = await CloudSyncService.instance.readSyncStatusRows();
-    final productRows = await ProductSyncService.instance.readStatusRows();
-    final pendingCount = await ProductSyncService.instance.pendingCount();
-    final lastProductSuccess = await ProductSyncService.instance.lastSuccessAtMs();
-    final wsState = ProductSyncService.instance.connectionState.value;
+  Future<void> _reload({bool showLoading = false}) async {
+    if (showLoading && mounted) {
+      setState(() => _loading = true);
+    }
+    try {
+      final settings = await BusinessSettingsRepository().loadSettings();
+      final companyId = await SessionManager.companyId();
+      final syncRows = await CloudSyncService.instance.readSyncStatusRows();
+      final productRows = await ProductSyncService.instance.readStatusRows();
+      final productPendingCount = await ProductSyncService.instance
+          .pendingCount();
+      final lastProductSuccess = await ProductSyncService.instance
+          .lastSuccessAtMs();
+      final wsState = ProductSyncService.instance.connectionState.value;
 
-    Map<String, dynamic>? findTarget(String target) {
+      Map<String, dynamic>? findTarget(String target) {
+        for (final row in syncRows) {
+          if ((row['target'] as String?) == target) return row;
+        }
+        return null;
+      }
+
+      DateTime? parseMs(dynamic value) {
+        if (value is! int) return null;
+        return DateTime.fromMillisecondsSinceEpoch(value);
+      }
+
+      DateTime? latest(DateTime? current, DateTime? candidate) {
+        if (candidate == null) return current;
+        if (current == null || candidate.isAfter(current)) return candidate;
+        return current;
+      }
+
+      String aggregateProductStatus() {
+        final statuses = productRows
+            .map((row) => (row['status'] as String?)?.toLowerCase() ?? '')
+            .toSet();
+        if (statuses.any(
+          const {'failed', 'error', 'rejected', 'conflict'}.contains,
+        )) {
+          return 'failed';
+        }
+        if (statuses.contains('syncing')) return 'syncing';
+        if (statuses.any(const {'pending', 'queued'}.contains)) {
+          return 'pending';
+        }
+        if (lastProductSuccess != null) return 'synced';
+        return (findTarget('products')?['status'] as String?) ?? 'idle';
+      }
+
+      final targets = <Map<String, dynamic>>[];
+      DateTime? latestSync;
+      var targetPendingCount = 0;
       for (final row in syncRows) {
-        if ((row['target'] as String?) == target) return row;
+        final target = (row['target'] as String?)?.trim() ?? '';
+        if (target.isEmpty) continue;
+        var status = (row['status'] as String?)?.toLowerCase() ?? 'idle';
+        var lastSuccess = parseMs(row['last_success_at_ms']);
+        if (target == 'products') {
+          status = aggregateProductStatus();
+          lastSuccess = latest(lastSuccess, parseMs(lastProductSuccess));
+        }
+        if (const {
+          'pending',
+          'queued',
+          'syncing',
+          'failed',
+          'error',
+        }.contains(status)) {
+          targetPendingCount++;
+        }
+        latestSync = latest(latestSync, lastSuccess);
+        targets.add({
+          'target': target,
+          'status': status,
+          'lastSuccess': lastSuccess,
+        });
       }
-      return null;
-    }
 
-    DateTime? parseMs(int? value) =>
-        value == null ? null : DateTime.fromMillisecondsSinceEpoch(value);
-
-    final productRow = findTarget('products');
-    final salesRow = findTarget('sales');
-    final productSyncAt = parseMs(productRow?['last_success_at_ms'] as int?);
-    final salesSyncAt = parseMs(salesRow?['last_success_at_ms'] as int?);
-    final lastRealtimeSuccess = parseMs(lastProductSuccess);
-
-    DateTime? latestSync;
-    for (final value in [productSyncAt, salesSyncAt, lastRealtimeSuccess]) {
-      if (value == null) continue;
-      if (latestSync == null || value.isAfter(latestSync)) {
-        latestSync = value;
+      void ensureTarget(String target, String status, DateTime? lastSuccess) {
+        if (targets.any((row) => row['target'] == target)) return;
+        targets.add({
+          'target': target,
+          'status': status,
+          'lastSuccess': lastSuccess,
+        });
+        latestSync = latest(latestSync, lastSuccess);
       }
-    }
 
-    final issues = <String>[];
-    if (!settings.cloudEnabled) {
-      issues.add('La sincronización en nube está desactivada.');
-    }
-    if (companyId == null) {
-      issues.add('No hay empresa asociada a la sesión actual.');
-    }
-    if (wsState != 'connected') {
-      issues.add('La conexión en tiempo real no está activa.');
-    }
-    if (productRows.any((row) => (row['status'] as String?) == 'failed')) {
-      issues.add('Hay elementos pendientes de reintento.');
-    }
+      final productStatus = aggregateProductStatus();
+      final productLastSuccess = parseMs(lastProductSuccess);
+      final salesRow = findTarget('sales');
+      final salesStatus =
+          (salesRow?['status'] as String?)?.toLowerCase() ?? 'idle';
+      final salesLastSuccess = parseMs(salesRow?['last_success_at_ms']);
+      ensureTarget('products', productStatus, productLastSuccess);
+      ensureTarget('sales', salesStatus, salesLastSuccess);
 
-    final next = <String, dynamic>{
-      'settings': settings,
-      'companyId': companyId,
-      'pendingCount': pendingCount,
-      'wsState': wsState,
-      'latestSync': latestSync,
-      'productStatus': (productRow?['status'] as String?) ?? 'idle',
-      'salesStatus': (salesRow?['status'] as String?) ?? 'idle',
-      'issues': issues,
-    };
+      final pendingCount = productPendingCount + targetPendingCount;
+      final hasFailedStatus = targets.any(
+        (row) => const {
+          'failed',
+          'error',
+          'rejected',
+          'conflict',
+        }.contains(row['status']),
+      );
 
-    if (!mounted) return;
-    setState(() {
-      _summary = next;
-      _loading = false;
-    });
+      if (!mounted) return;
+      setState(() {
+        _summary = {
+          'settings': settings,
+          'companyId': companyId,
+          'pendingCount': pendingCount,
+          'wsState': wsState,
+          'latestSync': latestSync,
+          'productStatus': productStatus,
+          'salesStatus': salesStatus,
+          'targets': targets,
+          'hasFailedStatus': hasFailedStatus,
+        };
+        _loadError = null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Revisa tu conexión e intenta actualizar el estado.';
+        _loading = false;
+      });
+    }
   }
 
   String _formatDateTime(DateTime? value) {
-    if (value == null) return 'Sin registros aún';
+    if (value == null) return 'Sin sincronización reciente';
     final local = value.toLocal();
     final day = local.day.toString().padLeft(2, '0');
     final month = local.month.toString().padLeft(2, '0');
@@ -1191,71 +1271,230 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
   }
 
   String _statusLabel(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'connected':
         return 'Conectado';
+      case 'disconnected':
+        return 'Desconectado';
       case 'connecting':
         return 'Conectando';
       case 'synced':
         return 'Sincronizado';
       case 'syncing':
         return 'Sincronizando';
+      case 'pending':
+      case 'queued':
+        return 'Pendiente';
+      case 'idle':
+        return 'Sin actividad todavía';
+      case 'disabled':
+        return 'Desactivado';
       case 'failed':
       case 'error':
+      case 'rejected':
+      case 'conflict':
         return 'Con incidencias';
       default:
-        return 'Pendiente';
+        return 'Sin actividad todavía';
     }
   }
 
   Color _statusColor(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'connected':
       case 'synced':
         return const Color(0xFF15803D);
       case 'connecting':
       case 'syncing':
         return const Color(0xFF2563EB);
+      case 'pending':
+      case 'queued':
+        return const Color(0xFFB45309);
       case 'failed':
       case 'error':
+      case 'rejected':
+      case 'conflict':
         return const Color(0xFFB91C1C);
       default:
         return const Color(0xFF64748B);
     }
   }
 
+  String _targetLabel(String target) {
+    return switch (target) {
+      'users' => 'Usuarios',
+      'company_config' => 'Configuración del negocio',
+      'clients' => 'Clientes',
+      'categories' => 'Categorías',
+      'suppliers' => 'Proveedores',
+      'products' => 'Productos',
+      'sales' => 'Ventas',
+      'payments' => 'Pagos',
+      'returns' => 'Devoluciones',
+      'cash' => 'Caja',
+      'quotes' => 'Cotizaciones',
+      _ => 'Datos de la nube',
+    };
+  }
+
+  IconData _targetIcon(String target) {
+    return switch (target) {
+      'products' => Icons.inventory_2_outlined,
+      'sales' => Icons.receipt_long_outlined,
+      'clients' => Icons.people_outline_rounded,
+      'categories' => Icons.category_outlined,
+      'suppliers' => Icons.local_shipping_outlined,
+      'payments' => Icons.payments_outlined,
+      'returns' => Icons.assignment_return_outlined,
+      'cash' => Icons.point_of_sale_outlined,
+      'quotes' => Icons.request_quote_outlined,
+      'users' => Icons.manage_accounts_outlined,
+      'company_config' => Icons.tune_rounded,
+      _ => Icons.cloud_sync_outlined,
+    };
+  }
+
+  void _showFeedback(String message, {AppToastType type = AppToastType.info}) {
+    if (!mounted) return;
+    AppToast.show(context, message, type: type);
+  }
+
+  Future<bool> _confirmDisable() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Desactivar sincronización'),
+        content: const Text(
+          'Los datos seguirán disponibles localmente, pero los nuevos cambios '
+          'no se enviarán a la nube hasta que vuelvas a activarla.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB91C1C),
+            ),
+            child: const Text('Desactivar'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _changeCloudState(bool enabled) async {
+    if (_changingCloudState) return;
+    if (!enabled && !await _confirmDisable()) return;
+    if (!mounted) return;
+    setState(() => _changingCloudState = true);
+    try {
+      final current =
+          (_summary?['settings'] as BusinessSettings?) ??
+          await BusinessSettingsRepository().loadSettings();
+      final updated = current.copyWith(cloudEnabled: enabled);
+      await BusinessSettingsRepository().saveSettings(updated);
+
+      if (enabled) {
+        CloudSyncService.instance.startRealtimeSyncEngine();
+        ProductSyncService.instance.start();
+        await Future.wait([
+          CloudSyncService.instance.syncProductsIfEnabled(),
+          CloudSyncService.instance.syncSalesIfEnabled(),
+        ]);
+        await CloudSyncService.instance.retryAllFailedSyncNow();
+        await ProductSyncService.instance.retryFailedNow();
+        await ProductSyncService.instance.flushNow();
+      } else {
+        CloudSyncService.instance.stopRealtimeSyncEngine();
+        ProductSyncService.instance.stop();
+      }
+      await _reload();
+      _showFeedback(
+        enabled
+            ? 'Sincronización en la nube activada.'
+            : 'Sincronización en la nube desactivada.',
+        type: AppToastType.success,
+      );
+    } catch (_) {
+      _showFeedback(
+        'No pudimos cambiar la configuración de la nube. Intenta nuevamente.',
+        type: AppToastType.error,
+      );
+      await _reload();
+    } finally {
+      if (mounted) setState(() => _changingCloudState = false);
+    }
+  }
+
   Future<void> _syncNow() async {
     final settings = _summary?['settings'] as BusinessSettings?;
-    if (settings == null) return;
-    await BusinessSettingsRepository().saveSettings(settings);
-    CloudSyncService.instance.startRealtimeSyncEngine();
-    ProductSyncService.instance.start();
-    await CloudSyncService.instance.syncProductsIfEnabled();
-    await CloudSyncService.instance.syncSalesIfEnabled();
-    await ProductSyncService.instance.retryFailedNow();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sincronización ejecutada.')),
-    );
-    await _reload();
+    if (settings == null || !settings.cloudEnabled || _syncingNow) return;
+    setState(() => _syncingNow = true);
+    try {
+      CloudSyncService.instance.startRealtimeSyncEngine();
+      ProductSyncService.instance.start();
+      final results = await Future.wait([
+        CloudSyncService.instance.syncProductsIfEnabled(),
+        CloudSyncService.instance.syncSalesIfEnabled(),
+      ]);
+      await CloudSyncService.instance.retryAllFailedSyncNow();
+      await ProductSyncService.instance.retryFailedNow();
+      await ProductSyncService.instance.flushNow();
+      if (results.any((ok) => !ok)) {
+        throw StateError('cloud_sync_incomplete');
+      }
+      await _reload();
+      _showFeedback(
+        'Sincronización completada correctamente.',
+        type: AppToastType.success,
+      );
+    } catch (_) {
+      _showFeedback(
+        'No se pudo completar la sincronización. Revisa la conexión e inténtalo de nuevo.',
+        type: AppToastType.error,
+      );
+      await _reload();
+    } finally {
+      if (mounted) setState(() => _syncingNow = false);
+    }
   }
 
   Future<void> _reconnect() async {
-    CloudSyncService.instance.startRealtimeSyncEngine();
-    ProductSyncService.instance.start();
-    CloudSyncService.instance.scheduleSalesSyncSoon(
-      delay: const Duration(milliseconds: 180),
-      reason: 'topbar_cloud_panel_reconnect',
-    );
-    await _reload();
+    final settings = _summary?['settings'] as BusinessSettings?;
+    if (settings == null || !settings.cloudEnabled || _reconnecting) return;
+    setState(() => _reconnecting = true);
+    try {
+      ProductSyncService.instance.stop();
+      CloudSyncService.instance.stopRealtimeSyncEngine();
+      CloudSyncService.instance.startRealtimeSyncEngine();
+      ProductSyncService.instance.start();
+      await ProductSyncService.instance.flushNow();
+      await _reload();
+      _showFeedback(
+        'Conexión con la nube reiniciada.',
+        type: AppToastType.success,
+      );
+    } catch (_) {
+      _showFeedback(
+        'No se pudo restablecer la conexión con la nube.',
+        type: AppToastType.error,
+      );
+      await _reload();
+    } finally {
+      if (mounted) setState(() => _reconnecting = false);
+    }
   }
 
-  Future<void> _openFullCloudScreen() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const CloudSettingsPage()),
-    );
-    if (!mounted) return;
+  Future<void> _refreshStatus() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
     await _reload();
+    if (!mounted) return;
+    setState(() => _refreshing = false);
   }
 
   @override
@@ -1264,15 +1503,64 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (_loadError != null || _summary == null) {
+      return _CloudErrorState(
+        description:
+            _loadError ?? 'Revisa tu conexión e intenta actualizar el estado.',
+        onRetry: () => _reload(showLoading: true),
+      );
+    }
+
     final summary = _summary!;
     final settings = summary['settings'] as BusinessSettings;
     final wsState = summary['wsState'] as String;
-    final issues = (summary['issues'] as List).cast<String>();
     final latestSync = summary['latestSync'] as DateTime?;
     final productStatus = summary['productStatus'] as String;
     final salesStatus = summary['salesStatus'] as String;
     final pendingCount = summary['pendingCount'] as int;
+    final targets = (summary['targets'] as List).cast<Map<String, dynamic>>();
+    final hasFailedStatus = summary['hasFailedStatus'] as bool;
     final isCloudEnabled = settings.cloudEnabled;
+    final busy =
+        _changingCloudState || _syncingNow || _reconnecting || _refreshing;
+
+    late final String overallTitle;
+    late final String overallDescription;
+    late final Color overallColor;
+    late final IconData overallIcon;
+    if (!isCloudEnabled) {
+      overallTitle = 'Nube desactivada';
+      overallDescription =
+          'La aplicación está trabajando únicamente con los datos guardados en este equipo.';
+      overallColor = const Color(0xFFB45309);
+      overallIcon = Icons.cloud_off_outlined;
+    } else if (wsState == 'connecting') {
+      overallTitle = 'Conectando con la nube';
+      overallDescription =
+          'Estamos intentando establecer la conexión en tiempo real.';
+      overallColor = const Color(0xFF2563EB);
+      overallIcon = Icons.cloud_sync_outlined;
+    } else if (wsState != 'connected' || hasFailedStatus) {
+      overallTitle = 'Conexión interrumpida';
+      overallDescription =
+          'No se pudo mantener la conexión con la nube. Puedes intentar reconectar.';
+      overallColor = const Color(0xFFB91C1C);
+      overallIcon = Icons.cloud_off_outlined;
+    } else if (pendingCount > 0 ||
+        const {'syncing', 'pending', 'queued'}.contains(productStatus) ||
+        const {'syncing', 'pending', 'queued'}.contains(salesStatus)) {
+      overallTitle = 'Sincronización pendiente';
+      overallDescription = pendingCount == 1
+          ? 'Hay 1 elemento pendiente de envío.'
+          : 'Hay $pendingCount elementos pendientes de envío.';
+      overallColor = const Color(0xFFB45309);
+      overallIcon = Icons.cloud_sync_outlined;
+    } else {
+      overallTitle = 'Todo sincronizado';
+      overallDescription = 'Los datos locales y la nube están actualizados.';
+      overallColor = const Color(0xFF15803D);
+      overallIcon = Icons.cloud_done_outlined;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -1282,33 +1570,95 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: _cardDecoration(),
-            child: Column(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB).withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.cloud_sync_outlined,
+                    color: Color(0xFF2563EB),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sincronización en la nube',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: const Color(0xFF0F172A),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isCloudEnabled
+                            ? 'Los cambios se envían y reciben automáticamente.'
+                            : 'Actívala para mantener tus datos actualizados.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (_changingCloudState)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                else
+                  Switch.adaptive(
+                    value: isCloudEnabled,
+                    onChanged: busy ? null : _changeCloudState,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: overallColor.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: overallColor.withOpacity(0.20)),
+            ),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _PillChip(
-                      icon: Icons.cloud_done_outlined,
-                      label: isCloudEnabled ? 'Nube activa' : 'Nube inactiva',
-                      color: isCloudEnabled
-                          ? const Color(0xFF15803D)
-                          : const Color(0xFFB45309),
-                    ),
-                    _PillChip(
-                      icon: Icons.sync_outlined,
-                      label: _statusLabel(wsState),
-                      color: _statusColor(wsState),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'La nube mantiene sincronizados productos, ventas y datos clave entre tu operación local y el servicio en línea.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF475569),
-                    height: 1.35,
+                Icon(overallIcon, color: overallColor, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        overallTitle,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: overallColor,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        overallDescription,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF475569),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -1323,8 +1673,12 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
             child: Column(
               children: [
                 _InfoLine(
-                  label: 'Sincronización activa',
-                  value: isCloudEnabled ? 'Sí' : 'No',
+                  label: 'Estado de la nube',
+                  value: isCloudEnabled ? 'Activa' : 'Desactivada',
+                ),
+                _InfoLine(
+                  label: 'Conexión en tiempo real',
+                  value: isCloudEnabled ? _statusLabel(wsState) : 'Desactivada',
                 ),
                 _InfoLine(
                   label: 'Última sincronización',
@@ -1338,71 +1692,173 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
                   label: 'Productos',
                   value: _statusLabel(productStatus),
                 ),
-                _InfoLine(
-                  label: 'Ventas',
-                  value: _statusLabel(salesStatus),
-                ),
+                _InfoLine(label: 'Ventas', value: _statusLabel(salesStatus)),
                 _InfoLine(
                   label: 'Pendientes',
-                  value: '$pendingCount elemento(s)',
+                  value: pendingCount == 1
+                      ? '1 elemento'
+                      : '$pendingCount elementos',
                 ),
               ],
             ),
           ),
-          if (issues.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _SectionTitle('Qué revisar'),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: _cardDecoration(),
-              child: Column(
-                children: [
-                  for (final issue in issues)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Icon(
-                              Icons.info_outline_rounded,
-                              size: 18,
-                              color: Color(0xFF2563EB),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(issue)),
-                        ],
-                      ),
+          const SizedBox(height: 16),
+          _SectionTitle('Datos sincronizados'),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: _cardDecoration(),
+            child: Column(
+              children: [
+                for (var index = 0; index < targets.length; index++) ...[
+                  _CloudTargetRow(
+                    icon: _targetIcon(targets[index]['target'] as String),
+                    name: _targetLabel(targets[index]['target'] as String),
+                    status: _statusLabel(targets[index]['status'] as String),
+                    statusColor: _statusColor(
+                      targets[index]['status'] as String,
                     ),
+                    lastSync: _formatDateTime(
+                      targets[index]['lastSuccess'] as DateTime?,
+                    ),
+                  ),
+                  if (index != targets.length - 1)
+                    const Divider(height: 1, color: Color(0xFFE7EEF5)),
                 ],
-              ),
+              ],
             ),
-          ],
+          ),
           const SizedBox(height: 16),
           _SectionTitle('Acciones'),
           const SizedBox(height: 10),
           _ActionTile(
             icon: Icons.sync_rounded,
             title: 'Sincronizar ahora',
-            subtitle: 'Envía pendientes y refresca el estado de la nube.',
+            subtitle: isCloudEnabled
+                ? 'Envía pendientes y refresca el estado de la nube.'
+                : 'Activa la nube para enviar cambios pendientes.',
             onTap: _syncNow,
+            enabled: isCloudEnabled && !busy,
+            isBusy: _syncingNow,
           ),
           _ActionTile(
             icon: Icons.monitor_heart_outlined,
-            title: 'Ver estado',
-            subtitle: 'Refresca este resumen y consulta el detalle general.',
-            onTap: _openFullCloudScreen,
+            title: 'Actualizar estado',
+            subtitle: 'Actualiza los datos visibles sin salir de este panel.',
+            onTap: _refreshStatus,
+            enabled: !busy,
+            isBusy: _refreshing,
           ),
           _ActionTile(
             icon: Icons.wifi_protected_setup_rounded,
             title: 'Reconectar',
-            subtitle: 'Reinicia la conexión en tiempo real y vuelve a comprobar.',
+            subtitle:
+                'Reinicia la conexión en tiempo real y vuelve a comprobar.',
             onTap: _reconnect,
+            enabled: isCloudEnabled && !busy,
+            isBusy: _reconnecting,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CloudTargetRow extends StatelessWidget {
+  const _CloudTargetRow({
+    required this.icon,
+    required this.name,
+    required this.status,
+    required this.statusColor,
+    required this.lastSync,
+  });
+
+  final IconData icon;
+  final String name;
+  final String status;
+  final Color statusColor;
+  final String lastSync;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF0F172A),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$status · $lastSync',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: statusColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CloudErrorState extends StatelessWidget {
+  const _CloudErrorState({required this.description, required this.onRetry});
+
+  final String description;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 42,
+              color: Color(0xFFB91C1C),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No pudimos consultar la nube',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: const Color(0xFF0F172A),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => unawaited(onRetry()),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1572,12 +2028,16 @@ class _ActionTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.enabled = true,
+    this.isBusy = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final FutureOr<void> Function() onTap;
+  final bool enabled;
+  final bool isBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -1586,7 +2046,7 @@ class _ActionTile extends StatelessWidget {
       decoration: _cardDecoration(),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () => unawaited(Future.sync(onTap)),
+        onTap: enabled ? () => unawaited(Future.sync(onTap)) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
@@ -1595,10 +2055,25 @@ class _ActionTile extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2563EB).withOpacity(0.10),
+                  color:
+                      (enabled
+                              ? const Color(0xFF2563EB)
+                              : const Color(0xFF94A3B8))
+                          .withOpacity(0.10),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
+                child: isBusy
+                    ? const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        icon,
+                        color: enabled
+                            ? const Color(0xFF2563EB)
+                            : const Color(0xFF94A3B8),
+                        size: 20,
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1609,6 +2084,9 @@ class _ActionTile extends StatelessWidget {
                       title,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w800,
+                        color: enabled
+                            ? const Color(0xFF0F172A)
+                            : const Color(0xFF94A3B8),
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -1622,10 +2100,7 @@ class _ActionTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF94A3B8),
-              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
             ],
           ),
         ),

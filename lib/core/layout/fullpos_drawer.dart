@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../features/sales/data/sales_repository.dart';
 import 'topbar_action_bus.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ const Duration _kAnimationDuration = Duration(milliseconds: 250);
 
 // ─── Rutas reales del proyecto ───────────────────────────────
 const String _kSalesRoute = '/sales';
+const String _kSalesListRoute = '/factura';
 const String _kInventoryRoute = '/products';
 const String _kInventoryStockAdjustmentRoute = '/products/stock-adjustment';
 const String _kInventoryMovementsRoute = '/products/movements';
@@ -64,9 +66,11 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
   late final Animation<double> _scaleAnimation;
 
   bool _clientsExpanded = false;
+  bool _salesExpanded = false;
   bool _inventoryExpanded = false;
   bool _moneyExpanded = false;
   bool _managementExpanded = false;
+  bool _hasSales = false;
 
   @override
   void initState() {
@@ -94,6 +98,18 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
     _scaleAnimation = Tween<double>(begin: 0.986, end: 1.0).animate(curved);
 
     _controller.forward();
+    _loadSalesAvailability();
+  }
+
+  Future<void> _loadSalesAvailability() async {
+    try {
+      final sales = await SalesRepository.listCompletedSales();
+      if (!mounted) return;
+      setState(() => _hasSales = sales.isNotEmpty);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _hasSales = false);
+    }
   }
 
   @override
@@ -166,6 +182,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
       _kInventoryCountRoute,
     ];
     final inventoryActive = _isAnyActive(inventoryRoutes);
+    final salesActive = _isAnyActive([_kSalesRoute, _kSalesListRoute]);
     return GestureDetector(
       onTap: _closeDrawer,
       child: FadeTransition(
@@ -213,18 +230,58 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                               padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
                               physics: const ClampingScrollPhysics(),
                               children: [
-                                _DrawerNavItem(
-                                  icon: PhosphorIcons.receipt(
-                                    PhosphorIconsStyle.regular,
+                                if (_hasSales) ...[
+                                  _DrawerExpandableItem(
+                                    icon: PhosphorIcons.receipt(
+                                      PhosphorIconsStyle.regular,
+                                    ),
+                                    activeIcon: PhosphorIcons.receipt(
+                                      PhosphorIconsStyle.fill,
+                                    ),
+                                    title: 'Ventas',
+                                    isExpanded: _salesExpanded || salesActive,
+                                    isActive: salesActive,
+                                    onTap: () {
+                                      setState(() {
+                                        _salesExpanded = !_salesExpanded;
+                                      });
+                                    },
                                   ),
-                                  activeIcon: PhosphorIcons.receipt(
-                                    PhosphorIconsStyle.fill,
+                                  _DrawerSubmenu(
+                                    visible: _salesExpanded || salesActive,
+                                    children: [
+                                      _DrawerSubItem(
+                                        icon: PhosphorIcons.shoppingCart(
+                                          PhosphorIconsStyle.regular,
+                                        ),
+                                        title: 'Venta',
+                                        isActive: _isActive(_kSalesRoute),
+                                        onTap: () => _navigate(_kSalesRoute),
+                                      ),
+                                      _DrawerSubItem(
+                                        icon: PhosphorIcons.listChecks(
+                                          PhosphorIconsStyle.regular,
+                                        ),
+                                        title: 'Lista de ventas',
+                                        isActive: _isActive(_kSalesListRoute),
+                                        onTap: () =>
+                                            _navigate(_kSalesListRoute),
+                                      ),
+                                    ],
                                   ),
-                                  title: 'Ventas',
-                                  isActive: _isActive(_kSalesRoute),
-                                  isPrimary: true,
-                                  onTap: () => _navigate(_kSalesRoute),
-                                ),
+                                ] else
+                                  _DrawerNavItem(
+                                    icon: PhosphorIcons.receipt(
+                                      PhosphorIconsStyle.regular,
+                                    ),
+                                    activeIcon: PhosphorIcons.receipt(
+                                      PhosphorIconsStyle.fill,
+                                    ),
+                                    title: 'Ventas',
+                                    isActive: _isActive(_kSalesRoute),
+                                    isPrimary: true,
+                                    onTap: () => _navigate(_kSalesRoute),
+                                  ),
                                 _DrawerExpandableItem(
                                   icon: PhosphorIcons.package(
                                     PhosphorIconsStyle.regular,
@@ -350,7 +407,9 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                         PhosphorIconsStyle.regular,
                                       ),
                                       title: 'Apartados',
-                                      isActive: _isActive(_kClientLayawaysRoute),
+                                      isActive: _isActive(
+                                        _kClientLayawaysRoute,
+                                      ),
                                       onTap: () =>
                                           _navigate(_kClientLayawaysRoute),
                                     ),
@@ -858,11 +917,9 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
 
   @override
   Widget build(BuildContext context) {
-   final highlighted = widget.isActive;
+    final highlighted = widget.isActive;
 
-final bgColor = widget.isActive
-    ? _kActiveBg
-    : Colors.transparent;
+    final bgColor = widget.isActive ? _kActiveBg : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.8),

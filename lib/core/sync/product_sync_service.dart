@@ -74,6 +74,7 @@ class ProductSyncService {
   Timer? _pollingTimer;
   bool _draining = false;
   bool _started = false;
+  bool _pausedByUser = false;
   io.Socket? _socket;
   final Set<String> _seenEventIds = <String>{};
 
@@ -109,6 +110,7 @@ class ProductSyncService {
 
   void start() {
     if (_started) return;
+    _pausedByUser = false;
     _started = true;
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
@@ -117,6 +119,16 @@ class ProductSyncService {
     });
     unawaited(_drainOutbox());
     unawaited(_ensureRealtimeConnection());
+  }
+
+  void stop() {
+    _pausedByUser = true;
+    _started = false;
+    _dispatchDebounce?.cancel();
+    _dispatchDebounce = null;
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+    _disposeSocket();
   }
 
   Future<void> flushNow() async {
@@ -128,6 +140,7 @@ class ProductSyncService {
   }
 
   void scheduleProcessing({Duration delay = Duration.zero}) {
+    if (_pausedByUser) return;
     if (!_started) {
       start();
     }
@@ -157,6 +170,9 @@ class ProductSyncService {
 
   Future<void> _drainOutbox() async {
     if (_draining) return;
+    if (_pausedByUser) return;
+    final settings = await BusinessSettingsRepository().loadSettings();
+    if (!settings.cloudEnabled) return;
     if (!await _hasActiveSyncSession()) {
       await AppLogger.instance.logInfo(
         'Product sync skipped: no authenticated session or companyId',
@@ -666,6 +682,10 @@ class ProductSyncService {
   }
 
   Future<void> _ensureRealtimeConnection() async {
+    if (_pausedByUser) {
+      _disposeSocket();
+      return;
+    }
     if (!await _hasActiveSyncSession()) {
       _disposeSocket();
       return;

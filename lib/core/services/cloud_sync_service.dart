@@ -98,7 +98,8 @@ class CloudSyncService {
       timeout: timeout,
     );
 
-    final hasRnc = (payload['companyRnc']?.toString().trim().isNotEmpty ?? false);
+    final hasRnc =
+        (payload['companyRnc']?.toString().trim().isNotEmpty ?? false);
     final hasCloudId =
         (payload['companyCloudId']?.toString().trim().isNotEmpty ?? false);
     if (!hasRnc || !hasCloudId) {
@@ -208,6 +209,14 @@ class CloudSyncService {
       );
     }
     unawaited(_drainOutbox());
+  }
+
+  void stopRealtimeSyncEngine() {
+    _engineStarted = false;
+    _outboxPollingTimer?.cancel();
+    _outboxPollingTimer = null;
+    _outboxDispatchDebounce?.cancel();
+    _outboxDispatchDebounce = null;
   }
 
   Future<bool> _hasActiveSyncSession() async {
@@ -407,6 +416,15 @@ class CloudSyncService {
       return;
     }
 
+    final settings = await BusinessSettingsRepository().loadSettings();
+    if (!settings.cloudEnabled) {
+      await AppLogger.instance.logInfo(
+        'Sync target skipped target=${target.value} reason=$reason cloud=disabled',
+        module: 'cloud_sync',
+      );
+      return;
+    }
+
     if (!await _hasActiveSyncSession()) {
       await AppLogger.instance.logInfo(
         'Sync target skipped target=${target.value} reason=$reason session=inactive',
@@ -433,6 +451,8 @@ class CloudSyncService {
 
   Future<void> _drainOutbox() async {
     if (_outboxRunning) return;
+    final settings = await BusinessSettingsRepository().loadSettings();
+    if (!settings.cloudEnabled) return;
     if (!await _hasActiveSyncSession()) {
       await AppLogger.instance.logInfo(
         'Cloud sync outbox skipped: no authenticated session or companyId',

@@ -2460,11 +2460,19 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
   }
 
-  void _openFacturaPage() {
+  void _openFacturaPage({int? saleId, bool openRefund = false}) {
+    final query = <String, String>{
+      if (saleId != null) 'saleId': '$saleId',
+      if (openRefund) 'refund': '1',
+    };
+    final uri = Uri(
+      path: '/factura',
+      queryParameters: query.isEmpty ? null : query,
+    );
     AuthzService.guardedAction(
       context,
       authz_perm.Permissions.salesHistoryView,
-      () => context.go('/factura'),
+      () => context.go(uri.toString()),
       reason: 'Abrir factura',
       resourceType: 'route',
       resourceId: '/factura',
@@ -2526,9 +2534,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   String _recentSaleStatusLabel(legacy_sales.SaleModel sale) {
-    return sale.electronicInvoiceEnabled == 1
-        ? 'Electrónica'
-        : 'No electrónica';
+    final statusLabel = switch (sale.status.toUpperCase()) {
+      'REFUNDED' => 'Devuelta',
+      'PARTIAL_REFUND' => 'Parcial',
+      _ => 'Activa',
+    };
+    final documentLabel = sale.electronicInvoiceEnabled == 1
+        ? 'electrónica'
+        : 'no electrónica';
+    return '$statusLabel · $documentLabel';
   }
 
   Future<T?> _showAnchoredPopover<T>({
@@ -5841,248 +5855,302 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Widget _build3DControlBar() {
-  void showSearchNotice({
-    required IconData icon,
-    required String message,
-  }) {
-    final messenger = ScaffoldMessenger.of(context);
+    void showSearchNotice({required IconData icon, required String message}) {
+      final overlayState = Overlay.of(context, rootOverlay: true);
 
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          width: 360,
-          elevation: 12,
-          duration: const Duration(milliseconds: 1800),
-          backgroundColor: const Color(0xFF111827),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          content: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A56DB),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  icon,
-                  color: Colors.white,
-                  size: 19,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      late OverlayEntry entry;
+      late AnimationController controller;
+      late Animation<double> scaleAnim;
+      late Animation<double> fadeAnim;
+
+      controller = AnimationController(
+        vsync: Navigator.of(context),
+        duration: const Duration(milliseconds: 320),
       );
-  }
-
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      final isCompact = width < 980;
-
-      const fieldTextColor = Color(0xFF172033);
-      const hintColor = Color(0xFF64748B);
-
-      final searchBarWidth = isCompact ? double.infinity : width * 0.988;
-
-      const barHeight = 40.0;
-      const iconButtonWidth = 48.0;
-      const iconSize = 22.0;
-      const textSize = 16.0;
-      const borderColor = Color(0xFF1A56DB);
-      const buttonColor = Color(0xFF1A56DB);
-      const barcodeButtonColor = Color(0xFF111827);
-      const hoverColor = Color(0xFF1443B0);
-
-      Widget buildIconButton({
-        required Widget icon,
-        required VoidCallback onTap,
-        required BorderRadius borderRadius,
-        required Color backgroundColor,
-        required String tooltip,
-      }) {
-        return Tooltip(
-          message: tooltip,
-          waitDuration: const Duration(milliseconds: 350),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              hoverColor: hoverColor,
-              splashColor: hoverColor,
-              borderRadius: borderRadius,
-              child: Ink(
-                width: iconButtonWidth,
-                height: barHeight,
-                decoration: BoxDecoration(
-                  color: backgroundColor,
-                  borderRadius: borderRadius,
-                ),
-                child: Center(child: icon),
-              ),
-            ),
-          ),
-        );
-      }
-
-      const inputBorderRadius = BorderRadius.only(
-        topRight: Radius.circular(4),
-        bottomRight: Radius.circular(4),
+      scaleAnim = CurvedAnimation(
+        parent: controller,
+        curve: Curves.easeOutBack,
+      );
+      fadeAnim = CurvedAnimation(
+        parent: controller,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
       );
 
-      final inputBorder = OutlineInputBorder(
-        borderRadius: inputBorderRadius,
-        borderSide: const BorderSide(
-          color: borderColor,
-          width: 1,
-        ),
-      );
-
-      return Row(
-        children: [
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: searchBarWidth,
+      entry = OverlayEntry(
+        builder: (overlayContext) {
+          return AnimatedBuilder(
+            animation: controller,
+            builder: (context, child) {
+              return Opacity(
+                opacity: fadeAnim.value,
+                child: Transform.scale(
+                  scale: scaleAnim.value,
+                  alignment: Alignment.topCenter,
+                  child: child,
                 ),
-                child: SizedBox(
-                  height: barHeight,
-                  child: Row(
-                    children: [
-                      buildIconButton(
-                        icon: Image.asset(
-                          'assets/imagen/iconos/lupa.png',
-                          width: iconSize,
-                          height: iconSize,
-                          fit: BoxFit.contain,
-                          color: Colors.white,
+              );
+            },
+            child: Material(
+              color: Colors.transparent,
+              child: GestureDetector(
+                onTap: () {
+                  controller.reverse().then((_) {
+                    entry.remove();
+                    controller.dispose();
+                  });
+                },
+                child: Container(
+                  alignment: Alignment.topCenter,
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: 360,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111827),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.25),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
                         ),
-                        tooltip: 'Buscar producto',
-                        onTap: () {
-                          _searchFocusNode.requestFocus();
-
-                          showSearchNotice(
-                            icon: Icons.search_rounded,
-                            message: 'Escribe el nombre o código del producto.',
-                          );
-                        },
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(4),
-                          bottomLeft: Radius.circular(4),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A56DB),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(icon, color: Colors.white, size: 19),
                         ),
-                        backgroundColor: buttonColor,
-                      ),
-
-                      buildIconButton(
-                        icon: Image.asset(
-                          'assets/imagen/iconos/lectura-de-codigo-de-barras.png',
-                          width: iconSize,
-                          height: iconSize,
-                          fit: BoxFit.contain,
-                          color: Colors.white,
-                        ),
-                        tooltip: 'Escanear código de barras',
-                        onTap: () {
-                          _searchFocusNode.requestFocus();
-
-                          showSearchNotice(
-                            icon: Icons.qr_code_scanner_rounded,
-                            message: 'Escanea el código de barras del producto.',
-                          );
-                        },
-                        borderRadius: BorderRadius.zero,
-                        backgroundColor: barcodeButtonColor,
-                      ),
-
-                      Expanded(
-                        child: SizedBox(
-                          height: barHeight,
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            expands: true,
-                            maxLines: null,
-                            minLines: null,
-                            textAlignVertical: TextAlignVertical.center,
-                            decoration: InputDecoration(
-                              hintText:
-                                  'Buscar producto por nombre o código...',
-                              hintStyle: const TextStyle(
-                                color: hintColor,
-                                fontSize: textSize,
-                                fontWeight: FontWeight.w400,
-                              ),
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 0,
-                              ),
-                              border: inputBorder,
-                              enabledBorder: inputBorder,
-                              focusedBorder: inputBorder,
-                            ),
-                            onChanged: _searchProducts,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (value) async {
-                              final q = value.trim();
-
-                              if (q.isEmpty) return;
-
-                              // Si contiene espacios, normalmente es una
-                              // búsqueda por nombre y no un código de barras.
-                              if (q.contains(' ')) return;
-
-                              await _handleBarcodeScan(
-                                q,
-                                clearSearchField: true,
-                              );
-                            },
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            message,
                             style: const TextStyle(
-                              color: fieldTextColor,
-                              fontSize: textSize,
-                              fontWeight: FontWeight.w400,
+                              color: Colors.white,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      _buildNewProductButton(
-                        height: barHeight,
-                        radius: 4,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          );
+        },
       );
-    },
-  );
-}
+
+      overlayState.insert(entry);
+      controller.forward();
+
+      Future<void>.delayed(const Duration(milliseconds: 1800), () {
+        if (controller.isAnimating || controller.isCompleted) {
+          controller.reverse().then((_) {
+            if (entry.mounted) entry.remove();
+            controller.dispose();
+          });
+        }
+      });
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final isCompact = width < 980;
+
+        const fieldTextColor = Color(0xFF172033);
+        const hintColor = Color(0xFF64748B);
+
+        final searchBarWidth = isCompact ? double.infinity : width * 0.988;
+
+        const barHeight = 40.0;
+        const iconButtonWidth = 48.0;
+        const iconSize = 22.0;
+        const textSize = 16.0;
+        const borderColor = Color(0xFF1A56DB);
+        const buttonColor = Color(0xFF1A56DB);
+        const barcodeButtonColor = Color(0xFF111827);
+        const hoverColor = Color(0xFF1443B0);
+
+        Widget buildIconButton({
+          required Widget icon,
+          required VoidCallback onTap,
+          required BorderRadius borderRadius,
+          required Color backgroundColor,
+          required String tooltip,
+        }) {
+          return Tooltip(
+            message: tooltip,
+            waitDuration: const Duration(milliseconds: 350),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                hoverColor: hoverColor,
+                splashColor: hoverColor,
+                borderRadius: borderRadius,
+                child: Ink(
+                  width: iconButtonWidth,
+                  height: barHeight,
+                  decoration: BoxDecoration(
+                    color: backgroundColor,
+                    borderRadius: borderRadius,
+                  ),
+                  child: Center(child: icon),
+                ),
+              ),
+            ),
+          );
+        }
+
+        const inputBorderRadius = BorderRadius.only(
+          topRight: Radius.circular(4),
+          bottomRight: Radius.circular(4),
+        );
+
+        final inputBorder = OutlineInputBorder(
+          borderRadius: inputBorderRadius,
+          borderSide: const BorderSide(color: borderColor, width: 1),
+        );
+
+        return Row(
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: searchBarWidth),
+                  child: SizedBox(
+                    height: barHeight,
+                    child: Row(
+                      children: [
+                        buildIconButton(
+                          icon: Image.asset(
+                            'assets/imagen/iconos/lupa.png',
+                            width: iconSize,
+                            height: iconSize,
+                            fit: BoxFit.contain,
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Buscar producto',
+                          onTap: () {
+                            _searchFocusNode.requestFocus();
+
+                            showSearchNotice(
+                              icon: Icons.search_rounded,
+                              message:
+                                  'Escribe el nombre o código del producto.',
+                            );
+                          },
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(4),
+                            bottomLeft: Radius.circular(4),
+                          ),
+                          backgroundColor: buttonColor,
+                        ),
+
+                        buildIconButton(
+                          icon: Image.asset(
+                            'assets/imagen/iconos/lectura-de-codigo-de-barras.png',
+                            width: iconSize,
+                            height: iconSize,
+                            fit: BoxFit.contain,
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Escanear código de barras',
+                          onTap: () {
+                            _searchFocusNode.requestFocus();
+
+                            showSearchNotice(
+                              icon: Icons.qr_code_scanner_rounded,
+                              message:
+                                  'Escanea el código de barras del producto.',
+                            );
+                          },
+                          borderRadius: BorderRadius.zero,
+                          backgroundColor: barcodeButtonColor,
+                        ),
+
+                        Expanded(
+                          child: SizedBox(
+                            height: barHeight,
+                            child: TextField(
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              expands: true,
+                              maxLines: null,
+                              minLines: null,
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Buscar producto por nombre o código...',
+                                hintStyle: const TextStyle(
+                                  color: hintColor,
+                                  fontSize: textSize,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 0,
+                                ),
+                                border: inputBorder,
+                                enabledBorder: inputBorder,
+                                focusedBorder: inputBorder,
+                              ),
+                              onChanged: _searchProducts,
+                              textInputAction: TextInputAction.search,
+                              onSubmitted: (value) async {
+                                final q = value.trim();
+
+                                if (q.isEmpty) return;
+
+                                // Si contiene espacios, normalmente es una
+                                // búsqueda por nombre y no un código de barras.
+                                if (q.contains(' ')) return;
+
+                                await _handleBarcodeScan(
+                                  q,
+                                  clearSearchField: true,
+                                );
+                              },
+                              style: const TextStyle(
+                                color: fieldTextColor,
+                                fontSize: textSize,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 8),
+
+                        _buildNewProductButton(height: barHeight, radius: 4),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Widget _buildMovementPanel() {
     final dividerColor = salesDetailBorderColor;
@@ -6415,7 +6483,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           cell('Estado', flex: 34),
           cell(
             '',
-            flex: 12,
+            flex: 22,
             alignment: Alignment.center,
             showRightDivider: false,
           ),
@@ -6494,15 +6562,24 @@ class _SalesPageState extends ConsumerState<SalesPage>
           children: [
             Expanded(
               flex: 38,
-              child: Text(
-                _recentSaleTitle(sale),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontSize: 13.8,
-                  fontWeight: FontWeight.w500,
-                  height: 1.15,
+              child: InkWell(
+                onTap: sale.id == null
+                    ? null
+                    : () => _openFacturaPage(saleId: sale.id),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    _recentSaleTitle(sale),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 13.8,
+                      fontWeight: FontWeight.w500,
+                      height: 1.15,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -6536,27 +6613,58 @@ class _SalesPageState extends ConsumerState<SalesPage>
               ),
             ),
             Expanded(
-              flex: 12,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: sale.id == null
-                        ? null
-                        : () => unawaited(_printRecentSale(sale)),
-                    borderRadius: BorderRadius.circular(10),
-                    child: const SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: Icon(
-                        Icons.print_outlined,
-                        size: 18,
-                        color: Color(0xFF475569),
+              flex: 22,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Tooltip(
+                    message: 'Imprimir factura',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: sale.id == null
+                            ? null
+                            : () => unawaited(_printRecentSale(sale)),
+                        borderRadius: BorderRadius.circular(10),
+                        child: const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Icon(
+                            Icons.print_outlined,
+                            size: 18,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  if (sale.id != null &&
+                      sale.status.toUpperCase() != 'REFUNDED') ...[
+                    const SizedBox(width: 2),
+                    Tooltip(
+                      message: 'Reembolsar factura',
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _openFacturaPage(
+                            saleId: sale.id,
+                            openRefund: true,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          child: const SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: Icon(
+                              Icons.assignment_return_outlined,
+                              size: 18,
+                              color: Color(0xFFB45309),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -11224,10 +11332,7 @@ class _AnimatedCashDialog extends StatefulWidget {
   final double size;
   final Widget child;
 
-  const _AnimatedCashDialog({
-    required this.size,
-    required this.child,
-  });
+  const _AnimatedCashDialog({required this.size, required this.child});
 
   @override
   State<_AnimatedCashDialog> createState() => _AnimatedCashDialogState();
@@ -11475,8 +11580,10 @@ class _CompactCashMovementFormState
                   onPressed: _isLoading
                       ? null
                       : () => Navigator.of(context).pop(),
-                  icon: Icon(Icons.close_rounded,
-                      color: scheme.onSurface.withOpacity(0.6)),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: scheme.onSurface.withOpacity(0.6),
+                  ),
                   splashRadius: 20,
                 ),
               ],
@@ -11493,16 +11600,14 @@ class _CompactCashMovementFormState
               ),
             ),
             const SizedBox(height: 6),
-                TextFormField(
+            TextFormField(
               controller: _amountController,
               keyboardType: TextInputType.number,
-              inputFormatters: [
-                AccountingAmountFormatter(allowEmpty: false),
-              ],
+              inputFormatters: [AccountingAmountFormatter(allowEmpty: false)],
               autofocus: true,
               style: TextStyle(
                 color: primaryColor,
-                    fontSize: 26,
+                fontSize: 26,
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.center,
@@ -11510,23 +11615,23 @@ class _CompactCashMovementFormState
                 prefixText: r'$ ',
                 prefixStyle: TextStyle(
                   color: primaryColor,
-                      fontSize: 26,
+                  fontSize: 26,
                   fontWeight: FontWeight.bold,
                 ),
                 hintText: '0.00',
                 hintStyle: TextStyle(
                   color: scheme.onSurface.withOpacity(0.25),
-                      fontSize: 26,
+                  fontSize: 26,
                 ),
                 filled: true,
                 fillColor: scheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: primaryColor, width: 1.25),
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: primaryColor, width: 1.25),
                 ),
               ),
               validator: (value) {
@@ -11556,10 +11661,7 @@ class _CompactCashMovementFormState
               child: TextFormField(
                 controller: _reasonController,
                 maxLines: 3,
-                style: TextStyle(
-                  color: scheme.onSurface,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: scheme.onSurface, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: isIncome
                       ? 'Ej: Cambio adicional, ajuste...'
@@ -11591,19 +11693,23 @@ class _CompactCashMovementFormState
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed:
-                        _isLoading ? null : () => Navigator.of(context).pop(),
+                    onPressed: _isLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: scheme.onSurface.withOpacity(0.8),
                       side: BorderSide(
-                          color: scheme.outlineVariant.withOpacity(0.65)),
+                        color: scheme.outlineVariant.withOpacity(0.65),
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    child: const Text('Cancelar',
-                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    child: const Text(
+                      'Cancelar',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -11615,7 +11721,9 @@ class _CompactCashMovementFormState
                       backgroundColor: primaryColor,
                       foregroundColor: onPrimaryColor,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -11628,14 +11736,17 @@ class _CompactCashMovementFormState
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                  onPrimaryColor),
+                                onPrimaryColor,
+                              ),
                             ),
                           )
                         : Icon(icon, size: 20),
                     label: Text(
                       isIncome ? 'Registrar Ingreso' : 'Registrar Salida',
                       style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 13),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),

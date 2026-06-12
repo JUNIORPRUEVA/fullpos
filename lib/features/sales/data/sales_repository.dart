@@ -81,11 +81,7 @@ class SalesRepository {
 
       await txn.update(
         DbTables.sales,
-        {
-          'status': 'cancelled_fe',
-          'deleted_at_ms': now,
-          'updated_at_ms': now,
-        },
+        {'status': 'cancelled_fe', 'deleted_at_ms': now, 'updated_at_ms': now},
         where: 'id = ?',
         whereArgs: [saleId],
       );
@@ -1140,7 +1136,9 @@ class SalesRepository {
     final db = await AppDb.database;
 
     String where =
-        "status IN ('completed', 'PARTIAL_REFUND', 'REFUNDED') AND kind = 'invoice' AND deleted_at_ms IS NULL";
+        "status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED') "
+        "AND kind IN ('invoice', 'sale') "
+        "AND (deleted_at_ms IS NULL OR status = 'REFUNDED')";
     List<dynamic> args = [];
 
     if (query != null && query.isNotEmpty) {
@@ -1309,9 +1307,7 @@ class SalesRepository {
 
     if (cancelled) {
       CloudSyncService.instance.scheduleProductsSyncSoon();
-      unawaited(
-        CloudSyncService.instance.syncSalesNow(reason: 'sale_deleted'),
-      );
+      unawaited(CloudSyncService.instance.syncSalesNow(reason: 'sale_deleted'));
     }
 
     return cancelled;

@@ -12,7 +12,9 @@ class ReturnsRepository {
       (value * 100).roundToDouble() / 100.0;
 
   static String _normalizeElectronicDocumentType(SaleModel sale) {
-    final explicitType = (sale.electronicDocumentType ?? '').trim().toUpperCase();
+    final explicitType = (sale.electronicDocumentType ?? '')
+        .trim()
+        .toUpperCase();
     if (explicitType.isNotEmpty) return explicitType;
 
     final code = (sale.electronicInvoiceCode ?? '').trim().toUpperCase();
@@ -295,9 +297,9 @@ class ReturnsRepository {
         'requested_by': 'local-pos',
         'original_electronic_ecf': originalElectronicEcf,
         'original_electronic_document_type':
-          originalElectronicDocumentType.isEmpty
-          ? null
-          : originalElectronicDocumentType,
+            originalElectronicDocumentType.isEmpty
+            ? null
+            : originalElectronicDocumentType,
         'electronic_credit_note_requested': shouldRequestElectronicCreditNote
             ? 1
             : 0,
@@ -416,5 +418,28 @@ class ReturnsRepository {
       where: 'return_id = ?',
       whereArgs: [returnId],
     );
+  }
+
+  static Future<Map<int, double>> returnedQuantitiesForSale(
+    int originalSaleId,
+  ) async {
+    final db = await AppDb.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT ri.sale_item_id, COALESCE(SUM(ri.qty), 0) AS returned_qty
+      FROM ${DbTables.returnItems} ri
+      JOIN ${DbTables.returns} r ON r.id = ri.return_id
+      WHERE r.original_sale_id = ?
+      GROUP BY ri.sale_item_id
+      ''',
+      [originalSaleId],
+    );
+
+    return <int, double>{
+      for (final row in rows)
+        if (row['sale_item_id'] is int)
+          row['sale_item_id'] as int:
+              (row['returned_qty'] as num?)?.toDouble() ?? 0.0,
+    };
   }
 }

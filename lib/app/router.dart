@@ -416,7 +416,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 permission: Permissions.salesHistoryView,
                 autoPromptOnce: false,
                 reason: 'Acceso a factura',
-                child: const FacturaPage(),
+                child: FacturaPage(
+                  initialSaleId: int.tryParse(
+                    state.uri.queryParameters['saleId'] ?? '',
+                  ),
+                  openRefund: state.uri.queryParameters['refund'] == '1',
+                ),
               ),
               transitionsBuilder:
                   (context, animation, secondaryAnimation, child) {
