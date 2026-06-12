@@ -545,39 +545,20 @@ class _TopbarState extends ConsumerState<Topbar> {
       // ─────────────────────────────────────────────────────────────
       // Identidad visual de la sección
       // ─────────────────────────────────────────────────────────────
-      Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: brandAccent.withOpacity(0.09),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(13),
-            topRight: Radius.circular(6),
-            bottomLeft: Radius.circular(6),
-            bottomRight: Radius.circular(13),
-          ),
-          border: Border.all(
-            color: brandAccent.withOpacity(0.16),
-            width: 1,
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Icon(
-          Icons.point_of_sale_rounded,
-          size: 19,
-          color: brandAccent,
-        ),
-      ),
+      Icon(
+  Icons.receipt_long_rounded,
+  size: (21 * s).clamp(19.0, 23.0).toDouble(),
+  color: brandAccent,
+),
 
-      const SizedBox(width: 10),
+SizedBox(
+  width: (9 * s).clamp(7.0, 11.0).toDouble(),
+),
 
-      // ─────────────────────────────────────────────────────────────
-      // Nombre de la sección
-      // ─────────────────────────────────────────────────────────────
-     Flexible(
+Flexible(
   flex: 0,
   child: Text(
-    'Punto de venta',
+    'Facturación',
     maxLines: 1,
     overflow: TextOverflow.ellipsis,
     style: TextStyle(
@@ -585,8 +566,8 @@ class _TopbarState extends ConsumerState<Topbar> {
       fontSize: ((isCompact ? 16.0 : 18.0) * s)
           .clamp(15.5, 19.0)
           .toDouble(),
-      fontWeight: FontWeight.w800,
-      letterSpacing: -0.20,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.18,
       height: 1.1,
       fontFamilyFallback: const [
         'Poppins',
@@ -597,6 +578,8 @@ class _TopbarState extends ConsumerState<Topbar> {
     ),
   ),
 ),
+
+      const SizedBox(width: 10),
 
       const SizedBox(width: 14),
 
@@ -756,34 +739,60 @@ class _BusinessMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = (36 * scale).clamp(34.0, 40.0);
+    final height = (36 * scale).clamp(34.0, 40.0).toDouble();
+
     final cleanName = businessName.trim().isEmpty
         ? 'Mi negocio'
         : businessName.trim();
 
+    const buttonRadius = BorderRadius.only(
+      topLeft: Radius.circular(12),
+      topRight: Radius.circular(5),
+      bottomLeft: Radius.circular(5),
+      bottomRight: Radius.circular(12),
+    );
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
       height: height,
       padding: EdgeInsets.only(
-        left: (6 * scale).clamp(5.0, 7.0),
-        right: showText ? (12 * scale).clamp(10.0, 14.0) : 6,
+        left: (6 * scale).clamp(5.0, 7.0).toDouble(),
+        right: showText
+            ? (12 * scale).clamp(10.0, 14.0).toDouble()
+            : 6,
       ),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: borderColor.withOpacity(0.85)),
+        color: Color.alphaBlend(
+          accentColor.withOpacity(0.035),
+          Colors.white,
+        ),
+        borderRadius: buttonRadius,
+        border: Border.all(
+          color: borderColor.withOpacity(0.85),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.025),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _BusinessLogoMark(
-            size: (26 * scale).clamp(24.0, 29.0),
+            size: (26 * scale).clamp(24.0, 29.0).toDouble(),
             accentColor: accentColor,
             name: cleanName,
             logoPath: logoPath,
           ),
+
           if (showText) ...[
-            SizedBox(width: (8 * scale).clamp(6.0, 9.0)),
+            SizedBox(
+              width: (8 * scale).clamp(6.0, 9.0).toDouble(),
+            ),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
               child: Text(
@@ -792,7 +801,9 @@ class _BusinessMenuButton extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: _TopbarState._strongTextColor,
-                  fontSize: (13.2 * scale).clamp(12.4, 14.2),
+                  fontSize: (13.2 * scale)
+                      .clamp(12.4, 14.2)
+                      .toDouble(),
                   fontWeight: FontWeight.w900,
                   height: 1.05,
                   letterSpacing: 0.05,
@@ -823,21 +834,35 @@ class _BusinessLogoMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final initials = _initials(name);
     final normalizedPath = (logoPath ?? '').trim();
+
     final hasLogo =
         normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
+
+    const logoRadius = BorderRadius.only(
+      topLeft: Radius.circular(10),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(10),
+    );
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: logoRadius,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             accentColor,
-            Color.alphaBlend(Colors.black.withOpacity(0.16), accentColor),
+            Color.alphaBlend(
+              Colors.black.withOpacity(0.16),
+              accentColor,
+            ),
           ],
+        ),
+        border: Border.all(
+          color: accentColor.withOpacity(0.16),
         ),
         boxShadow: [
           BoxShadow(
@@ -850,13 +875,18 @@ class _BusinessLogoMark extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: hasLogo
-          ? Image.file(File(normalizedPath), fit: BoxFit.cover)
+          ? Image.file(
+              File(normalizedPath),
+              fit: BoxFit.cover,
+            )
           : Center(
               child: Text(
                 initials,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: (10.8 * (size / 26)).clamp(9.5, 12.0),
+                  fontSize: (10.8 * (size / 26))
+                      .clamp(9.5, 12.0)
+                      .toDouble(),
                   fontWeight: FontWeight.w900,
                   height: 1,
                 ),
@@ -873,6 +903,7 @@ class _BusinessLogoMark extends StatelessWidget {
         .toList();
 
     if (parts.isEmpty) return 'N';
+
     if (parts.length == 1) {
       return parts.first.characters.first.toUpperCase();
     }
@@ -899,9 +930,26 @@ class _TurnMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = (34 * scale).clamp(32.0, 38.0);
+    final height = (34 * scale).clamp(32.0, 38.0).toDouble();
 
-    final bg = Color.alphaBlend(accentColor.withOpacity(0.08), Colors.white);
+    final bg = Color.alphaBlend(
+      accentColor.withOpacity(0.08),
+      Colors.white,
+    );
+
+    const buttonRadius = BorderRadius.only(
+      topLeft: Radius.circular(11),
+      topRight: Radius.circular(5),
+      bottomLeft: Radius.circular(5),
+      bottomRight: Radius.circular(11),
+    );
+
+    const iconRadius = BorderRadius.only(
+      topLeft: Radius.circular(9),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(9),
+    );
 
     return Tooltip(
       message: isOpen ? 'Turno abierto' : 'Gestionar turno',
@@ -909,44 +957,71 @@ class _TurnMenuButton extends StatelessWidget {
       child: Container(
         height: height,
         padding: EdgeInsets.symmetric(
-          horizontal: visibleLabel ? (10 * scale).clamp(9.0, 12.0) : 7,
+          horizontal: visibleLabel
+              ? (10 * scale).clamp(9.0, 12.0).toDouble()
+              : 7,
         ),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: accentColor.withOpacity(0.30)),
+          borderRadius: buttonRadius,
+          border: Border.all(
+            color: accentColor.withOpacity(0.30),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withOpacity(0.06),
+              blurRadius: 7,
+              spreadRadius: -3,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: (22 * scale).clamp(20.0, 24.0),
-              height: (22 * scale).clamp(20.0, 24.0),
+              width: (23 * scale).clamp(21.0, 25.0).toDouble(),
+              height: (23 * scale).clamp(21.0, 25.0).toDouble(),
               decoration: BoxDecoration(
                 color: accentColor.withOpacity(0.13),
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: iconRadius,
+                border: Border.all(
+                  color: accentColor.withOpacity(0.14),
+                ),
               ),
+              alignment: Alignment.center,
               child: Icon(
                 Icons.point_of_sale_rounded,
-                size: (14.5 * scale).clamp(13.0, 16.0),
+                size: (14.5 * scale)
+                    .clamp(13.0, 16.0)
+                    .toDouble(),
                 color: accentColor,
               ),
             ),
+
             if (visibleLabel) ...[
-              SizedBox(width: (7 * scale).clamp(5.0, 8.0)),
+              SizedBox(
+                width: (7 * scale).clamp(5.0, 8.0).toDouble(),
+              ),
               Text(
                 'Turno',
                 style: TextStyle(
                   color: accentColor,
-                  fontSize: (12 * scale).clamp(11.2, 12.8),
+                  fontSize: (12 * scale)
+                      .clamp(11.2, 12.8)
+                      .toDouble(),
                   fontWeight: FontWeight.w900,
                   height: 1,
                 ),
               ),
-              SizedBox(width: (3 * scale).clamp(2.0, 4.0)),
+              SizedBox(
+                width: (3 * scale).clamp(2.0, 4.0).toDouble(),
+              ),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
-                size: (17 * scale).clamp(15.0, 18.0),
+                size: (17 * scale)
+                    .clamp(15.0, 18.0)
+                    .toDouble(),
                 color: accentColor.withOpacity(0.72),
               ),
             ],
@@ -956,7 +1031,6 @@ class _TurnMenuButton extends StatelessWidget {
     );
   }
 }
-
 class _ActiveCashierChip extends StatelessWidget {
   const _ActiveCashierChip({
     required this.scale,
@@ -971,7 +1045,21 @@ class _ActiveCashierChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cleanName = name.trim().isEmpty ? 'Usuario' : name.trim();
-    final height = (34 * scale).clamp(32.0, 38.0);
+    final height = (34 * scale).clamp(32.0, 38.0).toDouble();
+
+    const chipRadius = BorderRadius.only(
+      topLeft: Radius.circular(11),
+      topRight: Radius.circular(5),
+      bottomLeft: Radius.circular(5),
+      bottomRight: Radius.circular(11),
+    );
+
+    const iconRadius = BorderRadius.only(
+      topLeft: Radius.circular(9),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(9),
+    );
 
     return Tooltip(
       message: cleanName,
@@ -979,22 +1067,47 @@ class _ActiveCashierChip extends StatelessWidget {
       child: Container(
         height: height,
         padding: EdgeInsets.symmetric(
-          horizontal: (10 * scale).clamp(8.0, 12.0),
+          horizontal: (8 * scale).clamp(7.0, 10.0).toDouble(),
         ),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: borderColor.withOpacity(0.75)),
+          borderRadius: chipRadius,
+          border: Border.all(
+            color: borderColor.withOpacity(0.75),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.025),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.person_outline_rounded,
-              size: (17 * scale).clamp(15.0, 18.0),
-              color: _TopbarState._softTextColor,
+            Container(
+              width: (24 * scale).clamp(22.0, 26.0).toDouble(),
+              height: (24 * scale).clamp(22.0, 26.0).toDouble(),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: iconRadius,
+                border: Border.all(
+                  color: borderColor.withOpacity(0.55),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.person_outline_rounded,
+                size: (15 * scale).clamp(14.0, 16.0).toDouble(),
+                color: _TopbarState._softTextColor,
+              ),
             ),
-            SizedBox(width: (6 * scale).clamp(5.0, 7.0)),
+
+            SizedBox(
+              width: (7 * scale).clamp(6.0, 8.0).toDouble(),
+            ),
+
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 136),
               child: Text(
@@ -1003,7 +1116,9 @@ class _ActiveCashierChip extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: _TopbarState._strongTextColor,
-                  fontSize: (12.5 * scale).clamp(11.6, 13.2),
+                  fontSize: (12.5 * scale)
+                      .clamp(11.6, 13.2)
+                      .toDouble(),
                   fontWeight: FontWeight.w800,
                   height: 1,
                 ),
@@ -1035,7 +1150,14 @@ class _TopbarIconAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = (34 * scale).clamp(32.0, 38.0);
+    final size = (34 * scale).clamp(32.0, 38.0).toDouble();
+
+    const actionRadius = BorderRadius.only(
+      topLeft: Radius.circular(11),
+      topRight: Radius.circular(5),
+      bottomLeft: Radius.circular(5),
+      bottomRight: Radius.circular(11),
+    );
 
     return Tooltip(
       message: tooltip,
@@ -1044,18 +1166,27 @@ class _TopbarIconAction extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: actionRadius,
           child: Ink(
             width: size,
             height: size,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: borderColor.withOpacity(0.70)),
+              borderRadius: actionRadius,
+              border: Border.all(
+                color: borderColor.withOpacity(0.70),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.025),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Icon(
               icon,
-              size: (18 * scale).clamp(16.0, 19.0),
+              size: (18 * scale).clamp(16.0, 19.0).toDouble(),
               color: color,
             ),
           ),
