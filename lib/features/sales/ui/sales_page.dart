@@ -27,6 +27,7 @@ import '../../../core/session/session_manager.dart';
 import '../../../core/session/ui_preferences.dart';
 import '../../../core/layout/footer_ticket_controller.dart';
 import '../../../core/layout/topbar_action_bus.dart';
+import '../../../core/notifications/fullpos_notifications.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/utils/accounting_amount_formatter.dart';
@@ -221,7 +222,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
   OverlayEntry? _clientSearchOverlay;
   String _clientSearchQuery = '';
   int _clientSelectionRevision = 0;
-  int _documentTypeRevision = 0;
   bool _clientFieldSyncScheduled = false;
   final ScrollController _ticketItemsScrollController = ScrollController();
   Timer? _cartPersistenceTimer;
@@ -666,15 +666,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
       restored.openedAt,
     ).toLocal();
     final formatted = DateFormat('dd/MM/yyyy HH:mm').format(openedAt);
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 6),
-        content: Text(
+    FullPosNotifications.show(
+      type: AppNotificationType.shift,
+      title: 'Turno restaurado',
+      message:
           'Se restauró tu turno abierto del $formatted. '
           'Puedes continuar trabajando donde lo dejaste.',
-        ),
-      ),
+      deduplicationKey: 'restored-shift-${restored.openedAt}',
+      duration: const Duration(seconds: 6),
     );
   }
 
@@ -1767,16 +1766,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
   }
 
-  Future<void> _refreshElectronicCompany() async {
-    try {
-      final company = await ElectronicCompanyRepository.getOrCreate();
-      if (!mounted) return;
-      setState(() => _electronicCompany = company);
-    } catch (e, st) {
-      debugPrint('Error loading electronic company settings: $e\\n$st');
-    }
-  }
-
   // Ajusta el stock localmente tras completar una venta para reflejar el inventario actualizado
   void _applyStockAdjustments(List<SaleItemModel> items) {
     if (!mounted) return;
@@ -2186,19 +2175,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
     required _Cart cart,
   }) async {
     if (!mounted) return;
-    if (client.normalizedRnc != null && _isElectronicInvoicingFeatureEnabled) {
-      await _setSalesDocumentType(
-        _SalesDocumentType.creditoFiscal,
-        cart: cart,
-        automatic: true,
-      );
+    if (client.normalizedRnc != null) {
+      await _setSalesDocumentType(_SalesDocumentType.creditoFiscal, cart: cart);
       return;
     }
-    await _setSalesDocumentType(
-      _SalesDocumentType.consumidorFinal,
-      cart: cart,
-      automatic: true,
-    );
+    await _setSalesDocumentType(_SalesDocumentType.consumidorFinal, cart: cart);
   }
 
   static const Set<String> _defaultClientNameTokens = <String>{
@@ -2562,14 +2543,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
   Future<void> _setSalesDocumentType(
     _SalesDocumentType type, {
     _Cart? cart,
-    bool automatic = false,
   }) async {
     final targetCart = cart ?? _currentCart;
-    final requestRevision = _documentTypeRevision;
-    if (!automatic) {
-      _documentTypeRevision++;
-    }
-
     if (type == _SalesDocumentType.consumidorFinal) {
       _updateCurrentCart(() {
         targetCart.documentType = type;
@@ -2579,22 +2554,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
       return;
     }
 
-    if (!_isElectronicInvoicingFeatureEnabled) return;
-
-    if (!await _canEnableElectronicInvoiceOrNotify()) {
-      return;
-    }
-
-    if (automatic && requestRevision != _documentTypeRevision) {
-      return;
-    }
-
+    // El comprobante fiscal local no depende de la configuración e-CF.
+    // La emisión electrónica se valida por separado al momento de cobrar.
     _updateCurrentCart(() {
       targetCart.documentType = type;
-      targetCart.electronicInvoiceEnabled = true;
+      targetCart.electronicInvoiceEnabled = false;
       targetCart.itbisEnabled = true;
     });
-    await _refreshElectronicCompany();
   }
 
   _SalesDocumentType get _currentSalesDocumentType => _currentCart.documentType;
@@ -2639,11 +2605,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
       if (settings.selectedPrinterName == null ||
           settings.selectedPrinterName!.trim().isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('No hay impresora configurada'),
-            backgroundColor: status.warning,
-          ),
+        FullPosNotifications.printer(
+          'Configura una impresora antes de volver a intentarlo.',
+          title: 'No hay impresora configurada',
+          success: false,
+          deduplicationKey: 'recent-sale-printer-not-configured',
         );
         return;
       }
@@ -2657,15 +2623,17 @@ class _SalesPageState extends ConsumerState<SalesPage>
         overrideCopies: 1,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result.success
-                ? 'Ticket enviado a impresión'
-                : 'No se pudo imprimir el ticket',
-          ),
-          backgroundColor: result.success ? status.success : status.error,
-        ),
+      FullPosNotifications.printer(
+        result.success
+            ? 'El ticket fue enviado correctamente.'
+            : 'Revisa la impresora y vuelve a intentarlo.',
+        title: result.success
+            ? 'Ticket enviado a impresión'
+            : 'No se pudo imprimir el ticket',
+        success: result.success,
+        deduplicationKey: 'recent-sale-print-$saleId-${result.success}',
+        actionLabel: result.success ? null : 'Reintentar',
+        onAction: result.success ? null : () => _printRecentSale(sale),
       );
     } catch (e, st) {
       if (!mounted) return;
@@ -3581,11 +3549,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }());
 
     if (product.id == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Producto inválido (sin ID)'),
-          backgroundColor: scheme.error,
-        ),
+      FullPosNotifications.error(
+        'El producto no tiene un identificador válido.',
+        title: 'No se pudo agregar el producto',
+        deduplicationKey: 'invalid-product-${product.code}',
       );
       return;
     }
@@ -3593,11 +3560,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final qtyInCart = _qtyInCart(product.id);
     final effectiveStock = product.stock - qtyInCart;
     if (effectiveStock <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Producto sin stock disponible'),
-          backgroundColor: scheme.error,
-        ),
+      FullPosNotifications.inventory(
+        '${product.name} no tiene unidades disponibles.',
+        title: 'Producto sin stock',
+        deduplicationKey: 'out-of-stock-${product.id}',
       );
       return;
     }
@@ -3634,11 +3600,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     } catch (e, st) {
       debugPrint('Error agregando producto al carrito: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo agregar el producto'),
-          backgroundColor: scheme.error,
-        ),
+      FullPosNotifications.error(
+        'Intenta nuevamente o actualiza el catálogo.',
+        title: 'No se pudo agregar el producto',
+        deduplicationKey: 'add-product-error-${product.id}',
       );
     }
   }
@@ -3663,11 +3628,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final available = product.stock - _qtyInCart(item.productId);
     if (available <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Stock insuficiente'),
-          backgroundColor: scheme.error,
-        ),
+      FullPosNotifications.inventory(
+        'No hay más unidades de ${product.name} para agregar.',
+        title: 'Stock insuficiente',
+        deduplicationKey: 'insufficient-stock-${product.id}',
       );
       return;
     }
@@ -3730,25 +3694,19 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Future<bool> _canEnableElectronicInvoiceOrNotify() async {
     if (!_isGlobalItbisEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'No se puede activar e-CF con ITBIS desactivado en Configuración.',
-          ),
-          backgroundColor: scheme.error,
-        ),
+      FullPosNotifications.error(
+        'Activa el ITBIS en Configuración para emitir un e-CF.',
+        title: 'Facturación electrónica no disponible',
+        deduplicationKey: 'ecf-itbis-disabled',
       );
       return false;
     }
 
     if (!_isElectronicInvoicingFeatureEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'La facturación electrónica está desactivada en configuración.',
-          ),
-          backgroundColor: scheme.error,
-        ),
+      FullPosNotifications.error(
+        'La facturación electrónica está desactivada en Configuración.',
+        title: 'e-CF desactivado',
+        deduplicationKey: 'ecf-feature-disabled',
       );
       return false;
     }
@@ -3759,13 +3717,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
     if (missing.isEmpty) return true;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'No se puede activar e-CF. Falta: ${missing.join(', ')}.',
-        ),
-        backgroundColor: scheme.error,
-      ),
+    FullPosNotifications.error(
+      'Completa: ${missing.join(', ')}.',
+      title: 'Faltan datos para emitir e-CF',
+      deduplicationKey: 'ecf-missing-${missing.join('|')}',
+      isPersistent: true,
     );
     return false;
   }
@@ -3779,13 +3735,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
     if (missing.isEmpty) return true;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'No se puede continuar con e-CF. Falta: ${missing.join(', ')}.',
-        ),
-        backgroundColor: scheme.error,
-      ),
+    FullPosNotifications.error(
+      'Completa: ${missing.join(', ')}.',
+      title: 'No se puede continuar con e-CF',
+      deduplicationKey: 'ecf-proceed-missing-${missing.join('|')}',
+      isPersistent: true,
     );
     return false;
   }
@@ -3881,6 +3835,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
       final effectiveClient = paymentResult['selectedClient'] as ClientModel?;
 
       if (!mounted) return;
+      if (electronicInvoiceRequested &&
+          !await _canEnableElectronicInvoiceOrNotify()) {
+        return;
+      }
 
       if (effectiveClient != null) {
         _updateCurrentCart(() {
@@ -3944,7 +3902,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
       String? electronicInvoiceCode;
       String? electronicDocumentType;
       if (electronicInvoiceRequested) {
-        electronicDocumentType = '32';
+        electronicDocumentType =
+            _currentSalesDocumentType == _SalesDocumentType.creditoFiscal
+            ? '31'
+            : '32';
       }
 
       final paymentMethodStr = switch (method) {
@@ -4181,15 +4142,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
       unawaited(_loadRecentSales());
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Venta completada correctamente',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          ),
-          backgroundColor: status.success,
-          duration: Duration(seconds: 2),
-        ),
+      FullPosNotifications.show(
+        type: AppNotificationType.payment,
+        title: 'Venta completada',
+        message: 'La venta $localCode fue registrada correctamente.',
+        deduplicationKey: 'sale-completed-$saleId',
+        duration: const Duration(seconds: 4),
       );
 
       unawaited(_deleteTempCartFromDatabase(tempCartIdToDelete));
