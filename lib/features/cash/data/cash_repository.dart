@@ -80,6 +80,27 @@ class CashRepository {
     }
   }
 
+  /// Lista todos los turnos abiertos de un usuario para detectar estados
+  /// duplicados antes de restaurar o cerrar sesión.
+  static Future<List<CashSessionModel>> listOpenSessionsForUser({
+    required int userId,
+  }) async {
+    return DbHardening.instance.runDbSafe<List<CashSessionModel>>(() async {
+      final db = await AppDb.database;
+      final rows = await db.query(
+        DbTables.cashSessions,
+        where: '''
+          status = ?
+          AND closed_at_ms IS NULL
+          AND opened_by_user_id = ?
+        ''',
+        whereArgs: [CashSessionStatus.open, userId],
+        orderBy: 'opened_at_ms DESC',
+      );
+      return rows.map(CashSessionModel.fromMap).toList(growable: false);
+    }, stage: 'cash_list_open_sessions_for_user');
+  }
+
   /// Abrir nueva sesión de caja
   static Future<int> openSession({
     required int userId,

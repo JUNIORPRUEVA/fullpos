@@ -380,21 +380,43 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
           ErrorHandler.navigatorKey.currentContext ??
           Navigator.of(context, rootNavigator: true).context;
 
-      Navigator.of(context).pop(true);
       if (widget.logoutAfterClose) {
-        unawaited(
-          _printClosingArtifacts(
+        Object? printError;
+        try {
+          await _printClosingArtifacts(
             summary: summaryForPrint,
             closingAmount: _closingAmount,
             note: closeNote,
-          ).catchError((Object error, StackTrace stackTrace) {
-            debugPrint('Cierre de turno completado sin ticket impreso: $error');
-          }),
-        );
-        unawaited(LogoutFlowService.defaultPerformLogout(appContext));
+          );
+        } catch (error) {
+          printError = error;
+          debugPrint('Cierre de turno completado sin ticket impreso: $error');
+        }
+
+        if (mounted) Navigator.of(context).pop(true);
+        await LogoutFlowService.defaultPerformLogout(appContext);
+
+        if (printError != null) {
+          final logoutContext =
+              ErrorHandler.navigatorKey.currentState?.overlay?.context ??
+              ErrorHandler.navigatorKey.currentContext;
+          if (logoutContext != null && logoutContext.mounted) {
+            ScaffoldMessenger.maybeOf(logoutContext)?.showSnackBar(
+              SnackBar(
+                duration: const Duration(seconds: 8),
+                content: Text(
+                  'El turno se cerró correctamente, pero no se pudo imprimir '
+                  'el comprobante: $printError',
+                ),
+                backgroundColor: Theme.of(logoutContext).colorScheme.error,
+              ),
+            );
+          }
+        }
         return;
       }
 
+      Navigator.of(context).pop(true);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(
           _printClosingArtifacts(

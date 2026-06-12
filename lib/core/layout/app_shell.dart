@@ -24,6 +24,7 @@ class _AppShellState extends State<AppShell> {
   static const String _salesRoute = '/sales';
   bool _didInitResponsive = false;
   bool _isShort = false;
+  bool _drawerOpen = false;
 
   String _currentPath() {
     try {
@@ -46,20 +47,27 @@ class _AppShellState extends State<AppShell> {
     if (constraints.maxHeight > shortUpper) _isShort = false;
   }
 
-  void _openDrawer(BuildContext context) {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Cerrar menú',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return const FullPosDrawer();
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return child;
-      },
-    );
+  Future<void> _openDrawer(BuildContext context) async {
+    if (_drawerOpen) return;
+    _drawerOpen = true;
+    try {
+      await showGeneralDialog<void>(
+        context: context,
+        useRootNavigator: true,
+        barrierDismissible: true,
+        barrierLabel: 'Cerrar menú',
+        barrierColor: Colors.transparent,
+        transitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return const FullPosDrawer();
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          return child;
+        },
+      );
+    } finally {
+      _drawerOpen = false;
+    }
   }
 
   @override
@@ -94,10 +102,7 @@ class _AppShellState extends State<AppShell> {
             SizedBox(height: topbarHeight, child: topbarWidget),
             Expanded(child: widget.child),
             if (showSalesFooter)
-              SizedBox(
-                height: footerHeight,
-                child: Footer(scale: 1.0),
-              ),
+              SizedBox(height: footerHeight, child: Footer(scale: 1.0)),
           ],
         );
 

@@ -230,58 +230,100 @@ class _TopbarState extends ConsumerState<Topbar> {
   }) {
     final scheme = Theme.of(context).colorScheme;
     final itemColor = color ?? const Color(0xFF334155);
+    final readableColor = ColorUtils.ensureReadableColor(
+      itemColor,
+      scheme.surface,
+      minRatio: 4.0,
+    );
+
+    const itemRadius = BorderRadius.only(
+      topLeft: Radius.circular(12),
+      topRight: Radius.circular(5),
+      bottomLeft: Radius.circular(5),
+      bottomRight: Radius.circular(12),
+    );
+
+    const iconRadius = BorderRadius.only(
+      topLeft: Radius.circular(10),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(10),
+    );
 
     return PopupMenuItem<_TopbarMenuAction>(
       value: value,
-      height: 44,
+      height: 48,
       padding: EdgeInsets.zero,
       child: SizedBox(
         width: width,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          child: DecoratedBox(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        itemColor.withOpacity(0.08),
-                        Colors.white,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: itemColor.withOpacity(0.10)),
-                    ),
-                    child: Icon(icon, size: 16, color: itemColor),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: ColorUtils.ensureReadableColor(
-                          itemColor,
-                          scheme.surface,
-                          minRatio: 4.0,
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: itemRadius,
+            child: InkWell(
+              borderRadius: itemRadius,
+              hoverColor: itemColor.withOpacity(0.045),
+              splashColor: itemColor.withOpacity(0.08),
+              highlightColor: itemColor.withOpacity(0.025),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: Color.alphaBlend(
+                          itemColor.withOpacity(0.10),
+                          Colors.white,
                         ),
-                        fontSize: 13,
-                        fontWeight: fontWeight,
-                        height: 1.1,
+                        borderRadius: iconRadius,
+                        border: Border.all(
+                          color: itemColor.withOpacity(0.16),
+                          width: 0.9,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: itemColor.withOpacity(0.07),
+                            blurRadius: 7,
+                            spreadRadius: -4,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        icon,
+                        size: 17,
+                        color: itemColor,
                       ),
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 17,
-                    color: itemColor.withOpacity(0.42),
-                  ),
-                ],
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: readableColor,
+                          fontSize: 13.2,
+                          fontWeight: fontWeight,
+                          height: 1.1,
+                          letterSpacing: -0.08,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: itemColor.withOpacity(0.46),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -439,32 +481,25 @@ class _TopbarState extends ConsumerState<Topbar> {
     horizontalPad,
     0,
   ),
-  decoration: BoxDecoration(
-    color: topbarBg,
-    border: widget.showBottomBorder
-        ? Border(
-            left: BorderSide(
-              color: chromeBorderColor,
-              width: 1,
-            ),
-            right: BorderSide(
-              color: chromeBorderColor,
-              width: 1,
-            ),
-            bottom: BorderSide(
-              color: chromeBorderColor,
-              width: 1,
-            ),
-          )
-        : null,
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withOpacity(0.035),
-        blurRadius: 8,
-        offset: const Offset(0, 2),
-      ),
-    ],
-  ),
+decoration: BoxDecoration(
+  color: topbarBg,
+  border: widget.showBottomBorder
+      ? const Border(
+          bottom: BorderSide(
+            color: Color(0xFF7C8A99),
+            width: 1.15,
+          ),
+        )
+      : null,
+  boxShadow: [
+    BoxShadow(
+      color: Colors.black.withOpacity(0.045),
+      blurRadius: 5,
+      spreadRadius: -2,
+      offset: const Offset(0, 2),
+    ),
+  ],
+),
   child: Row(
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
@@ -625,9 +660,15 @@ Flexible(
             color: topbarBg,
             surfaceTintColor: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(7),
+                bottomLeft: Radius.circular(7),
+                bottomRight: Radius.circular(16),
+              ),
               side: BorderSide(
-                color: brandAccent.withOpacity(0.12),
+                color: brandAccent.withOpacity(0.14),
+                width: 0.9,
               ),
             ),
             onSelected: _handleMenuAction,
@@ -672,9 +713,15 @@ Flexible(
             color: topbarBg,
             surfaceTintColor: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(7),
+                bottomLeft: Radius.circular(7),
+                bottomRight: Radius.circular(16),
+              ),
               side: BorderSide(
-                color: brandAccent.withOpacity(0.12),
+                color: brandAccent.withOpacity(0.14),
+                width: 0.9,
               ),
             ),
             onSelected: _handleMenuAction,

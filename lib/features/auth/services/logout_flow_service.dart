@@ -8,29 +8,131 @@ import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/authz/authz_service.dart';
 import '../../../core/session/session_manager.dart';
-import '../../cash/data/operation_flow_service.dart';
+import '../../cash/data/cash_repository.dart';
+import '../../cash/ui/cash_close_dialog.dart';
+
+enum _OpenShiftLogoutAction { closeAndLogout, logoutOnly, cancel }
 
 class LogoutFlowService {
   LogoutFlowService._();
+
+  static bool _requestInProgress = false;
 
   static Future<void> requestLogout(
     BuildContext context, {
     required Future<void> Function() performLogout,
   }) async {
-    final gate = await OperationFlowService.loadGateState();
-    final openShift = gate.activeSession;
+    if (_requestInProgress) return;
+    _requestInProgress = true;
 
-    if (openShift != null && gate.canOperate) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text('Finaliza el turno desde el menú de usuario.'),
-        ),
+    try {
+      final userId = await SessionManager.userId();
+      if (userId == null) {
+        await performLogout();
+        return;
+      }
+
+      final openShifts = await CashRepository.listOpenSessionsForUser(
+        userId: userId,
       );
-      return;
-    }
+      if (openShifts.isEmpty) {
+        await performLogout();
+        return;
+      }
+      if (openShifts.length > 1) {
+        throw StateError(
+          'Hay varios turnos abiertos para este usuario. '
+          'No se cerrará sesión hasta corregir este estado.',
+        );
+      }
 
-    await performLogout();
+      final openShift = openShifts.single;
+      final sessionId = openShift.id;
+      if (sessionId == null) {
+        throw StateError('El turno abierto no tiene un identificador válido.');
+      }
+
+      final dialogContext =
+          ErrorHandler.navigatorKey.currentState?.overlay?.context ?? context;
+      if (!dialogContext.mounted) return;
+
+      final action = await _showOpenShiftDialog(dialogContext);
+      switch (action) {
+        case _OpenShiftLogoutAction.closeAndLogout:
+          if (!dialogContext.mounted) return;
+          await CashCloseDialog.show(
+            dialogContext,
+            sessionId: sessionId,
+            logoutAfterClose: true,
+          );
+          return;
+        case _OpenShiftLogoutAction.logoutOnly:
+          await performLogout();
+          return;
+        case _OpenShiftLogoutAction.cancel:
+        case null:
+          return;
+      }
+    } catch (error, stackTrace) {
+      final errorContext =
+          ErrorHandler.navigatorKey.currentState?.overlay?.context ?? context;
+      if (!errorContext.mounted) return;
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: errorContext,
+        module: 'auth/logout',
+      );
+    } finally {
+      _requestInProgress = false;
+    }
+  }
+
+  static Future<_OpenShiftLogoutAction?> _showOpenShiftDialog(
+    BuildContext context,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return showDialog<_OpenShiftLogoutAction>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: Icon(Icons.point_of_sale_rounded, color: scheme.primary),
+          title: const Text('Tienes un turno abierto'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: const Text(
+              'Elige cómo deseas salir. Puedes cerrar y cuadrar el turno '
+              'ahora, o conservarlo abierto para continuarlo en tu próximo '
+              'inicio de sesión.',
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(_OpenShiftLogoutAction.cancel),
+              child: const Text('Cancelar'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(_OpenShiftLogoutAction.logoutOnly),
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Salir sin cerrar turno'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(_OpenShiftLogoutAction.closeAndLogout),
+              icon: const Icon(Icons.lock_clock_rounded),
+              label: const Text('Cerrar turno y salir'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   static Future<void> defaultPerformLogout(BuildContext context) async {
@@ -59,7 +161,9 @@ class LogoutFlowService {
             .refreshAuth()
             .timeout(const Duration(seconds: 2));
       } on TimeoutException catch (error) {
-        debugPrint('Logout refreshAuth agotó tiempo, continuando salida: $error');
+        debugPrint(
+          'Logout refreshAuth agotó tiempo, continuando salida: $error',
+        );
       } catch (error) {
         debugPrint('Logout refreshAuth falló, continuando salida: $error');
       }

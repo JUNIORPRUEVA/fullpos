@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../cash/data/operation_flow_service.dart';
 import '../../settings/data/user_model.dart';
 import '../../settings/data/users_repository.dart';
 import '../data/auth_repository.dart';
@@ -147,6 +148,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ref.read(appBootstrapProvider).forceLoggedIn();
         unawaited(ref.read(appBootstrapProvider).refreshAuth());
         if (!mounted) return;
+
+        final restoredSession = await OperationFlowService.loadActiveSession();
+        if (restoredSession != null) {
+          OperationFlowService.queueRestoredSessionNotice(restoredSession);
+        }
 
         // Primer acceso: si se usaron credenciales iniciales, forzar cambio.
         if (!_usingPin) {

@@ -16,11 +16,11 @@ import 'topbar_action_bus.dart';
 // 5) Facturación electrónica abajo separada.
 // ─────────────────────────────────────────────────────────────
 const Color _kPrimaryBlue = Color(0xFF1A56DB);
-const Color _kBorderColor = Color(0xFFE2E8F0);
+const Color _kBorderColor = Color(0xFFD6E0EA);
 const Color _kTextDark = Color(0xFF0F172A);
 const Color _kTextMuted = Color(0xFF64748B);
 const Color _kActiveBg = Color(0xFFEAF2FF);
-const Color _kHoverBg = Color(0xFFF1F5F9);
+const Color _kHoverBg = Color(0xFFF5F8FC);
 const Color _kPanelBg = Colors.white;
 const Color _kFooterBg = Color(0xFFF8FAFC);
 
@@ -71,6 +71,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
   bool _moneyExpanded = false;
   bool _managementExpanded = false;
   bool _hasSales = false;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -137,38 +138,36 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
   }
 
   void _navigate(String route) {
-    try {
-      context.go(route);
-    } catch (_) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(
-          content: Text('No se pudo abrir $route'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-
-    _closeDrawer();
+    _closeDrawerThen((router) => router.go(route));
   }
 
   void _closeDrawer() {
+    if (_closing) return;
+    _closing = true;
     _controller.reverse().then((_) {
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
     });
   }
 
-  void _closeDrawerThen(VoidCallback action) {
+  void _closeDrawerThen(void Function(GoRouter router) action) {
+    if (_closing) return;
+    _closing = true;
     final router = GoRouter.of(context);
     _controller.reverse().then((_) {
       if (!mounted) return;
-      Navigator.of(context).pop();
-      action();
+      Navigator.of(context, rootNavigator: true).pop();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        router.go(_kSalesRoute);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          TopbarActionBus.dispatchPendingSalesOverlay();
-        });
+        action(router);
+      });
+    });
+  }
+
+  void _openSalesOverlayAfterClose(VoidCallback queueAction) {
+    queueAction();
+    _closeDrawerThen((router) {
+      router.go(_kSalesRoute);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        TopbarActionBus.dispatchPendingSalesOverlay();
       });
     });
   }
@@ -220,10 +219,9 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                         children: [
                           _DrawerHeader(onClose: _closeDrawer),
                           _DrawerCurrentShift(
-                            onTap: () {
-                              TopbarActionBus.queueSalesCurrentCutView();
-                              _closeDrawerThen(() {});
-                            },
+                            onTap: () => _openSalesOverlayAfterClose(
+                              TopbarActionBus.queueSalesCurrentShiftPanel,
+                            ),
                           ),
                           Expanded(
                             child: ListView(
@@ -446,10 +444,12 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                       title: 'Registrar ingreso',
                                       isActive: false,
                                       onTap: () {
-                                        TopbarActionBus.queueSalesCashMovementDialog(
-                                          'income',
+                                        _openSalesOverlayAfterClose(
+                                          () =>
+                                              TopbarActionBus.queueSalesCashMovementDialog(
+                                                'income',
+                                              ),
                                         );
-                                        _closeDrawerThen(() {});
                                       },
                                     ),
                                     _DrawerSubItem(
@@ -459,10 +459,12 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                       title: 'Registrar salida',
                                       isActive: false,
                                       onTap: () {
-                                        TopbarActionBus.queueSalesCashMovementDialog(
-                                          'outcome',
+                                        _openSalesOverlayAfterClose(
+                                          () =>
+                                              TopbarActionBus.queueSalesCashMovementDialog(
+                                                'outcome',
+                                              ),
                                         );
-                                        _closeDrawerThen(() {});
                                       },
                                     ),
                                     _DrawerSubItem(
@@ -607,7 +609,12 @@ class _DrawerHeader extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(6),
+                bottomLeft: Radius.circular(6),
+                bottomRight: Radius.circular(14),
+              ),
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -695,7 +702,12 @@ class _DrawerCloseButtonState extends State<_DrawerCloseButton> {
         height: 34,
         decoration: BoxDecoration(
           color: _hovered ? _kActiveBg : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(11),
+            topRight: Radius.circular(5),
+            bottomLeft: Radius.circular(5),
+            bottomRight: Radius.circular(11),
+          ),
           border: Border.all(
             color: _hovered ? const Color(0xFFBFD1F7) : Colors.transparent,
           ),
@@ -704,7 +716,12 @@ class _DrawerCloseButtonState extends State<_DrawerCloseButton> {
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onTap,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(11),
+              topRight: Radius.circular(5),
+              bottomLeft: Radius.circular(5),
+              bottomRight: Radius.circular(11),
+            ),
             child: Icon(
               Icons.close_rounded,
               size: 20,
@@ -731,67 +748,122 @@ class _DrawerCurrentShift extends StatefulWidget {
 
 class _DrawerCurrentShiftState extends State<_DrawerCurrentShift> {
   bool _hovered = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
+    const cardRadius = BorderRadius.only(
+      topLeft: Radius.circular(13),
+      topRight: Radius.circular(6),
+      bottomLeft: Radius.circular(6),
+      bottomRight: Radius.circular(13),
+    );
+
+    const iconRadius = BorderRadius.only(
+      topLeft: Radius.circular(10),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(10),
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 7),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          height: 42,
-          decoration: BoxDecoration(
-            color: _hovered ? const Color(0xFFF8FBFF) : Colors.white,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: _hovered ? const Color(0xFFBFD1F7) : _kBorderColor,
+        onExit: (_) => setState(() {
+          _hovered = false;
+          _pressed = false;
+        }),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 110),
+          scale: _pressed ? 0.985 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _hovered ? const Color(0xFFF8FBFF) : Colors.white,
+              borderRadius: cardRadius,
+              border: Border.all(
+                color: _hovered ? const Color(0xFFB8CBF5) : _kBorderColor,
+                width: 0.9,
+              ),
+              boxShadow: [
+                if (_hovered)
+                  BoxShadow(
+                    color: _kPrimaryBlue.withOpacity(0.08),
+                    blurRadius: 12,
+                    spreadRadius: -6,
+                    offset: const Offset(0, 5),
+                  ),
+              ],
             ),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: widget.onTap,
-              borderRadius: BorderRadius.circular(11),
-              splashColor: _kPrimaryBlue.withOpacity(0.06),
-              highlightColor: Colors.transparent,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.point_of_sale_rounded,
-                      size: 18,
-                      color: _hovered ? _kPrimaryBlue : _kTextMuted,
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Cerrar turno',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: _kTextDark,
-                          fontSize: 13.8,
-                          fontWeight: FontWeight.w600,
-                          height: 1.15,
-                          letterSpacing: 0.02,
-                          decoration: TextDecoration.none,
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: cardRadius,
+              child: InkWell(
+                onTap: widget.onTap,
+                onTapDown: (_) => setState(() => _pressed = true),
+                onTapCancel: () => setState(() => _pressed = false),
+                onTapUp: (_) => setState(() => _pressed = false),
+                borderRadius: cardRadius,
+                splashColor: _kPrimaryBlue.withOpacity(0.06),
+                highlightColor: Colors.transparent,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: _hovered
+                              ? _kActiveBg
+                              : const Color(0xFFF1F5F9),
+                          borderRadius: iconRadius,
+                          border: Border.all(
+                            color: _hovered
+                                ? const Color(0xFFBDD0F8)
+                                : _kBorderColor,
+                            width: 0.8,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.point_of_sale_rounded,
+                          size: 17,
+                          color: _hovered ? _kPrimaryBlue : _kTextMuted,
                         ),
                       ),
-                    ),
-                    AnimatedSlide(
-                      duration: const Duration(milliseconds: 150),
-                      offset: _hovered ? const Offset(0.10, 0) : Offset.zero,
-                      child: Icon(
-                        Icons.logout_rounded,
-                        size: 18,
-                        color: _hovered ? _kPrimaryBlue : _kTextMuted,
+                      const SizedBox(width: 11),
+                      const Expanded(
+                        child: Text(
+                          'Cerrar turno',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _kTextDark,
+                            fontSize: 13.8,
+                            fontWeight: FontWeight.w700,
+                            height: 1.15,
+                            letterSpacing: -0.04,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                      AnimatedSlide(
+                        duration: const Duration(milliseconds: 160),
+                        offset: _hovered ? const Offset(0.10, 0) : Offset.zero,
+                        child: Icon(
+                          Icons.logout_rounded,
+                          size: 18,
+                          color: _hovered ? _kPrimaryBlue : _kTextMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -917,12 +989,28 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
 
   @override
   Widget build(BuildContext context) {
-    final highlighted = widget.isActive;
+    final backgroundColor = widget.isActive
+        ? _kActiveBg
+        : _hovered
+        ? _kHoverBg
+        : Colors.transparent;
 
-    final bgColor = widget.isActive ? _kActiveBg : Colors.transparent;
+    const itemRadius = BorderRadius.only(
+      topLeft: Radius.circular(12),
+      topRight: Radius.circular(5),
+      bottomLeft: Radius.circular(5),
+      bottomRight: Radius.circular(12),
+    );
+
+    const iconRadius = BorderRadius.only(
+      topLeft: Radius.circular(10),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(10),
+    );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
@@ -934,56 +1022,75 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
           duration: const Duration(milliseconds: 100),
           scale: _pressed ? 0.985 : 1,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            height: widget.isPrimary ? 42 : 40,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            height: widget.isPrimary ? 44 : 42,
             decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(9),
+              color: backgroundColor,
+              borderRadius: itemRadius,
               border: Border.all(
                 color: widget.isActive
-                    ? const Color(0xFFBFD1F7)
+                    ? const Color(0xFFB8CBF5)
+                    : _hovered
+                    ? _kBorderColor
                     : Colors.transparent,
+                width: 0.9,
               ),
             ),
             child: Material(
               color: Colors.transparent,
+              borderRadius: itemRadius,
               child: InkWell(
                 onTap: widget.onTap,
                 onTapDown: (_) => setState(() => _pressed = true),
                 onTapCancel: () => setState(() => _pressed = false),
                 onTapUp: (_) => setState(() => _pressed = false),
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: itemRadius,
                 splashColor: _kPrimaryBlue.withOpacity(0.06),
                 highlightColor: Colors.transparent,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
                   child: Row(
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
+                        duration: const Duration(milliseconds: 160),
                         width: 3,
-                        height: widget.isActive ? 20 : 0,
+                        height: widget.isActive ? 22 : 0,
                         decoration: BoxDecoration(
                           color: _kPrimaryBlue,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      SizedBox(width: widget.isActive ? 9 : 12),
-                      AnimatedSlide(
-                        duration: const Duration(milliseconds: 150),
-                        offset: _hovered ? const Offset(0.08, 0) : Offset.zero,
+                      SizedBox(width: widget.isActive ? 8 : 11),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: widget.isActive
+                              ? Color.alphaBlend(
+                                  _kPrimaryBlue.withOpacity(0.10),
+                                  Colors.white,
+                                )
+                              : _hovered
+                              ? Colors.white
+                              : const Color(0xFFF4F7FA),
+                          borderRadius: iconRadius,
+                          border: Border.all(
+                            color: widget.isActive
+                                ? _kPrimaryBlue.withOpacity(0.18)
+                                : _kBorderColor,
+                            width: 0.8,
+                          ),
+                        ),
+                        alignment: Alignment.center,
                         child: Icon(
                           widget.icon,
-                          size: widget.isPrimary ? 19 : 18,
-                          color: widget.isActive
-                              ? _kPrimaryBlue
-                              : highlighted
-                              ? _kTextDark
-                              : _kTextMuted,
+                          size: widget.isPrimary ? 18.5 : 18,
+                          color: widget.isActive ? _kPrimaryBlue : _kTextMuted,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 11),
                       Expanded(
                         child: Text(
                           widget.title,
@@ -991,19 +1098,22 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: widget.isActive ? _kPrimaryBlue : _kTextDark,
-                            fontSize: widget.isPrimary ? 14.4 : 14.0,
-                            fontWeight: widget.isPrimary
-                                ? FontWeight.w600
-                                : widget.isActive
+                            fontSize: widget.isPrimary ? 14.3 : 14.0,
+                            fontWeight: widget.isActive
+                                ? FontWeight.w700
+                                : widget.isPrimary
                                 ? FontWeight.w600
                                 : FontWeight.w500,
-                            height: 1.28,
-                            letterSpacing: 0.01,
+                            height: 1.2,
+                            letterSpacing: -0.03,
                             decoration: TextDecoration.none,
                           ),
                         ),
                       ),
-                      if (widget.trailing != null) widget.trailing!,
+                      if (widget.trailing != null) ...[
+                        const SizedBox(width: 6),
+                        widget.trailing!,
+                      ],
                     ],
                   ),
                 ),
@@ -1068,79 +1178,129 @@ class _DrawerSubItem extends StatefulWidget {
 
 class _DrawerSubItemState extends State<_DrawerSubItem> {
   bool _hovered = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = widget.isActive
+    final backgroundColor = widget.isActive
         ? _kActiveBg
         : _hovered
         ? _kHoverBg
         : Colors.transparent;
 
+    const itemRadius = BorderRadius.only(
+      topLeft: Radius.circular(10),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(10),
+    );
+
+    const iconRadius = BorderRadius.only(
+      topLeft: Radius.circular(8),
+      topRight: Radius.circular(3),
+      bottomLeft: Radius.circular(3),
+      bottomRight: Radius.circular(8),
+    );
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.4),
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          height: 34,
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: widget.onTap,
-              borderRadius: BorderRadius.circular(8),
-              splashColor: _kPrimaryBlue.withOpacity(0.05),
-              highlightColor: Colors.transparent,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 11),
-                child: Row(
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: widget.isActive
-                            ? _kPrimaryBlue
-                            : _kTextMuted.withOpacity(0.48),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Icon(
-                      widget.icon,
-                      size: 15,
-                      color: widget.isActive
-                          ? _kPrimaryBlue
-                          : _kTextMuted.withOpacity(0.86),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: widget.isActive
-                              ? _kPrimaryBlue
-                              : _kTextDark.withOpacity(0.82),
-                          fontSize: 13.25,
-                          fontWeight: widget.isActive
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          height: 1.22,
-                          letterSpacing: 0.01,
-                          decoration: TextDecoration.none,
+        onExit: (_) => setState(() {
+          _hovered = false;
+          _pressed = false;
+        }),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 100),
+          scale: _pressed ? 0.988 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            height: 38,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: itemRadius,
+              border: Border.all(
+                color: widget.isActive
+                    ? const Color(0xFFBED0F5)
+                    : _hovered
+                    ? _kBorderColor
+                    : Colors.transparent,
+                width: 0.8,
+              ),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: itemRadius,
+              child: InkWell(
+                onTap: widget.onTap,
+                onTapDown: (_) => setState(() => _pressed = true),
+                onTapCancel: () => setState(() => _pressed = false),
+                onTapUp: (_) => setState(() => _pressed = false),
+                borderRadius: itemRadius,
+                splashColor: _kPrimaryBlue.withOpacity(0.05),
+                highlightColor: Colors.transparent,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 3,
+                        height: widget.isActive ? 17 : 0,
+                        decoration: BoxDecoration(
+                          color: _kPrimaryBlue,
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                    ),
-                  ],
+                      SizedBox(width: widget.isActive ? 7 : 10),
+                      Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(
+                          color: widget.isActive
+                              ? Color.alphaBlend(
+                                  _kPrimaryBlue.withOpacity(0.10),
+                                  Colors.white,
+                                )
+                              : const Color(0xFFF4F7FA),
+                          borderRadius: iconRadius,
+                          border: Border.all(
+                            color: widget.isActive
+                                ? _kPrimaryBlue.withOpacity(0.16)
+                                : _kBorderColor,
+                            width: 0.75,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          widget.icon,
+                          size: 14.5,
+                          color: widget.isActive ? _kPrimaryBlue : _kTextMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: widget.isActive
+                                ? _kPrimaryBlue
+                                : _kTextDark.withOpacity(0.88),
+                            fontSize: 13.2,
+                            fontWeight: widget.isActive
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            height: 1.18,
+                            letterSpacing: -0.02,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1187,7 +1347,12 @@ class _DrawerFooterState extends State<_DrawerFooter> {
             height: 34,
             decoration: BoxDecoration(
               color: _kActiveBg,
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(11),
+                topRight: Radius.circular(5),
+                bottomLeft: Radius.circular(5),
+                bottomRight: Radius.circular(11),
+              ),
               border: Border.all(color: const Color(0xFFBFD1F7)),
             ),
             child: const Icon(
@@ -1253,7 +1418,12 @@ class _DrawerFooterState extends State<_DrawerFooter> {
               height: 40,
               decoration: BoxDecoration(
                 color: _syncHover ? _kPrimaryBlue : Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(5),
+                  bottomLeft: Radius.circular(5),
+                  bottomRight: Radius.circular(12),
+                ),
                 border: Border.all(
                   color: _syncHover ? _kPrimaryBlue : _kBorderColor,
                 ),
@@ -1279,7 +1449,12 @@ class _DrawerFooterState extends State<_DrawerFooter> {
                       ),
                     );
                   },
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(5),
+                    bottomLeft: Radius.circular(5),
+                    bottomRight: Radius.circular(12),
+                  ),
                   child: Icon(
                     Icons.refresh_rounded,
                     size: 22,

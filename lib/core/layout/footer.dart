@@ -22,18 +22,18 @@ class Footer extends ConsumerWidget {
       height: footerHeight,
       child: DecoratedBox(
         decoration: const BoxDecoration(
-  color: Color(0xFFF3F6FA),
-  border: Border(
-    top: BorderSide(
-      color: Color(0xFF98A6B5),
-      width: 0.9,
-    ),
-    bottom: BorderSide(
-      color: Color(0xFFB2BFCC),
-      width: 0.8,
-    ),
-  ),
-),
+          color: Color(0xFFF3F6FA),
+          border: Border(
+            top: BorderSide(
+              color: Color.fromARGB(255, 0, 0, 0),
+              width: 0.3,
+            ),
+            bottom: BorderSide(
+              color: Color(0xFFB2BFCC),
+              width: 0.8,
+            ),
+          ),
+        ),
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           physics: const ClampingScrollPhysics(),

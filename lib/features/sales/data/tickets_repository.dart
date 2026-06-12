@@ -69,6 +69,19 @@ class TicketsRepository {
     );
   }
 
+  Future<void> updateTicketClient(int ticketId, int? clientId) async {
+    final database = await AppDb.database;
+    await database.update(
+      DbTables.posTickets,
+      {
+        'client_id': clientId,
+        'updated_at_ms': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [ticketId],
+    );
+  }
+
   /// Actualiza ticket completo (útil cuando el carrito cambia)
   Future<void> updateTicket({
     required int ticketId,

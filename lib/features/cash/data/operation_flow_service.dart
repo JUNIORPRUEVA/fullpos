@@ -88,6 +88,7 @@ class OperationFlowService {
   static final int _maxShiftOpenMs = maxShiftOpenDuration.inMilliseconds;
 
   static final DateFormat _businessDateFormat = DateFormat('yyyy-MM-dd');
+  static ActiveSession? _pendingRestoredSessionNotice;
 
   static String businessDateOf([DateTime? date]) {
     return _businessDateFormat.format((date ?? DateTime.now()).toLocal());
@@ -105,30 +106,65 @@ class OperationFlowService {
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-    final results =  await Future.wait([
+    final results = await Future.wait([
       getDailyCashbox(today),
-      CashRepository.getOpenSession(userId: userId),
+      if (userId == null)
+        Future<List<CashSessionModel>>.value(const [])
+      else
+        CashRepository.listOpenSessionsForUser(userId: userId),
     ]);
-    final cashbox = results[0] as CashboxDailyModel?;
-    final userShift = results[1] as CashSessionModel?;
+    final cashboxToday = results[0] as CashboxDailyModel?;
+    final openShifts = results[1] as List<CashSessionModel>;
+    if (openShifts.length > 1) {
+      throw StateError(
+        'Se detectaron varios turnos abiertos para el usuario $userId. '
+        'Corrige el estado de caja antes de continuar.',
+      );
+    }
+
+    final userShift = openShifts.isEmpty ? null : openShifts.first;
+    final linkedCashbox = userShift == null
+        ? null
+        : await _resolveCashboxForShift(userShift);
     final stale = (userShift != null && _isShiftOverMaxAge(userShift, nowMs))
         ? userShift
         : null;
     final activeSession =
-        cashbox != null &&
-            cashbox.isOpen &&
+        linkedCashbox != null &&
+            linkedCashbox.isOpen &&
             userShift != null &&
             userShift.isOpen
-        ? ActiveSession.fromModels(cashbox: cashbox, shift: userShift)
+        ? ActiveSession.fromModels(cashbox: linkedCashbox, shift: userShift)
         : null;
 
     return OperationGateState(
       businessDate: today,
-      cashboxToday: cashbox,
+      cashboxToday: cashboxToday,
       userOpenShift: userShift,
       staleOpenShift: stale,
       activeSession: activeSession,
     );
+  }
+
+  static Future<CashboxDailyModel?> _resolveCashboxForShift(
+    CashSessionModel shift,
+  ) async {
+    final byId = await getDailyCashboxById(shift.cashboxDailyId);
+    if (byId != null) return byId;
+
+    final shiftBusinessDate = shift.businessDate?.trim();
+    if (shiftBusinessDate == null || shiftBusinessDate.isEmpty) return null;
+    return getDailyCashbox(shiftBusinessDate);
+  }
+
+  static void queueRestoredSessionNotice(ActiveSession session) {
+    _pendingRestoredSessionNotice = session;
+  }
+
+  static ActiveSession? consumeRestoredSessionNotice() {
+    final session = _pendingRestoredSessionNotice;
+    _pendingRestoredSessionNotice = null;
+    return session;
   }
 
   static Future<ActiveSession?> loadActiveSession() async {
@@ -542,12 +578,42 @@ class OperationFlowService {
         ''',
         whereArgs: [userId],
         orderBy: 'opened_at_ms DESC',
-        limit: 1,
       );
 
       if (currentUserRows.isNotEmpty) {
+        if (currentUserRows.length > 1) {
+          throw StateError(
+            'Se detectaron varios turnos abiertos para este usuario.',
+          );
+        }
         final shift = CashSessionModel.fromMap(currentUserRows.first);
-        result = ActiveSession.fromModels(cashbox: cashbox, shift: shift);
+        final linkedCashboxRows = shift.cashboxDailyId == null
+            ? await txn.query(
+                DbTables.cashboxDaily,
+                where: 'business_date = ?',
+                whereArgs: [shift.businessDate],
+                limit: 1,
+              )
+            : await txn.query(
+                DbTables.cashboxDaily,
+                where: 'id = ?',
+                whereArgs: [shift.cashboxDailyId],
+                limit: 1,
+              );
+        if (linkedCashboxRows.isEmpty) {
+          throw StateError(
+            'El turno abierto no tiene una caja diaria asociada válida.',
+          );
+        }
+        final linkedCashbox = CashboxDailyModel.fromMap(
+          linkedCashboxRows.first,
+        );
+        if (!linkedCashbox.isOpen) {
+          throw StateError(
+            'El turno está abierto, pero su caja diaria ya está cerrada.',
+          );
+        }
+        result = ActiveSession.fromModels(cashbox: linkedCashbox, shift: shift);
         return;
       }
 

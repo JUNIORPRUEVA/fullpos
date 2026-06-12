@@ -11,7 +11,6 @@ import '../../../core/session/session_manager.dart';
 import '../../../core/window/window_service.dart';
 import '../../auth/services/logout_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../cash/data/operation_flow_service.dart';
 import '../../settings/data/user_model.dart';
 import '../../settings/data/users_repository.dart';
 
@@ -558,18 +557,10 @@ class _AccountPageState extends State<AccountPage> {
 
     Future<void> confirmLogout() async {
       try {
-        final gate = await OperationFlowService.loadGateState();
-        final openShift = gate.activeSession;
-        if (openShift != null && gate.canOperate) {
-          if (!mounted) return;
-          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            const SnackBar(
-              content: Text('Finaliza el turno antes de cerrar sesión.'),
-            ),
-          );
-          return;
-        }
-        await LogoutFlowService.defaultPerformLogout(context);
+        await LogoutFlowService.requestLogout(
+          context,
+          performLogout: () => LogoutFlowService.defaultPerformLogout(context),
+        );
       } catch (e) {
         if (!mounted) return;
         final scheme = Theme.of(context).colorScheme;

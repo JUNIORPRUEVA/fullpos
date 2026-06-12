@@ -31,14 +31,25 @@ const Color _infoBlue = Color(0xFF2563EB);
 /// Panel lateral de caja con resumen y opciones
 class CashPanelSheet extends ConsumerStatefulWidget {
   final int sessionId;
+  final bool centered;
 
-  const CashPanelSheet({super.key, required this.sessionId});
+  const CashPanelSheet({
+    super.key,
+    required this.sessionId,
+    this.centered = false,
+  });
 
-  static Future<void> show(BuildContext context, {required int sessionId}) {
-    return showDialog(
+  static Future<void> show(
+    BuildContext context, {
+    required int sessionId,
+    bool centered = false,
+  }) {
+    return showDialog<void>(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: true,
-      builder: (context) => CashPanelSheet(sessionId: sessionId),
+      builder: (context) =>
+          CashPanelSheet(sessionId: sessionId, centered: centered),
     );
   }
 
@@ -146,28 +157,31 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
   }
 
   void _openCloseDialog() {
-    Navigator.pop(context);
-    CashCloseDialog.show(
-      context,
-      sessionId: widget.sessionId,
-      logoutAfterClose: true,
-      initialSummary: _summary,
-      initialSession: _session,
-      initialMovements: _movements,
-    );
+    _replaceWithCloseDialog(logoutAfterClose: true);
   }
 
   void _openCurrentCutView() {
-    // Already viewing the current cut - just close and reopen the close dialog
-    Navigator.pop(context);
-    CashCloseDialog.show(
-      context,
-      sessionId: widget.sessionId,
-      logoutAfterClose: false,
-      initialSummary: _summary,
-      initialSession: _session,
-      initialMovements: _movements,
-    );
+    _replaceWithCloseDialog(logoutAfterClose: false);
+  }
+
+  void _replaceWithCloseDialog({required bool logoutAfterClose}) {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final navigatorContext = navigator.context;
+    final sessionId = widget.sessionId;
+    final summary = _summary;
+    final session = _session;
+    final movements = List<CashMovementModel>.from(_movements);
+    navigator.pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      CashCloseDialog.show(
+        navigatorContext,
+        sessionId: sessionId,
+        logoutAfterClose: logoutAfterClose,
+        initialSummary: summary,
+        initialSession: session,
+        initialMovements: movements,
+      );
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -218,13 +232,11 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               child: Container(color: Colors.black.withOpacity(0.15)),
             ),
           ),
-          // Panel pegado a la derecha, centrado verticalmente
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: dialogWidth,
-            child: Center(
+          Positioned.fill(
+            child: Align(
+              alignment: widget.centered
+                  ? Alignment.center
+                  : Alignment.centerRight,
               child: SizedBox(
                 width: dialogWidth,
                 height: availableHeight,
@@ -322,9 +334,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
         isUltraCompact ? 8 : (isCompact ? 10 : 12),
       ),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: _softBorder.withOpacity(0.5)),
-        ),
+        border: Border(bottom: BorderSide(color: _softBorder.withOpacity(0.5))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,9 +471,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
       return Center(
         child: Text(
           'No se pudo cargar el resumen del corte.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: _mutedText,
-          ),
+          style: theme.textTheme.bodyMedium?.copyWith(color: _mutedText),
         ),
       );
     }
@@ -482,10 +490,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
         ),
         SizedBox(height: gap),
         // 2. Metric cards row
-        _buildMetricCardsRow(
-          theme: theme,
-          isUltraCompact: isUltraCompact,
-        ),
+        _buildMetricCardsRow(theme: theme, isUltraCompact: isUltraCompact),
         SizedBox(height: gap),
         // 3. Closing action card
         _buildClosingStatusCard(
@@ -576,11 +581,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.verified_rounded,
-                  size: 14,
-                  color: _primaryBlue,
-                ),
+                Icon(Icons.verified_rounded, size: 14, color: _primaryBlue),
                 const SizedBox(width: 6),
                 Text(
                   'Efectivo esperado  ${_moneyFormat.format(summary.expectedCash)}',
@@ -608,9 +609,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           foregroundColor: _primaryBlue,
           side: BorderSide(color: _softBorder),
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           visualDensity: VisualDensity.compact,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
@@ -772,7 +771,10 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               ),
               const SizedBox(width: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: _softBg,
                   borderRadius: BorderRadius.circular(8),
@@ -1052,9 +1054,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _softBorder),
         ),
-        child: Center(
-          child: CircularProgressIndicator(color: _primaryBlue),
-        ),
+        child: Center(child: CircularProgressIndicator(color: _primaryBlue)),
       );
     }
 
@@ -1152,11 +1152,7 @@ class _CashPanelSheetState extends ConsumerState<CashPanelSheet> {
               color: _softBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              Icons.inbox_outlined,
-              color: _mutedText,
-              size: 20,
-            ),
+            child: Icon(Icons.inbox_outlined, color: _mutedText, size: 20),
           ),
           const SizedBox(height: 8),
           Text(

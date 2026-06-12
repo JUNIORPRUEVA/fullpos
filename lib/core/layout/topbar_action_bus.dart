@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 class TopbarActionBus {
   static final ValueNotifier<int> salesMovementToggle = ValueNotifier<int>(0);
   static String? _pendingMovementType;
-  static bool _pendingCurrentCutView = false;
+  static bool _pendingCurrentShiftPanel = false;
 
   static void toggleSalesMovementPanel() {
     salesMovementToggle.value++;
@@ -13,23 +13,23 @@ class TopbarActionBus {
     _pendingMovementType = type;
   }
 
-  static void queueSalesCurrentCutView() {
-    _pendingCurrentCutView = true;
+  static void queueSalesCurrentShiftPanel() {
+    _pendingCurrentShiftPanel = true;
   }
 
   static void dispatchPendingSalesOverlay() {
     salesMovementToggle.value++;
   }
 
-  static ({String? movementType, bool openCurrentCut})
+  static ({String? movementType, bool openCurrentShiftPanel})
   consumePendingSalesOverlay() {
     final movementType = _pendingMovementType;
-    final openCurrentCut = _pendingCurrentCutView;
+    final openCurrentShiftPanel = _pendingCurrentShiftPanel;
     _pendingMovementType = null;
-    _pendingCurrentCutView = false;
+    _pendingCurrentShiftPanel = false;
     return (
       movementType: movementType,
-      openCurrentCut: openCurrentCut,
+      openCurrentShiftPanel: openCurrentShiftPanel,
     );
   }
 }
