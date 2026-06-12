@@ -26,8 +26,6 @@ import 'dialogs/refund_reason_dialog.dart';
 /// Filtros de fecha predefinidos
 enum DateFilter { all, today, yesterday, thisWeek, thisMonth, custom }
 
-enum _SalesRowAction { view, refund }
-
 enum _InvoiceStatusFilter { all, active, withRefund, partialRefund, refunded }
 
 String _normalizeElectronicDocumentType(SaleModel sale) {
@@ -108,20 +106,6 @@ class _FacturaPageState extends State<FacturaPage> {
     if (_selectedSessionId != null) count++;
     if (_statusFilter != _InvoiceStatusFilter.all) count++;
     return count;
-  }
-
-  List<String> get _activeFilterLabels {
-    final labels = <String>[];
-    if (_statusFilter != _InvoiceStatusFilter.all) {
-      labels.add(_statusFilterLabel(_statusFilter));
-    }
-    if (_selectedFilter != DateFilter.thisMonth) {
-      labels.add(_getFilterLabel(_selectedFilter));
-    }
-    if (_selectedSessionId != null) {
-      labels.add(_cashierLabelForSessionId(_selectedSessionId));
-    }
-    return labels;
   }
 
   @override
@@ -219,8 +203,8 @@ class _FacturaPageState extends State<FacturaPage> {
         final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
         return (startOfWeek, now);
       case DateFilter.thisMonth:
-        final startOfMonth = DateTime(now.year, now.month, 1);
-        return (startOfMonth, now);
+        final from = DateTime(now.year, now.month - 1, 1);
+        return (from, now);
       case DateFilter.custom:
         return (_customDateFrom, _customDateTo);
     }
@@ -294,13 +278,13 @@ class _FacturaPageState extends State<FacturaPage> {
 
       if (!mounted || seq != _loadSeq) return;
       _safeSetState(() {
-        _completedSales = sales
-            .where(
-              (sale) =>
-                  const {'invoice', 'sale'}.contains(sale.kind) &&
-                  sale.status != 'cancelled',
-            )
-            .toList();
+        _completedSales = sales.where((sale) {
+          final normalizedKind = sale.kind.trim().toLowerCase();
+          final normalizedStatus = sale.status.trim().toLowerCase();
+          return const {'invoice', 'sale'}.contains(normalizedKind) &&
+              normalizedStatus != 'cancelled' &&
+              normalizedStatus != 'canceled';
+        }).toList();
         _returns = returns;
         _cashierNameBySessionId = cashierNames;
         if (_selectedSessionId != null &&
@@ -353,16 +337,18 @@ class _FacturaPageState extends State<FacturaPage> {
   }
 
   void _onSearchChanged(String value) {
-    _safeSetState(() => _searchQuery = value);
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
       if (!mounted) return;
-      _loadData();
+      _safeSetState(() {
+        _searchQuery = value.trim();
+        _ensureSelection();
+      });
     });
   }
 
   bool _matchesStatusFilter(SaleModel sale) {
-    final statusValue = sale.status.toUpperCase();
+    final statusValue = sale.status.trim().toUpperCase();
     final hasRefund =
         statusValue == 'PARTIAL_REFUND' || statusValue == 'REFUNDED';
 
@@ -405,17 +391,19 @@ class _FacturaPageState extends State<FacturaPage> {
 
     final currentId = _selectedSaleId;
     if (currentId == null) {
-      _selectedSale = list.first;
-      _selectedSaleId = _selectedSale?.id;
+      _selectedSale = null;
       return;
     }
 
-    final match = list.firstWhere(
-      (s) => s.id == currentId,
-      orElse: () => list.first,
-    );
+    final matchingSales = list.where((sale) => sale.id == currentId);
+    if (matchingSales.isEmpty) {
+      _selectedSale = null;
+      _selectedSaleId = null;
+      return;
+    }
+
+    final match = matchingSales.first;
     _selectedSale = match;
-    _selectedSaleId = match.id;
     _primeSaleItemsCache(match);
   }
 
@@ -467,7 +455,7 @@ class _FacturaPageState extends State<FacturaPage> {
       case DateFilter.thisWeek:
         return 'Esta Semana';
       case DateFilter.thisMonth:
-        return 'Este Mes';
+        return 'Último mes';
       case DateFilter.custom:
         if (_customDateFrom != null && _customDateTo != null) {
           final format = DateFormat('dd/MM');
@@ -549,7 +537,7 @@ class _FacturaPageState extends State<FacturaPage> {
                     ? const Center(child: CircularProgressIndicator())
                     : isWide
                     ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Expanded(
                             child: _buildSalesTab(
@@ -557,11 +545,13 @@ class _FacturaPageState extends State<FacturaPage> {
                               isWide: true,
                             ),
                           ),
-                          const SizedBox(width: 24),
-                          SizedBox(
-                            width: detailWidth,
-                            child: SizedBox.expand(child: _buildDetailsPanel()),
-                          ),
+                          if (_selectedSale != null) ...[
+                            const SizedBox(width: 24),
+                            SizedBox(
+                              width: detailWidth,
+                              child: _buildDetailsPanel(),
+                            ),
+                          ],
                         ],
                       )
                     : _buildSalesTab(listPadding: listPadding, isWide: false),
@@ -577,212 +567,174 @@ class _FacturaPageState extends State<FacturaPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final hasActiveFilters = _activeFilterCount > 0;
-    final filterSummary = _activeFilterLabels;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 980;
+        final isNarrow = constraints.maxWidth < 850;
+
         final horizontalPadding = (constraints.maxWidth * 0.018).clamp(
-          12.0,
-          20.0,
-        );
-        final gap = 10.0;
-
-        final baseFieldBorder = OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: scheme.outlineVariant),
+          14.0,
+          26.0,
         );
 
-        final searchField = TextField(
-          controller: _searchController,
-          onChanged: _onSearchChanged,
-          decoration: InputDecoration(
-            hintText: 'Buscar por código, cliente o total...',
-            filled: true,
-            fillColor: scheme.surface,
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _searchQuery.trim().isNotEmpty
-                ? IconButton(
-                    tooltip: 'Limpiar búsqueda',
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      _onSearchChanged('');
-                    },
-                  )
-                : null,
-            border: baseFieldBorder,
-            enabledBorder: baseFieldBorder,
-            focusedBorder: baseFieldBorder.copyWith(
-              borderSide: BorderSide(color: scheme.primary),
+        const elementHeight = 44.0;
+        const gap = 10.0;
+
+        final normalBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFDCE5EF), width: 1),
+        );
+
+        final searchField = SizedBox(
+          height: elementHeight,
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            textAlignVertical: TextAlignVertical.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF0F172A),
+              fontWeight: FontWeight.w600,
             ),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 14,
-            ),
-          ),
-        );
-
-        final summary = _buildHeaderSummary();
-
-        final filterButton = FilledButton.tonalIcon(
-          onPressed: _openFiltersPanel,
-          icon: Icon(
-            hasActiveFilters ? Icons.tune : Icons.filter_alt_outlined,
-            size: 18,
-          ),
-          label: Text(
-            hasActiveFilters ? 'Filtrar ($_activeFilterCount)' : 'Filtrar',
-          ),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        );
-
-        final clearButton = OutlinedButton.icon(
-          onPressed: _clearFilters,
-          icon: const Icon(Icons.clear, size: 18),
-          label: const Text('Limpiar'),
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: scheme.outlineVariant),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-          ),
-        );
-
-        final refreshButton = IconButton.filledTonal(
-          tooltip: 'Actualizar',
-          onPressed: _loadData,
-          icon: const Icon(Icons.refresh),
-          style: IconButton.styleFrom(
-            padding: const EdgeInsets.all(14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        );
-
-        final titleBlock = Container(
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.borderSoft),
-          ),
-          padding: const EdgeInsets.fromLTRB(8, 8, 14, 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                onPressed: _handleBack,
-                tooltip: 'Volver',
-                icon: const Icon(Icons.arrow_back),
+            decoration: InputDecoration(
+              hintText: 'Buscar por código, cliente o total...',
+              hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(width: 4),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Facturas',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Consulta y detalle completo en una sola vista',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+              filled: true,
+              fillColor: Colors.white,
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                size: 21,
+                color: Color(0xFF64748B),
               ),
-            ],
+              suffixIcon: _searchQuery.trim().isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Limpiar búsqueda',
+                      splashRadius: 18,
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 19,
+                        color: Color(0xFF64748B),
+                      ),
+                      onPressed: () {
+                        _searchController.clear();
+                        _onSearchChanged('');
+                      },
+                    )
+                  : null,
+              border: normalBorder,
+              enabledBorder: normalBorder,
+              focusedBorder: normalBorder.copyWith(
+                borderSide: BorderSide(color: scheme.primary, width: 1.4),
+              ),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 11,
+              ),
+            ),
           ),
         );
 
-        final actions = Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          alignment: WrapAlignment.end,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            filterButton,
-            if (hasActiveFilters) clearButton,
-            refreshButton,
-            summary,
-          ],
+        final filterButton = SizedBox(
+          height: elementHeight,
+          child: FilledButton.icon(
+            onPressed: _openFiltersPanel,
+            icon: Icon(
+              hasActiveFilters ? Icons.tune_rounded : Icons.filter_alt_outlined,
+              size: 19,
+            ),
+            label: Text(
+              hasActiveFilters ? 'Filtro ($_activeFilterCount)' : 'Filtro',
+            ),
+            style: FilledButton.styleFrom(
+              elevation: 0,
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 17),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              textStyle: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        );
+
+        final backButton = SizedBox(
+          width: elementHeight,
+          height: elementHeight,
+          child: IconButton(
+            tooltip: 'Volver',
+            onPressed: _handleBack,
+            icon: const Icon(Icons.arrow_back_rounded, size: 21),
+            style: IconButton.styleFrom(
+              foregroundColor: const Color(0xFF334155),
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFDCE5EF)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
         );
 
         return Container(
-          decoration: BoxDecoration(
-            color: scheme.surface,
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
             border: Border(
-              bottom: BorderSide(
-                color: scheme.outlineVariant.withOpacity(0.35),
-              ),
+              bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1),
             ),
           ),
           padding: EdgeInsets.symmetric(
             horizontal: horizontalPadding,
-            vertical: 10,
+            vertical: 11,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (isNarrow) ...[
-                titleBlock,
-                const SizedBox(height: 10),
-                searchField,
-                const SizedBox(height: 10),
-                actions,
-              ] else ...[
-                Row(
+          child: isNarrow
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        backButton,
+                        const SizedBox(width: gap),
+                        Expanded(child: searchField),
+                        const SizedBox(width: gap),
+                        filterButton,
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _buildHeaderSummary(),
+                    ),
+                  ],
+                )
+              : Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    titleBlock,
-                    SizedBox(width: gap),
-                    Expanded(child: searchField),
-                    SizedBox(width: gap),
-                    Flexible(child: actions),
+                    backButton,
+                    const SizedBox(width: gap),
+
+                    Expanded(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 680),
+                        child: searchField,
+                      ),
+                    ),
+
+                    const SizedBox(width: gap),
+
+                    filterButton,
+
+                    const Spacer(),
+
+                    _buildHeaderSummary(),
                   ],
                 ),
-              ],
-              if (filterSummary.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: filterSummary
-                      .map(
-                        (label) => Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            label,
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            ],
-          ),
         );
       },
     );
@@ -963,7 +915,7 @@ class _FacturaPageState extends State<FacturaPage> {
       case DateFilter.thisWeek:
         return 'Esta semana';
       case DateFilter.thisMonth:
-        return 'Este mes';
+        return 'Último mes';
       case DateFilter.all:
         return 'Todas';
       case DateFilter.custom:
@@ -1199,55 +1151,10 @@ class _FacturaPageState extends State<FacturaPage> {
                                       ),
                                       const SizedBox(width: 10),
                                       _buildStatusChip(statusStyle),
-                                      PopupMenuButton<_SalesRowAction>(
-                                        tooltip: 'Acciones',
-                                        icon: Icon(
-                                          Icons.more_horiz,
-                                          size: 18,
-                                          color: scheme.onSurface.withOpacity(
-                                            0.7,
-                                          ),
-                                        ),
-                                        onSelected: (action) {
-                                          switch (action) {
-                                            case _SalesRowAction.view:
-                                              _showSaleDetails(sale);
-                                              break;
-                                            case _SalesRowAction.refund:
-                                              _showRefundDialog(sale);
-                                              break;
-                                          }
-                                        },
-                                        itemBuilder: (context) => [
-                                          const PopupMenuItem(
-                                            value: _SalesRowAction.view,
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  Icons.visibility_outlined,
-                                                  size: 18,
-                                                ),
-                                                SizedBox(width: 8),
-                                                Text('Ver factura'),
-                                              ],
-                                            ),
-                                          ),
-                                          if (canRefund)
-                                            const PopupMenuItem(
-                                              value: _SalesRowAction.refund,
-                                              child: Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons
-                                                        .assignment_return_outlined,
-                                                    size: 18,
-                                                  ),
-                                                  SizedBox(width: 8),
-                                                  Text('Devolver'),
-                                                ],
-                                              ),
-                                            ),
-                                        ],
+                                      _buildSaleRowActions(
+                                        sale,
+                                        canRefund: canRefund,
+                                        compact: true,
                                       ),
                                     ],
                                   ),
@@ -1426,52 +1333,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                PopupMenuButton<_SalesRowAction>(
-                                  tooltip: 'Acciones',
-                                  icon: Icon(
-                                    Icons.more_horiz,
-                                    size: 18,
-                                    color: scheme.onSurface.withOpacity(0.7),
-                                  ),
-                                  onSelected: (action) {
-                                    switch (action) {
-                                      case _SalesRowAction.view:
-                                        _showSaleDetails(sale);
-                                        break;
-                                      case _SalesRowAction.refund:
-                                        _showRefundDialog(sale);
-                                        break;
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                      value: _SalesRowAction.view,
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            Icons.visibility_outlined,
-                                            size: 18,
-                                          ),
-                                          SizedBox(width: 8),
-                                          Text('Ver factura'),
-                                        ],
-                                      ),
-                                    ),
-                                    if (canRefund)
-                                      const PopupMenuItem(
-                                        value: _SalesRowAction.refund,
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.assignment_return_outlined,
-                                              size: 18,
-                                            ),
-                                            SizedBox(width: 8),
-                                            Text('Devolver'),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
+                                _buildSaleRowActions(
+                                  sale,
+                                  canRefund: canRefund,
                                 ),
                               ],
                             );
@@ -1489,64 +1353,159 @@ class _FacturaPageState extends State<FacturaPage> {
     );
   }
 
+  Widget _buildSaleRowActions(
+    SaleModel sale, {
+    required bool canRefund,
+    bool compact = false,
+  }) {
+    Widget actionButton({
+      required String label,
+      required IconData icon,
+      required VoidCallback onPressed,
+      Color? color,
+    }) {
+      return Semantics(
+        button: true,
+        label: label,
+        child: IconButton(
+          onPressed: onPressed,
+          visualDensity: VisualDensity.compact,
+          constraints: BoxConstraints.tightFor(
+            width: compact ? 32 : 34,
+            height: compact ? 32 : 34,
+          ),
+          padding: EdgeInsets.zero,
+          icon: Icon(icon, size: 18, color: color),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        actionButton(
+          label: 'Ver factura',
+          icon: Icons.visibility_outlined,
+          onPressed: () => _showSaleDetails(sale),
+        ),
+        if (canRefund) ...[
+          const SizedBox(width: 2),
+          actionButton(
+            label: 'Reembolsar factura',
+            icon: Icons.assignment_return_outlined,
+            color: const Color(0xFFB45309),
+            onPressed: () => _showRefundDialog(sale),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildHeaderSummary() {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final money = CurrencyDisplay.currency();
 
-    final count = _filteredSales.length;
-    final total = _filteredSales.fold<double>(0, (sum, s) => sum + s.total);
+    final sales = _filteredSales;
+    final invoiceCount = sales.length;
+
+    final totalSold = sales.fold<double>(0, (sum, sale) => sum + sale.total);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: const Color(0xFFDCE5EF)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.summarize_outlined,
-            size: 16,
-            color: scheme.onSurface.withOpacity(0.75),
+          _buildHeaderMetric(
+            icon: Icons.receipt_long_outlined,
+            label: 'FACTURAS',
+            value: invoiceCount.toString(),
           ),
-          const SizedBox(width: 8),
-          Text(
-            'Facturas: $count',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+          Container(
+            width: 1,
+            height: 28,
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            color: const Color(0xFFE2E8F0),
           ),
-          const SizedBox(width: 12),
-          Text(
-            'Total: ${money.format(total)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
+          _buildHeaderMetric(
+            icon: Icons.payments_outlined,
+            label: 'TOTAL VENDIDO',
+            value: money.format(totalSold),
+            emphasizeValue: true,
           ),
         ],
       ),
     );
   }
 
+  Widget _buildHeaderMetric({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool emphasizeValue = false,
+  }) {
+    final theme = Theme.of(context);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2563EB).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 17, color: const Color(0xFF2563EB)),
+        ),
+        const SizedBox(width: 9),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: const Color(0xFF64748B),
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.45,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: emphasizeValue
+                    ? const Color(0xFF0F172A)
+                    : const Color(0xFF334155),
+                fontSize: emphasizeValue ? 14.5 : 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildDetailsPanel() {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
     return Container(
+      width: double.infinity,
+      height: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.borderSoft),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSoft, width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -1691,16 +1650,7 @@ class _FacturaPageState extends State<FacturaPage> {
     final dateFormat = DateFormat('dd/MM/yy HH:mm');
 
     if (sale == null) {
-      return Center(
-        child: Text(
-          'Seleccione una factura para ver detalles',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     final date = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
@@ -1762,7 +1712,28 @@ class _FacturaPageState extends State<FacturaPage> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    _buildStatusChip(statusStyle),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildStatusChip(statusStyle),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          tooltip: 'Cerrar detalle',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 34,
+                            minHeight: 34,
+                          ),
+                          onPressed: () {
+                            _safeSetState(() {
+                              _selectedSale = null;
+                              _selectedSaleId = null;
+                            });
+                          },
+                          icon: const Icon(Icons.close_rounded, size: 19),
+                        ),
+                      ],
+                    ),
                     if (isFiscal) ...[
                       const SizedBox(height: 8),
                       _buildFiscalChip(sale),

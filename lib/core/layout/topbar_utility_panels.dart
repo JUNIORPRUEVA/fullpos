@@ -1497,6 +1497,55 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     setState(() => _refreshing = false);
   }
 
+  Widget _buildSyncTargetsSection(List<Map<String, dynamic>> targets) {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: _cardDecoration(),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        leading: Icon(
+          Icons.sync_rounded,
+          size: 20,
+          color: const Color(0xFF2563EB),
+        ),
+        title: Text(
+          'Datos sincronizados',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        subtitle: Text(
+          '${targets.length} elementos · Toca para ver detalle',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: const Color(0xFF64748B),
+          ),
+        ),
+        children: [
+          for (var index = 0; index < targets.length; index++) ...[
+            _CloudTargetRow(
+              icon: _targetIcon(targets[index]['target'] as String),
+              name: _targetLabel(targets[index]['target'] as String),
+              status: _statusLabel(targets[index]['status'] as String),
+              statusColor: _statusColor(
+                targets[index]['status'] as String,
+              ),
+              lastSync: _formatDateTime(
+                targets[index]['lastSuccess'] as DateTime?,
+              ),
+            ),
+            if (index != targets.length - 1)
+              const Divider(height: 1, color: Color(0xFFE7EEF5)),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -1703,31 +1752,7 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
             ),
           ),
           const SizedBox(height: 16),
-          _SectionTitle('Datos sincronizados'),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: _cardDecoration(),
-            child: Column(
-              children: [
-                for (var index = 0; index < targets.length; index++) ...[
-                  _CloudTargetRow(
-                    icon: _targetIcon(targets[index]['target'] as String),
-                    name: _targetLabel(targets[index]['target'] as String),
-                    status: _statusLabel(targets[index]['status'] as String),
-                    statusColor: _statusColor(
-                      targets[index]['status'] as String,
-                    ),
-                    lastSync: _formatDateTime(
-                      targets[index]['lastSuccess'] as DateTime?,
-                    ),
-                  ),
-                  if (index != targets.length - 1)
-                    const Divider(height: 1, color: Color(0xFFE7EEF5)),
-                ],
-              ],
-            ),
-          ),
+          _buildSyncTargetsSection(targets),
           const SizedBox(height: 16),
           _SectionTitle('Acciones'),
           const SizedBox(height: 10),

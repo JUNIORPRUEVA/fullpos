@@ -430,161 +430,295 @@ class _TopbarState extends ConsumerState<Topbar> {
         final showProductsButton = screenWidth >= 500;
         final showTurnLabel = screenWidth >= 690;
 
-        final topbarContent = Container(
-          width: screenWidth,
-          height: topbarHeight + topInset,
-          padding: EdgeInsets.fromLTRB(
-            horizontalPad,
-            topInset,
-            horizontalPad,
-            0,
-          ),
-          decoration: BoxDecoration(
-            color: topbarBg,
-            border: widget.showBottomBorder
-                ? Border(
-                    left: BorderSide(color: chromeBorderColor, width: 1),
-                    right: BorderSide(color: chromeBorderColor, width: 1),
-                    bottom: BorderSide(color: chromeBorderColor, width: 1),
-                  )
-                : null,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.035),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (widget.showMenuButton) ...[
-                IconButton(
-                  onPressed: widget.onMenuPressed,
-                  tooltip: 'Menú',
-                  splashRadius: 20,
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
+       final topbarContent = Container(
+  width: screenWidth,
+  height: topbarHeight + topInset,
+  padding: EdgeInsets.fromLTRB(
+    horizontalPad,
+    topInset,
+    horizontalPad,
+    0,
+  ),
+  decoration: BoxDecoration(
+    color: topbarBg,
+    border: widget.showBottomBorder
+        ? Border(
+            left: BorderSide(
+              color: chromeBorderColor,
+              width: 1,
+            ),
+            right: BorderSide(
+              color: chromeBorderColor,
+              width: 1,
+            ),
+            bottom: BorderSide(
+              color: chromeBorderColor,
+              width: 1,
+            ),
+          )
+        : null,
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withOpacity(0.035),
+        blurRadius: 8,
+        offset: const Offset(0, 2),
+      ),
+    ],
+  ),
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      // ─────────────────────────────────────────────────────────────
+      // Menú lateral
+      // ─────────────────────────────────────────────────────────────
+      if (widget.showMenuButton) ...[
+        Tooltip(
+          message: widget.isMenuOpen ? 'Cerrar menú' : 'Abrir menú',
+          waitDuration: const Duration(milliseconds: 350),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onMenuPressed,
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 190),
+                curve: Curves.easeOutCubic,
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: widget.isMenuOpen
+                      ? brandAccent
+                      : brandAccent.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: widget.isMenuOpen
+                        ? brandAccent
+                        : brandAccent.withOpacity(0.18),
+                    width: 1,
                   ),
-                  icon: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                    child: Icon(
-                      widget.isMenuOpen ? Icons.close_rounded : Icons.menu,
-                      key: ValueKey<bool>(widget.isMenuOpen),
-                      size: 22,
-                      color: appBarFg,
-                    ),
-                  ),
+                  boxShadow: widget.isMenuOpen
+                      ? [
+                          BoxShadow(
+                            color: brandAccent.withOpacity(0.18),
+                            blurRadius: 12,
+                            spreadRadius: -4,
+                            offset: const Offset(0, 5),
+                          ),
+                        ]
+                      : const [],
                 ),
-                SizedBox(width: spaceS * 0.3),
-              ],
-              Text(
-                'Vender',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: appBarFg,
-                  fontSize: ((isCompact ? 16 : 18) * s).clamp(15.5, 20.0),
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.05,
-                  height: 1.25,
-                  fontFamilyFallback: const [
-                    'Poppins',
-                    'Segoe UI',
-                    'Roboto',
-                    'Arial',
-                  ],
-                ),
-              ),
-              const Spacer(),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showProductsButton) ...[
-                    _TopbarIconAction(
-                      scale: s,
-                      icon: Icons.apps_rounded,
-                      tooltip: 'Productos de la empresa',
-                      color: _softTextColor,
-                      borderColor: chromeBorderColor,
-                      onTap: () => unawaited(_showCompanyProductsDialog()),
-                    ),
-                    SizedBox(width: (7 * s).clamp(5.0, 8.0)),
-                  ],
-                  PopupMenuButton<_TopbarMenuAction>(
-                    tooltip: 'Turnos',
-                    position: PopupMenuPosition.under,
-                    offset: const Offset(0, 8),
-                    constraints: BoxConstraints(
-                      minWidth: turnMenuWidth,
-                      maxWidth: turnMenuWidth,
-                    ),
-                    elevation: 10,
-                    color: topbarBg,
-                    surfaceTintColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: brandAccent.withOpacity(0.12)),
-                    ),
-                    onSelected: _handleMenuAction,
-                    itemBuilder: (_) => _turnMenuItems(context, turnMenuWidth),
-                    child: _TurnMenuButton(
-                      scale: s,
-                      visibleLabel: showTurnLabel,
-                      accentColor: brandAccent,
-                      borderColor: chromeBorderColor,
-                      isOpen: _openCashSessionId != null,
-                    ),
-                  ),
-                  SizedBox(width: (7 * s).clamp(5.0, 8.0)),
-                  _ActiveCashierChip(
-                    scale: s,
-                    name: activeUser,
-                    borderColor: chromeBorderColor,
-                  ),
-                  SizedBox(width: (7 * s).clamp(5.0, 8.0)),
-                  PopupMenuButton<_TopbarMenuAction>(
-                    tooltip: 'Negocio y cuenta',
-                    position: PopupMenuPosition.under,
-                    offset: const Offset(0, 8),
-                    constraints: BoxConstraints(
-                      minWidth: businessMenuWidth,
-                      maxWidth: businessMenuWidth,
-                    ),
-                    elevation: 10,
-                    color: topbarBg,
-                    surfaceTintColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: brandAccent.withOpacity(0.12)),
-                    ),
-                    onSelected: _handleMenuAction,
-                    itemBuilder: (_) =>
-                        _businessMenuItems(context, businessMenuWidth),
-                    child: Tooltip(
-                      message: businessName,
-                      waitDuration: const Duration(milliseconds: 350),
-                      child: _BusinessMenuButton(
-                        scale: s,
-                        businessName: businessName,
-                        logoPath: businessLogoPath,
-                        showText: showBusinessText,
-                        accentColor: brandAccent,
-                        borderColor: chromeBorderColor,
+                alignment: Alignment.center,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 190),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.86,
+                          end: 1,
+                        ).animate(animation),
+                        child: child,
                       ),
-                    ),
+                    );
+                  },
+                  child: Icon(
+                    widget.isMenuOpen
+                        ? Icons.close_rounded
+                        : Icons.menu_rounded,
+                    key: ValueKey<bool>(widget.isMenuOpen),
+                    size: 21,
+                    color: widget.isMenuOpen
+                        ? Colors.white
+                        : brandAccent,
                   ),
-                ],
+                ),
               ),
-            ],
+            ),
           ),
-        );
+        ),
+        const SizedBox(width: 10),
+      ],
+
+      // ─────────────────────────────────────────────────────────────
+      // Identidad visual de la sección
+      // ─────────────────────────────────────────────────────────────
+      Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: brandAccent.withOpacity(0.09),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(13),
+            topRight: Radius.circular(6),
+            bottomLeft: Radius.circular(6),
+            bottomRight: Radius.circular(13),
+          ),
+          border: Border.all(
+            color: brandAccent.withOpacity(0.16),
+            width: 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.point_of_sale_rounded,
+          size: 19,
+          color: brandAccent,
+        ),
+      ),
+
+      const SizedBox(width: 10),
+
+      // ─────────────────────────────────────────────────────────────
+      // Nombre de la sección
+      // ─────────────────────────────────────────────────────────────
+     Flexible(
+  flex: 0,
+  child: Text(
+    'Punto de venta',
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: TextStyle(
+      color: appBarFg,
+      fontSize: ((isCompact ? 16.0 : 18.0) * s)
+          .clamp(15.5, 19.0)
+          .toDouble(),
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.20,
+      height: 1.1,
+      fontFamilyFallback: const [
+        'Poppins',
+        'Segoe UI',
+        'Roboto',
+        'Arial',
+      ],
+    ),
+  ),
+),
+
+      const SizedBox(width: 14),
+
+      Container(
+        width: 1,
+        height: 28,
+        color: chromeBorderColor.withOpacity(0.75),
+      ),
+
+      const Spacer(),
+
+      // ─────────────────────────────────────────────────────────────
+      // Acciones de la derecha
+      // ─────────────────────────────────────────────────────────────
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showProductsButton) ...[
+            _TopbarIconAction(
+              scale: s,
+              icon: Icons.apps_rounded,
+              tooltip: 'Productos de la empresa',
+              color: _softTextColor,
+              borderColor: chromeBorderColor,
+              onTap: () {
+                unawaited(_showCompanyProductsDialog());
+              },
+            ),
+            SizedBox(
+              width: (7 * s).clamp(5.0, 8.0).toDouble(),
+            ),
+          ],
+
+          PopupMenuButton<_TopbarMenuAction>(
+            tooltip: 'Turnos',
+            position: PopupMenuPosition.under,
+            offset: const Offset(0, 8),
+            constraints: BoxConstraints(
+              minWidth: turnMenuWidth,
+              maxWidth: turnMenuWidth,
+            ),
+            elevation: 10,
+            color: topbarBg,
+            surfaceTintColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: brandAccent.withOpacity(0.12),
+              ),
+            ),
+            onSelected: _handleMenuAction,
+            itemBuilder: (_) {
+              return _turnMenuItems(
+                context,
+                turnMenuWidth,
+              );
+            },
+            child: _TurnMenuButton(
+              scale: s,
+              visibleLabel: showTurnLabel,
+              accentColor: brandAccent,
+              borderColor: chromeBorderColor,
+              isOpen: _openCashSessionId != null,
+            ),
+          ),
+
+          SizedBox(
+            width: (7 * s).clamp(5.0, 8.0).toDouble(),
+          ),
+
+          _ActiveCashierChip(
+            scale: s,
+            name: activeUser,
+            borderColor: chromeBorderColor,
+          ),
+
+          SizedBox(
+            width: (7 * s).clamp(5.0, 8.0).toDouble(),
+          ),
+
+          PopupMenuButton<_TopbarMenuAction>(
+            tooltip: 'Negocio y cuenta',
+            position: PopupMenuPosition.under,
+            offset: const Offset(0, 8),
+            constraints: BoxConstraints(
+              minWidth: businessMenuWidth,
+              maxWidth: businessMenuWidth,
+            ),
+            elevation: 10,
+            color: topbarBg,
+            surfaceTintColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: brandAccent.withOpacity(0.12),
+              ),
+            ),
+            onSelected: _handleMenuAction,
+            itemBuilder: (_) {
+              return _businessMenuItems(
+                context,
+                businessMenuWidth,
+              );
+            },
+            child: Tooltip(
+              message: businessName,
+              waitDuration: const Duration(milliseconds: 350),
+              child: _BusinessMenuButton(
+                scale: s,
+                businessName: businessName,
+                logoPath: businessLogoPath,
+                showText: showBusinessText,
+                accentColor: brandAccent,
+                borderColor: chromeBorderColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ],
+  ),
+);
 
         return SizedBox(
           width: constraints.maxWidth,

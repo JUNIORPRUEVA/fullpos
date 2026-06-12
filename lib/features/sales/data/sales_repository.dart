@@ -1136,9 +1136,10 @@ class SalesRepository {
     final db = await AppDb.database;
 
     String where =
-        "status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED') "
-        "AND kind IN ('invoice', 'sale') "
-        "AND (deleted_at_ms IS NULL OR status = 'REFUNDED')";
+        "LOWER(TRIM(status)) IN "
+        "('completed', 'paid', 'partial_refund', 'refunded') "
+        "AND LOWER(TRIM(kind)) IN ('invoice', 'sale') "
+        "AND (deleted_at_ms IS NULL OR LOWER(TRIM(status)) = 'refunded')";
     List<dynamic> args = [];
 
     if (query != null && query.isNotEmpty) {
@@ -1153,7 +1154,7 @@ class SalesRepository {
 
     if (dateTo != null) {
       where += ' AND created_at_ms <= ?';
-      args.add(dateTo.add(const Duration(days: 1)).millisecondsSinceEpoch);
+      args.add(dateTo.millisecondsSinceEpoch);
     }
 
     final maps = await db.query(
@@ -1161,7 +1162,6 @@ class SalesRepository {
       where: where,
       whereArgs: args,
       orderBy: 'created_at_ms DESC',
-      limit: 100,
     );
 
     return maps.map((m) => SaleModel.fromMap(m)).toList();
