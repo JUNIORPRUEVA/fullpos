@@ -48,6 +48,46 @@ bool _supportsElectronicCreditNote(SaleModel sale) {
   return documentType == '31' || documentType == '32';
 }
 
+enum SaleRefundOutcome { refunded, cancelled }
+
+Future<SaleRefundOutcome?> showSaleRefundDialog(
+  BuildContext context,
+  SaleModel sale,
+) async {
+  final saleId = sale.id;
+  if (saleId == null) {
+    throw StateError('No se puede procesar una factura sin ID.');
+  }
+
+  final items = await SalesRepository.getItemsBySaleId(saleId);
+  final returnedQuantities = await ReturnsRepository.returnedQuantitiesForSale(
+    saleId,
+  );
+  if (!context.mounted) return null;
+
+  if (items.any((item) => item.id == null)) {
+    throw StateError(
+      'No se puede procesar: hay productos de la factura sin ID.',
+    );
+  }
+
+  final result = await showDialog<_RefundDialogResult>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => _RefundDialog(
+      sale: sale,
+      items: items,
+      returnedQuantities: returnedQuantities,
+    ),
+  );
+
+  return switch (result) {
+    _RefundDialogResult.refunded => SaleRefundOutcome.refunded,
+    _RefundDialogResult.cancelled => SaleRefundOutcome.cancelled,
+    null => null,
+  };
+}
+
 /// Pantalla de facturas con devolucion integrada por factura.
 class FacturaPage extends StatefulWidget {
   const FacturaPage({super.key, this.initialSaleId, this.openRefund = false});
@@ -2247,38 +2287,19 @@ class _FacturaPageState extends State<FacturaPage> {
 
   /// Muestra el diálogo de reembolso
   Future<void> _showRefundDialog(SaleModel sale) async {
-    final saleId = sale.id;
-    if (saleId == null) {
+    if (sale.id == null) {
       _showError('No se puede procesar: ticket inválido (sin ID).');
       return;
     }
 
     try {
-      final items = await SalesRepository.getItemsBySaleId(saleId);
-      final returnedQuantities =
-          await ReturnsRepository.returnedQuantitiesForSale(saleId);
+      final result = await showSaleRefundDialog(context, sale);
       if (!mounted) return;
 
-      // Evita pantalla negra por force-unwraps si existieran items corruptos.
-      if (items.any((i) => i.id == null)) {
-        _showError('No se puede procesar: hay productos del ticket sin ID.');
-        return;
-      }
-
-      final result = await showDialog<_RefundDialogResult>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => _RefundDialog(
-          sale: sale,
-          items: items,
-          returnedQuantities: returnedQuantities,
-        ),
-      );
-
-      if (result == _RefundDialogResult.refunded) {
+      if (result == SaleRefundOutcome.refunded) {
         _showSuccess('¡Devolución procesada!');
         _loadData();
-      } else if (result == _RefundDialogResult.cancelled) {
+      } else if (result == SaleRefundOutcome.cancelled) {
         _showSuccess('✅ Ticket cancelado y stock restaurado');
         _loadData();
       }

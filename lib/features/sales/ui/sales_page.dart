@@ -71,6 +71,7 @@ import '../data/settings_repository.dart';
 import '../data/temp_cart_repository.dart';
 import '../data/tickets_repository.dart';
 import '../data/ticket_model.dart';
+import 'factura_page.dart';
 import 'dialogs/client_picker_dialog.dart';
 import 'dialogs/payment_dialog.dart' as payment;
 import 'dialogs/product_filter_dialog.dart';
@@ -2595,6 +2596,38 @@ class _SalesPageState extends ConsumerState<SalesPage>
       resourceType: 'route',
       resourceId: '/factura',
     )();
+  }
+
+  Future<void> _showRecentSaleRefundDialog(legacy_sales.SaleModel sale) async {
+    try {
+      final result = await showSaleRefundDialog(context, sale);
+      if (!mounted || result == null) return;
+
+      if (result == SaleRefundOutcome.refunded) {
+        FullPosNotifications.success(
+          'La devolución de ${sale.localCode} fue procesada correctamente.',
+          title: 'Devolución completada',
+          deduplicationKey: 'recent-sale-refunded-${sale.id}',
+        );
+      } else {
+        FullPosNotifications.success(
+          'La factura ${sale.localCode} fue anulada y el stock restaurado.',
+          title: 'Factura anulada',
+          deduplicationKey: 'recent-sale-cancelled-${sale.id}',
+        );
+      }
+
+      await _loadRecentSales();
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        onRetry: () => _showRecentSaleRefundDialog(sale),
+        module: 'sales/recent_sales/refund',
+      );
+    }
   }
 
   Future<void> _printRecentSale(legacy_sales.SaleModel sale) async {
@@ -7033,23 +7066,17 @@ class _SalesPageState extends ConsumerState<SalesPage>
           children: [
             Expanded(
               flex: 38,
-              child: InkWell(
-                onTap: sale.id == null
-                    ? null
-                    : () => _openFacturaPage(saleId: sale.id),
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    _recentSaleTitle(sale),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF0F172A),
-                      fontSize: 13.8,
-                      fontWeight: FontWeight.w500,
-                      height: 1.15,
-                    ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  _recentSaleTitle(sale),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 13.8,
+                    fontWeight: FontWeight.w500,
+                    height: 1.15,
                   ),
                 ),
               ),
@@ -7117,10 +7144,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () => _openFacturaPage(
-                            saleId: sale.id,
-                            openRefund: true,
-                          ),
+                          onTap: () =>
+                              unawaited(_showRecentSaleRefundDialog(sale)),
                           borderRadius: BorderRadius.circular(10),
                           child: const SizedBox(
                             width: 32,
@@ -10500,16 +10525,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
             final discountsCombined = _currentCart
                 .calculateTotalDiscountsCombined();
 
-            final shouldShowFiscalTax = _currentCart.electronicInvoiceEnabled;
+            final shouldShowFiscalTax =
+                _currentSalesDocumentType == _SalesDocumentType.creditoFiscal &&
+                _currentCart.itbisEnabled;
 
             final itbisAmount = shouldShowFiscalTax
                 ? _currentCart.calculateItbis()
                 : 0.0;
-
-            final subtotalAmount = (grossSubtotal - discountsCombined).clamp(
-              0.0,
-              double.infinity,
-            );
 
             final itbisLabel =
                 'ITBIS (${(_currentCart.itbisRate * 100).toStringAsFixed(2)}%)';
@@ -10531,7 +10553,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
               ),
               child: Column(
                 children: [
-                  _buildSummaryRow('Subtotal', subtotalAmount, false),
+                  _buildSummaryRow('Subtotal', grossSubtotal, false),
 
                   if (discountsCombined > 0) ...[
                     const SizedBox(height: 9),
