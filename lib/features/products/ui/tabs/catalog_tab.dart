@@ -889,549 +889,577 @@ class _CatalogTabState extends State<CatalogTab> {
   }
 
   @override
-Widget build(BuildContext context) {
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      final theme = Theme.of(context);
-      final scheme = theme.colorScheme;
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final theme = Theme.of(context);
+        final scheme = theme.colorScheme;
 
-      // Fondo un poquito más marcado para que el contenido blanco resalte mejor.
-      const pageBackground = Color(0xFFEFF4FA);
-
-      // Más centrado para que la tabla se vea más ejecutiva.
-      const maxContentWidth = 780.0;
-      final contentWidth = math.min(constraints.maxWidth, maxContentWidth);
-      final side = ((constraints.maxWidth - contentWidth) / 2).clamp(
-        60.0,
-        220.0,
-      );
-      final padding = EdgeInsets.fromLTRB(side, 28, side, 24);
-
-      final canViewPurchasePrice =
-          _isAdmin || _permissions.canViewPurchasePrice;
-
-      final visibleSelectableIds = _products
-          .where((product) => product.id != null)
-          .map((product) => product.id!)
-          .toSet();
-
-      final selectedVisibleCount = visibleSelectableIds
-          .where(_selectedProductIds.contains)
-          .length;
-
-      final allVisibleSelected =
-          visibleSelectableIds.isNotEmpty &&
-          selectedVisibleCount == visibleSelectableIds.length;
-
-      final someVisibleSelected =
-          selectedVisibleCount > 0 &&
-          selectedVisibleCount < visibleSelectableIds.length;
-
-      final activeFilterCount = [
-        _currentFilters?.categoryId,
-        _currentFilters?.supplierId,
-        _currentFilters?.hasLowStock,
-        _currentFilters?.isOutOfStock,
-      ].where((value) => value != null).length;
-
-      Widget buildSearchField() {
-        return SizedBox(
-          height: 44,
-          child: TextField(
-            controller: _searchController,
-            textInputAction: TextInputAction.search,
-            textAlignVertical: TextAlignVertical.center,
-            onSubmitted: _handleCatalogSearchSubmit,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              fontFamily: 'Inter',
-              fontSize: 14,
-              color: scheme.onSurface,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Buscar producto, código o referencia',
-              prefixIcon: Icon(
-                Icons.search_rounded,
-                size: 20,
-                color: scheme.onSurfaceVariant,
-              ),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                      tooltip: 'Limpiar búsqueda',
-                      onPressed: _clearSearch,
-                    )
-                  : null,
-              filled: true,
-              fillColor: Colors.white,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 11,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: scheme.outlineVariant.withOpacity(0.60),
-                  width: 1.5,
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: scheme.outlineVariant.withOpacity(0.60),
-                  width: 1.5,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: ui_colors.AppColors.primaryBlue.withOpacity(0.85),
-                  width: 2,
-                ),
-              ),
-            ),
-          ),
+        const pageBackground = Color(0xFFEFF4FA);
+        const maxContentWidth = 1400.0;
+        final widthFactor = constraints.maxWidth >= 1600
+            ? 0.88
+            : constraints.maxWidth >= 1200
+            ? 0.92
+            : 0.96;
+        final contentWidth = math.min(
+          constraints.maxWidth * widthFactor,
+          maxContentWidth,
         );
-      }
 
-      Widget buildSelectionActionsButton() {
-        final actionsLabel = 'Acciones ($selectedVisibleCount)';
+        final canViewPurchasePrice =
+            _isAdmin || _permissions.canViewPurchasePrice;
 
-        return PopupMenuButton<_CatalogSelectionAction>(
-          onSelected: _handleSelectionAction,
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: _CatalogSelectionAction.edit,
-              enabled: selectedVisibleCount == 1,
-              child: const Text('Editar'),
-            ),
-            const PopupMenuItem(
-              value: _CatalogSelectionAction.delete,
-              child: Text('Eliminar'),
-            ),
-            const PopupMenuItem(
-              value: _CatalogSelectionAction.exportPdf,
-              child: Text('Exportar PDF'),
-            ),
-          ],
-          child: Container(
+        final visibleSelectableIds = _products
+            .where((product) => product.id != null)
+            .map((product) => product.id!)
+            .toSet();
+
+        final selectedVisibleCount = visibleSelectableIds
+            .where(_selectedProductIds.contains)
+            .length;
+
+        final allVisibleSelected =
+            visibleSelectableIds.isNotEmpty &&
+            selectedVisibleCount == visibleSelectableIds.length;
+
+        final someVisibleSelected =
+            selectedVisibleCount > 0 &&
+            selectedVisibleCount < visibleSelectableIds.length;
+
+        final activeFilterCount = [
+          _currentFilters?.categoryId,
+          _currentFilters?.supplierId,
+          _currentFilters?.hasLowStock,
+          _currentFilters?.isOutOfStock,
+        ].where((value) => value != null).length;
+
+        Widget buildSearchField() {
+          return SizedBox(
             height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: ui_colors.AppColors.lightBlueHover,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: ui_colors.AppColors.primaryBlue.withOpacity(0.14),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.bolt_outlined,
-                  size: 17,
-                  color: ui_colors.AppColors.primaryBlue,
-                ),
-                const SizedBox(width: 7),
-                Text(
-                  actionsLabel,
-                  style: const TextStyle(
-                    color: ui_colors.AppColors.primaryBlue,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'Inter',
-                    fontSize: 12.5,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                const Icon(
-                  Icons.expand_more_rounded,
-                  size: 17,
-                  color: ui_colors.AppColors.primaryBlue,
-                ),
-              ],
-            ),
-          ),
-        );
-      }
-
-      Widget buildUtilityIconButton({
-        required IconData icon,
-        required String tooltip,
-        required VoidCallback? onPressed,
-        String? label,
-        String? description,
-        Color? foregroundColor,
-        Color? backgroundColor,
-        Color? borderColor,
-      }) {
-        final effectiveForeground =
-            foregroundColor ?? scheme.onSurfaceVariant;
-
-        return Tooltip(
-          message: tooltip,
-          child: Material(
-            color: backgroundColor ?? Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: borderColor ?? scheme.outlineVariant.withOpacity(0.70),
-              ),
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: onPressed,
-              child: SizedBox(
-                height: 40,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: label == null ? 0 : 12,
-                  ),
-                  child: label == null
-                      ? SizedBox(
-                          width: 40,
-                          child: Icon(
-                            icon,
-                            size: 19,
-                            color: effectiveForeground,
-                          ),
-                        )
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              icon,
-                              size: 18,
-                              color: effectiveForeground,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              label,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: backgroundColor ==
-                                        ui_colors.AppColors.primaryBlue
-                                    ? Colors.white
-                                    : scheme.onSurface,
-                                fontWeight: FontWeight.w800,
-                                fontFamily: 'Inter',
-                                fontSize: 12.5,
-                              ),
-                            ),
-                            if (description != null) ...[
-                              const SizedBox(width: 6),
-                              Text(
-                                description,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w700,
-                                  fontFamily: 'Inter',
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-
-      Widget buildFilterButton() {
-        final hasActiveFilters = _currentFilters?.hasFilters == true;
-
-        return SizedBox(
-          height: 40,
-          child: OutlinedButton.icon(
-            onPressed: _showFilters,
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(
-                  Icons.tune_rounded,
-                  size: 17,
-                  color: hasActiveFilters
-                      ? scheme.primary
-                      : scheme.onSurfaceVariant,
-                ),
-                if (activeFilterCount > 0)
-                  Positioned(
-                    right: -7,
-                    top: -8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.primary,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '$activeFilterCount',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: scheme.onPrimary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              side: BorderSide(
-                color: hasActiveFilters
-                    ? scheme.primary.withOpacity(0.28)
-                    : scheme.outlineVariant.withOpacity(0.65),
-              ),
-              backgroundColor: hasActiveFilters
-                  ? scheme.primary.withOpacity(0.06)
-                  : Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            label: Text(
-              hasActiveFilters ? 'Filtros activos' : 'Filtrar',
-              style: TextStyle(
-                color: hasActiveFilters ? scheme.primary : scheme.onSurface,
-                fontWeight: FontWeight.w700,
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              textAlignVertical: TextAlignVertical.center,
+              onSubmitted: _handleCatalogSearchSubmit,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
                 fontFamily: 'Inter',
-                fontSize: 12.5,
+                fontSize: 14,
+                color: scheme.onSurface,
               ),
-            ),
-          ),
-        );
-      }
-
-      Widget buildOverflowButton() {
-        return PopupMenuButton<_CatalogOverflowAction>(
-          tooltip: 'Más opciones',
-          padding: EdgeInsets.zero,
-          onSelected: (action) {
-            switch (action) {
-              case _CatalogOverflowAction.exportExcel:
-                _exportProductsToExcel();
-                break;
-              case _CatalogOverflowAction.catalogActions:
-                _showCatalogActions();
-                break;
-            }
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: _CatalogOverflowAction.exportExcel,
-              child: Text('Exportar Excel'),
-            ),
-            PopupMenuItem(
-              value: _CatalogOverflowAction.catalogActions,
-              child: Text('Acciones del catálogo'),
-            ),
-          ],
-          child: Material(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(
-                color: scheme.outlineVariant.withOpacity(0.65),
-              ),
-            ),
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: Icon(
-                Icons.more_horiz_rounded,
-                size: 19,
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        );
-      }
-
-      Widget buildToolbarActions() {
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              buildFilterButton(),
-              if (selectedVisibleCount > 0) ...[
-                const SizedBox(width: 8),
-                buildSelectionActionsButton(),
-              ],
-              const SizedBox(width: 8),
-              buildOverflowButton(),
-            ],
-          ),
-        );
-      }
-
-      Widget buildHeaderCell(
-        String label, {
-        int flex = 1,
-        TextAlign textAlign = TextAlign.left,
-      }) {
-        return Expanded(
-          flex: flex,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              label,
-              textAlign: textAlign,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontFamily: 'Inter',
-                fontSize: 11.8,
-                fontWeight: FontWeight.w700,
-                color: scheme.onSurfaceVariant,
-                letterSpacing: 0.35,
-              ),
-            ),
-          ),
-        );
-      }
-
-      final headerContent = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ProductsSectionHeader(
-            title: 'Productos y servicios',
-            subtitle:
-                'Crea, edita y administra cada detalle de los productos o servicios que vendes.',
-            trailing: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              alignment: WrapAlignment.end,
-              children: [
-                buildUtilityIconButton(
-                  icon: Icons.drive_folder_upload_rounded,
-                  tooltip: 'Importar productos',
-                  label: 'Importar productos',
-                  onPressed: _importProductsFromExcel,
-                  foregroundColor: ui_colors.AppColors.primaryBlue,
-                  borderColor: ui_colors.AppColors.primaryBlue.withOpacity(
-                    0.18,
+              decoration: InputDecoration(
+                hintText: 'Buscar producto, código o referencia',
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        tooltip: 'Limpiar búsqueda',
+                        onPressed: _clearSearch,
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 11,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: scheme.outlineVariant.withOpacity(0.60),
+                    width: 1.5,
                   ),
-                  backgroundColor: Colors.white,
                 ),
-                buildUtilityIconButton(
-                  icon: Icons.add_rounded,
-                  tooltip: 'Nuevo producto',
-                  label: 'Nuevo producto',
-                  onPressed: () => _showProductForm(),
-                  foregroundColor: Colors.white,
-                  borderColor: ui_colors.AppColors.primaryBlue,
-                  backgroundColor: ui_colors.AppColors.primaryBlue,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: scheme.outlineVariant.withOpacity(0.60),
+                    width: 1.5,
+                  ),
                 ),
-              ],
-            ),
-          ),
-
-          // Separación limpia entre encabezado y controles.
-          const SizedBox(height: 22),
-
-          // Barra limpia: sin tarjeta exterior, sin doble borde.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(child: buildSearchField()),
-              const SizedBox(width: 10),
-              Flexible(child: buildToolbarActions()),
-            ],
-          ),
-        ],
-      );
-
-      Widget tableFrame({required Widget child}) {
-        return Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFFD1D9E6),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: ui_colors.AppColors.primaryBlue.withOpacity(0.85),
+                    width: 2,
+                  ),
+                ),
               ),
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: child,
-        );
-      }
-
-      Widget tableContent() {
-        if (_isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (_products.isEmpty) {
-          return ProductsEmptyState(
-            icon: Icons.inventory_2_outlined,
-            title: _searchController.text.isNotEmpty
-                ? 'No se encontraron productos'
-                : 'No hay productos registrados',
-            message: _searchController.text.isNotEmpty
-                ? 'Prueba otro término de búsqueda o ajusta los filtros activos.'
-                : 'Empieza agregando el primer producto del catálogo.',
-            action: FilledButton.icon(
-              onPressed: () => _showProductForm(),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Crear producto'),
             ),
           );
         }
 
-        return LayoutBuilder(
-          builder: (context, tableConstraints) {
-            final tableWidth = math.max(tableConstraints.maxWidth, 780.0);
+        Widget buildSelectionActionsButton() {
+          final actionsLabel = 'Acciones ($selectedVisibleCount)';
 
-            return Scrollbar(
-              controller: _tableHorizontalController,
-              thumbVisibility: tableWidth > tableConstraints.maxWidth,
-              child: SingleChildScrollView(
-                controller: _tableHorizontalController,
-                scrollDirection: Axis.horizontal,
+          return PopupMenuButton<_CatalogSelectionAction>(
+            onSelected: _handleSelectionAction,
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _CatalogSelectionAction.edit,
+                enabled: selectedVisibleCount == 1,
+                child: const Text('Editar'),
+              ),
+              const PopupMenuItem(
+                value: _CatalogSelectionAction.delete,
+                child: Text('Eliminar'),
+              ),
+              const PopupMenuItem(
+                value: _CatalogSelectionAction.exportPdf,
+                child: Text('Exportar PDF'),
+              ),
+            ],
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: ui_colors.AppColors.lightBlueHover,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: ui_colors.AppColors.primaryBlue.withOpacity(0.14),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.bolt_outlined,
+                    size: 17,
+                    color: ui_colors.AppColors.primaryBlue,
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    actionsLabel,
+                    style: const TextStyle(
+                      color: ui_colors.AppColors.primaryBlue,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'Inter',
+                      fontSize: 12.5,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  const Icon(
+                    Icons.expand_more_rounded,
+                    size: 17,
+                    color: ui_colors.AppColors.primaryBlue,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        Widget buildUtilityIconButton({
+          required IconData icon,
+          required String tooltip,
+          required VoidCallback? onPressed,
+          String? label,
+          String? description,
+          Color? foregroundColor,
+          Color? backgroundColor,
+          Color? borderColor,
+        }) {
+          final effectiveForeground =
+              foregroundColor ?? scheme.onSurfaceVariant;
+
+          return Tooltip(
+            message: tooltip,
+            child: Material(
+              color: backgroundColor ?? Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: borderColor ?? scheme.outlineVariant.withOpacity(0.70),
+                ),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: onPressed,
                 child: SizedBox(
-                  width: tableWidth,
-                  height: tableConstraints.maxHeight,
-                  child: Column(
-                    children: [
-                      Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          border: Border(
-                            bottom: BorderSide(
-                              color: const Color(0xFFE2E8F0),
+                  height: 40,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: label == null ? 0 : 12,
+                    ),
+                    child: label == null
+                        ? SizedBox(
+                            width: 40,
+                            child: Icon(
+                              icon,
+                              size: 19,
+                              color: effectiveForeground,
                             ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 18, color: effectiveForeground),
+                              const SizedBox(width: 8),
+                              Text(
+                                label,
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color:
+                                      backgroundColor ==
+                                          ui_colors.AppColors.primaryBlue
+                                      ? Colors.white
+                                      : scheme.onSurface,
+                                  fontWeight: FontWeight.w800,
+                                  fontFamily: 'Inter',
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              if (description != null) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  description,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        Widget buildFilterButton() {
+          final hasActiveFilters = _currentFilters?.hasFilters == true;
+
+          return SizedBox(
+            height: 40,
+            child: OutlinedButton.icon(
+              onPressed: _showFilters,
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 17,
+                    color: hasActiveFilters
+                        ? scheme.primary
+                        : scheme.onSurfaceVariant,
+                  ),
+                  if (activeFilterCount > 0)
+                    Positioned(
+                      right: -7,
+                      top: -8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$activeFilterCount',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.onPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10,
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 38,
-                              child: Checkbox(
-                                value: allVisibleSelected
-                                    ? true
-                                    : (someVisibleSelected ? null : false),
-                                tristate: true,
-                                fillColor: WidgetStateProperty.resolveWith(
-                                  (states) {
+                      ),
+                    ),
+                ],
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                side: BorderSide(
+                  color: hasActiveFilters
+                      ? scheme.primary.withOpacity(0.28)
+                      : scheme.outlineVariant.withOpacity(0.65),
+                ),
+                backgroundColor: hasActiveFilters
+                    ? scheme.primary.withOpacity(0.06)
+                    : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              label: Text(
+                hasActiveFilters ? 'Filtros activos' : 'Filtrar',
+                style: TextStyle(
+                  color: hasActiveFilters ? scheme.primary : scheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Inter',
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+          );
+        }
+
+        Widget buildOverflowButton() {
+          return PopupMenuButton<_CatalogOverflowAction>(
+            tooltip: 'Más opciones',
+            padding: EdgeInsets.zero,
+            onSelected: (action) {
+              switch (action) {
+                case _CatalogOverflowAction.exportExcel:
+                  _exportProductsToExcel();
+                  break;
+                case _CatalogOverflowAction.catalogActions:
+                  _showCatalogActions();
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _CatalogOverflowAction.exportExcel,
+                child: Text('Exportar Excel'),
+              ),
+              PopupMenuItem(
+                value: _CatalogOverflowAction.catalogActions,
+                child: Text('Acciones del catálogo'),
+              ),
+            ],
+            child: Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(
+                  color: scheme.outlineVariant.withOpacity(0.65),
+                ),
+              ),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(
+                  Icons.more_horiz_rounded,
+                  size: 19,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }
+
+        Widget buildToolbarActions() {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                buildFilterButton(),
+                if (selectedVisibleCount > 0) ...[
+                  const SizedBox(width: 8),
+                  buildSelectionActionsButton(),
+                ],
+                const SizedBox(width: 8),
+                buildOverflowButton(),
+              ],
+            ),
+          );
+        }
+
+        Widget buildHeaderCell(
+          String label, {
+          int flex = 1,
+          TextAlign textAlign = TextAlign.left,
+        }) {
+          return Expanded(
+            flex: flex,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                label,
+                textAlign: textAlign,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontFamily: 'Inter',
+                  fontSize: 11.8,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                  letterSpacing: 0.35,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final headerActions = Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          alignment: WrapAlignment.end,
+          children: [
+            buildUtilityIconButton(
+              icon: Icons.drive_folder_upload_rounded,
+              tooltip: 'Importar productos',
+              label: 'Importar productos',
+              onPressed: _importProductsFromExcel,
+              foregroundColor: ui_colors.AppColors.primaryBlue,
+              borderColor: ui_colors.AppColors.primaryBlue.withOpacity(0.18),
+              backgroundColor: Colors.white,
+            ),
+            buildUtilityIconButton(
+              icon: Icons.add_rounded,
+              tooltip: 'Nuevo producto',
+              label: 'Nuevo producto',
+              onPressed: () => _showProductForm(),
+              foregroundColor: Colors.white,
+              borderColor: ui_colors.AppColors.primaryBlue,
+              backgroundColor: ui_colors.AppColors.primaryBlue,
+            ),
+          ],
+        );
+
+        Widget buildPageHeader() {
+          return LayoutBuilder(
+            builder: (context, headerConstraints) {
+              const title = 'Productos y servicios';
+              const subtitle =
+                  'Crea, edita y administra cada detalle de los productos o servicios que vendes.';
+
+              if (headerConstraints.maxWidth >= 820) {
+                return ProductsSectionHeader(
+                  title: title,
+                  subtitle: subtitle,
+                  trailing: headerActions,
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const ProductsSectionHeader(title: title, subtitle: subtitle),
+                  const SizedBox(height: 14),
+                  Align(alignment: Alignment.centerRight, child: headerActions),
+                ],
+              );
+            },
+          );
+        }
+
+        Widget buildControlsRow() {
+          return LayoutBuilder(
+            builder: (context, toolbarConstraints) {
+              if (toolbarConstraints.maxWidth >= 720) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(child: buildSearchField()),
+                    const SizedBox(width: 10),
+                    Flexible(child: buildToolbarActions()),
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  buildSearchField(),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: buildToolbarActions(),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+
+        final headerContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildPageHeader(),
+            const SizedBox(height: 20),
+            buildControlsRow(),
+          ],
+        );
+
+        Widget tableFrame({required Widget child}) {
+          return Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD8E0EA)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.045),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: child,
+          );
+        }
+
+        Widget tableContent() {
+          if (_isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (_products.isEmpty) {
+            return ProductsEmptyState(
+              icon: Icons.inventory_2_outlined,
+              title: _searchController.text.isNotEmpty
+                  ? 'No se encontraron productos'
+                  : 'No hay productos registrados',
+              message: _searchController.text.isNotEmpty
+                  ? 'Prueba otro término de búsqueda o ajusta los filtros activos.'
+                  : 'Empieza agregando el primer producto del catálogo.',
+              action: FilledButton.icon(
+                onPressed: () => _showProductForm(),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Crear producto'),
+              ),
+            );
+          }
+
+          return LayoutBuilder(
+            builder: (context, tableConstraints) {
+              final tableWidth = math.max(tableConstraints.maxWidth, 780.0);
+
+              return Scrollbar(
+                controller: _tableHorizontalController,
+                thumbVisibility: tableWidth > tableConstraints.maxWidth,
+                child: SingleChildScrollView(
+                  controller: _tableHorizontalController,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: tableWidth,
+                    height: tableConstraints.maxHeight,
+                    child: Column(
+                      children: [
+                        Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF1F5F9),
+                            border: Border(
+                              bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 38,
+                                child: Checkbox(
+                                  value: allVisibleSelected
+                                      ? true
+                                      : (someVisibleSelected ? null : false),
+                                  tristate: true,
+                                  fillColor: WidgetStateProperty.resolveWith((
+                                    states,
+                                  ) {
                                     if (states.contains(WidgetState.selected)) {
                                       return const Color(0xFF1A56DB);
                                     }
@@ -1439,105 +1467,111 @@ Widget build(BuildContext context) {
                                       return const Color(0xFFEFF6FF);
                                     }
                                     return Colors.white;
-                                  },
+                                  }),
+                                  checkColor: Colors.white,
+                                  side: const BorderSide(
+                                    color: Color(0xFFD1D9E6),
+                                  ),
+                                  visualDensity: const VisualDensity(
+                                    horizontal: -4,
+                                    vertical: -4,
+                                  ),
+                                  onChanged: visibleSelectableIds.isEmpty
+                                      ? null
+                                      : (value) =>
+                                            _toggleSelectAllVisible(value),
                                 ),
-                                checkColor: Colors.white,
-                                side: const BorderSide(color: Color(0xFFD1D9E6)),
-                                visualDensity: const VisualDensity(
-                                  horizontal: -4,
-                                  vertical: -4,
-                                ),
-                                onChanged: visibleSelectableIds.isEmpty
-                                    ? null
-                                    : (value) =>
-                                        _toggleSelectAllVisible(value),
                               ),
-                            ),
-                            buildHeaderCell('Nombre', flex: 28),
-                            buildHeaderCell('Código / Ref.', flex: 15),
-                            buildHeaderCell(
-                              'Precio venta',
-                              flex: 12,
-                              textAlign: TextAlign.right,
-                            ),
-                            buildHeaderCell(
-                              'Costo',
-                              flex: 12,
-                              textAlign: TextAlign.right,
-                            ),
-                            buildHeaderCell(
-                              'Stock',
-                              flex: 8,
-                              textAlign: TextAlign.right,
-                            ),
-                            buildHeaderCell(
-                              'Stock mín.',
-                              flex: 10,
-                              textAlign: TextAlign.right,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _loadProducts,
-                          child: ListView.builder(
-                            itemCount: _products.length,
-                            itemBuilder: (context, index) {
-                              final product = _products[index];
-                              final productId = product.id;
-                              final isChecked =
-                                  productId != null &&
-                                  _selectedProductIds.contains(productId);
-                              final isFocused =
-                                  _selectedProduct?.id == product.id;
-
-                              return _CatalogProductRow(
-                                product: product,
-                                isChecked: isChecked,
-                                isFocused: isFocused,
-                                showPurchasePrice: canViewPurchasePrice,
-                                onSelectRow: () {
-                                  setState(() => _selectedProduct = product);
-                                },
-                                onToggleSelected: (selected) =>
-                                    _toggleProductSelection(
-                                  product,
-                                  selected,
-                                ),
-                              );
-                            },
+                              buildHeaderCell('Nombre', flex: 28),
+                              buildHeaderCell('Código / Ref.', flex: 15),
+                              buildHeaderCell(
+                                'Precio venta',
+                                flex: 12,
+                                textAlign: TextAlign.right,
+                              ),
+                              buildHeaderCell(
+                                'Costo',
+                                flex: 12,
+                                textAlign: TextAlign.right,
+                              ),
+                              buildHeaderCell(
+                                'Stock',
+                                flex: 8,
+                                textAlign: TextAlign.right,
+                              ),
+                              buildHeaderCell(
+                                'Stock mín.',
+                                flex: 10,
+                                textAlign: TextAlign.right,
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: RefreshIndicator(
+                            onRefresh: _loadProducts,
+                            child: ListView.builder(
+                              itemCount: _products.length,
+                              itemBuilder: (context, index) {
+                                final product = _products[index];
+                                final productId = product.id;
+                                final isChecked =
+                                    productId != null &&
+                                    _selectedProductIds.contains(productId);
+                                final isFocused =
+                                    _selectedProduct?.id == product.id;
+
+                                return _CatalogProductRow(
+                                  product: product,
+                                  isChecked: isChecked,
+                                  isFocused: isFocused,
+                                  showPurchasePrice: canViewPurchasePrice,
+                                  onSelectRow: () {
+                                    setState(() => _selectedProduct = product);
+                                  },
+                                  onToggleSelected: (selected) =>
+                                      _toggleProductSelection(
+                                        product,
+                                        selected,
+                                      ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+              );
+            },
+          );
+        }
+
+        return ColoredBox(
+          color: pageBackground,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: contentWidth),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 28, bottom: 26),
+                child: Column(
+                  children: [
+                    headerContent,
+                    const SizedBox(height: 14),
+                    Expanded(child: tableFrame(child: tableContent())),
+                  ],
+                ),
               ),
-            );
-          },
-        );
-      }
-
-      return ColoredBox(
-        color: pageBackground,
-        child: Padding(
-          padding: padding,
-          child: Column(
-            children: [
-              headerContent,
-              const SizedBox(height: 14),
-              Expanded(child: tableFrame(child: tableContent())),
-            ],
+            ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 }
 
- class _CatalogProductRow extends StatefulWidget {
+class _CatalogProductRow extends StatefulWidget {
   const _CatalogProductRow({
     required this.product,
     required this.isChecked,
@@ -1582,8 +1616,8 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
         : (product.hasLowStock ? scheme.tertiary : scheme.onSurface);
 
     final rowColor = widget.isChecked
-    ? const Color(0xFFEFF6FF)
-    : Colors.transparent;
+        ? const Color(0xFFEFF6FF)
+        : Colors.transparent;
 
     Widget buildCell(
       String value, {
@@ -1640,9 +1674,7 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
             decoration: BoxDecoration(
               color: rowColor,
               border: Border(
-                bottom: BorderSide(
-                  color: const Color(0xFFF1F5F9),
-                ),
+                bottom: BorderSide(color: const Color(0xFFF1F5F9)),
               ),
             ),
             child: Row(

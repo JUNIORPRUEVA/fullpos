@@ -79,12 +79,15 @@ class _PurchaseOrderCreateManualPageState
   final BusinessSettingsRepository _settingsRepo = BusinessSettingsRepository();
 
   final TextEditingController _notesCtrl = TextEditingController();
+  final TextEditingController _productSearchCtrl = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
+  bool _loadingProducts = false;
   String? _error;
 
   List<SupplierModel> _suppliers = const [];
+  List<ProductModel> _catalogProducts = const [];
   SupplierModel? _supplier;
 
   double _taxRate = 18.0;
@@ -98,11 +101,13 @@ class _PurchaseOrderCreateManualPageState
   void initState() {
     super.initState();
     _load();
+    _productSearchCtrl.addListener(_loadCatalogProducts);
   }
 
   @override
   void dispose() {
     _notesCtrl.dispose();
+    _productSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -182,6 +187,7 @@ class _PurchaseOrderCreateManualPageState
         _purchaseDate = editPurchaseDate ?? DateTime.now();
         _loading = false;
       });
+      await _loadCatalogProducts();
     } catch (e, st) {
       if (!mounted) return;
       final ex = await ErrorHandler.instance.handle(
@@ -204,16 +210,86 @@ class _PurchaseOrderCreateManualPageState
   double get _tax => _subtotal * (_effectiveTaxRate / 100.0);
   double get _total => _subtotal + _tax;
 
-  Future<void> _save() async {
-    if (_supplier?.id == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seleccione un suplidor'),
-          backgroundColor: AppColors.warning,
-        ),
+  Future<void> _loadCatalogProducts() async {
+    if (!mounted) return;
+    setState(() => _loadingProducts = true);
+    try {
+      final query = _productSearchCtrl.text.trim();
+      final filters = _supplier?.id != null
+          ? ProductFilters(supplierId: _supplier!.id)
+          : null;
+
+      var products = query.isEmpty
+          ? await _productsRepo.getAll(filters: filters)
+          : await _productsRepo.search(query, filters: filters);
+
+      if (_supplier?.id != null && products.isEmpty) {
+        products = query.isEmpty
+            ? await _productsRepo.getAll()
+            : await _productsRepo.search(query);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _catalogProducts = products;
+        _loadingProducts = false;
+      });
+    } catch (e, st) {
+      if (!mounted) return;
+      setState(() => _loadingProducts = false);
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: _loadCatalogProducts,
+        module: 'purchases/catalog_products',
       );
-      return;
     }
+  }
+
+  Future<int> _resolveSupplierIdForSave() async {
+    if (_supplier?.id != null) return _supplier!.id!;
+
+    const fallbackSupplierName = 'Sin suplidor';
+    final existing = await _suppliersRepo.search(
+      fallbackSupplierName,
+      includeInactive: true,
+      includeDeleted: true,
+    );
+    final exact = existing
+        .where((s) => s.name.trim().toLowerCase() == fallbackSupplierName)
+        .cast<SupplierModel?>()
+        .firstOrNull;
+    if (exact?.id != null) return exact!.id!;
+
+    return _suppliersRepo.create(
+      SupplierModel(
+        name: fallbackSupplierName,
+        note: 'Suplidor genérico creado automáticamente para compras sin suplidor.',
+        createdAtMs: DateTime.now().millisecondsSinceEpoch,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+  }
+
+  void _addProductToLines(ProductModel selected) {
+    final existing = _lines.indexWhere((l) => l.product?.id == selected.id);
+    setState(() {
+      if (existing >= 0) {
+        _lines[existing].qty += 1;
+      } else {
+        _lines.add(
+          _LineDraft.fromProduct(
+            product: selected,
+            qty: 1,
+            unitCost: selected.purchasePrice,
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _save() async {
     if (_lines.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -226,6 +302,7 @@ class _PurchaseOrderCreateManualPageState
 
     setState(() => _saving = true);
     try {
+      final supplierId = await _resolveSupplierIdForSave();
       final items = _lines
           .map(
             (l) => _purchasesRepo.itemInput(
@@ -243,7 +320,7 @@ class _PurchaseOrderCreateManualPageState
       if (_isEdit) {
         await _purchasesRepo.updateOrder(
           orderId: widget.orderId!,
-          supplierId: _supplier!.id!,
+          supplierId: supplierId,
           items: items,
           taxRatePercent: _effectiveTaxRate,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
@@ -259,7 +336,7 @@ class _PurchaseOrderCreateManualPageState
         context.go('/purchases/orders?orderId=${widget.orderId}');
       } else {
         final orderId = await _purchasesRepo.createOrder(
-          supplierId: _supplier!.id!,
+          supplierId: supplierId,
           items: items,
           taxRatePercent: _effectiveTaxRate,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
@@ -289,866 +366,904 @@ class _PurchaseOrderCreateManualPageState
     }
   }
 
-  Future<void> _addProductDialog() async {
-    if (_supplier?.id == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seleccione un suplidor primero'),
-          backgroundColor: AppColors.info,
-        ),
-      );
-      return;
-    }
+  // // ---------------------------------------------------------------------------
+// BUILD – Two-column layout with fixed right purchase-detail panel
+// ---------------------------------------------------------------------------
 
-    final selected = await showDialog<ProductModel>(
-      context: context,
-      builder: (dialogContext) {
-        final searchCtrl = TextEditingController();
-        var loading = true;
-        var products = <ProductModel>[];
-        String? error;
-        var hasLoaded = false;
-        var onlySupplier = true;
-        var showingFallbackAll = false;
+@override
+Widget build(BuildContext context) {
+  final currency = CurrencyDisplay.currency();
+  final title = _isEdit ? 'Editar compra manual' : 'Registrar compra manual';
 
-        return StatefulBuilder(
-          builder: (context, setState) {
-            Future<void> runSearch() async {
-              final q = searchCtrl.text.trim();
-              if (!context.mounted) return;
-              setState(() {
-                loading = true;
-                error = null;
-                showingFallbackAll = false;
-              });
-              try {
-                final supplierId = _supplier!.id!;
+  return Scaffold(
+    backgroundColor: const Color(0xFFF5F7FB),
+    appBar: AppBar(
+      title: Text(
+        _isEdit ? 'Editar Orden (Manual)' : 'Crear Orden (Manual)',
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+      ),
+      toolbarHeight: 48,
+    ),
+    body: _loading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+            ? Center(
+                child: Text(
+                  'Error: $_error',
+                  style: const TextStyle(color: Colors.red),
+                ),
+              )
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final screenWidth = constraints.maxWidth;
+                  final isDesktop = screenWidth >= 1180;
 
-                Future<List<ProductModel>> fetch({
-                  required bool filterBySupplier,
-                }) {
-                  final filters = filterBySupplier
-                      ? ProductFilters(supplierId: supplierId)
-                      : null;
-                  return q.isEmpty
-                      ? _productsRepo.getAll(filters: filters)
-                      : _productsRepo.search(q, filters: filters);
-                }
+                  final panelWidth = screenWidth >= 1700
+                      ? 720.0
+                      : screenWidth >= 1500
+                          ? 660.0
+                          : screenWidth >= 1320
+                              ? 610.0
+                              : 560.0;
 
-                var result = await fetch(filterBySupplier: onlySupplier);
-                if (!context.mounted) return;
+                  final leftPadding =
+                      (screenWidth * 0.025).clamp(16.0, 44.0);
 
-                // Si el suplidor no tiene productos asociados, no bloquear el flujo:
-                // mostrar todos los productos para que el usuario pueda comprar.
-                if (onlySupplier && result.isEmpty) {
-                  result = await fetch(filterBySupplier: false);
-                  if (!context.mounted) return;
-                  setState(() {
-                    onlySupplier = false;
-                    showingFallbackAll = true;
-                  });
-                }
-
-                if (!context.mounted) return;
-                setState(() {
-                  products = result;
-                  loading = false;
-                  hasLoaded = true;
-                });
-              } catch (e, st) {
-                if (!dialogContext.mounted) return;
-                final ex = await ErrorHandler.instance.handle(
-                  e,
-                  stackTrace: st,
-                  context: dialogContext,
-                  onRetry: runSearch,
-                  module: 'purchases/products_search',
-                );
-                if (!context.mounted) return;
-                setState(() {
-                  error = ex.messageUser;
-                  loading = false;
-                  hasLoaded = true;
-                });
-              }
-            }
-
-            // Cargar productos al abrir (una sola vez)
-            if (!hasLoaded) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!hasLoaded) runSearch();
-              });
-            }
-
-            return AlertDialog(
-              title: const Text('Agregar producto'),
-              contentPadding: const EdgeInsets.all(0),
-              content: SizedBox(
-                width: 700,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
+                  if (!isDesktop) {
+                    return SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          TextField(
-                            controller: searchCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Buscar producto',
-                              prefixIcon: Icon(Icons.search),
-                              border: OutlineInputBorder(),
-                            ),
-                            onChanged: (_) => runSearch(),
+                          _buildHeaderCard(title),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            height: 620,
+                            child: _buildCatalogSection(currency),
                           ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              FilterChip(
-                                label: Text(
-                                  onlySupplier
-                                      ? 'Solo este suplidor'
-                                      : 'Todos los productos',
-                                ),
-                                selected: onlySupplier,
-                                onSelected: (v) {
-                                  setState(() {
-                                    onlySupplier = v;
-                                  });
-                                  runSearch();
-                                },
-                              ),
-                              if (showingFallbackAll) ...[
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Este suplidor no tiene productos asociados. Mostrando todos.',
-                                    style: TextStyle(
-                                      color: AppColors.textDarkSecondary,
-                                      fontSize: 12,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ],
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            height: 620,
+                            child: _buildPurchaseDetailPanel(currency),
                           ),
                         ],
                       ),
-                    ),
-                    const Divider(height: 1),
-                    SizedBox(
-                      height: 400,
-                      child: loading
-                          ? const Center(child: CircularProgressIndicator())
-                          : error != null
-                          ? Center(
-                              child: Text(
-                                'Error: $error',
-                                style: const TextStyle(color: Colors.red),
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            leftPadding,
+                            AppSizes.paddingM,
+                            18,
+                            AppSizes.paddingM,
+                          ),
+                          child: Column(
+                            children: [
+                              _buildHeaderCard(title),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: _buildCatalogSection(currency),
                               ),
-                            )
-                          : products.isEmpty
-                          ? const Center(child: Text('No hay productos'))
-                          : GridView.builder(
-                              padding: const EdgeInsets.all(16),
-                              gridDelegate:
-                                  const SliverGridDelegateWithMaxCrossAxisExtent(
-                                    maxCrossAxisExtent: 210,
-                                    mainAxisExtent: 260,
-                                    crossAxisSpacing: 12,
-                                    mainAxisSpacing: 12,
-                                  ),
-                              itemCount: products.length,
-                              itemBuilder: (context, i) {
-                                final p = products[i];
-                                return Center(
-                                  child: SizedBox(
-                                    width: 190,
-                                    height: 260,
-                                    child: Card(
-                                      elevation: 2,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: InkWell(
-                                        onTap: () =>
-                                            Navigator.of(dialogContext).pop(p),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.stretch,
-                                          children: [
-                                            Expanded(
-                                              flex: 2,
-                                              child: ProductThumbnail.fromProduct(
-                                                p,
-                                                width: double.infinity,
-                                                height: double.infinity,
-                                                showBorder: false,
-                                                borderRadius:
-                                                    const BorderRadius.vertical(
-                                                      top: Radius.circular(8),
-                                                    ),
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 2,
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                  8,
-                                                ),
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      p.code,
-                                                      style: const TextStyle(
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      p.name,
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                      ),
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      'Stock: ${p.stock.toStringAsFixed(0)}',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: AppColors
-                                                            .textDarkSecondary,
-                                                      ),
-                                                    ),
-                                                    Text(
-                                                      'Compra: ${CurrencyDisplay.format(p.purchasePrice)}',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        color:
-                                                            AppColors.success,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: panelWidth,
+                        height: double.infinity,
+                        child: _buildPurchaseDetailPanel(currency),
+                      ),
+                    ],
+                  );
+                },
+              ),
+  );
+}
+
+Widget _buildHeaderCard(String title) {
+  return Container(
+    padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: AppColors.surfaceLightBorder.withOpacity(0.65),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFF0F172A).withOpacity(0.04),
+          blurRadius: 20,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                'GESTIÓN DE COMPRAS',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.7,
+                  color: AppColors.gold,
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cerrar'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                  height: 1,
                 ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton.icon(
+              onPressed: _saving ? null : () => context.pop(),
+              icon: const Icon(Icons.arrow_back_rounded, size: 18),
+              label: const Text('Volver'),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 980;
+
+            if (compact) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<int>(
+                    initialValue: _supplier?.id,
+                    isExpanded: true,
+                    menuMaxHeight: 300,
+                    items: _suppliers
+                        .where((s) => s.id != null)
+                        .map(
+                          (s) => DropdownMenuItem<int>(
+                            value: s.id!,
+                            child: Text(
+                              s.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      final s = _suppliers
+                          .where((e) => e.id == v)
+                          .cast<SupplierModel?>()
+                          .firstOrNull;
+
+                      setState(() => _supplier = s);
+                      _loadCatalogProducts();
+                    },
+                    decoration: _compactInputDecoration(
+                      label: 'Suplidor',
+                      hint: 'Opcional',
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: _taxRate.toStringAsFixed(2),
+                          enabled: _itbisEnabled,
+                          decoration: _compactInputDecoration(
+                            label: 'ITBIS %',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (v) {
+                            final parsed = double.tryParse(
+                              v.replaceAll(',', '.'),
+                            );
+                            if (parsed == null) return;
+                            setState(() => _taxRate = parsed);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          readOnly: true,
+                          decoration: _compactInputDecoration(
+                            label: 'Fecha',
+                            suffixIcon: Icons.calendar_today_outlined,
+                          ),
+                          controller: TextEditingController(
+                            text: DateFormat('dd/MM/yyyy').format(_purchaseDate),
+                          ),
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _purchaseDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+
+                            if (picked == null || !mounted) return;
+                            setState(() => _purchaseDate = picked);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  _buildItbisAndNotesRow(compact: true),
+                ],
+              );
+            }
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _supplier?.id,
+                        isExpanded: true,
+                        menuMaxHeight: 300,
+                        items: _suppliers
+                            .where((s) => s.id != null)
+                            .map(
+                              (s) => DropdownMenuItem<int>(
+                                value: s.id!,
+                                child: Text(
+                                  s.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          final s = _suppliers
+                              .where((e) => e.id == v)
+                              .cast<SupplierModel?>()
+                              .firstOrNull;
+
+                          setState(() => _supplier = s);
+                          _loadCatalogProducts();
+                        },
+                        decoration: _compactInputDecoration(
+                          label: 'Suplidor',
+                          hint: 'Opcional',
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    SizedBox(
+                      width: 105,
+                      child: TextFormField(
+                        initialValue: _taxRate.toStringAsFixed(2),
+                        enabled: _itbisEnabled,
+                        decoration: _compactInputDecoration(
+                          label: 'ITBIS %',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        onChanged: (v) {
+                          final parsed = double.tryParse(
+                            v.replaceAll(',', '.'),
+                          );
+                          if (parsed == null) return;
+                          setState(() => _taxRate = parsed);
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    SizedBox(
+                      width: 150,
+                      child: TextFormField(
+                        readOnly: true,
+                        decoration: _compactInputDecoration(
+                          label: 'Fecha',
+                          suffixIcon: Icons.calendar_today_outlined,
+                        ),
+                        controller: TextEditingController(
+                          text: DateFormat('dd/MM/yyyy').format(_purchaseDate),
+                        ),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _purchaseDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                          );
+
+                          if (picked == null || !mounted) return;
+                          setState(() => _purchaseDate = picked);
+                        },
+                      ),
+                    ),
+
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                _buildItbisAndNotesRow(),
               ],
             );
           },
-        );
-      },
-    );
-
-    if (selected == null) return;
-
-    final existing = _lines.indexWhere((l) => l.product?.id == selected.id);
-    setState(() {
-      if (existing >= 0) {
-        _lines[existing].qty += 1;
-      } else {
-        _lines.add(
-          _LineDraft.fromProduct(
-            product: selected,
-            qty: 1,
-            unitCost: selected.purchasePrice,
-          ),
-        );
-      }
-    });
-  }
-
-  Future<void> _addCustomProductDialog() async {
-    if (_supplier?.id == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Seleccione un suplidor primero'),
-          backgroundColor: AppColors.info,
         ),
-      );
-      return;
-    }
-
-    final codeCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController(text: '1');
-    final costCtrl = TextEditingController(text: '0');
-
-    final result = await showDialog<_LineDraft>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Producto no inventario'),
-          content: SizedBox(
-            width: 520,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: codeCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Código (opcional)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: qtyCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Cantidad',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: costCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Costo',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(null),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final name = nameCtrl.text.trim();
-                final qty =
-                    double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0;
-                final cost =
-                    double.tryParse(costCtrl.text.replaceAll(',', '.')) ?? 0;
-
-                if (name.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Nombre requerido'),
-                      backgroundColor: AppColors.warning,
-                    ),
-                  );
-                  return;
-                }
-                if (qty <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Cantidad debe ser mayor a 0'),
-                      backgroundColor: AppColors.warning,
-                    ),
-                  );
-                  return;
-                }
-
-                Navigator.of(dialogContext).pop(
-                  _LineDraft.custom(
-                    code: codeCtrl.text,
-                    name: name,
-                    qty: qty,
-                    unitCost: cost,
-                  ),
-                );
-              },
-              child: const Text('Agregar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted || result == null) return;
-    setState(() => _lines.add(result));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final currency = CurrencyDisplay.currency();
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text(
-          _isEdit ? 'Editar Orden (Manual)' : 'Crear Orden (Manual)',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        toolbarHeight: 48,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Text(
-                'Error: $_error',
-                style: const TextStyle(color: Colors.red),
-              ),
-            )
-          : Padding(
-              padding: const EdgeInsets.all(AppSizes.paddingL),
-              child: Column(
-                children: [
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: AppColors.surfaceLightBorder),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSizes.paddingM),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<int>(
-                                  initialValue: _supplier?.id,
-                                  items: _suppliers
-                                      .map(
-                                        (s) => DropdownMenuItem(
-                                          value: s.id,
-                                          child: Text(s.name),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) {
-                                    final s = _suppliers
-                                        .where((e) => e.id == v)
-                                        .cast<SupplierModel?>()
-                                        .firstOrNull;
-                                    setState(() {
-                                      _supplier = s;
-                                      _lines.clear();
-                                    });
-                                  },
-                                  decoration: const InputDecoration(
-                                    labelText: 'Suplidor',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 180,
-                                child: TextFormField(
-                                  initialValue: _taxRate.toStringAsFixed(2),
-                                  enabled: _itbisEnabled,
-                                  decoration: const InputDecoration(
-                                    labelText: 'ITBIS %',
-                                  ),
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  onChanged: (v) {
-                                    final parsed = double.tryParse(
-                                      v.replaceAll(',', '.'),
-                                    );
-                                    if (parsed == null) return;
-                                    setState(() => _taxRate = parsed);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 180,
-                                child: TextFormField(
-                                  readOnly: true,
-                                  decoration: InputDecoration(
-                                    labelText: 'Fecha de compra',
-                                    suffixIcon: const Icon(
-                                      Icons.calendar_today,
-                                    ),
-                                  ),
-                                  controller: TextEditingController(
-                                    text: DateFormat(
-                                      'dd/MM/yyyy',
-                                    ).format(_purchaseDate),
-                                  ),
-                                  onTap: () async {
-                                    final picked = await showDatePicker(
-                                      context: context,
-                                      initialDate: _purchaseDate,
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime.now(),
-                                    );
-                                    if (picked == null) return;
-                                    if (!mounted) return;
-                                    setState(() => _purchaseDate = picked);
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              ElevatedButton.icon(
-                                onPressed: _saving ? null : _addProductDialog,
-                                icon: const Icon(Icons.add),
-                                label: const Text('Agregar producto'),
-                              ),
-                              const SizedBox(width: 10),
-                              OutlinedButton.icon(
-                                onPressed: _saving
-                                    ? null
-                                    : _addCustomProductDialog,
-                                icon: const Icon(Icons.playlist_add),
-                                label: const Text('Producto no inventario'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Switch.adaptive(
-                                  value: _itbisEnabled,
-                                  onChanged: _saving
-                                      ? null
-                                      : (v) =>
-                                            setState(() => _itbisEnabled = v),
-                                ),
-                                Text(
-                                  _itbisEnabled
-                                      ? 'Aplicar ITBIS (${_taxRate.toStringAsFixed(2)}%)'
-                                      : 'Aplicar ITBIS',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _notesCtrl,
-                            decoration: const InputDecoration(
-                              labelText:
-                                  'Nota importante para suplidor (opcional)',
-                            ),
-                            maxLines: 2,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.paddingM),
-                  Expanded(
-                    child: Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: AppColors.surfaceLightBorder),
-                      ),
-                      child: _lines.isEmpty
-                          ? Center(
-                              child: Text(
-                                'Agregue productos para continuar',
-                                style: TextStyle(
-                                  color: AppColors.textDarkSecondary,
-                                ),
-                              ),
-                            )
-                          : ListView.separated(
-                              itemCount: _lines.length,
-                              separatorBuilder: (_, _) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final line = _lines[index];
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  child: Card(
-                                    elevation: 1,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Imagen del producto
-                                          if (line.product != null)
-                                            ProductThumbnail.fromProduct(
-                                              line.product!,
-                                              size: 70,
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                            )
-                                          else
-                                            Container(
-                                              width: 70,
-                                              height: 70,
-                                              decoration: BoxDecoration(
-                                                color: AppColors
-                                                    .surfaceLightBorder,
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              child: Icon(
-                                                Icons.inventory_2_outlined,
-                                                color:
-                                                    AppColors.textDarkSecondary,
-                                              ),
-                                            ),
-                                          const SizedBox(width: 12),
-                                          // Información del producto
-                                          Expanded(
-                                            flex: 2,
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  line.productCodeSnapshot,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: AppColors.gold,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  line.productNameSnapshot,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'Total línea: ${currency.format(line.total)}',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: AppColors.success,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          // Campos de cantidad y costo
-                                          SizedBox(
-                                            width: 370,
-                                            child: Row(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.end,
-                                              children: [
-                                                // Cantidad
-                                                Expanded(
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                          right: 8,
-                                                        ),
-                                                    child: TextFormField(
-                                                      initialValue: line.qty
-                                                          .toStringAsFixed(2),
-                                                      decoration: InputDecoration(
-                                                        labelText: 'Cantidad',
-                                                        isDense: true,
-                                                        border: OutlineInputBorder(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                4,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      keyboardType:
-                                                          const TextInputType.numberWithOptions(
-                                                            decimal: true,
-                                                          ),
-                                                      onChanged: (v) {
-                                                        final parsed =
-                                                            double.tryParse(
-                                                              v.replaceAll(
-                                                                ',',
-                                                                '.',
-                                                              ),
-                                                            );
-                                                        if (parsed == null) {
-                                                          return;
-                                                        }
-                                                        setState(
-                                                          () =>
-                                                              line.qty = parsed,
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                                // Costo unitario
-                                                Expanded(
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                          right: 8,
-                                                        ),
-                                                    child: TextFormField(
-                                                      initialValue: line
-                                                          .unitCost
-                                                          .toStringAsFixed(2),
-                                                      decoration: InputDecoration(
-                                                        labelText: 'Costo',
-                                                        isDense: true,
-                                                        border: OutlineInputBorder(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                4,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      keyboardType:
-                                                          const TextInputType.numberWithOptions(
-                                                            decimal: true,
-                                                          ),
-                                                      onChanged: (v) {
-                                                        final parsed =
-                                                            double.tryParse(
-                                                              v.replaceAll(
-                                                                ',',
-                                                                '.',
-                                                              ),
-                                                            );
-                                                        if (parsed == null) {
-                                                          return;
-                                                        }
-                                                        setState(
-                                                          () => line.unitCost =
-                                                              parsed,
-                                                        );
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                                // Botón eliminar
-                                                IconButton(
-                                                  tooltip: 'Quitar producto',
-                                                  onPressed: _saving
-                                                      ? null
-                                                      : () => setState(
-                                                          () => _lines.removeAt(
-                                                            index,
-                                                          ),
-                                                        ),
-                                                  icon: const Icon(
-                                                    Icons.delete_outline,
-                                                    color: Colors.red,
-                                                  ),
-                                                  visualDensity:
-                                                      VisualDensity.compact,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSizes.paddingM),
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: AppColors.surfaceLightBorder),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSizes.paddingM),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Subtotal: ${currency.format(_subtotal)} • ITBIS: ${currency.format(_tax)} (${_itbisEnabled ? _taxRate.toStringAsFixed(2) : 'OFF'}%) • Total: ${currency.format(_total)}',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: _saving ? null : _save,
-                            icon: _saving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.save),
-                            label: Text(_saving ? 'Guardando...' : 'Guardar'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
+      ],
+    ),
+  );
 }
 
-extension _FirstOrNullExt<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
+Widget _buildItbisAndNotesRow({bool compact = false}) {
+  if (compact) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _buildItbisToggleBox(),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _notesCtrl,
+          decoration: _compactInputDecoration(
+            label: 'Nota importante para suplidor (opcional)',
+            prefixIcon: Icons.notes_rounded,
+          ),
+          maxLines: 1,
+        ),
+      ],
+    );
+  }
+
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      _buildItbisToggleBox(),
+      const SizedBox(width: 10),
+      Expanded(
+        child: TextField(
+          controller: _notesCtrl,
+          decoration: _compactInputDecoration(
+            label: 'Nota importante para suplidor (opcional)',
+            prefixIcon: Icons.notes_rounded,
+          ),
+          maxLines: 1,
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _buildItbisToggleBox() {
+  return Container(
+    height: 42,
+    padding: const EdgeInsets.symmetric(horizontal: 8),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(
+        color: AppColors.surfaceLightBorder.withOpacity(0.85),
+      ),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Transform.scale(
+          scale: 0.82,
+          child: Switch.adaptive(
+            value: _itbisEnabled,
+            onChanged: _saving
+                ? null
+                : (v) => setState(() => _itbisEnabled = v),
+          ),
+        ),
+        const SizedBox(width: 2),
+        Text(
+          _itbisEnabled
+              ? 'ITBIS ${_taxRate.toStringAsFixed(2)}%'
+              : 'Aplicar ITBIS',
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+InputDecoration _compactInputDecoration({
+  required String label,
+  String? hint,
+  IconData? prefixIcon,
+  IconData? suffixIcon,
+}) {
+  return InputDecoration(
+    labelText: label,
+    hintText: hint,
+    prefixIcon: prefixIcon == null ? null : Icon(prefixIcon, size: 18),
+    suffixIcon: suffixIcon == null ? null : Icon(suffixIcon, size: 18),
+    isDense: true,
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: 12,
+      vertical: 12,
+    ),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(
+        color: AppColors.surfaceLightBorder.withOpacity(0.95),
+      ),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(
+        color: AppColors.gold,
+        width: 1.2,
+      ),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// _buildCatalogSection – Muestra los productos del catálogo en un grid
+// ---------------------------------------------------------------------------
+Widget _buildCatalogSection(NumberFormat currency) {
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: AppColors.surfaceLightBorder.withOpacity(0.65),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFF0F172A).withOpacity(0.04),
+          blurRadius: 20,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.inventory_2_outlined, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Catálogo de productos',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const Spacer(),
+            if (_loadingProducts)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _productSearchCtrl,
+          decoration: _compactInputDecoration(
+            label: 'Buscar producto…',
+            prefixIcon: Icons.search,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _catalogProducts.isEmpty
+              ? Center(
+                  child: Text(
+                    _loadingProducts
+                        ? 'Cargando…'
+                        : 'No hay productos disponibles',
+                    style: const TextStyle(color: Color(0xFF64748B)),
+                  ),
+                )
+              : GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 180,
+                    mainAxisExtent: 240,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: _catalogProducts.length,
+                  itemBuilder: (context, i) {
+                    final p = _catalogProducts[i];
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _addProductToLines(p),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: ProductThumbnail.fromProduct(
+                                p,
+                                width: double.infinity,
+                                height: double.infinity,
+                                showBorder: false,
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(12),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      p.code,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      p.name,
+                                      style: const TextStyle(fontSize: 10),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      'Stock: ${p.stock.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textDarkSecondary,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Compra: ${CurrencyDisplay.format(p.purchasePrice)}',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// _buildPurchaseDetailPanel – Panel lateral/derecho con detalle de la compra
+// ---------------------------------------------------------------------------
+Widget _buildPurchaseDetailPanel(NumberFormat currency) {
+  return Container(
+    padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: AppColors.surfaceLightBorder.withOpacity(0.65),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFF0F172A).withOpacity(0.04),
+          blurRadius: 20,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Título
+        Row(
+          children: [
+            const Icon(Icons.receipt_long_outlined, size: 20),
+            const SizedBox(width: 8),
+            const Text(
+              'Detalle de compra',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${_lines.length} ${_lines.length == 1 ? 'ítem' : 'ítems'}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Divider(height: 1),
+
+        // Lista de líneas
+        Expanded(
+          child: _lines.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Agregue productos desde el catálogo\no usando "No inventario"',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _lines.length,
+                  itemBuilder: (context, i) {
+                    final line = _lines[i];
+                    return _buildLineTile(line, i);
+                  },
+                ),
+        ),
+
+        const Divider(height: 1),
+        const SizedBox(height: 8),
+
+        // Resumen de totales
+        _buildSummaryRow('Subtotal', _subtotal, currency),
+        if (_itbisEnabled) ...[
+          const SizedBox(height: 4),
+          _buildSummaryRow(
+            'ITBIS (${_effectiveTaxRate.toStringAsFixed(2)}%)',
+            _tax,
+            currency,
+          ),
+        ],
+        const SizedBox(height: 4),
+        _buildSummaryRow(
+          'Total',
+          _total,
+          currency,
+          bold: true,
+          fontSize: 18,
+        ),
+
+        const SizedBox(height: 14),
+
+        // Botón guardar
+        SizedBox(
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.save_rounded, size: 20),
+            label: Text(
+              _isEdit ? 'Actualizar orden' : 'Crear orden',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.gold,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildLineTile(_LineDraft line, int index) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Info del producto
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                line.productNameSnapshot,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${line.productCodeSnapshot}  •  ${CurrencyDisplay.format(line.unitCost)} c/u',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Cantidad
+        SizedBox(
+          width: 70,
+          child: TextFormField(
+            initialValue: line.qty.toStringAsFixed(0),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 8,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onChanged: (v) {
+              final qty = double.tryParse(v.replaceAll(',', '.'));
+              if (qty == null || qty <= 0) return;
+              setState(() => _lines[index].qty = qty);
+            },
+          ),
+        ),
+
+        const SizedBox(width: 8),
+
+        // Total de línea
+        SizedBox(
+          width: 90,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              CurrencyDisplay.format(line.total),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(width: 4),
+
+        // Botón eliminar
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            iconSize: 18,
+            icon: const Icon(Icons.close_rounded, color: Colors.redAccent),
+            onPressed: () => setState(() => _lines.removeAt(index)),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildSummaryRow(
+  String label,
+  double amount,
+  NumberFormat currency, {
+  bool bold = false,
+  double fontSize = 14,
+}) {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: bold ? fontSize - 2 : fontSize,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+          color: bold ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+        ),
+      ),
+      Text(
+        CurrencyDisplay.format(amount),
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+          color: bold ? AppColors.gold : const Color(0xFF0F172A),
+        ),
+      ),
+    ],
+  );
+}
 }

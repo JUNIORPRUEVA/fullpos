@@ -5841,31 +5841,86 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Widget _build3DControlBar() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final isCompact = width < 980;
+  void showSearchNotice({
+    required IconData icon,
+    required String message,
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
 
-        final fieldTextColor = const Color(0xFF172033);
-        final hintColor = const Color(0xFF64748B);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          width: 360,
+          elevation: 12,
+          duration: const Duration(milliseconds: 1800),
+          backgroundColor: const Color(0xFF111827),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A56DB),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
 
-        final searchBarWidth = isCompact ? double.infinity : (width * 0.988);
-        const barHeight = 40.0;
-        const iconButtonWidth = 48.0;
-        const iconSize = 22.0;
-        const textSize = 16.0;
-        const borderColor = Color(0xFF1A56DB);
-        const buttonColor = Color(0xFF1A56DB);
-        const barcodeButtonColor = Color(0xFF111827);
-        const hoverColor = Color(0xFF1443B0);
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      final isCompact = width < 980;
 
-        Widget buildIconButton({
-          required Widget icon,
-          required VoidCallback onTap,
-          required BorderRadius borderRadius,
-          required Color backgroundColor,
-        }) {
-          return Material(
+      const fieldTextColor = Color(0xFF172033);
+      const hintColor = Color(0xFF64748B);
+
+      final searchBarWidth = isCompact ? double.infinity : width * 0.988;
+
+      const barHeight = 40.0;
+      const iconButtonWidth = 48.0;
+      const iconSize = 22.0;
+      const textSize = 16.0;
+      const borderColor = Color(0xFF1A56DB);
+      const buttonColor = Color(0xFF1A56DB);
+      const barcodeButtonColor = Color(0xFF111827);
+      const hoverColor = Color(0xFF1443B0);
+
+      Widget buildIconButton({
+        required Widget icon,
+        required VoidCallback onTap,
+        required BorderRadius borderRadius,
+        required Color backgroundColor,
+        required String tooltip,
+      }) {
+        return Tooltip(
+          message: tooltip,
+          waitDuration: const Duration(milliseconds: 350),
+          child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
@@ -5882,117 +5937,152 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 child: Center(child: icon),
               ),
             ),
-          );
-        }
-
-        final inputBorderRadius = const BorderRadius.only(
-          topRight: Radius.circular(4),
-          bottomRight: Radius.circular(4),
+          ),
         );
-        final inputBorder = OutlineInputBorder(
-          borderRadius: inputBorderRadius,
-          borderSide: const BorderSide(color: borderColor, width: 1),
-        );
+      }
 
-        return Row(
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: searchBarWidth),
-                  child: SizedBox(
-                    height: barHeight,
-                    child: Row(
-                      children: [
-                        buildIconButton(
-                          icon: Image.asset(
-                            'assets/imagen/iconos/lupa.png',
-                            width: iconSize,
-                            height: iconSize,
-                            fit: BoxFit.contain,
-                            color: Colors.white,
-                          ),
-                          onTap: () => _searchFocusNode.requestFocus(),
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(4),
-                            bottomLeft: Radius.circular(4),
-                          ),
-                          backgroundColor: buttonColor,
+      const inputBorderRadius = BorderRadius.only(
+        topRight: Radius.circular(4),
+        bottomRight: Radius.circular(4),
+      );
+
+      final inputBorder = OutlineInputBorder(
+        borderRadius: inputBorderRadius,
+        borderSide: const BorderSide(
+          color: borderColor,
+          width: 1,
+        ),
+      );
+
+      return Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: searchBarWidth,
+                ),
+                child: SizedBox(
+                  height: barHeight,
+                  child: Row(
+                    children: [
+                      buildIconButton(
+                        icon: Image.asset(
+                          'assets/imagen/iconos/lupa.png',
+                          width: iconSize,
+                          height: iconSize,
+                          fit: BoxFit.contain,
+                          color: Colors.white,
                         ),
-                        buildIconButton(
-                          icon: Image.asset(
-                            'assets/imagen/iconos/lectura-de-codigo-de-barras.png',
-                            width: iconSize,
-                            height: iconSize,
-                            fit: BoxFit.contain,
-                            color: Colors.white,
-                          ),
-                          onTap: () => _searchFocusNode.requestFocus(),
-                          borderRadius: BorderRadius.zero,
-                          backgroundColor: barcodeButtonColor,
+                        tooltip: 'Buscar producto',
+                        onTap: () {
+                          _searchFocusNode.requestFocus();
+
+                          showSearchNotice(
+                            icon: Icons.search_rounded,
+                            message: 'Escribe el nombre o código del producto.',
+                          );
+                        },
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(4),
+                          bottomLeft: Radius.circular(4),
                         ),
-                        Expanded(
-                          child: SizedBox(
-                            height: barHeight,
-                            child: TextField(
-                              controller: _searchController,
-                              focusNode: _searchFocusNode,
-                              expands: true,
-                              maxLines: null,
-                              minLines: null,
-                              textAlignVertical: TextAlignVertical.center,
-                              decoration: InputDecoration(
-                                hintText: 'Buscar productos',
-                                hintStyle: TextStyle(
-                                  color: hintColor,
-                                  fontSize: textSize,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                                isDense: true,
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 0,
-                                ),
-                                border: inputBorder,
-                                enabledBorder: inputBorder,
-                                focusedBorder: inputBorder,
-                              ),
-                              onChanged: _searchProducts,
-                              textInputAction: TextInputAction.search,
-                              onSubmitted: (value) async {
-                                final q = value.trim();
-                                if (q.isEmpty) return;
-                                // Si hay espacios, normalmente es búsqueda por nombre.
-                                if (q.contains(' ')) return;
-                                await _handleBarcodeScan(
-                                  q,
-                                  clearSearchField: true,
-                                );
-                              },
-                              style: TextStyle(
-                                color: fieldTextColor,
+                        backgroundColor: buttonColor,
+                      ),
+
+                      buildIconButton(
+                        icon: Image.asset(
+                          'assets/imagen/iconos/lectura-de-codigo-de-barras.png',
+                          width: iconSize,
+                          height: iconSize,
+                          fit: BoxFit.contain,
+                          color: Colors.white,
+                        ),
+                        tooltip: 'Escanear código de barras',
+                        onTap: () {
+                          _searchFocusNode.requestFocus();
+
+                          showSearchNotice(
+                            icon: Icons.qr_code_scanner_rounded,
+                            message: 'Escanea el código de barras del producto.',
+                          );
+                        },
+                        borderRadius: BorderRadius.zero,
+                        backgroundColor: barcodeButtonColor,
+                      ),
+
+                      Expanded(
+                        child: SizedBox(
+                          height: barHeight,
+                          child: TextField(
+                            controller: _searchController,
+                            focusNode: _searchFocusNode,
+                            expands: true,
+                            maxLines: null,
+                            minLines: null,
+                            textAlignVertical: TextAlignVertical.center,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Buscar producto por nombre o código...',
+                              hintStyle: const TextStyle(
+                                color: hintColor,
                                 fontSize: textSize,
                                 fontWeight: FontWeight.w400,
                               ),
+                              isDense: true,
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 0,
+                              ),
+                              border: inputBorder,
+                              enabledBorder: inputBorder,
+                              focusedBorder: inputBorder,
+                            ),
+                            onChanged: _searchProducts,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (value) async {
+                              final q = value.trim();
+
+                              if (q.isEmpty) return;
+
+                              // Si contiene espacios, normalmente es una
+                              // búsqueda por nombre y no un código de barras.
+                              if (q.contains(' ')) return;
+
+                              await _handleBarcodeScan(
+                                q,
+                                clearSearchField: true,
+                              );
+                            },
+                            style: const TextStyle(
+                              color: fieldTextColor,
+                              fontSize: textSize,
+                              fontWeight: FontWeight.w400,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _buildNewProductButton(height: barHeight, radius: 4),
-                      ],
-                    ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      _buildNewProductButton(
+                        height: barHeight,
+                        radius: 4,
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          ],
-        );
-      },
-    );
-  }
+          ),
+        ],
+      );
+    },
+  );
+}
 
   Widget _buildMovementPanel() {
     final dividerColor = salesDetailBorderColor;

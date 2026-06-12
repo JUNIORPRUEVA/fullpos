@@ -846,181 +846,185 @@ class _PurchaseOrderReceivePageState extends State<PurchaseOrderReceivePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final currency = CurrencyDisplay.currency();
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-    final detail = _detail;
+  @override
+Widget build(BuildContext context) {
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  final currency = CurrencyDisplay.currency();
+  final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+  final detail = _detail;
 
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      appBar: AppBar(
-        title: const Text(
-          'Recibir Orden',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        toolbarHeight: 48,
-        actions: [
-          TextButton(
-            onPressed: () => context.go('/purchases'),
-            child: const Text('Volver'),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(
-              child: Text(
-                'Error: $_error',
-                style: const TextStyle(color: Colors.red),
-              ),
-            )
-          : detail == null
-          ? Center(
-              child: Text(
-                'Orden no encontrada',
-                style: TextStyle(color: scheme.onSurfaceVariant),
-              ),
-            )
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth;
-                final pagePadding = (width * 0.03).clamp(12.0, 40.0);
-                final panelMaxWidth = width > 1500
-                    ? 1250.0
-                    : (width > 1200 ? 1100.0 : 940.0);
-                final orderedTotal = detail.items.fold<double>(
-                  0.0,
-                  (sum, item) =>
-                      sum + (item.item.qty > 0 ? item.item.qty : 0.0),
-                );
-                final receivedTotal = detail.items.fold<double>(
-                  0.0,
-                  (sum, item) =>
-                      sum +
-                      (item.item.receivedQty > 0 ? item.item.receivedQty : 0.0),
-                );
-                final status = detail.order.status.trim().toUpperCase();
-                final anyReceived = detail.items.any(
-                  (item) => item.item.receivedQty > 0,
-                );
+  Widget buildCleanHeader(PurchaseOrderDetailDto detail) {
+    final orderDateMs = detail.order.purchaseDateMs ?? detail.order.createdAtMs;
+    final status = detail.order.status.trim().toUpperCase();
+    final orderedTotal = detail.items.fold<double>(
+      0.0,
+      (sum, item) => sum + (item.item.qty > 0 ? item.item.qty : 0.0),
+    );
+    final receivedTotal = detail.items.fold<double>(
+      0.0,
+      (sum, item) => sum + (item.item.receivedQty > 0 ? item.item.receivedQty : 0.0),
+    );
 
-                return Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    pagePadding,
-                    12,
-                    pagePadding,
-                    24,
-                  ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: panelMaxWidth),
-                      child: Column(
-                        children: [
-                          PurchaseHeroCard(
-                            eyebrow: 'Recepción',
-                            title:
-                                'Confirma entrada de mercadería y corrige inventario en tiempo real.',
-                            subtitle:
-                                'La vista ahora prioriza densidad operativa, lectura rápida y acciones claras por línea sin tocar el flujo funcional.',
-                            stats: [
-                              PurchaseMetricTile(
-                                label: 'Proveedor',
-                                value: detail.supplierName,
-                                icon: Icons.local_shipping_rounded,
-                              ),
-                              PurchaseMetricTile(
-                                label: 'Estado',
-                                value: status,
-                                icon: Icons.inventory_2_rounded,
-                              ),
-                            ],
-                            actions: [
-                              if (anyReceived)
-                                TextButton.icon(
-                                  onPressed: _canceling ? null : _cancelReceipt,
-                                  icon: _canceling
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.undo_rounded,
-                                          color: Colors.white,
-                                        ),
-                                  label: const Text(
-                                    'Anular recepción',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: PurchaseSectionCard(
-                              padding: EdgeInsets.zero,
-                              child: Column(
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(
-                                      AppSizes.paddingM,
-                                    ),
-                                    child: _buildSummaryCard(
-                                      context,
-                                      theme,
-                                      scheme,
-                                      detail,
-                                      currency,
-                                      dateFormat,
-                                      status,
-                                      orderedTotal,
-                                      receivedTotal,
-                                      anyReceived,
-                                    ),
-                                  ),
-                                  Divider(
-                                    height: 1,
-                                    color: scheme.outlineVariant.withOpacity(
-                                      0.35,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: ListView.separated(
-                                      itemCount: detail.items.length,
-                                      separatorBuilder: (_, _) => Divider(
-                                        height: 1,
-                                        color: scheme.outlineVariant
-                                            .withOpacity(0.35),
-                                      ),
-                                      itemBuilder: (context, index) {
-                                        return _buildItemRow(
-                                          context,
-                                          scheme,
-                                          status,
-                                          detail.items[index],
-                                          currency,
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Recibir orden #${detail.order.id ?? '-'}',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: scheme.onSurface,
+                  letterSpacing: -0.4,
+                ),
+              ),
             ),
+            TextButton(
+              onPressed: () => context.go('/purchases'),
+              child: const Text('Volver'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${detail.supplierName}  •  ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(orderDateMs))}  •  ${currency.format(detail.order.total)}',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _statusColor(status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                status,
+                style: TextStyle(
+                  color: _statusColor(status),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Recibido ${receivedTotal.toStringAsFixed(2)} de ${orderedTotal.toStringAsFixed(2)} unidades',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => PurchaseOrderPdfLauncher.openPreviewDialog(
+                context: context,
+                detail: detail,
+              ),
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: const Text('WhatsApp / PDF'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _canceling || !detail.items.any((i) => i.item.receivedQty > 0)
+                  ? null
+                  : _cancelReceipt,
+              icon: _canceling
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.undo_rounded, size: 18),
+              label: const Text('Anular'),
+            ),
+          ],
+        ),
+      ],
     );
   }
+
+  return Scaffold(
+    backgroundColor: const Color(0xFFF3F6F9),
+    body: SafeArea(
+      bottom: false,
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Text(
+                    'Error: $_error',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                )
+              : detail == null
+                  ? Center(
+                      child: Text(
+                        'Orden no encontrada',
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    )
+                  : Center(
+                      child: SizedBox(
+                        width: 1550,
+                        height: 950,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(32, 28, 32, 26),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: scheme.outlineVariant.withOpacity(0.8),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 24,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              buildCleanHeader(detail),
+                              const SizedBox(height: 18),
+                              Divider(
+                                height: 1,
+                                color: scheme.outlineVariant.withOpacity(0.55),
+                              ),
+                              Expanded(
+                                child: ListView.separated(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  itemCount: detail.items.length,
+                                  separatorBuilder: (_, __) => Divider(
+                                    height: 1,
+                                    color: scheme.outlineVariant.withOpacity(0.35),
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    return _buildItemRow(
+                                      context,
+                                      scheme,
+                                      detail.order.status.trim().toUpperCase(),
+                                      detail.items[index],
+                                      currency,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+    ),
+  );
+}
 }

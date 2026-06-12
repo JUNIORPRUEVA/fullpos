@@ -24,6 +24,9 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
   bool _loading = true;
   String? _error;
   List<PurchaseOrderSummaryDto> _orders = const [];
+   
+   String _searchQuery = '';
+   String _orderFilter = 'all'; // all, pending, received, auto
 
   Future<void> _deleteOrder(int orderId) async {
     try {
@@ -101,555 +104,314 @@ class _PurchaseOrdersListPageState extends State<PurchaseOrdersListPage> {
     await _deleteOrder(orderId);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
-    final currency = CurrencyDisplay.currency();
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final status = theme.extension<AppStatusTheme>();
-    final gradientTheme = theme.extension<AppGradientTheme>();
-    final headerGradient =
-        gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [
-            scheme.surface,
-            scheme.surfaceVariant,
-            scheme.primaryContainer,
-          ],
-          stops: const [0.0, 0.65, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-    final gradientMid = gradientTheme?.mid ?? scheme.surfaceVariant;
-    final headerTextColor = ColorUtils.ensureReadableColor(
-      scheme.onSurface,
-      gradientMid,
-    );
+ @override
+Widget build(BuildContext context) {
+  final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+  final currency = CurrencyDisplay.currency();
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  final status = theme.extension<AppStatusTheme>();
 
-    Color statusColor(bool isReceived) => isReceived
-        ? (status?.success ?? scheme.tertiary)
-        : (status?.warning ?? scheme.secondary);
+  Color statusColor(bool isReceived) => isReceived
+      ? (status?.success ?? scheme.tertiary)
+      : (status?.warning ?? scheme.secondary);
 
-    Widget buildHeader(double horizontalPadding) {
-      Widget icon() {
-        return Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: headerTextColor.withOpacity(0.08),
-            shape: BoxShape.circle,
-            border: Border.all(color: headerTextColor.withOpacity(0.25)),
-          ),
-          child: Icon(
-            Icons.inventory_2_outlined,
-            color: headerTextColor,
-            size: 22,
-          ),
-        );
-      }
+  final filteredOrders = _orders.where((summary) {
+    final order = summary.order;
+    final query = _searchQuery.trim().toLowerCase();
+    final supplier = summary.supplierName.toLowerCase();
+    final orderNumber = 'orden #${order.id ?? ''}'.toLowerCase();
+    final isReceived = order.status.toUpperCase() == 'RECIBIDA';
 
-      Widget infoChip(String label, String value) {
-        final chipBg = Color.alphaBlend(
-          scheme.surface.withOpacity(0.75),
-          gradientMid.withOpacity(0.22),
-        );
-        final chipFg = ColorUtils.ensureReadableColor(headerTextColor, chipBg);
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: chipBg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: headerTextColor.withOpacity(0.25)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: chipFg.withOpacity(0.9),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                value,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: chipFg,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            ],
-          ),
-        );
-      }
+    final matchesSearch =
+        query.isEmpty ||
+        supplier.contains(query) ||
+        orderNumber.contains(query) ||
+        order.status.toLowerCase().contains(query);
 
-      return Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: headerGradient,
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withOpacity(0.18),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 12,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isCompact = constraints.maxWidth < 820;
-            final actions = Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                IconButton(
-                  tooltip: 'Actualizar',
-                  onPressed: _load,
-                  style: IconButton.styleFrom(
-                    foregroundColor: headerTextColor,
-                    backgroundColor: headerTextColor.withOpacity(0.08),
-                  ),
-                  icon: const Icon(Icons.refresh),
-                ),
-                FilledButton.icon(
-                  onPressed: () => context.go('/purchases/new'),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Crear'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                    foregroundColor: scheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    textStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => context.go('/purchases/auto'),
-                  icon: const Icon(Icons.auto_awesome_motion),
-                  label: const Text('Stock minimo'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: headerTextColor,
-                    side: BorderSide(color: headerTextColor.withOpacity(0.35)),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    textStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            );
+    final matchesFilter = switch (_orderFilter) {
+      'pending' => !isReceived,
+      'received' => isReceived,
+      'auto' => order.isAuto == 1,
+      _ => true,
+    };
 
-            final titleSection = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ordenes',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: headerTextColor,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.1,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    infoChip('Total', _orders.length.toString()),
-                    if (_loading) infoChip('Estado', 'Actualizando'),
-                  ],
-                ),
-              ],
-            );
+    return matchesSearch && matchesFilter;
+  }).toList();
 
-            if (isCompact) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      icon(),
-                      const SizedBox(width: 10),
-                      Expanded(child: titleSection),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  actions,
-                ],
-              );
-            }
-
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                icon(),
-                const SizedBox(width: 12),
-                Expanded(child: titleSection),
-                const SizedBox(width: 12),
-                actions,
-              ],
-            );
-          },
-        ),
-      );
-    }
-
-    Widget buildEmpty(double horizontalPadding) {
-      final iconColor = scheme.onSurface.withOpacity(0.45);
-      return SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 32,
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.shopping_cart_outlined, size: 72, color: iconColor),
-              const SizedBox(height: 16),
-              Text(
-                'No hay ordenes',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: scheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Crea una nueva orden para comenzar',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 28),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                alignment: WrapAlignment.center,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => context.go('/purchases/new'),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Crear orden manual'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => context.go('/purchases/auto'),
-                    icon: const Icon(Icons.inventory_2_outlined),
-                    label: const Text('Crear por stock minimo'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    Widget buildError(double horizontalPadding) {
-      return Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 24,
-        ),
-        child: Card(
-          color: scheme.errorContainer,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  color: scheme.onErrorContainer,
-                  size: 32,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'No se pudo cargar la lista',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: scheme.onErrorContainer,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _error ?? 'Error desconocido',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onErrorContainer.withOpacity(0.85),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.tonalIcon(
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reintentar'),
-                  style: FilledButton.styleFrom(
-                    foregroundColor: scheme.onErrorContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget buildOrderCard(PurchaseOrderSummaryDto summary) {
-      final order = summary.order;
-      final created = DateTime.fromMillisecondsSinceEpoch(order.createdAtMs);
-      final isReceived = order.status.toUpperCase() == 'RECIBIDA';
-      final accent = statusColor(isReceived);
-      final badgeBg = accent.withOpacity(0.12);
-      final badgeFg = ColorUtils.ensureReadableColor(accent, badgeBg);
-
-      return Card(
-        elevation: 2,
-        shadowColor: theme.shadowColor.withOpacity(0.12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.bgDark),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: badgeBg,
+  Widget buildTopControls() {
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 46,
+            child: TextField(
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Buscar orden de compra',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: accent.withOpacity(0.4)),
+                  borderSide: BorderSide(color: scheme.outlineVariant),
                 ),
-                child: Icon(
-                  isReceived
-                      ? Icons.inventory_2_rounded
-                      : Icons.local_shipping_outlined,
-                  color: accent,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: scheme.outlineVariant),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Orden #${order.id ?? '-'} - ${summary.supplierName}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: scheme.onSurface,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${dateFormat.format(created)} - ${order.status} - Total: ${currency.format(order.total)}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: badgeBg,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            isReceived ? 'Recibida' : 'Pendiente',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: badgeFg,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        if (order.isAuto == 1)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.secondaryContainer.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              'Generada por stock minimo',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: ColorUtils.ensureReadableColor(
-                                  scheme.onSecondaryContainer,
-                                  scheme.secondaryContainer,
-                                ),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: scheme.primary, width: 1.2),
                 ),
               ),
-              const SizedBox(width: 12),
-              Column(
-                children: [
-                  PopupMenuButton<String>(
-                    tooltip: 'Acciones',
-                    onSelected: (value) async {
-                      final orderId = order.id;
-                      if (orderId == null) return;
-                      switch (value) {
-                        case 'details':
-                          context.go('/purchases/receive/$orderId');
-                          break;
-                        case 'edit':
-                          context.go('/purchases/edit/$orderId');
-                          break;
-                        case 'delete':
-                          await _confirmAndDelete(orderId);
-                          break;
-                      }
-                    },
-                    itemBuilder: (context) {
-                      return [
-                        const PopupMenuItem<String>(
-                          value: 'details',
-                          child: Text('Ver detalle'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'edit',
-                          enabled: !isReceived,
-                          child: const Text('Editar'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'delete',
-                          enabled: !isReceived,
-                          child: const Text('Eliminar'),
-                        ),
-                      ];
-                    },
-                    icon: Icon(Icons.more_vert, color: scheme.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 4),
-                  Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
-      );
-    }
-
-    Widget buildBody(double horizontalPadding, double cardSpacing) {
-      if (_loading) {
-        return Padding(
-          padding: EdgeInsets.all(horizontalPadding),
-          child: Center(
-            child: CircularProgressIndicator(color: scheme.primary),
+        const SizedBox(width: 10),
+        PopupMenuButton<String>(
+          tooltip: 'Filtrar',
+          position: PopupMenuPosition.under,
+          onSelected: (value) => setState(() => _orderFilter = value),
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'all', child: Text('Todas')),
+            PopupMenuItem(value: 'pending', child: Text('Pendientes')),
+            PopupMenuItem(value: 'received', child: Text('Recibidas')),
+            PopupMenuItem(value: 'auto', child: Text('Stock mínimo')),
+          ],
+          child: Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.tune_rounded, size: 19, color: scheme.onSurface),
+                const SizedBox(width: 8),
+                const Text(
+                  'Filtro',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
           ),
-        );
-      }
-
-      if (_error != null) return buildError(horizontalPadding);
-
-      if (_orders.isEmpty) return buildEmpty(horizontalPadding);
-
-      return ListView.separated(
-        padding: EdgeInsets.fromLTRB(
-          horizontalPadding,
-          cardSpacing,
-          horizontalPadding,
-          cardSpacing + 8,
         ),
-        itemCount: _orders.length,
-        separatorBuilder: (_, index) => SizedBox(height: cardSpacing),
-        itemBuilder: (context, index) => buildOrderCard(_orders[index]),
-      );
-    }
+      ],
+    );
+  }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        bottom: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontalPadding = (constraints.maxWidth * 0.045)
-                .clamp(12.0, 28.0)
-                .toDouble();
-            final cardSpacing = (constraints.maxWidth * 0.015)
-                .clamp(8.0, 16.0)
-                .toDouble();
+  Widget buildOrderCard(PurchaseOrderSummaryDto summary) {
+    final order = summary.order;
+    final created = DateTime.fromMillisecondsSinceEpoch(order.createdAtMs);
+    final isReceived = order.status.toUpperCase() == 'RECIBIDA';
+    final accent = statusColor(isReceived);
 
-            return Container(
-              color: Colors.transparent,
-              child: Column(
-                children: [
-                  buildHeader(horizontalPadding),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1200),
-                        child: Card(
-                          margin: EdgeInsets.symmetric(
-                            horizontal: horizontalPadding,
-                            vertical: cardSpacing,
-                          ),
-                          color: scheme.surface,
-                          elevation: 2,
-                          shadowColor: theme.shadowColor.withOpacity(0.14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            side: BorderSide(
-                              color: AppColors.bgDark.withOpacity(0.85),
-                            ),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 220),
-                              child: buildBody(horizontalPadding, cardSpacing),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+    return InkWell(
+      onTap: order.id == null
+          ? null
+          : () => context.go('/purchases/receive/${order.id}'),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant.withOpacity(0.8)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 36,
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              flex: 18,
+              child: Text(
+                'Orden #${order.id ?? '-'}',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Expanded(
+              flex: 28,
+              child: Text(
+                summary.supplierName,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onSurface.withOpacity(0.72),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 22,
+              child: Text(
+                dateFormat.format(created),
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 15,
+              child: Text(
+                isReceived ? 'Recibida' : 'Pendiente',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: accent, fontWeight: FontWeight.w800),
+              ),
+            ),
+            Expanded(
+              flex: 18,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  currency.format(order.total),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 34,
+              child: PopupMenuButton<String>(
+                tooltip: 'Acciones',
+                padding: EdgeInsets.zero,
+                position: PopupMenuPosition.under,
+                onSelected: (value) async {
+                  final orderId = order.id;
+                  if (orderId == null) return;
+
+                  switch (value) {
+                    case 'details':
+                      context.go('/purchases/receive/$orderId');
+                      break;
+                    case 'edit':
+                      context.go('/purchases/edit/$orderId');
+                      break;
+                    case 'delete':
+                      await _confirmAndDelete(orderId);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'details',
+                    child: Text('Ver detalle'),
+                  ),
+                  PopupMenuItem(
+                    value: 'edit',
+                    enabled: !isReceived,
+                    child: const Text('Editar'),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    enabled: !isReceived,
+                    child: const Text('Eliminar'),
                   ),
                 ],
+                icon: Icon(
+                  Icons.more_horiz_rounded,
+                  color: scheme.onSurfaceVariant,
+                  size: 22,
+                ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
   }
+
+  Widget buildBody() {
+    if (_loading) {
+      return const Expanded(child: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_error != null) {
+      return Expanded(
+        child: Center(child: Text('No se pudo cargar la lista')),
+      );
+    }
+
+    if (filteredOrders.isEmpty) {
+      return Expanded(
+        child: Center(child: Text('No hay órdenes disponibles')),
+      );
+    }
+
+    return Expanded(
+      child: ListView.separated(
+        padding: const EdgeInsets.only(top: 16, bottom: 8),
+        itemCount: filteredOrders.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, index) => buildOrderCard(filteredOrders[index]),
+      ),
+    );
+  }
+
+  return Scaffold(
+    backgroundColor: const Color(0xFFF3F6F9),
+    body: SafeArea(
+      bottom: false,
+      child: Center(
+        child: SizedBox(
+          width: 1550,
+          height: 950,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(32, 28, 32, 26),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: scheme.outlineVariant.withOpacity(0.8)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Órdenes de compra',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: scheme.onSurface,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${filteredOrders.length} registros encontrados',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                buildTopControls(),
+                buildBody(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
 }

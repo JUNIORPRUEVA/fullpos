@@ -113,7 +113,13 @@ class _ProductsPageState extends State<ProductsPage> {
                           child: Align(
                             alignment: Alignment.topCenter,
                             child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 1200),
+                              constraints: BoxConstraints(
+                                maxWidth:
+                                    _activeSection ==
+                                        _ProductsModuleSection.catalog
+                                    ? double.infinity
+                                    : 1200,
+                              ),
                               child: _buildContent(),
                             ),
                           ),
@@ -137,8 +143,12 @@ class _ProductsPageState extends State<ProductsPage> {
                             child: Align(
                               alignment: Alignment.topCenter,
                               child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 1200,
+                                constraints: BoxConstraints(
+                                  maxWidth:
+                                      _activeSection ==
+                                          _ProductsModuleSection.catalog
+                                      ? double.infinity
+                                      : 1200,
                                 ),
                                 child: _buildContent(),
                               ),

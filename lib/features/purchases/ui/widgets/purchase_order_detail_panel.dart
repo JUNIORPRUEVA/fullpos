@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
-import '../../../../core/theme/color_utils.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../data/purchase_order_models.dart';
 import '../../providers/purchase_orders_providers.dart';
@@ -62,7 +61,7 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'El detalle aparecerá aquí (panel fijo).',
+                      'El detalle aparecerá aquí.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: scheme.onSurface.withOpacity(0.7),
@@ -80,182 +79,253 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
           final canDelete = status == 'PENDIENTE';
 
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Encabezado limpio ──
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                child: Column(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Orden #${detail.order.id ?? '-'}',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                detail.supplierName,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: scheme.onSurface.withOpacity(0.8),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        PurchaseStatusBadge(
-                          label: status,
-                          color: isReceived
-                              ? AppColors.success
-                              : (isPartial
-                                    ? AppColors.warning
-                                    : scheme.primary),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        PurchaseFactTile(
-                          label: 'Fecha de emisión',
-                          value: dateFormat.format(
-                            DateTime.fromMillisecondsSinceEpoch(
-                              detail.order.createdAtMs,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Orden #${detail.order.id ?? '-'}',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                        ),
-                        PurchaseFactTile(
-                          label: 'Proveedor',
-                          value: detail.supplierPhone ?? 'Sin teléfono',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => onOpenPdf?.call(detail),
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text('Abrir PDF'),
-                        ),
-                        const SizedBox(width: 10),
-                        FilledButton.icon(
-                          onPressed: isReceived
-                              ? null
-                              : () => onReceive?.call(detail.order.id ?? 0),
-                          icon: const Icon(Icons.inventory_outlined),
-                          label: Text(
-                            isReceived
-                                ? 'Recibida'
-                                : (isPartial
-                                      ? 'Continuar recepción'
-                                      : 'Recibir'),
+                          const SizedBox(height: 2),
+                          Text(
+                            detail.supplierName,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                    _StatusBadge(status: status, scheme: scheme),
+                  ],
+                ),
+              ),
+
+              // ── Metadatos ──
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    _MetaItem(
+                      label: 'Emisión',
+                      value: dateFormat.format(
+                        DateTime.fromMillisecondsSinceEpoch(
+                          detail.order.createdAtMs,
                         ),
-                      ],
+                      ),
+                      scheme: scheme,
+                    ),
+                    const SizedBox(width: 20),
+                    _MetaItem(
+                      label: 'Proveedor',
+                      value: detail.supplierPhone ?? 'Sin teléfono',
+                      scheme: scheme,
                     ),
                   ],
                 ),
               ),
+
+              // ── Resumen financiero ──
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    _SummaryItem(
+                      label: 'Subtotal',
+                      value: currency.format(detail.order.subtotal),
+                      scheme: scheme,
+                    ),
+                    const SizedBox(width: 16),
+                    _SummaryItem(
+                      label: 'Impuestos',
+                      value: currency.format(detail.order.taxAmount),
+                      scheme: scheme,
+                    ),
+                    const SizedBox(width: 16),
+                    _SummaryItem(
+                      label: 'Total',
+                      value: currency.format(detail.order.total),
+                      scheme: scheme,
+                      isBold: true,
+                    ),
+                    const Spacer(),
+                    _SummaryItem(
+                      label: 'Tipo',
+                      value: detail.order.isAuto == 1
+                          ? 'Automática'
+                          : 'Manual',
+                      scheme: scheme,
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Botones de acción ──
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Row(
+                  children: [
+                    _ActionButton(
+                      icon: Icons.picture_as_pdf,
+                      label: 'PDF',
+                      onPressed: () => onOpenPdf?.call(detail),
+                      scheme: scheme,
+                    ),
+                    const SizedBox(width: 8),
+                    _ActionButton(
+                      icon: Icons.inventory_outlined,
+                      label: isReceived
+                          ? 'Recibida'
+                          : (isPartial
+                                ? 'Continuar recepción'
+                                : 'Recibir'),
+                      onPressed: isReceived
+                          ? null
+                          : () => onReceive?.call(detail.order.id ?? 0),
+                      scheme: scheme,
+                      filled: true,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 14),
               Divider(
                 height: 1,
-                color: scheme.outlineVariant.withOpacity(0.45),
+                indent: 16,
+                endIndent: 16,
+                color: scheme.outlineVariant.withOpacity(0.3),
               ),
+              const SizedBox(height: 8),
+
+              // ── Lista de items ──
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.all(AppSizes.paddingM),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   children: [
-                    _InfoGrid(detail: detail, currency: currency),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Items',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                    // Encabezado de tabla
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Producto',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 64,
+                          child: Text(
+                            'Cant',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: Text(
+                            'Costo',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 90,
+                          child: Text(
+                            'Subtotal',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    _ItemsTable(detail: detail, currency: currency),
+                    const SizedBox(height: 4),
+                    ...detail.items.map((it) => _ItemRow(
+                          item: it,
+                          currency: currency,
+                          scheme: scheme,
+                        )),
+
+                    // ── Notas ──
                     if ((detail.order.notes ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       Text(
                         'Notas',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest.withOpacity(
-                            0.35,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: scheme.outlineVariant.withOpacity(0.45),
-                          ),
-                        ),
-                        child: Text(
-                          detail.order.notes!.trim(),
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface.withOpacity(0.8),
-                          ),
+                      const SizedBox(height: 4),
+                      Text(
+                        detail.order.notes!.trim(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurface.withOpacity(0.75),
+                          height: 1.4,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
+
+              // ── Barra de acciones inferior ──
               Container(
-                padding: const EdgeInsets.all(AppSizes.paddingM),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                 decoration: BoxDecoration(
                   border: Border(
                     top: BorderSide(
-                      color: scheme.outlineVariant.withOpacity(0.45),
+                      color: scheme.outlineVariant.withOpacity(0.25),
                     ),
                   ),
                 ),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: canDelete
-                            ? () => onDelete?.call(detail.order.id ?? 0)
-                            : null,
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('Eliminar'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.error,
-                        ),
-                      ),
+                    _BottomAction(
+                      icon: Icons.delete_outline,
+                      label: 'Eliminar',
+                      onPressed: canDelete
+                          ? () => onDelete?.call(detail.order.id ?? 0)
+                          : null,
+                      color: AppColors.error,
+                      scheme: scheme,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => onDuplicate?.call(detail),
-                        icon: const Icon(Icons.copy),
-                        label: const Text('Duplicar'),
-                      ),
+                    const SizedBox(width: 12),
+                    _BottomAction(
+                      icon: Icons.copy,
+                      label: 'Duplicar',
+                      onPressed: () => onDuplicate?.call(detail),
+                      scheme: scheme,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => onOpenPdf?.call(detail),
-                        icon: const Icon(Icons.print_outlined),
-                        label: const Text('Imprimir'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: scheme.primary,
-                          foregroundColor: scheme.onPrimary,
-                        ),
-                      ),
+                    const Spacer(),
+                    _BottomAction(
+                      icon: Icons.print_outlined,
+                      label: 'Imprimir',
+                      onPressed: () => onOpenPdf?.call(detail),
+                      scheme: scheme,
+                      filled: true,
                     ),
                   ],
                 ),
@@ -268,165 +338,290 @@ class PurchaseOrderDetailPanel extends ConsumerWidget {
   }
 }
 
-class _InfoGrid extends StatelessWidget {
-  final PurchaseOrderDetailDto detail;
-  final NumberFormat currency;
+// ─── Widgets internos ───
 
-  const _InfoGrid({required this.detail, required this.currency});
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  final ColorScheme scheme;
+
+  const _StatusBadge({required this.status, required this.scheme});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final color = status == 'RECIBIDA'
+        ? AppColors.success
+        : (status == 'PARCIAL' ? AppColors.warning : scheme.primary);
 
-    Widget chip(String label, String value, {Color? bg}) {
-      final background = bg ?? scheme.surfaceContainerHighest.withOpacity(0.35);
-      final fg = ColorUtils.readableTextColor(background);
-
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.3,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$label: ',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: fg.withOpacity(0.8),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            Text(
-              value,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: fg,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+      ),
+    );
+  }
+}
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+class _MetaItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final ColorScheme scheme;
+
+  const _MetaItem({
+    required this.label,
+    required this.value,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        chip(
-          'Estado',
-          detail.order.status.trim().toUpperCase(),
-          bg: detail.order.status.trim().toUpperCase() == 'RECIBIDA'
-              ? AppColors.successLight
-              : AppColors.warningLight,
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
-        chip('Subtotal', currency.format(detail.order.subtotal)),
-        chip('Impuestos', currency.format(detail.order.taxAmount)),
-        chip(
-          'Total',
-          currency.format(detail.order.total),
-          bg: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+        const SizedBox(height: 1),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurface,
+          ),
         ),
-        chip('Tipo', detail.order.isAuto == 1 ? 'Automática' : 'Manual'),
       ],
     );
   }
 }
 
-class _ItemsTable extends StatelessWidget {
-  final PurchaseOrderDetailDto detail;
-  final NumberFormat currency;
+class _SummaryItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final ColorScheme scheme;
+  final bool isBold;
 
-  const _ItemsTable({required this.detail, required this.currency});
+  const _SummaryItem({
+    required this.label,
+    required this.value,
+    required this.scheme,
+    this.isBold = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
+            color: isBold ? scheme.primary : scheme.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final ColorScheme scheme;
+  final bool filled;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.scheme,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: filled
+          ? FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 15),
+              label: Text(label),
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            )
+          : OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 15),
+              label: Text(label),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: scheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                side: BorderSide(color: scheme.outlineVariant.withOpacity(0.5)),
+              ),
+            ),
+    );
+  }
+}
+
+class _ItemRow extends StatelessWidget {
+  final PurchaseOrderItemDetailDto item;
+  final NumberFormat currency;
+  final ColorScheme scheme;
+
+  const _ItemRow({
+    required this.item,
+    required this.currency,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.45)),
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outlineVariant.withOpacity(0.15),
+          ),
+        ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
+      child: Row(
         children: [
-          Container(
-            color: scheme.surfaceContainerHighest.withOpacity(0.35),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                const Expanded(child: Text('Producto')),
-                const SizedBox(
-                  width: 70,
-                  child: Text('Cant', textAlign: TextAlign.right),
-                ),
-                const SizedBox(
-                  width: 90,
-                  child: Text('Costo', textAlign: TextAlign.right),
-                ),
-                const SizedBox(
-                  width: 100,
-                  child: Text('Subtotal', textAlign: TextAlign.right),
-                ),
-              ],
+          Expanded(
+            child: Text(
+              '${item.productCode} • ${item.productName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
-          ...detail.items.map((it) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: scheme.outlineVariant.withOpacity(0.35),
-                  ),
-                ),
+          SizedBox(
+            width: 64,
+            child: Text(
+              item.item.qty.toStringAsFixed(2),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          SizedBox(
+            width: 80,
+            child: Text(
+              currency.format(item.item.unitCost),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          SizedBox(
+            width: 90,
+            child: Text(
+              currency.format(item.item.totalLine),
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${it.productCode} • ${it.productName}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 70,
-                    child: Text(
-                      it.item.qty.toStringAsFixed(2),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                  SizedBox(
-                    width: 90,
-                    child: Text(
-                      currency.format(it.item.unitCost),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                  SizedBox(
-                    width: 100,
-                    child: Text(
-                      currency.format(it.item.totalLine),
-                      textAlign: TextAlign.right,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _BottomAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final ColorScheme scheme;
+  final Color? color;
+  final bool filled;
+
+  const _BottomAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.scheme,
+    this.color,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = color ?? scheme.primary;
+
+    if (filled) {
+      return SizedBox(
+        height: 32,
+        child: FilledButton.icon(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 15),
+          label: Text(label),
+          style: FilledButton.styleFrom(
+            backgroundColor: fg,
+            foregroundColor: scheme.onPrimary,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 32,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 15),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: fg,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+          side: BorderSide(color: fg.withOpacity(0.3)),
+        ),
       ),
     );
   }
